@@ -1,112 +1,112 @@
 :root {
-  color-scheme: light;
-  --bg: #f4f5f7;
-  --surface: #ffffff;
-  --surface-alt: #ecf0f4;
-  --text: #1f2933;
-  --muted: #52606d;
-  --accent: #0a6c74;
-  --border: #c7d2da;
-  --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    color-scheme: light;
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-alt: #ecf0f4;
+    --text: #1f2933;
+    --muted: #52606d;
+    --accent: #0a6c74;
+    --border: #c7d2da;
+    --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
 * {
-  box-sizing: border-box;
+    box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  color: var(--text);
-  background: radial-gradient(circle at top right, #ddeaf0 0, var(--bg) 45%);
+    margin: 0;
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    color: var(--text);
+    background: radial-gradient(circle at top right, #ddeaf0 0, var(--bg) 45%);
 }
 
 h1,
 h2 {
-  margin: 0;
+    margin: 0;
 }
 
 p {
-  margin: 0;
-  color: var(--muted);
+    margin: 0;
+    color: var(--muted);
 }
 
 .app-shell {
-  min-height: 100vh;
-  padding: 1.5rem;
+    min-height: 100vh;
+    padding: 1.5rem;
 }
 
 .app-header {
-  margin-bottom: 1rem;
+    margin-bottom: 1rem;
 }
 
 .app-main {
-  display: grid;
-  gap: 1rem;
+    display: grid;
+    gap: 1rem;
 }
 
 .workspace-grid {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 1rem;
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 1rem;
 }
 
 .results {
-  grid-column: 1 / -1;
+    grid-column: 1 / -1;
 }
 
 .panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  box-shadow: var(--shadow);
-  padding: 1rem;
-  display: grid;
-  gap: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow);
+    padding: 1rem;
+    display: grid;
+    gap: 0.75rem;
 }
 
 .sidebar ul {
-  margin: 0;
-  padding-left: 1rem;
-  color: var(--muted);
+    margin: 0;
+    padding-left: 1rem;
+    color: var(--muted);
 }
 
 .editor pre {
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: #0f172a;
-  color: #d9f99d;
-  padding: 1rem;
-  min-height: 160px;
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: #0f172a;
+    color: #d9f99d;
+    padding: 1rem;
+    min-height: 160px;
 }
 
 .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 button {
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  padding: 0.45rem 0.9rem;
-  cursor: pointer;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    padding: 0.45rem 0.9rem;
+    cursor: pointer;
 }
 
 button:hover {
-  filter: brightness(0.95);
+    filter: brightness(0.95);
 }
 
 @media (max-width: 960px) {
-  .workspace-grid {
-    grid-template-columns: 1fr;
-  }
+    .workspace-grid {
+        grid-template-columns: 1fr;
+    }
 
-  .results {
-    grid-column: 1;
-  }
+    .results {
+        grid-column: 1;
+    }
 }

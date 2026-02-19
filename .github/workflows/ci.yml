@@ -7,7 +7,7 @@ on:
 
 jobs:
   backend:
-    name: Backend Build
+    name: Backend Lint + Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,10 +24,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run backend checks
-        run: ./gradlew clean test
+        run: ./gradlew clean ktlintCheck test
 
   frontend:
-    name: Frontend Build
+    name: Frontend Lint + Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,6 +48,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Format Check
+        run: npm run format:check
 
       - name: Test
         run: npm run test

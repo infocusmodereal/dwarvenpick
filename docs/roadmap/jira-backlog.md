@@ -104,7 +104,7 @@ Applies to every ticket:
 #### OSW-8: Baseline code quality tooling
 
 - Type: Task
-- Status: backlog
+- Status: done
 - Component: Repo/Platform
 - Description: Add formatting/lint rules.
 - Acceptance Criteria:

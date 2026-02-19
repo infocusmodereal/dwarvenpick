@@ -13,7 +13,7 @@ Thanks for contributing to `badgermole`.
 Backend:
 
 ```bash
-./gradlew clean test
+./gradlew clean ktlintCheck test
 ```
 
 Frontend:
@@ -22,6 +22,7 @@ Frontend:
 cd frontend
 npm ci
 npm run lint
+npm run format:check
 npm run test
 npm run build
 ```
