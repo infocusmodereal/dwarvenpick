@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: badgermole-backend
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+server:
+  shutdown: graceful

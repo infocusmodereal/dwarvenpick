@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+build/
+out/
+backend/**/build/
+frontend/dist/
+frontend/node_modules/
+*.tsbuildinfo
+
+# Gradle
+.gradle/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Helm
+*.tgz

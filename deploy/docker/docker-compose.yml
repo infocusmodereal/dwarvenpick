@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: badgermole-postgres
+    environment:
+      POSTGRES_USER: badgermole
+      POSTGRES_PASSWORD: badgermole
+      POSTGRES_DB: badgermole
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.backend
+    container_name: badgermole-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badgermole
+      SPRING_DATASOURCE_USERNAME: badgermole
+      SPRING_DATASOURCE_PASSWORD: badgermole
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.frontend
+    container_name: badgermole-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

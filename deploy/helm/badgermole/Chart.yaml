@@ -1,0 +1,6 @@
+apiVersion: v2
+name: badgermole
+description: Helm chart for badgermole OpenSQL Workbench
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
