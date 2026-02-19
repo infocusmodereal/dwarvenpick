@@ -56,7 +56,7 @@ Applies to every ticket:
 #### OSW-4: React + TypeScript frontend scaffold
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Create UI skeleton with routing and placeholder pages.
 - Acceptance Criteria:

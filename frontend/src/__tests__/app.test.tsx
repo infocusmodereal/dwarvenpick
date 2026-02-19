@@ -1,15 +1,25 @@
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import App from '../App';
 
 describe('App shell', () => {
-  it('renders workspace title', () => {
+  it('renders workspace route', () => {
     render(
-      <BrowserRouter>
+      <MemoryRouter initialEntries={['/workspace']}>
         <App />
-      </BrowserRouter>
+      </MemoryRouter>
     );
 
     expect(screen.getByText(/badgermole workspace/i)).toBeInTheDocument();
+  });
+
+  it('renders login route', () => {
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/badgermole login/i)).toBeInTheDocument();
   });
 });

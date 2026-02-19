@@ -40,6 +40,7 @@ npm run dev
 Default local UI URL:
 
 - `http://localhost:5173`
+- Dev server proxies `/api` and `/actuator` requests to `http://localhost:8080`.
 
 ### Local stack (Docker Compose)
 
