@@ -1,6 +1,8 @@
 package com.badgermole.app
 
 import com.badgermole.app.auth.AuthAuditEventStore
+import com.badgermole.app.auth.UserAccountService
+import com.badgermole.app.rbac.RbacService
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
@@ -13,8 +15,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -40,8 +44,16 @@ class BadgermoleApplicationTests {
     @Autowired
     private lateinit var authAuditEventStore: AuthAuditEventStore
 
+    @Autowired
+    private lateinit var userAccountService: UserAccountService
+
+    @Autowired
+    private lateinit var rbacService: RbacService
+
     @BeforeEach
-    fun clearAuditEvents() {
+    fun resetState() {
+        userAccountService.resetState()
+        rbacService.resetState()
         authAuditEventStore.clear()
     }
 
@@ -84,7 +96,7 @@ class BadgermoleApplicationTests {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("admin"))
             .andExpect(jsonPath("$.provider").value("local"))
-            .andExpect(jsonPath("$.roles", hasItem("ADMIN")))
+            .andExpect(jsonPath("$.roles", hasItem("SYSTEM_ADMIN")))
     }
 
     @Test
@@ -255,6 +267,163 @@ class BadgermoleApplicationTests {
         mockMvc
             .perform(get("/api/auth/me").cookie(adminSession))
             .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `admin endpoints require authentication and system admin role`() {
+        mockMvc
+            .perform(get("/api/admin/groups"))
+            .andExpect(status().isUnauthorized)
+
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        mockMvc
+            .perform(get("/api/admin/groups").cookie(analystSession))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `system admin can manage groups and members`() {
+        val adminSession = loginLocalUser("admin", "Admin123!")
+
+        mockMvc
+            .perform(
+                post("/api/admin/groups")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "name": "Incident Responders",
+                          "description": "On-call incident responders."
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id").value("incident-responders"))
+
+        mockMvc
+            .perform(
+                post("/api/admin/groups/incident-responders/members")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "username": "analyst"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.members", hasItem("analyst")))
+
+        mockMvc
+            .perform(
+                delete("/api/admin/groups/incident-responders/members/analyst")
+                    .with(csrf())
+                    .cookie(adminSession),
+            )
+            .andExpect(status().isOk)
+
+        val events = authAuditEventStore.snapshot()
+        assertThat(events)
+            .anyMatch { event ->
+                event.type == "rbac.group.create" &&
+                    event.actor == "admin" &&
+                    event.outcome == "success"
+            }
+    }
+
+    @Test
+    fun `admin can manage datasource access mappings`() {
+        val adminSession = loginLocalUser("admin", "Admin123!")
+
+        mockMvc
+            .perform(
+                put("/api/admin/datasource-access/analytics-users/postgres-core")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "canQuery": true,
+                          "canExport": false,
+                          "maxRowsPerQuery": 1000,
+                          "maxRuntimeSeconds": 90,
+                          "concurrencyLimit": 1,
+                          "credentialProfile": "analyst-ro"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.groupId").value("analytics-users"))
+            .andExpect(jsonPath("$.datasourceId").value("postgres-core"))
+            .andExpect(jsonPath("$.canQuery").value(true))
+    }
+
+    @Test
+    fun `users only see permitted datasources and forbidden queries return 403`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+
+        mockMvc
+            .perform(get("/api/datasources").cookie(analystSession))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id").value("trino-warehouse"))
+
+        mockMvc
+            .perform(
+                post("/api/queries")
+                    .with(csrf())
+                    .cookie(analystSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "datasourceId": "postgres-core",
+                          "sql": "select 1"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("Datasource access denied for query execution."))
+
+        val events = authAuditEventStore.snapshot()
+        assertThat(events)
+            .anyMatch { event ->
+                event.type == "query.execute" &&
+                    event.actor == "analyst" &&
+                    event.outcome == "denied"
+            }
+    }
+
+    @Test
+    fun `allowed datasource query returns queued response`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+
+        mockMvc
+            .perform(
+                post("/api/queries")
+                    .with(csrf())
+                    .cookie(analystSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "datasourceId": "trino-warehouse",
+                          "sql": "select 1"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("QUEUED"))
+            .andExpect(jsonPath("$.datasourceId").value("trino-warehouse"))
     }
 
     private fun loginLocalUser(username: String, password: String): Cookie =

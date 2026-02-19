@@ -48,6 +48,10 @@ class SecurityConfig(
                         "/api/auth/ldap/login",
                         "/api/auth/csrf",
                     ).permitAll()
+                    .requestMatchers(
+                        "/api/admin/**",
+                        "/api/auth/admin/**",
+                    ).hasRole("SYSTEM_ADMIN")
                     .anyRequest().authenticated()
             }
             .headers { headers ->

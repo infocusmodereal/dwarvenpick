@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController
 class AuthController(
     private val userAccountService: UserAccountService,
     private val ldapAuthenticationService: LdapAuthenticationService,
+    private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
     private val authAuditLogger: AuthAuditLogger,
     private val securityContextRepository: SecurityContextRepository,
 ) {
@@ -175,21 +176,8 @@ class AuthController(
     }
 
     @GetMapping("/me")
-    fun me(authentication: Authentication): CurrentUserResponse {
-        val principal =
-            (authentication.principal as? AuthenticatedUserPrincipal)
-                ?: userAccountService.currentUserPrincipal(authentication.name)
-                ?: AuthenticatedUserPrincipal(
-                    username = authentication.name,
-                    displayName = authentication.name,
-                    email = null,
-                    provider = AuthProvider.LOCAL,
-                    roles = emptySet(),
-                    groups = emptySet(),
-                )
-
-        return principal.toCurrentUserResponse()
-    }
+    fun me(authentication: Authentication): CurrentUserResponse =
+        authenticatedPrincipalResolver.resolve(authentication).toCurrentUserResponse()
 
     @PostMapping("/admin/users/{username}/reset-password")
     fun adminResetPassword(
@@ -198,11 +186,6 @@ class AuthController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
-        if (!authentication.hasRole("ADMIN")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ErrorResponse("Admin role is required for password resets."))
-        }
-
         return try {
             val updatedUser = userAccountService.resetPassword(username, request.newPassword)
 
@@ -250,9 +233,6 @@ class AuthController(
         SecurityContextHolder.setContext(context)
         securityContextRepository.saveContext(context, httpServletRequest, httpServletResponse)
     }
-
-    private fun Authentication.hasRole(role: String): Boolean =
-        authorities.any { authority -> authority.authority == "ROLE_${role.uppercase()}" }
 
     private fun audit(
         type: String,

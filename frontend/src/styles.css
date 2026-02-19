@@ -67,8 +67,32 @@ p {
 
 .sidebar ul {
     margin: 0;
-    padding-left: 1rem;
+    padding-left: 0;
+    list-style: none;
     color: var(--muted);
+}
+
+.datasource-button {
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 0.6rem;
+    text-align: left;
+}
+
+.datasource-button.active {
+    background: #084f55;
+}
+
+.sql-editor {
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: #0f172a;
+    color: #d9f99d;
+    padding: 1rem;
+    min-height: 180px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.92rem;
 }
 
 .editor pre {
@@ -134,6 +158,89 @@ input:focus {
     font-weight: 600;
 }
 
+.form-success {
+    color: #1f8f57;
+    font-weight: 600;
+}
+
+.admin-governance {
+    margin-top: 1rem;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.stack-form {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.group-list {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.group-card {
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    padding: 0.8rem;
+    display: grid;
+    gap: 0.6rem;
+}
+
+.group-card h4 {
+    margin: 0;
+}
+
+.muted-id {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.member-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.members-list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.members-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.danger-button {
+    background: #b42318;
+}
+
+.mapping-list ul {
+    margin: 0;
+    padding-left: 1rem;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.checkbox-row input {
+    width: auto;
+}
+
 button {
     border: 1px solid transparent;
     border-radius: 999px;
@@ -155,6 +262,10 @@ button:disabled {
 
 @media (max-width: 960px) {
     .workspace-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-grid {
         grid-template-columns: 1fr;
     }
 

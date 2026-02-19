@@ -34,6 +34,12 @@ class UserAccountService(
 
     @PostConstruct
     fun initializeSeedUsers() {
+        resetState()
+    }
+
+    @Synchronized
+    fun resetState() {
+        users.clear()
         authProperties.local.seedUsers.forEach { seedUser ->
             passwordPolicyValidator.validateOrThrow(seedUser.password)
 
@@ -122,6 +128,32 @@ class UserAccountService(
         }
 
         return toPrincipal(existingUser)
+    }
+
+    fun addGroupMembership(username: String, groupId: String): AuthenticatedUserPrincipal {
+        val user =
+            users[normalizeUsername(username)]
+                ?: throw UserNotFoundException("User '$username' does not exist.")
+
+        if (!user.enabled) {
+            throw DisabledUserException()
+        }
+
+        user.groups.add(groupId)
+        return toPrincipal(user)
+    }
+
+    fun removeGroupMembership(username: String, groupId: String): AuthenticatedUserPrincipal {
+        val user =
+            users[normalizeUsername(username)]
+                ?: throw UserNotFoundException("User '$username' does not exist.")
+
+        if (!user.enabled) {
+            throw DisabledUserException()
+        }
+
+        user.groups.remove(groupId)
+        return toPrincipal(user)
     }
 
     private fun toPrincipal(userAccount: UserAccount): AuthenticatedUserPrincipal =

@@ -295,7 +295,7 @@ Applies to every ticket:
 #### OSW-60: Implement RBAC roles and permission checks
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Add role enforcement using Spring Security method/route protection.
 - Acceptance Criteria:
@@ -308,7 +308,7 @@ Applies to every ticket:
 #### OSW-61: Group management UI (admin)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Admin can create groups and add/remove users.
 - Acceptance Criteria:
@@ -320,7 +320,7 @@ Applies to every ticket:
 #### OSW-62: Datasource access mapping API (group -> datasource)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement `group_datasource_access` CRUD with fields like `can_query`, `can_export`, and runtime limits.
 - Acceptance Criteria:
@@ -332,7 +332,7 @@ Applies to every ticket:
 #### OSW-63: Datasource access mapping UI (admin)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: UI to assign datasource permissions to groups.
 - Acceptance Criteria:
@@ -344,7 +344,7 @@ Applies to every ticket:
 #### OSW-64: Enforce datasource access checks in query APIs (gate only)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Before executing any query, verify user group grants access to datasource.
 - Acceptance Criteria:

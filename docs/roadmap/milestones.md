@@ -26,10 +26,10 @@
 
 ## Milestone 3: RBAC + Access Control
 
-- [ ] Roles and group membership management
-- [ ] Group-to-datasource access mapping
-- [ ] Authorization enforcement for query endpoints
-- [ ] Integration tests for denied access
+- [x] Roles and group membership management
+- [x] Group-to-datasource access mapping
+- [x] Authorization enforcement for query endpoints
+- [x] Integration tests for denied access
 
 ## Milestone 4: Datasource + Driver Registry
 

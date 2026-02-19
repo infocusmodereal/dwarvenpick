@@ -17,7 +17,7 @@ data class LocalAuthProperties(
                 displayName = "Administrator",
                 email = "admin@badgermole.local",
                 password = "Admin123!",
-                roles = setOf("ADMIN", "USER"),
+                roles = setOf("SYSTEM_ADMIN", "USER"),
                 enabled = true,
             ),
             SeedUserProperties(

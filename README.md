@@ -36,11 +36,20 @@ Authentication endpoints:
 - `POST http://localhost:8080/api/auth/ldap/login`
 - `GET http://localhost:8080/api/auth/me`
 - `POST http://localhost:8080/api/auth/logout`
-- `POST http://localhost:8080/api/auth/admin/users/{username}/reset-password` (admin only)
+- `POST http://localhost:8080/api/auth/admin/users/{username}/reset-password` (`SYSTEM_ADMIN` only)
+
+RBAC and datasource governance endpoints:
+
+- `GET http://localhost:8080/api/admin/groups` (`SYSTEM_ADMIN` only)
+- `POST http://localhost:8080/api/admin/groups` (`SYSTEM_ADMIN` only)
+- `POST http://localhost:8080/api/admin/groups/{groupId}/members` (`SYSTEM_ADMIN` only)
+- `PUT http://localhost:8080/api/admin/datasource-access/{groupId}/{datasourceId}` (`SYSTEM_ADMIN` only)
+- `GET http://localhost:8080/api/datasources` (user-scoped datasource visibility)
+- `POST http://localhost:8080/api/queries` (datasource access gate check)
 
 Default local development users:
 
-- `admin / Admin123!` (roles: `ADMIN`, `USER`)
+- `admin / Admin123!` (roles: `SYSTEM_ADMIN`, `USER`)
 - `analyst / Analyst123!` (role: `USER`)
 - `disabled.user / Disabled123!` (disabled account, login blocked)
 
@@ -56,6 +65,7 @@ Default local UI URL:
 
 - `http://localhost:5173`
 - Dev server proxies `/api` and `/actuator` requests to `http://localhost:8080`.
+- `SYSTEM_ADMIN` users see RBAC governance panels in `/workspace` for group and datasource access management.
 
 ### Local stack (Docker Compose)
 
