@@ -20,10 +20,30 @@ class BadgermoleApplicationTests {
     private lateinit var mockMvc: MockMvc
 
     @Test
-    fun `health endpoint returns up`() {
+    fun `api health endpoint returns up`() {
         mockMvc
             .perform(get("/api/health"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("UP"))
+    }
+
+    @Test
+    fun `actuator health endpoint returns up`() {
+        mockMvc
+            .perform(get("/actuator/health"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("UP"))
+    }
+
+    @Test
+    fun `version endpoint returns build metadata`() {
+        mockMvc
+            .perform(get("/api/version"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.service").isString())
+            .andExpect(jsonPath("$.version").isString())
+            .andExpect(jsonPath("$.artifact").isString())
+            .andExpect(jsonPath("$.group").isString())
+            .andExpect(jsonPath("$.buildTime").isString())
     }
 }

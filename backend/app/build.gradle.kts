@@ -26,6 +26,10 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
 }
 
+springBoot {
+    buildInfo()
+}
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")

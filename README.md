@@ -9,6 +9,12 @@
 - `deploy/`: Docker and Helm deployment assets
 - `docs/roadmap/`: Product spec and milestone roadmap
 
+## Developer prerequisites
+
+- Java 21 (for backend Gradle/Spring Boot tasks)
+- Node.js 22 + npm (for frontend dev/build/test)
+- Docker + Docker Compose (optional, for local full-stack runs)
+
 ## Quick start (skeleton)
 
 ### Backend
@@ -20,6 +26,8 @@
 Health endpoint:
 
 - `GET http://localhost:8080/api/health`
+- `GET http://localhost:8080/actuator/health`
+- `GET http://localhost:8080/api/version`
 
 ### Frontend
 
