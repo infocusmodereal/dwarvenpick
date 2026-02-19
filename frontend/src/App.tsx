@@ -7,7 +7,7 @@ export default function App() {
         <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/workspace" element={<WorkspacePage />} />
-            <Route path="*" element={<Navigate to="/workspace" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
     );
 }

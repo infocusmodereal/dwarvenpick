@@ -213,7 +213,7 @@ Applies to every ticket:
 #### OSW-40: Implement local auth (sessions + login/logout)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Add username/password login and HTTP-only cookie sessions.
 - Acceptance Criteria:
@@ -227,7 +227,7 @@ Applies to every ticket:
 #### OSW-41: Implement password policy + admin reset flow
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Enforce minimum password requirements and allow admin reset.
 - Acceptance Criteria:
@@ -240,7 +240,7 @@ Applies to every ticket:
 #### OSW-42: LDAP authentication (bind + user lookup)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Allow users to authenticate via LDAP.
 - Acceptance Criteria:
@@ -253,7 +253,7 @@ Applies to every ticket:
 #### OSW-43: LDAP group sync (optional but recommended)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Map LDAP groups to internal groups.
 - Acceptance Criteria:
@@ -265,7 +265,7 @@ Applies to every ticket:
 #### OSW-44: Frontend login UX (local + LDAP)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Implement `/login` page with auth method selection and error handling.
 - Acceptance Criteria:
@@ -277,7 +277,7 @@ Applies to every ticket:
 #### OSW-45: Security baseline: CSRF + security headers
 
 - Type: Task
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Add CSRF protection and baseline headers.
 - Acceptance Criteria:

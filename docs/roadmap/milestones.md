@@ -19,10 +19,10 @@
 
 ## Milestone 2: Authentication
 
-- [ ] Local login/logout
-- [ ] LDAP login
-- [ ] Cookie session management + CSRF
-- [ ] Admin user lifecycle actions
+- [x] Local login/logout
+- [x] LDAP login
+- [x] Cookie session management + CSRF
+- [x] Admin user lifecycle actions
 
 ## Milestone 3: RBAC + Access Control
 

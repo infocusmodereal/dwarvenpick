@@ -16,3 +16,36 @@ management:
 
 server:
   shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+
+badgermole:
+  auth:
+    password-policy:
+      min-length: 10
+      require-uppercase: true
+      require-lowercase: true
+      require-digit: true
+    ldap:
+      enabled: false
+      url: ""
+      bind-dn: ""
+      bind-password: ""
+      user-search-base: ""
+      user-filter: "(uid={0})"
+      attribute-mapping:
+        username: uid
+        display-name: cn
+        email: mail
+      group-sync:
+        enabled: true
+        group-search-base: ""
+        group-filter: "(member={0})"
+        group-name-attribute: cn
+        mapping-rules: {}
+      mock:
+        enabled: false
+        users: []

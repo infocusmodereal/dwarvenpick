@@ -19,6 +19,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("org.springframework.ldap:spring-ldap-core")
 
     runtimeOnly("org.postgresql:postgresql")
 

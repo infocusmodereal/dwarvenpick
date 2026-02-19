@@ -87,6 +87,53 @@ p {
     gap: 0.5rem;
 }
 
+.login-form {
+    display: grid;
+    gap: 0.75rem;
+    max-width: 420px;
+}
+
+.auth-methods {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.chip {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+.chip.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+input {
+    border: 1px solid var(--border);
+    border-radius: 0.55rem;
+    padding: 0.55rem 0.7rem;
+    font: inherit;
+    color: var(--text);
+    background: #fff;
+}
+
+input:focus {
+    outline: 2px solid rgba(10, 108, 116, 0.2);
+    border-color: var(--accent);
+}
+
+.form-error {
+    color: #b42318;
+    font-weight: 600;
+}
+
 button {
     border: 1px solid transparent;
     border-radius: 999px;
@@ -99,6 +146,11 @@ button {
 
 button:hover {
     filter: brightness(0.95);
+}
+
+button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 @media (max-width: 960px) {
