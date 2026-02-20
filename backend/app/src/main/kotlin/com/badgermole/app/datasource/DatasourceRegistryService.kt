@@ -62,6 +62,7 @@ private data class ManagedDatasourceRecord(
 class DatasourceRegistryService(
     private val datasourceCredentialCryptoService: DatasourceCredentialCryptoService,
     private val driverRegistryService: DriverRegistryService,
+    private val datasourceNetworkGuard: DatasourceNetworkGuard,
 ) {
     private val datasources = ConcurrentHashMap<String, ManagedDatasourceRecord>()
 
@@ -209,6 +210,7 @@ class DatasourceRegistryService(
         if (sanitizedHost.isBlank()) {
             throw IllegalArgumentException("Datasource host is required.")
         }
+        datasourceNetworkGuard.validateHost(sanitizedHost)
 
         datasources[datasourceId] =
             ManagedDatasourceRecord(
@@ -235,7 +237,11 @@ class DatasourceRegistryService(
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
 
         request.name?.let { datasource.name = it.trim() }
-        request.host?.let { datasource.host = it.trim() }
+        request.host?.let {
+            val sanitizedHost = it.trim()
+            datasourceNetworkGuard.validateHost(sanitizedHost)
+            datasource.host = sanitizedHost
+        }
         request.port?.let { datasource.port = it }
         request.database?.let { datasource.database = it.trim().ifBlank { null } }
         request.pool?.let { datasource.pool = it }
@@ -319,6 +325,7 @@ class DatasourceRegistryService(
 
         val driver = driverRegistryService.resolveDriver(datasource.engine, datasource.driverId)
         driverRegistryService.ensureDriverReady(driver)
+        datasourceNetworkGuard.validateHost(datasource.host)
         val tls = tlsOverride ?: datasource.tls
         val jdbcUrl = buildJdbcUrl(datasource, tls)
         val password = datasourceCredentialCryptoService.decryptPassword(credential.encryptedCredential)

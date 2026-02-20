@@ -68,16 +68,16 @@
 
 ## Milestone 9: Hardening + Ops
 
-- [ ] Production Helm tuning
-- [ ] Metrics and dashboards
-- [ ] Structured logs + correlation IDs
-- [ ] Readiness/liveness and sizing docs
+- [x] Production Helm tuning
+- [x] Metrics and dashboards
+- [x] Structured logs + correlation IDs
+- [x] Readiness/liveness and sizing docs
 
 ## Milestone 10: Phase 2+ Polish
 
-- [ ] Schema browser + cache
-- [ ] Autocomplete
-- [ ] SQL formatting
-- [ ] Saved snippets
-- [ ] Read-only/read-write modes
+- [x] Schema browser + cache
+- [x] Autocomplete
+- [x] SQL formatting
+- [x] Saved snippets
+- [x] Read-only/read-write modes
 - [ ] OIDC SSO

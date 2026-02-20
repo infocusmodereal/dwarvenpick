@@ -4,6 +4,8 @@ import com.badgermole.app.auth.AuthAuditEvent
 import com.badgermole.app.auth.AuthAuditLogger
 import com.badgermole.app.datasource.DatasourcePoolManager
 import com.badgermole.app.rbac.QueryAccessPolicy
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Tags
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.sql.Connection
@@ -18,6 +20,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicLong
+import jakarta.annotation.PostConstruct
+import jakarta.annotation.PreDestroy
+import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
@@ -47,6 +52,10 @@ class QueryConcurrencyLimitException(
 ) : RuntimeException(message)
 
 class QueryExportLimitExceededException(
+    override val message: String,
+) : RuntimeException(message)
+
+class QueryReadOnlyViolationException(
     override val message: String,
 ) : RuntimeException(message)
 
@@ -112,12 +121,24 @@ class QueryExecutionManager(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val authAuditLogger: AuthAuditLogger,
     private val queryExecutionProperties: QueryExecutionProperties,
+    private val meterRegistry: MeterRegistry,
 ) {
     private val virtualExecutor = Executors.newVirtualThreadPerTaskExecutor()
     private val executions = ConcurrentHashMap<String, QueryExecutionRecord>()
     private val queryHistory = ConcurrentHashMap<String, QueryHistoryRecord>()
     private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>()
     private val eventCounter = AtomicLong(0)
+    private val logger = LoggerFactory.getLogger(QueryExecutionManager::class.java)
+
+    @PostConstruct
+    fun registerQueryMetrics() {
+        meterRegistry.gauge("badgermole.query.active", Tags.of("status", "queued"), this) { manager ->
+            manager.countExecutions(QueryExecutionStatus.QUEUED).toDouble()
+        }
+        meterRegistry.gauge("badgermole.query.active", Tags.of("status", "running"), this) { manager ->
+            manager.countExecutions(QueryExecutionStatus.RUNNING).toDouble()
+        }
+    }
 
     fun submitQuery(
         actor: String,
@@ -126,6 +147,18 @@ class QueryExecutionManager(
         policy: QueryAccessPolicy,
     ): QueryExecutionResponse {
         val normalizedSql = request.sql.trim()
+        if (policy.readOnly && !isReadOnlySql(normalizedSql)) {
+            meterRegistry.counter(
+                "badgermole.query.execute.attempts",
+                "outcome",
+                "blocked_read_only",
+                "datasourceId",
+                request.datasourceId.trim(),
+            ).increment()
+            throw QueryReadOnlyViolationException(
+                "Read-only mode is enabled for this datasource access mapping. Only SELECT-like statements are allowed.",
+            )
+        }
         val queryHash = sha256Hex(normalizedSql)
         val executionId = UUID.randomUUID().toString()
 
@@ -140,6 +173,13 @@ class QueryExecutionManager(
                     (execution.status == QueryExecutionStatus.QUEUED || execution.status == QueryExecutionStatus.RUNNING)
             }
             if (activeExecutions >= concurrencyLimit) {
+                meterRegistry.counter(
+                    "badgermole.query.execute.attempts",
+                    "outcome",
+                    "blocked_concurrency",
+                    "datasourceId",
+                    request.datasourceId.trim(),
+                ).increment()
                 throw QueryConcurrencyLimitException(
                     "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
                 )
@@ -176,6 +216,13 @@ class QueryExecutionManager(
             executions[executionId] = record
             syncHistoryFromExecution(record)
             publishEvent(record, "Query queued.")
+            logger.info(
+                "query_execution queued executionId={} actor={} datasourceId={} queryHash={}",
+                executionId,
+                actor,
+                record.datasourceId,
+                queryHash,
+            )
             auditExecution(
                 record = record,
                 type = "query.execute",
@@ -187,6 +234,13 @@ class QueryExecutionManager(
                         "queryHash" to queryHash,
                     ),
             )
+            meterRegistry.counter(
+                "badgermole.query.execute.attempts",
+                "outcome",
+                "queued",
+                "datasourceId",
+                record.datasourceId,
+            ).increment()
 
             val future = virtualExecutor.submit { executeQueuedQuery(record) }
             record.executionFuture = future
@@ -226,6 +280,11 @@ class QueryExecutionManager(
                 outcome = "canceled",
                 details = mapOf("executionId" to record.executionId),
             )
+            meterRegistry.counter(
+                "badgermole.query.cancel.total",
+                "datasourceId",
+                record.datasourceId,
+            ).increment()
             return QueryCancelResponse(
                 executionId = record.executionId,
                 status = record.status.name,
@@ -252,6 +311,11 @@ class QueryExecutionManager(
             outcome = "canceled",
             details = mapOf("executionId" to record.executionId),
         )
+        meterRegistry.counter(
+            "badgermole.query.cancel.total",
+            "datasourceId",
+            record.datasourceId,
+        ).increment()
 
         return QueryCancelResponse(
             executionId = record.executionId,
@@ -517,6 +581,53 @@ class QueryExecutionManager(
         }
     }
 
+    @PreDestroy
+    fun shutdownGracefully() {
+        val gracePeriodSeconds = queryExecutionProperties.shutdownGracePeriodSeconds.coerceAtLeast(1)
+        val inFlightExecutions =
+            executions.values.filter { record ->
+                record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING
+            }
+
+        if (inFlightExecutions.isEmpty()) {
+            virtualExecutor.shutdownNow()
+            return
+        }
+
+        logger.info(
+            "query_execution shutdown initiated activeQueries={} gracePeriodSeconds={}",
+            inFlightExecutions.size,
+            gracePeriodSeconds,
+        )
+        inFlightExecutions.forEach { record ->
+            record.cancelRequested = true
+            runCatching { record.activeStatement?.cancel() }
+            runCatching { record.activeConnection?.close() }
+            record.executionFuture?.cancel(true)
+        }
+
+        val shutdownDeadline = Instant.now().plusSeconds(gracePeriodSeconds.toLong())
+        while (Instant.now().isBefore(shutdownDeadline)) {
+            val remaining =
+                executions.values.count { record ->
+                    record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING
+                }
+            if (remaining == 0) {
+                break
+            }
+            Thread.sleep(100)
+        }
+
+        executions.values.forEach { record ->
+            if (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) {
+                markCanceled(record, "Query canceled due to service shutdown.")
+                closeRuntimeResources(record)
+            }
+        }
+
+        virtualExecutor.shutdownNow()
+    }
+
     private fun executeQueuedQuery(record: QueryExecutionRecord) {
         if (record.cancelRequested) {
             markCanceled(record, "Query canceled before execution started.")
@@ -560,6 +671,11 @@ class QueryExecutionManager(
             )
         } catch (ex: QueryRuntimeLimitException) {
             markFailed(record, ex.message ?: "Query exceeded runtime limit.")
+            meterRegistry.counter(
+                "badgermole.query.timeout.total",
+                "datasourceId",
+                record.datasourceId,
+            ).increment()
             auditExecution(
                 record = record,
                 type = "query.execute",
@@ -726,6 +842,12 @@ class QueryExecutionManager(
         record.message = "Query is running."
         syncHistoryFromExecution(record)
         publishEvent(record, record.message)
+        logger.info(
+            "query_execution running executionId={} actor={} datasourceId={}",
+            record.executionId,
+            record.actor,
+            record.datasourceId,
+        )
     }
 
     private fun markSucceeded(record: QueryExecutionRecord) {
@@ -744,6 +866,15 @@ class QueryExecutionManager(
             }
         syncHistoryFromExecution(record)
         publishEvent(record, record.message)
+        recordExecutionOutcomeMetric(record, "succeeded")
+        logger.info(
+            "query_execution succeeded executionId={} actor={} datasourceId={} rows={} rowLimitReached={}",
+            record.executionId,
+            record.actor,
+            record.datasourceId,
+            synchronized(record.rows) { record.rows.size },
+            record.rowLimitReached,
+        )
     }
 
     private fun markFailed(
@@ -760,6 +891,14 @@ class QueryExecutionManager(
         record.completedAt = Instant.now()
         syncHistoryFromExecution(record)
         publishEvent(record, message)
+        recordExecutionOutcomeMetric(record, "failed")
+        logger.warn(
+            "query_execution failed executionId={} actor={} datasourceId={} errorSummary={}",
+            record.executionId,
+            record.actor,
+            record.datasourceId,
+            message,
+        )
     }
 
     private fun markCanceled(
@@ -772,6 +911,14 @@ class QueryExecutionManager(
         record.completedAt = Instant.now()
         syncHistoryFromExecution(record)
         publishEvent(record, message)
+        recordExecutionOutcomeMetric(record, "canceled")
+        logger.info(
+            "query_execution canceled executionId={} actor={} datasourceId={} reason={}",
+            record.executionId,
+            record.actor,
+            record.datasourceId,
+            message,
+        )
     }
 
     private fun resolveAuthorizedExecution(
@@ -852,6 +999,88 @@ class QueryExecutionManager(
         runCatching { record.activeConnection?.close() }
         record.activeStatement = null
         record.activeConnection = null
+    }
+
+    private fun countExecutions(status: QueryExecutionStatus): Int =
+        executions.values.count { record -> record.status == status }
+
+    private fun recordExecutionOutcomeMetric(
+        record: QueryExecutionRecord,
+        outcome: String,
+    ) {
+        meterRegistry.counter(
+            "badgermole.query.execution.total",
+            "outcome",
+            outcome,
+            "datasourceId",
+            record.datasourceId,
+        ).increment()
+
+        val startedAt = record.startedAt
+        val completedAt = record.completedAt
+        if (startedAt != null && completedAt != null) {
+            val duration = Duration.between(startedAt, completedAt)
+            if (!duration.isNegative) {
+                meterRegistry.timer(
+                    "badgermole.query.duration",
+                    "outcome",
+                    outcome,
+                    "datasourceId",
+                    record.datasourceId,
+                ).record(duration)
+            }
+        }
+    }
+
+    private fun isReadOnlySql(sql: String): Boolean {
+        val normalizedSql = stripLeadingSqlComments(sql).trimStart().trimStart(';').trimStart()
+        if (normalizedSql.isBlank()) {
+            return true
+        }
+
+        val firstKeyword =
+            Regex("^[a-zA-Z]+")
+                .find(normalizedSql.lowercase(Locale.getDefault()))
+                ?.value
+                ?: return true
+
+        return when (firstKeyword) {
+            "select", "show", "describe", "desc", "explain", "values" -> true
+            "with" ->
+                !Regex(
+                    "\\b(insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|call|copy|refresh|vacuum)\\b",
+                    RegexOption.IGNORE_CASE,
+                ).containsMatchIn(normalizedSql)
+            else -> false
+        }
+    }
+
+    private fun stripLeadingSqlComments(sql: String): String {
+        var working = sql.trimStart()
+        while (working.isNotEmpty()) {
+            when {
+                working.startsWith("--") -> {
+                    val nextLineIndex = working.indexOf('\n')
+                    working =
+                        if (nextLineIndex < 0) {
+                            ""
+                        } else {
+                            working.substring(nextLineIndex + 1).trimStart()
+                        }
+                }
+                working.startsWith("/*") -> {
+                    val commentEndIndex = working.indexOf("*/")
+                    working =
+                        if (commentEndIndex < 0) {
+                            ""
+                        } else {
+                            working.substring(commentEndIndex + 2).trimStart()
+                        }
+                }
+                else -> return working
+            }
+        }
+        return working
     }
 
     private fun terminalStatuses(): Set<QueryExecutionStatus> =

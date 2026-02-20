@@ -13,6 +13,7 @@ data class QueryExecutionProperties(
     val executionRetentionSeconds: Long = 3600,
     val cancelGracePeriodMs: Long = 500,
     val cleanupIntervalMs: Long = 30_000,
+    val shutdownGracePeriodSeconds: Long = 15,
     val historyRetentionDays: Long = 30,
     val auditRetentionDays: Long = 90,
     val queryTextRedactionDays: Long = 0,

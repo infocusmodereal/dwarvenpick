@@ -15,12 +15,14 @@ import com.badgermole.app.query.QueryExecutionRequest
 import com.badgermole.app.query.QueryExecutionStatus
 import com.badgermole.app.query.QueryExportLimitExceededException
 import com.badgermole.app.query.QueryInvalidPageTokenException
+import com.badgermole.app.query.QueryReadOnlyViolationException
 import com.badgermole.app.query.QueryResultsRequest
 import com.badgermole.app.query.QueryResultsExpiredException
 import com.badgermole.app.query.QueryResultsNotReadyException
-import java.time.Instant
+import io.micrometer.core.instrument.MeterRegistry
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
+import java.time.Instant
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -45,6 +47,7 @@ class QueryController(
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
     private val queryExecutionManager: QueryExecutionManager,
     private val queryExecutionProperties: QueryExecutionProperties,
+    private val meterRegistry: MeterRegistry,
 ) {
     @PostMapping
     fun executeQuery(
@@ -82,6 +85,13 @@ class QueryController(
             ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ErrorResponse(ex.message))
         } catch (ex: DriverNotAvailableException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
+        } catch (ex: QueryReadOnlyViolationException) {
+            auditDeniedExecution(
+                actor = principal.username,
+                datasourceId = request.datasourceId,
+                ipAddress = httpServletRequest.remoteAddr,
+            )
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse(ex.message ?: "Bad request."),
@@ -174,6 +184,7 @@ class QueryController(
 
             val allowedToExport = rbacService.canUserExport(principal, status.datasourceId)
             if (!allowedToExport) {
+                recordExportMetric(outcome = "denied", datasourceId = status.datasourceId)
                 authAuditLogger.log(
                     AuthAuditEvent(
                         type = "query.export",
@@ -215,6 +226,7 @@ class QueryController(
                         ),
                 ),
             )
+            recordExportMetric(outcome = "success", datasourceId = exportPayload.datasourceId)
 
             val body =
                 StreamingResponseBody { outputStream ->
@@ -290,6 +302,8 @@ class QueryController(
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
         } catch (ex: QueryAccessDeniedException) {
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
+        } catch (ex: QueryReadOnlyViolationException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse(ex.message ?: "Bad request."),
@@ -342,5 +356,18 @@ class QueryController(
             .getOrElse {
                 throw IllegalArgumentException("$name must be an ISO-8601 timestamp.")
             }
+    }
+
+    private fun recordExportMetric(
+        outcome: String,
+        datasourceId: String,
+    ) {
+        meterRegistry.counter(
+            "badgermole.query.export.attempts",
+            "outcome",
+            outcome,
+            "datasourceId",
+            datasourceId,
+        ).increment()
     }
 }

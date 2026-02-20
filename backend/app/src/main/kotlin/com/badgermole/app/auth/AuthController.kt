@@ -1,5 +1,7 @@
 package com.badgermole.app.auth
 
+import io.micrometer.core.instrument.MeterRegistry
+import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
@@ -9,6 +11,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository
 import org.springframework.security.web.context.SecurityContextRepository
 import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.validation.annotation.Validated
@@ -25,6 +28,8 @@ import org.springframework.web.bind.annotation.RestController
 class AuthController(
     private val userAccountService: UserAccountService,
     private val ldapAuthenticationService: LdapAuthenticationService,
+    private val authProperties: AuthProperties,
+    private val meterRegistry: MeterRegistry,
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
     private val authAuditLogger: AuthAuditLogger,
     private val securityContextRepository: SecurityContextRepository,
@@ -37,12 +42,30 @@ class AuthController(
             parameterName = csrfToken.parameterName,
         )
 
+    @GetMapping("/methods")
+    fun methods(): AuthMethodsResponse {
+        val methods = mutableListOf<String>()
+        if (authProperties.local.enabled) {
+            methods.add("local")
+        }
+        if (authProperties.ldap.enabled || authProperties.ldap.mock.enabled) {
+            methods.add("ldap")
+        }
+        return AuthMethodsResponse(methods = methods)
+    }
+
     @PostMapping("/login")
     fun login(
         @Valid @RequestBody request: LoginRequest,
         httpServletRequest: HttpServletRequest,
         httpServletResponse: HttpServletResponse,
     ): ResponseEntity<Any> {
+        if (!authProperties.local.enabled) {
+            recordAuthAttempt(provider = "local", outcome = "unsupported")
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse("Local authentication is disabled."))
+        }
+
         return try {
             val principal = userAccountService.authenticateLocal(request.username, request.password)
 
@@ -54,6 +77,7 @@ class AuthController(
                     httpServletRequest = httpServletRequest,
                     details = mapOf("reason" to "invalid_credentials"),
                 )
+                recordAuthAttempt(provider = "local", outcome = "failed")
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse("Invalid username or password."))
             } else {
                 establishSession(principal, httpServletRequest, httpServletResponse)
@@ -65,6 +89,7 @@ class AuthController(
                     httpServletRequest = httpServletRequest,
                     details = mapOf("provider" to "local"),
                 )
+                recordAuthAttempt(provider = "local", outcome = "success")
 
                 ResponseEntity.ok(principal.toLoginResponse())
             }
@@ -76,6 +101,7 @@ class AuthController(
                 httpServletRequest = httpServletRequest,
                 details = mapOf("reason" to "user_disabled"),
             )
+            recordAuthAttempt(provider = "local", outcome = "failed")
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
         }
     }
@@ -86,6 +112,12 @@ class AuthController(
         httpServletRequest: HttpServletRequest,
         httpServletResponse: HttpServletResponse,
     ): ResponseEntity<Any> {
+        if (!authProperties.ldap.enabled && !authProperties.ldap.mock.enabled) {
+            recordAuthAttempt(provider = "ldap", outcome = "unsupported")
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse("LDAP authentication is disabled."))
+        }
+
         val ldapResult = ldapAuthenticationService.authenticate(request.username, request.password)
 
         if (ldapResult == null) {
@@ -96,6 +128,7 @@ class AuthController(
                 httpServletRequest = httpServletRequest,
                 details = mapOf("reason" to "invalid_credentials_or_configuration"),
             )
+            recordAuthAttempt(provider = "ldap", outcome = "failed")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse("LDAP authentication failed. Check your credentials and LDAP configuration."))
         }
@@ -137,6 +170,7 @@ class AuthController(
                         "groups" to principal.groups,
                     ),
             )
+            recordAuthAttempt(provider = "ldap", outcome = "success")
 
             ResponseEntity.ok(principal.toLoginResponse())
         } catch (ex: DisabledUserException) {
@@ -147,6 +181,7 @@ class AuthController(
                 httpServletRequest = httpServletRequest,
                 details = mapOf("reason" to "user_disabled"),
             )
+            recordAuthAttempt(provider = "ldap", outcome = "failed")
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
         }
     }
@@ -231,6 +266,14 @@ class AuthController(
         val context = SecurityContextHolder.createEmptyContext()
         context.authentication = authenticationToken
         SecurityContextHolder.setContext(context)
+        val session = httpServletRequest.getSession(true)
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
+        httpServletResponse.addCookie(
+            Cookie("JSESSIONID", session.id).apply {
+                path = "/"
+                isHttpOnly = true
+            },
+        )
         securityContextRepository.saveContext(context, httpServletRequest, httpServletResponse)
     }
 
@@ -269,4 +312,17 @@ class AuthController(
             roles = roles,
             groups = groups,
         )
+
+    private fun recordAuthAttempt(
+        provider: String,
+        outcome: String,
+    ) {
+        meterRegistry.counter(
+            "badgermole.auth.login.attempts",
+            "provider",
+            provider,
+            "outcome",
+            outcome,
+        ).increment()
+    }
 }

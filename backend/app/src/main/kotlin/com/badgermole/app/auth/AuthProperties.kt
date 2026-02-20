@@ -10,6 +10,7 @@ data class AuthProperties(
 )
 
 data class LocalAuthProperties(
+    val enabled: Boolean = true,
     val seedUsers: List<SeedUserProperties> =
         listOf(
             SeedUserProperties(

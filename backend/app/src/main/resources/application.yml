@@ -13,6 +13,9 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    ldap:
+      enabled: false
 
 server:
   shutdown: graceful
@@ -33,6 +36,7 @@ badgermole:
     execution-retention-seconds: 3600
     cancel-grace-period-ms: 500
     cleanup-interval-ms: 30000
+    shutdown-grace-period-seconds: 15
     history-retention-days: 30
     audit-retention-days: 90
     query-text-redaction-days: 0
@@ -43,7 +47,22 @@ badgermole:
       master-key: ${BADGERMOLE_CREDENTIAL_MASTER_KEY:badgermole-dev-master-key-change-me}
   drivers:
     external-dir: ${BADGERMOLE_EXTERNAL_DRIVERS_DIR:/opt/app/drivers}
+  datasource:
+    network-guard:
+      enabled: true
+      allow-private-networks: true
+      allow-host-patterns: []
+      deny-host-patterns: []
+      allow-cidrs: []
+      deny-cidrs: []
+  schema:
+    cache-ttl-seconds: 300
+    max-schemas: 20
+    max-tables-per-schema: 100
+    max-columns-per-table: 200
   auth:
+    local:
+      enabled: true
     password-policy:
       min-length: 10
       require-uppercase: true

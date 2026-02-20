@@ -1,13 +1,18 @@
 import Editor, { OnMount } from '@monaco-editor/react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
+import { statementAtCursor } from '../sql/statementSplitter';
 
 type CurrentUserResponse = {
     username: string;
     displayName: string;
+    email?: string;
+    provider?: string;
     roles: string[];
+    groups: string[];
 };
 
 type CatalogDatasourceResponse = {
@@ -79,6 +84,7 @@ type DatasourceAccessResponse = {
     datasourceId: string;
     canQuery: boolean;
     canExport: boolean;
+    readOnly: boolean;
     maxRowsPerQuery?: number;
     maxRuntimeSeconds?: number;
     concurrencyLimit?: number;
@@ -166,6 +172,40 @@ type AuditEventResponse = {
     timestamp: string;
 };
 
+type DatasourceColumnEntryResponse = {
+    name: string;
+    jdbcType: string;
+    nullable: boolean;
+};
+
+type DatasourceTableEntryResponse = {
+    table: string;
+    type: string;
+    columns: DatasourceColumnEntryResponse[];
+};
+
+type DatasourceSchemaEntryResponse = {
+    schema: string;
+    tables: DatasourceTableEntryResponse[];
+};
+
+type DatasourceSchemaBrowserResponse = {
+    datasourceId: string;
+    cached: boolean;
+    fetchedAt: string;
+    schemas: DatasourceSchemaEntryResponse[];
+};
+
+type SnippetResponse = {
+    snippetId: string;
+    title: string;
+    sql: string;
+    owner: string;
+    groupId?: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
 type PersistentWorkspaceTab = {
     id: string;
     title: string;
@@ -178,6 +218,7 @@ type WorkspaceTab = PersistentWorkspaceTab & {
     isExecuting: boolean;
     statusMessage: string;
     errorMessage: string;
+    lastRunKind: 'query' | 'explain';
     executionId: string;
     executionStatus: string;
     queryHash: string;
@@ -203,6 +244,8 @@ type ReencryptCredentialsResponse = {
     activeKeyId: string;
     message: string;
 };
+
+type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 
 type ManagedDatasourceFormState = {
     name: string;
@@ -335,6 +378,7 @@ const buildWorkspaceTab = (
     isExecuting: false,
     statusMessage: '',
     errorMessage: '',
+    lastRunKind: 'query',
     executionId: '',
     executionStatus: '',
     queryHash: '',
@@ -365,6 +409,8 @@ export default function WorkspacePage() {
     const [activeTabId, setActiveTabId] = useState('');
     const [tabsHydrated, setTabsHydrated] = useState(false);
     const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null);
+    const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
+    const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const workspaceTabsRef = useRef<WorkspaceTab[]>([]);
     const queryStatusPollingTimersRef = useRef<
         Record<string, ReturnType<typeof setTimeout> | undefined>
@@ -396,6 +442,7 @@ export default function WorkspacePage() {
     const [selectedDatasourceForAccess, setSelectedDatasourceForAccess] = useState('');
     const [canQuery, setCanQuery] = useState(true);
     const [canExport, setCanExport] = useState(false);
+    const [readOnly, setReadOnly] = useState(true);
     const [credentialProfile, setCredentialProfile] = useState('');
     const [maxRowsPerQuery, setMaxRowsPerQuery] = useState('');
     const [maxRuntimeSeconds, setMaxRuntimeSeconds] = useState('');
@@ -443,6 +490,18 @@ export default function WorkspacePage() {
     const [auditOutcomeFilter, setAuditOutcomeFilter] = useState('');
     const [auditFromFilter, setAuditFromFilter] = useState('');
     const [auditToFilter, setAuditToFilter] = useState('');
+
+    const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(null);
+    const [loadingSchemaBrowser, setLoadingSchemaBrowser] = useState(false);
+    const [schemaBrowserError, setSchemaBrowserError] = useState('');
+
+    const [snippets, setSnippets] = useState<SnippetResponse[]>([]);
+    const [loadingSnippets, setLoadingSnippets] = useState(false);
+    const [snippetScope, setSnippetScope] = useState<'all' | 'personal' | 'group'>('all');
+    const [snippetTitleInput, setSnippetTitleInput] = useState('');
+    const [snippetGroupInput, setSnippetGroupInput] = useState('');
+    const [savingSnippet, setSavingSnippet] = useState(false);
+    const [snippetError, setSnippetError] = useState('');
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
 
@@ -494,6 +553,16 @@ export default function WorkspacePage() {
             null,
         [activeTab?.datasourceId, visibleDatasources]
     );
+
+    const explainPlanText = useMemo(() => {
+        if (!activeTab || activeTab.lastRunKind !== 'explain' || activeTab.resultRows.length === 0) {
+            return '';
+        }
+
+        return activeTab.resultRows
+            .map((row) => row.filter((cell) => cell !== null).join(' | '))
+            .join('\n');
+    }, [activeTab]);
 
     const selectedAdminDatasource = useMemo(
         () =>
@@ -580,6 +649,7 @@ export default function WorkspacePage() {
                         isExecuting: false,
                         statusMessage: '',
                         errorMessage: '',
+                        lastRunKind: 'query',
                         executionId: '',
                         executionStatus: '',
                         queryHash: '',
@@ -812,6 +882,7 @@ export default function WorkspacePage() {
         if (selectedAccessRule) {
             setCanQuery(selectedAccessRule.canQuery);
             setCanExport(selectedAccessRule.canExport);
+            setReadOnly(selectedAccessRule.readOnly);
             setCredentialProfile(selectedAccessRule.credentialProfile);
             setMaxRowsPerQuery(
                 selectedAccessRule.maxRowsPerQuery
@@ -833,6 +904,7 @@ export default function WorkspacePage() {
 
         setCanQuery(true);
         setCanExport(false);
+        setReadOnly(true);
         setCredentialProfile(matchedDatasource.credentialProfiles[0] ?? '');
         setMaxRowsPerQuery('');
         setMaxRuntimeSeconds('');
@@ -945,7 +1017,7 @@ export default function WorkspacePage() {
         return 'Request failed. Please try again.';
     }, []);
 
-    const fetchCsrfToken = async (): Promise<CsrfTokenResponse> => {
+    const fetchCsrfToken = useCallback(async (): Promise<CsrfTokenResponse> => {
         const response = await fetch('/api/auth/csrf', {
             method: 'GET',
             credentials: 'include'
@@ -956,7 +1028,7 @@ export default function WorkspacePage() {
         }
 
         return (await response.json()) as CsrfTokenResponse;
-    };
+    }, []);
 
     const toIsoTimestamp = (value: string): string | null => {
         const trimmed = value.trim();
@@ -971,6 +1043,76 @@ export default function WorkspacePage() {
 
         return parsed.toISOString();
     };
+
+    const loadSchemaBrowser = useCallback(
+        async (datasourceId: string, refresh = false) => {
+            const normalizedDatasourceId = datasourceId.trim();
+            if (!normalizedDatasourceId) {
+                setSchemaBrowser(null);
+                return;
+            }
+
+            setLoadingSchemaBrowser(true);
+            setSchemaBrowserError('');
+            try {
+                const queryParams = new URLSearchParams();
+                if (refresh) {
+                    queryParams.set('refresh', 'true');
+                }
+
+                const response = await fetch(
+                    `/api/datasources/${normalizedDatasourceId}/schema-browser${
+                        queryParams.toString() ? `?${queryParams.toString()}` : ''
+                    }`,
+                    {
+                        method: 'GET',
+                        credentials: 'include'
+                    }
+                );
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const payload = (await response.json()) as DatasourceSchemaBrowserResponse;
+                setSchemaBrowser(payload);
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to load schema browser.';
+                setSchemaBrowserError(message);
+            } finally {
+                setLoadingSchemaBrowser(false);
+            }
+        },
+        [readFriendlyError]
+    );
+
+    const loadSnippets = useCallback(async () => {
+        if (!currentUser) {
+            return;
+        }
+
+        setLoadingSnippets(true);
+        setSnippetError('');
+        try {
+            const queryParams = new URLSearchParams();
+            queryParams.set('scope', snippetScope);
+            const response = await fetch(`/api/snippets?${queryParams.toString()}`, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as SnippetResponse[];
+            setSnippets(payload);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to load snippets.';
+            setSnippetError(message);
+        } finally {
+            setLoadingSnippets(false);
+        }
+    }, [currentUser, readFriendlyError, snippetScope]);
 
     const loadQueryHistory = useCallback(async () => {
         if (!currentUser) {
@@ -1100,6 +1242,82 @@ export default function WorkspacePage() {
 
         void loadAuditEvents();
     }, [adminSuccess, isSystemAdmin, loadAuditEvents]);
+
+    useEffect(() => {
+        const datasourceId = activeTab?.datasourceId ?? '';
+        if (!datasourceId) {
+            setSchemaBrowser(null);
+            setSchemaBrowserError('');
+            return;
+        }
+
+        void loadSchemaBrowser(datasourceId, false);
+    }, [activeTab?.datasourceId, loadSchemaBrowser]);
+
+    useEffect(() => {
+        if (!currentUser) {
+            return;
+        }
+
+        void loadSnippets();
+    }, [currentUser, loadSnippets]);
+
+    useEffect(() => {
+        completionProviderRef.current?.dispose();
+        completionProviderRef.current = null;
+
+        const monaco = monacoRef.current;
+        if (!monaco) {
+            return;
+        }
+        if (!schemaBrowser || schemaBrowser.datasourceId !== activeTab?.datasourceId) {
+            return;
+        }
+
+        const tableSuggestions = schemaBrowser.schemas.flatMap((schemaEntry) =>
+            schemaEntry.tables.map((tableEntry) => ({
+                label: `${schemaEntry.schema}.${tableEntry.table}`,
+                insertText: `${schemaEntry.schema}.${tableEntry.table}`,
+                kind: monaco.languages.CompletionItemKind.Class,
+                detail: `${tableEntry.type} table`
+            }))
+        );
+        const columnSuggestions = schemaBrowser.schemas.flatMap((schemaEntry) =>
+            schemaEntry.tables.flatMap((tableEntry) =>
+                tableEntry.columns.map((columnEntry) => ({
+                    label: columnEntry.name,
+                    insertText: columnEntry.name,
+                    kind: monaco.languages.CompletionItemKind.Field,
+                    detail: `${schemaEntry.schema}.${tableEntry.table} (${columnEntry.jdbcType})`
+                }))
+            )
+        );
+
+        const suggestions = [...tableSuggestions, ...columnSuggestions];
+        completionProviderRef.current = monaco.languages.registerCompletionItemProvider('sql', {
+            provideCompletionItems(model, position) {
+                const word = model.getWordUntilPosition(position);
+                const range = {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: word.startColumn,
+                    endColumn: word.endColumn
+                };
+
+                return {
+                    suggestions: suggestions.map((suggestion) => ({
+                        ...suggestion,
+                        range
+                    }))
+                };
+            }
+        });
+
+        return () => {
+            completionProviderRef.current?.dispose();
+            completionProviderRef.current = null;
+        };
+    }, [activeTab?.datasourceId, schemaBrowser]);
 
     const handleOpenNewTab = useCallback(() => {
         const datasourceId = visibleDatasources[0]?.id ?? '';
@@ -1321,7 +1539,13 @@ export default function WorkspacePage() {
                 }));
             }
         },
-        [clearQueryStatusPolling, fetchExecutionStatus, readFriendlyError, updateWorkspaceTab]
+        [
+            clearQueryStatusPolling,
+            fetchCsrfToken,
+            fetchExecutionStatus,
+            readFriendlyError,
+            updateWorkspaceTab
+        ]
     );
 
     const handleCloseTab = useCallback(
@@ -1361,7 +1585,12 @@ export default function WorkspacePage() {
     );
 
     const executeSqlForTab = useCallback(
-        async (tabId: string, sqlText: string, modeLabel: 'selection' | 'all') => {
+        async (
+            tabId: string,
+            sqlText: string,
+            modeLabel: QueryRunMode,
+            runKind: 'query' | 'explain' = 'query'
+        ) => {
             const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
             if (!tab) {
                 return;
@@ -1410,6 +1639,7 @@ export default function WorkspacePage() {
                 executionId: '',
                 executionStatus: '',
                 queryHash: '',
+                lastRunKind: runKind,
                 resultColumns: [],
                 resultRows: [],
                 nextPageToken: '',
@@ -1419,7 +1649,11 @@ export default function WorkspacePage() {
                 statusMessage:
                     modeLabel === 'selection'
                         ? 'Running selected SQL...'
-                        : 'Running full tab SQL...',
+                        : modeLabel === 'statement'
+                          ? 'Running statement at cursor...'
+                          : modeLabel === 'explain'
+                            ? 'Running EXPLAIN...'
+                            : 'Running full tab SQL...',
                 errorMessage: ''
             }));
 
@@ -1465,12 +1699,45 @@ export default function WorkspacePage() {
         },
         [
             clearQueryStatusPolling,
+            fetchCsrfToken,
             readFriendlyError,
             startQueryStatusPolling,
             updateWorkspaceTab,
             visibleDatasources
         ]
     );
+
+    const resolveRunnableSqlForTab = useCallback((tab: WorkspaceTab) => {
+        const editor = editorRef.current;
+        const model = editor?.getModel();
+        const selection = editor?.getSelection();
+
+        if (model && selection && !selection.isEmpty()) {
+            return {
+                sql: model.getValueInRange(selection),
+                mode: 'selection' as const
+            };
+        }
+
+        if (model) {
+            const position = editor?.getPosition();
+            if (position) {
+                const cursorOffset = model.getOffsetAt(position);
+                const statement = statementAtCursor(tab.queryText, cursorOffset);
+                if (statement?.sql.trim()) {
+                    return {
+                        sql: statement.sql,
+                        mode: 'statement' as const
+                    };
+                }
+            }
+        }
+
+        return {
+            sql: tab.queryText,
+            mode: 'all' as const
+        };
+    }, []);
 
     const handleRunAll = useCallback(() => {
         if (!activeTab) {
@@ -1485,22 +1752,26 @@ export default function WorkspacePage() {
             return;
         }
 
-        const editor = editorRef.current;
-        let selectedSql = '';
-        if (editor) {
-            const model = editor.getModel();
-            const selection = editor.getSelection();
-            if (model && selection && !selection.isEmpty()) {
-                selectedSql = model.getValueInRange(selection);
-            }
+        const resolvedSql = resolveRunnableSqlForTab(activeTab);
+        void executeSqlForTab(activeTab.id, resolvedSql.sql, resolvedSql.mode);
+    }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab]);
+
+    const handleExplain = useCallback(() => {
+        if (!activeTab) {
+            return;
         }
 
-        if (!selectedSql.trim()) {
-            selectedSql = activeTab.queryText;
+        const resolvedSql = resolveRunnableSqlForTab(activeTab);
+        const sqlToExplain = resolvedSql.sql.trim();
+        if (!sqlToExplain) {
+            setCopyFeedback('Select SQL text first, or use Run All.');
+            return;
         }
 
-        void executeSqlForTab(activeTab.id, selectedSql, 'selection');
-    }, [activeTab, executeSqlForTab]);
+        const explainSql =
+            /^explain\b/i.test(sqlToExplain) ? sqlToExplain : `EXPLAIN ${sqlToExplain}`;
+        void executeSqlForTab(activeTab.id, explainSql, 'explain', 'explain');
+    }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab]);
 
     const handleLoadNextResults = useCallback(() => {
         if (!activeTab || !activeTab.executionId || !activeTab.nextPageToken) {
@@ -1664,8 +1935,191 @@ export default function WorkspacePage() {
         [executeSqlForTab, visibleDatasources]
     );
 
-    const handleEditorDidMount: OnMount = (editorInstance) => {
+    const handleInsertTextIntoActiveQuery = useCallback(
+        (text: string) => {
+            if (!activeTab) {
+                return;
+            }
+
+            const editor = editorRef.current;
+            const model = editor?.getModel();
+            const selection = editor?.getSelection();
+            if (model && selection) {
+                const startOffset = model.getOffsetAt(selection.getStartPosition());
+                const endOffset = model.getOffsetAt(selection.getEndPosition());
+                const nextQuery =
+                    activeTab.queryText.slice(0, startOffset) +
+                    text +
+                    activeTab.queryText.slice(endOffset);
+                updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                    ...currentTab,
+                    queryText: nextQuery
+                }));
+                return;
+            }
+
+            const separator = activeTab.queryText.trim().endsWith(';') ? '\n' : ' ';
+            const nextQuery = `${activeTab.queryText}${separator}${text}`.trim();
+            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                ...currentTab,
+                queryText: nextQuery
+            }));
+        },
+        [activeTab, updateWorkspaceTab]
+    );
+
+    const handleFormatSql = useCallback(() => {
+        if (!activeTab) {
+            return;
+        }
+
+        const sourceSql = activeTab.queryText;
+        if (!sourceSql.trim()) {
+            setCopyFeedback('Nothing to format.');
+            return;
+        }
+
+        try {
+            const editor = editorRef.current;
+            const model = editor?.getModel();
+            const selection = editor?.getSelection();
+
+            if (model && selection && !selection.isEmpty()) {
+                const selectedSql = model.getValueInRange(selection);
+                const formattedSelection = formatSql(selectedSql, { language: 'postgresql' });
+                const startOffset = model.getOffsetAt(selection.getStartPosition());
+                const endOffset = model.getOffsetAt(selection.getEndPosition());
+                const nextSql =
+                    sourceSql.slice(0, startOffset) +
+                    formattedSelection +
+                    sourceSql.slice(endOffset);
+                updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                    ...currentTab,
+                    queryText: nextSql
+                }));
+            } else {
+                const formattedSql = formatSql(sourceSql, { language: 'postgresql' });
+                updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                    ...currentTab,
+                    queryText: formattedSql
+                }));
+            }
+
+            setCopyFeedback('SQL formatted successfully.');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'SQL formatting failed.';
+            setCopyFeedback(message);
+        }
+    }, [activeTab, updateWorkspaceTab]);
+
+    const handleSaveSnippet = useCallback(async () => {
+        if (!activeTab) {
+            return;
+        }
+
+        const title = snippetTitleInput.trim();
+        if (!title) {
+            setSnippetError('Snippet title is required.');
+            return;
+        }
+        if (!activeTab.queryText.trim()) {
+            setSnippetError('Cannot save an empty snippet.');
+            return;
+        }
+
+        setSavingSnippet(true);
+        setSnippetError('');
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch('/api/snippets', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    [csrfToken.headerName]: csrfToken.token
+                },
+                body: JSON.stringify({
+                    title,
+                    sql: activeTab.queryText,
+                    groupId: snippetGroupInput.trim() ? snippetGroupInput.trim() : null
+                })
+            });
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            setSnippetTitleInput('');
+            setSnippetGroupInput('');
+            await loadSnippets();
+            setCopyFeedback('Snippet saved.');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to save snippet.';
+            setSnippetError(message);
+        } finally {
+            setSavingSnippet(false);
+        }
+    }, [
+        activeTab,
+        fetchCsrfToken,
+        loadSnippets,
+        readFriendlyError,
+        snippetGroupInput,
+        snippetTitleInput
+    ]);
+
+    const handleOpenSnippet = useCallback(
+        (snippet: SnippetResponse, runImmediately: boolean) => {
+            const resolvedDatasourceId = activeTab?.datasourceId ?? visibleDatasources[0]?.id ?? '';
+            if (!resolvedDatasourceId) {
+                setSnippetError('No permitted datasource is available to open this snippet.');
+                return;
+            }
+
+            const createdTab = buildWorkspaceTab(
+                resolvedDatasourceId,
+                `Snippet ${workspaceTabsRef.current.length + 1}`,
+                snippet.sql
+            );
+            setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
+            setActiveTabId(createdTab.id);
+
+            if (runImmediately) {
+                window.setTimeout(() => {
+                    void executeSqlForTab(createdTab.id, snippet.sql, 'all');
+                }, 0);
+            }
+        },
+        [activeTab?.datasourceId, executeSqlForTab, visibleDatasources]
+    );
+
+    const handleDeleteSnippet = useCallback(
+        async (snippetId: string) => {
+            setSnippetError('');
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(`/api/snippets/${snippetId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadSnippets();
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Failed to delete snippet.';
+                setSnippetError(message);
+            }
+        },
+        [fetchCsrfToken, loadSnippets, readFriendlyError]
+    );
+
+    const handleEditorDidMount: OnMount = (editorInstance, monacoInstance) => {
         editorRef.current = editorInstance;
+        monacoRef.current = monacoInstance;
         editorInstance.focus();
     };
 
@@ -1804,6 +2258,9 @@ export default function WorkspacePage() {
             queryStatusPollingTimersRef.current = {};
             queryEventsRef.current?.close();
             queryEventsRef.current = null;
+            completionProviderRef.current?.dispose();
+            completionProviderRef.current = null;
+            monacoRef.current = null;
         },
         []
     );
@@ -1976,6 +2433,7 @@ export default function WorkspacePage() {
                     body: JSON.stringify({
                         canQuery,
                         canExport,
+                        readOnly,
                         maxRowsPerQuery: maxRowsPerQuery.trim() ? Number(maxRowsPerQuery) : null,
                         maxRuntimeSeconds: maxRuntimeSeconds.trim()
                             ? Number(maxRuntimeSeconds)
@@ -2400,6 +2858,78 @@ export default function WorkspacePage() {
                     <button type="button" onClick={handleOpenNewTab}>
                         New Query Tab
                     </button>
+
+                    <section className="schema-browser">
+                        <div className="row">
+                            <h3>Schema Browser</h3>
+                            <button
+                                type="button"
+                                className="chip"
+                                disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
+                                onClick={() =>
+                                    activeTab?.datasourceId
+                                        ? void loadSchemaBrowser(activeTab.datasourceId, true)
+                                        : undefined
+                                }
+                            >
+                                {loadingSchemaBrowser ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                        </div>
+                        {schemaBrowserError ? <p className="form-error">{schemaBrowserError}</p> : null}
+                        {schemaBrowser ? (
+                            <ul className="schema-tree">
+                                {schemaBrowser.schemas.map((schemaEntry) => (
+                                    <li key={`schema-${schemaEntry.schema}`}>
+                                        <button
+                                            type="button"
+                                            className="chip"
+                                            onClick={() => handleInsertTextIntoActiveQuery(schemaEntry.schema)}
+                                        >
+                                            {schemaEntry.schema}
+                                        </button>
+                                        <ul>
+                                            {schemaEntry.tables.map((tableEntry) => (
+                                                <li key={`${schemaEntry.schema}-${tableEntry.table}`}>
+                                                    <button
+                                                        type="button"
+                                                        className="datasource-button"
+                                                        onClick={() =>
+                                                            handleInsertTextIntoActiveQuery(
+                                                                `${schemaEntry.schema}.${tableEntry.table}`
+                                                            )
+                                                        }
+                                                    >
+                                                        {tableEntry.table}
+                                                    </button>
+                                                    <ul>
+                                                        {tableEntry.columns.map((columnEntry) => (
+                                                            <li
+                                                                key={`${schemaEntry.schema}-${tableEntry.table}-${columnEntry.name}`}
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    className="chip"
+                                                                    onClick={() =>
+                                                                        handleInsertTextIntoActiveQuery(
+                                                                            columnEntry.name
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {columnEntry.name}
+                                                                </button>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p>Select a datasource tab to browse schemas and autocomplete metadata.</p>
+                        )}
+                    </section>
                 </aside>
 
                 <section className="panel editor">
@@ -2528,6 +3058,20 @@ export default function WorkspacePage() {
                         </button>
                         <button
                             type="button"
+                            disabled={!activeTab || activeTab.isExecuting || !selectedDatasource}
+                            onClick={handleExplain}
+                        >
+                            Explain
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!activeTab || activeTab.isExecuting}
+                            onClick={handleFormatSql}
+                        >
+                            Format SQL
+                        </button>
+                        <button
+                            type="button"
                             disabled={!activeTab || !activeTab.isExecuting}
                             onClick={() => {
                                 if (!activeTab) {
@@ -2582,6 +3126,12 @@ export default function WorkspacePage() {
                         </p>
                     ) : null}
                     {copyFeedback ? <p className="form-success">{copyFeedback}</p> : null}
+                    {explainPlanText ? (
+                        <div className="explain-plan">
+                            <h3>Explain Plan</h3>
+                            <pre>{explainPlanText}</pre>
+                        </div>
+                    ) : null}
 
                     {activeTab?.resultColumns.length ? (
                         <>
@@ -2862,6 +3412,116 @@ export default function WorkspacePage() {
                 </div>
             </section>
 
+            <section className="panel snippets-panel">
+                <h2>Saved Snippets</h2>
+                <p>Save reusable SQL snippets for yourself or share with one of your groups.</p>
+
+                <div className="history-filters">
+                    <label htmlFor="snippet-scope">Scope</label>
+                    <select
+                        id="snippet-scope"
+                        value={snippetScope}
+                        onChange={(event) =>
+                            setSnippetScope(event.target.value as 'all' | 'personal' | 'group')
+                        }
+                    >
+                        <option value="all">All visible</option>
+                        <option value="personal">Personal</option>
+                        <option value="group">Group shared</option>
+                    </select>
+
+                    <label htmlFor="snippet-title">Snippet Title</label>
+                    <input
+                        id="snippet-title"
+                        value={snippetTitleInput}
+                        onChange={(event) => setSnippetTitleInput(event.target.value)}
+                        placeholder="Daily health query"
+                    />
+
+                    <label htmlFor="snippet-group-id">Group ID (optional)</label>
+                    <input
+                        id="snippet-group-id"
+                        value={snippetGroupInput}
+                        onChange={(event) => setSnippetGroupInput(event.target.value)}
+                        placeholder={currentUser?.groups?.[0] ?? 'analytics-users'}
+                    />
+                </div>
+                <div className="row">
+                    <button
+                        type="button"
+                        disabled={!activeTab || savingSnippet}
+                        onClick={() => void handleSaveSnippet()}
+                    >
+                        {savingSnippet ? 'Saving...' : 'Save Current Query'}
+                    </button>
+                    <button type="button" className="chip" onClick={() => void loadSnippets()}>
+                        {loadingSnippets ? 'Refreshing...' : 'Refresh Snippets'}
+                    </button>
+                </div>
+
+                {snippetError ? (
+                    <p className="form-error" role="alert">
+                        {snippetError}
+                    </p>
+                ) : null}
+
+                <div className="history-table-wrap">
+                    <table className="result-table history-table">
+                        <thead>
+                            <tr>
+                                <th>Updated</th>
+                                <th>Title</th>
+                                <th>Owner</th>
+                                <th>Group</th>
+                                <th>SQL</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {snippets.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6}>No snippets available for this scope.</td>
+                                </tr>
+                            ) : (
+                                snippets.map((snippet) => (
+                                    <tr key={`snippet-${snippet.snippetId}`}>
+                                        <td>{new Date(snippet.updatedAt).toLocaleString()}</td>
+                                        <td>{snippet.title}</td>
+                                        <td>{snippet.owner}</td>
+                                        <td>{snippet.groupId ?? '-'}</td>
+                                        <td className="history-query">{snippet.sql}</td>
+                                        <td className="history-actions">
+                                            <button
+                                                type="button"
+                                                className="chip"
+                                                onClick={() => handleOpenSnippet(snippet, false)}
+                                            >
+                                                Open
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenSnippet(snippet, true)}
+                                            >
+                                                Run
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="danger-button"
+                                                onClick={() =>
+                                                    void handleDeleteSnippet(snippet.snippetId)
+                                                }
+                                            >
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             {isSystemAdmin ? (
                 <>
                     <section className="panel admin-audit">
@@ -3112,9 +3772,9 @@ export default function WorkspacePage() {
                                         ))}
                                     </select>
 
-                                    <div className="row">
-                                        <label className="checkbox-row">
-                                            <input
+                                <div className="row">
+                                    <label className="checkbox-row">
+                                        <input
                                                 type="checkbox"
                                                 checked={canQuery}
                                                 onChange={(event) =>
@@ -3131,9 +3791,19 @@ export default function WorkspacePage() {
                                                     setCanExport(event.target.checked)
                                                 }
                                             />
-                                            <span>Can Export</span>
-                                        </label>
-                                    </div>
+                                        <span>Can Export</span>
+                                    </label>
+                                    <label className="checkbox-row">
+                                        <input
+                                            type="checkbox"
+                                            checked={readOnly}
+                                            onChange={(event) =>
+                                                setReadOnly(event.target.checked)
+                                            }
+                                        />
+                                        <span>Read Only</span>
+                                    </label>
+                                </div>
 
                                     <label htmlFor="credential-profile">Credential Profile</label>
                                     <select
@@ -3202,13 +3872,14 @@ export default function WorkspacePage() {
                                     <ul>
                                         {adminDatasourceAccess.map((rule) => (
                                             <li key={`${rule.groupId}-${rule.datasourceId}`}>
-                                                <strong>{rule.groupId}</strong> →{' '}
-                                                <strong>{rule.datasourceId}</strong> | query:{' '}
-                                                {rule.canQuery ? 'yes' : 'no'} | export:{' '}
-                                                {rule.canExport ? 'yes' : 'no'} | profile:{' '}
-                                                {rule.credentialProfile}
-                                            </li>
-                                        ))}
+                                            <strong>{rule.groupId}</strong> →{' '}
+                                            <strong>{rule.datasourceId}</strong> | query:{' '}
+                                            {rule.canQuery ? 'yes' : 'no'} | export:{' '}
+                                            {rule.canExport ? 'yes' : 'no'} | readOnly:{' '}
+                                            {rule.readOnly ? 'yes' : 'no'} | profile:{' '}
+                                            {rule.credentialProfile}
+                                        </li>
+                                    ))}
                                     </ul>
                                 </div>
                             </section>

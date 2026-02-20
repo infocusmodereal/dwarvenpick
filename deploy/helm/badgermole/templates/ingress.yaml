@@ -6,7 +6,9 @@ metadata:
   annotations:
     {{- toYaml .Values.ingress.annotations | nindent 4 }}
 spec:
+  {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
     - host: {{ .host }}
@@ -22,6 +24,8 @@ spec:
                   number: {{ $.Values.service.port }}
           {{- end }}
     {{- end }}
+  {{- if .Values.ingress.tls }}
   tls:
     {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
 {{- end }}

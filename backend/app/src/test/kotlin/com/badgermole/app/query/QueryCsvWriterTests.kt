@@ -28,13 +28,9 @@ class QueryCsvWriterTests {
 
         val csv = output.toString(StandardCharsets.UTF_8)
         val expected =
-            """
-            name,note,description
-            alice,"hello,world","he said ""hi"""
-            bob,,"line1
-            line2"
-            
-            """.trimIndent()
+            "name,note,description\n" +
+                "alice,\"hello,world\",\"he said \"\"hi\"\"\"\n" +
+                "bob,,\"line1\nline2\"\n"
         assertThat(csv).isEqualTo(expected)
     }
 

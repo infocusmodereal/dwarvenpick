@@ -9,3 +9,11 @@
 {{- printf "%s-%s" .Release.Name (include "badgermole.name" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "badgermole.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "badgermole.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}

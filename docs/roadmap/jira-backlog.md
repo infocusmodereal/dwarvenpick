@@ -122,7 +122,7 @@ Applies to every ticket:
 #### OSW-20: Add Flyway + initial schema migrations
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/DB
 - Description: Set up Flyway and create v1 schema for users/roles/groups/datasources/audit skeleton.
 - Acceptance Criteria:
@@ -134,7 +134,7 @@ Applies to every ticket:
 #### OSW-21: Data access layer (jOOQ) setup
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/DB
 - Description: Configure jOOQ codegen and repository pattern.
 - Acceptance Criteria:
@@ -146,7 +146,7 @@ Applies to every ticket:
 #### OSW-22: Core service: Users & Roles (backend only)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement user CRUD and role assignment service methods (no UI yet).
 - Acceptance Criteria:
@@ -158,7 +158,7 @@ Applies to every ticket:
 #### OSW-23: Core service: Groups & Membership (backend only)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement groups CRUD and add/remove members.
 - Acceptance Criteria:
@@ -171,7 +171,7 @@ Applies to every ticket:
 #### OSW-24: Core service: Datasources & Credentials (backend only)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement datasource metadata CRUD and credential profile storage (encrypted later in M4).
 - Acceptance Criteria:
@@ -195,7 +195,7 @@ Applies to every ticket:
 #### OSW-26: Backend API scaffolding for admin CRUD (stub responses allowed)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Add REST endpoints for users/groups/datasources to unblock UI later.
 - Acceptance Criteria:
@@ -786,7 +786,7 @@ Applies to every ticket:
 #### OSW-180: Production Helm chart (secrets, ingress, scaling knobs)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: DevOps
 - Description: Turn Helm scaffold into a deployable chart for real environments.
 - Acceptance Criteria:
@@ -798,7 +798,7 @@ Applies to every ticket:
 #### OSW-181: Readiness/liveness + graceful shutdown behavior
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Ensure safe rollouts with in-flight queries.
 - Acceptance Criteria:
@@ -810,7 +810,7 @@ Applies to every ticket:
 #### OSW-182: Metrics via Micrometer + Prometheus endpoint
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Observability
 - Description: Add metrics for queries, pools, auth failures, and exports.
 - Acceptance Criteria:
@@ -822,7 +822,7 @@ Applies to every ticket:
 #### OSW-183: Structured JSON logging + request correlation IDs
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Observability
 - Description: Make logs production-friendly and searchable.
 - Acceptance Criteria:
@@ -834,7 +834,7 @@ Applies to every ticket:
 #### OSW-184: Frontend security hardening (CSP + build-time env config)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend/Security
 - Description: Add CSP guidance and restrict risky behavior.
 - Acceptance Criteria:
@@ -846,7 +846,7 @@ Applies to every ticket:
 #### OSW-185: SSRF and network guardrails for datasource definitions
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Prevent datasources pointing to forbidden networks.
 - Acceptance Criteria:
@@ -858,7 +858,7 @@ Applies to every ticket:
 #### OSW-186: Concurrency and load test harness
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: QA/Perf
 - Description: Add repeatable load tests for multi-user query execution and exports.
 - Acceptance Criteria:
@@ -870,7 +870,7 @@ Applies to every ticket:
 #### OSW-187: Deployment docs + runbooks
 
 - Type: Task
-- Status: backlog
+- Status: done
 - Component: Docs/DevOps
 - Description: Document configuration and operational procedures.
 - Acceptance Criteria:
@@ -887,7 +887,7 @@ Applies to every ticket:
 #### OSW-200: Schema browser (introspection) for Postgres/MySQL/MariaDB
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend + Frontend
 - Description: Browse schemas/tables/columns with caching.
 - Acceptance Criteria:
@@ -899,7 +899,7 @@ Applies to every ticket:
 #### OSW-201: Monaco autocomplete provider (tables/columns)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Provide suggestions based on schema cache.
 - Acceptance Criteria:
@@ -911,8 +911,8 @@ Applies to every ticket:
 #### OSW-202: SQL statement splitter (semicolon-aware)
 
 - Type: Story
-- Status: backlog
-- Component: Backend
+- Status: done
+- Component: Frontend
 - Description: Support run current statement without requiring user selection.
 - Acceptance Criteria:
   - Correctly splits statements while respecting quotes/comments.
@@ -923,7 +923,7 @@ Applies to every ticket:
 #### OSW-203: Saved queries/snippets (per user and per group)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend + Frontend
 - Description: Allow saving named snippets and reusing them.
 - Acceptance Criteria:
@@ -935,7 +935,7 @@ Applies to every ticket:
 #### OSW-204: SQL formatter integration
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend (or Backend)
 - Description: Add Format SQL action.
 - Acceptance Criteria:
@@ -947,7 +947,7 @@ Applies to every ticket:
 #### OSW-205: Read-only vs read-write enforcement modes
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Enforce per datasource/credential read-only mode with policy checks.
 - Acceptance Criteria:
@@ -959,7 +959,7 @@ Applies to every ticket:
 #### OSW-206: Explain plan viewer (Postgres first)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend + Frontend
 - Description: Provide UI to run `EXPLAIN` and display plan output.
 - Acceptance Criteria:

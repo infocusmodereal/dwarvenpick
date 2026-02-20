@@ -236,6 +236,7 @@ class QueryExecutionManagerContainerTests {
     private fun defaultPolicy(): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "admin-ro",
+            readOnly = false,
             maxRowsPerQuery = 5000,
             maxRuntimeSeconds = 120,
             concurrencyLimit = 2,

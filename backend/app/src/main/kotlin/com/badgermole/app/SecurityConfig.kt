@@ -42,11 +42,15 @@ class SecurityConfig(
                 it
                     .requestMatchers(
                         "/actuator/health",
+                        "/actuator/health/**",
+                        "/actuator/prometheus",
+                        "/actuator/info",
                         "/api/health",
                         "/api/version",
                         "/api/auth/login",
                         "/api/auth/ldap/login",
                         "/api/auth/csrf",
+                        "/api/auth/methods",
                     ).permitAll()
                     .requestMatchers(
                         "/api/admin/**",

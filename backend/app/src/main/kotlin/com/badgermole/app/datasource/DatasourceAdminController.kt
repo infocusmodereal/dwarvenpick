@@ -52,7 +52,21 @@ class DatasourceAdminController(
                 details = mapOf("datasourceId" to created.id, "engine" to created.engine),
             )
             ResponseEntity.status(HttpStatus.CREATED).body(created)
-        }.getOrElse { ex -> handleDatasourceErrors(ex) }
+        }.getOrElse { ex ->
+            audit(
+                type = "datasource.create",
+                actor = authentication.name,
+                outcome = "failed",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "datasourceName" to request.name,
+                        "host" to request.host,
+                        "reason" to (ex.message ?: "creation_failed"),
+                    ),
+            )
+            handleDatasourceErrors(ex)
+        }
 
     @PatchMapping("/datasource-management/{datasourceId}")
     fun updateDatasource(
@@ -72,7 +86,20 @@ class DatasourceAdminController(
                 details = mapOf("datasourceId" to updated.id),
             )
             ResponseEntity.ok(updated)
-        }.getOrElse { ex -> handleDatasourceErrors(ex) }
+        }.getOrElse { ex ->
+            audit(
+                type = "datasource.update",
+                actor = authentication.name,
+                outcome = "failed",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "datasourceId" to datasourceId,
+                        "reason" to (ex.message ?: "update_failed"),
+                    ),
+            )
+            handleDatasourceErrors(ex)
+        }
 
     @DeleteMapping("/datasource-management/{datasourceId}")
     fun deleteDatasource(
@@ -151,6 +178,7 @@ class DatasourceAdminController(
             is ManagedDatasourceNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
             is CredentialProfileNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
             is DriverNotAvailableException -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
+            is ForbiddenNetworkTargetException -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
             else -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ErrorResponse("Datasource operation failed."))
         }
 

@@ -37,6 +37,7 @@ data class DatasourceAccessResponse(
     val datasourceId: String,
     val canQuery: Boolean,
     val canExport: Boolean,
+    val readOnly: Boolean,
     val maxRowsPerQuery: Int?,
     val maxRuntimeSeconds: Int?,
     val concurrencyLimit: Int?,
@@ -46,6 +47,7 @@ data class DatasourceAccessResponse(
 data class UpsertDatasourceAccessRequest(
     val canQuery: Boolean = true,
     val canExport: Boolean = false,
+    val readOnly: Boolean = true,
     @field:Positive(message = "maxRowsPerQuery must be positive.")
     val maxRowsPerQuery: Int? = null,
     @field:Positive(message = "maxRuntimeSeconds must be positive.")

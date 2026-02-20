@@ -25,6 +25,7 @@ class QueryAccessDeniedException(
 
 data class QueryAccessPolicy(
     val credentialProfile: String,
+    val readOnly: Boolean,
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val concurrencyLimit: Int,
@@ -42,6 +43,7 @@ private data class DatasourceAccessRecord(
     val datasourceId: String,
     var canQuery: Boolean,
     var canExport: Boolean,
+    var readOnly: Boolean,
     var maxRowsPerQuery: Int?,
     var maxRuntimeSeconds: Int?,
     var concurrencyLimit: Int?,
@@ -188,6 +190,7 @@ class RbacService(
                     datasourceId = datasourceId,
                     canQuery = request.canQuery,
                     canExport = request.canExport,
+                    readOnly = request.readOnly,
                     maxRowsPerQuery = request.maxRowsPerQuery,
                     maxRuntimeSeconds = request.maxRuntimeSeconds,
                     concurrencyLimit = request.concurrencyLimit,
@@ -197,6 +200,7 @@ class RbacService(
 
         record.canQuery = request.canQuery
         record.canExport = request.canExport
+        record.readOnly = request.readOnly
         record.maxRowsPerQuery = request.maxRowsPerQuery
         record.maxRuntimeSeconds = request.maxRuntimeSeconds
         record.concurrencyLimit = request.concurrencyLimit
@@ -283,6 +287,7 @@ class RbacService(
             if (principal.roles.contains("SYSTEM_ADMIN")) {
                 return QueryAccessPolicy(
                     credentialProfile = "admin-ro",
+                    readOnly = false,
                     maxRowsPerQuery = 5000,
                     maxRuntimeSeconds = 300,
                     concurrencyLimit = 5,
@@ -303,6 +308,7 @@ class RbacService(
 
         return QueryAccessPolicy(
             credentialProfile = selectedCredentialProfile,
+            readOnly = matchingAccessRules.all { access -> access.readOnly },
             maxRowsPerQuery = matchingAccessRules.mapNotNull { access -> access.maxRowsPerQuery }.minOrNull() ?: 5000,
             maxRuntimeSeconds =
                 matchingAccessRules.mapNotNull { access -> access.maxRuntimeSeconds }.minOrNull() ?: 300,
@@ -341,6 +347,7 @@ class RbacService(
                     datasourceId = datasourceId,
                     canQuery = true,
                     canExport = true,
+                    readOnly = false,
                     maxRowsPerQuery = 5000,
                     maxRuntimeSeconds = 300,
                     concurrencyLimit = 5,
@@ -354,6 +361,7 @@ class RbacService(
                 datasourceId = "trino-warehouse",
                 canQuery = true,
                 canExport = false,
+                readOnly = true,
                 maxRowsPerQuery = 2000,
                 maxRuntimeSeconds = 180,
                 concurrencyLimit = 2,
@@ -392,6 +400,7 @@ class RbacService(
             datasourceId = datasourceId,
             canQuery = canQuery,
             canExport = canExport,
+            readOnly = readOnly,
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,
             concurrencyLimit = concurrencyLimit,

@@ -37,6 +37,21 @@ curl -X POST \
 
 Detailed rotation guidance: `docs/ops/credential-rotation.md`.
 
+## LDAP setup
+
+Configure LDAP only when directory authentication is required:
+
+- `BADGERMOLE_AUTH_LDAP_ENABLED=true`
+- `BADGERMOLE_AUTH_LDAP_URL=ldap://<host>:389` (or `ldaps://...`)
+- `BADGERMOLE_AUTH_LDAP_BIND_DN=<bind-dn>`
+- `BADGERMOLE_AUTH_LDAP_BIND_PASSWORD=<bind-password>`
+- `BADGERMOLE_AUTH_LDAP_USER_SEARCH_BASE=<base-dn>`
+- Optional group sync:
+  - `BADGERMOLE_AUTH_LDAP_GROUP_SYNC_ENABLED=true`
+  - `BADGERMOLE_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE=<group-base-dn>`
+
+Login UX only supports `Local` and `LDAP` methods. The enabled set is exposed by `GET /api/auth/methods`.
+
 ## External JDBC drivers (Vertica)
 
 Vertica is intentionally not bundled. Driver jars must be mounted at runtime.
@@ -83,3 +98,47 @@ Notes:
 - The default image value (`ghcr.io/your-org/badgermole-backend:latest`) is a placeholder and will not pull until replaced.
 - Even with placeholder images, install/uninstall validates chart structure and Kubernetes resource wiring.
 - For real Vertica connectivity in Kubernetes, mount the vendor JDBC jar(s) via a PVC and set `.Values.drivers.external.enabled=true`.
+
+## Metadata DB backup and restore
+
+The metadata database is PostgreSQL and should be backed up independently from application pods.
+
+Example backup:
+
+```bash
+pg_dump --format=custom --no-owner --no-privileges \
+  --dbname="$SPRING_DATASOURCE_URL" \
+  --username="$SPRING_DATASOURCE_USERNAME" \
+  --file=badgermole-meta-$(date +%Y%m%d%H%M%S).dump
+```
+
+Example restore to a new environment:
+
+```bash
+createdb badgermole_restore
+pg_restore --clean --if-exists --no-owner \
+  --dbname=badgermole_restore \
+  badgermole-meta-YYYYMMDDHHMMSS.dump
+```
+
+After restore:
+
+- validate Flyway/schema compatibility with the running app version
+- rotate `BADGERMOLE_CREDENTIAL_MASTER_KEY` only with a planned re-encryption run
+- verify admin login and datasource catalog integrity before opening traffic
+
+## Sizing guidance
+
+Start with:
+
+- 2 replicas (backend), HPA min 2 / max 6
+- CPU request `250m`, memory request `512Mi`
+- CPU limit `1000m`, memory limit `1Gi`
+- Postgres managed separately with provisioned IOPS
+
+Tune based on:
+
+- `badgermole_query_active{status="queued"}`
+- query timeout/cancel rates
+- pool saturation (`badgermole_pool_active / badgermole_pool_total`)
+- p95 query latency under representative load (`docs/perf-testing.md`)

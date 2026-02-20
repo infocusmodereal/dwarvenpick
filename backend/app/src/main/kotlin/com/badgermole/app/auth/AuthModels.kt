@@ -2,6 +2,7 @@ package com.badgermole.app.auth
 
 import jakarta.validation.constraints.NotBlank
 import java.io.Serializable
+import java.security.Principal
 
 enum class AuthProvider {
     LOCAL,
@@ -27,7 +28,9 @@ data class AuthenticatedUserPrincipal(
     val provider: AuthProvider,
     val roles: Set<String>,
     val groups: Set<String>,
-) : Serializable
+) : Serializable, Principal {
+    override fun getName(): String = username
+}
 
 data class LoginResponse(
     val username: String,
@@ -54,6 +57,10 @@ data class CsrfTokenResponse(
     val token: String,
     val headerName: String,
     val parameterName: String,
+)
+
+data class AuthMethodsResponse(
+    val methods: List<String>,
 )
 
 data class ErrorResponse(

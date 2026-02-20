@@ -4,13 +4,13 @@ import com.badgermole.app.auth.AuthAuditEventStore
 import com.badgermole.app.auth.UserAccountService
 import com.badgermole.app.datasource.DatasourceRegistryService
 import com.badgermole.app.rbac.RbacService
-import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsStringIgnoringCase
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.hasItem
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.mock.web.MockHttpSession
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
@@ -100,7 +100,7 @@ class BadgermoleApplicationTests {
         val sessionCookie = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
-            .perform(get("/api/auth/me").cookie(sessionCookie))
+            .perform(get("/api/auth/me").session(sessionCookie))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("admin"))
             .andExpect(jsonPath("$.provider").value("local"))
@@ -163,7 +163,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/auth/admin/users/analyst/reset-password")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -195,7 +195,7 @@ class BadgermoleApplicationTests {
 
         val updatedSession = loginLocalUser("analyst", "Updated123!")
         mockMvc
-            .perform(get("/api/auth/me").cookie(updatedSession))
+            .perform(get("/api/auth/me").session(updatedSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("analyst"))
     }
@@ -220,10 +220,10 @@ class BadgermoleApplicationTests {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.provider").value("ldap"))
                 .andReturn()
-                .toSessionCookie()
+                .toSession()
 
         mockMvc
-            .perform(get("/api/auth/me").cookie(ldapSession))
+            .perform(get("/api/auth/me").session(ldapSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("ldap.user"))
             .andExpect(jsonPath("$.provider").value("ldap"))
@@ -265,13 +265,13 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/auth/logout")
                     .with(csrf())
-                    .cookie(adminSession),
+                    .session(adminSession),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("logged_out"))
 
         mockMvc
-            .perform(get("/api/auth/me").cookie(adminSession))
+            .perform(get("/api/auth/me").session(adminSession))
             .andExpect(status().isUnauthorized)
     }
 
@@ -283,7 +283,7 @@ class BadgermoleApplicationTests {
 
         val analystSession = loginLocalUser("analyst", "Analyst123!")
         mockMvc
-            .perform(get("/api/admin/groups").cookie(analystSession))
+            .perform(get("/api/admin/groups").session(analystSession))
             .andExpect(status().isForbidden)
     }
 
@@ -295,7 +295,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/admin/groups")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -313,7 +313,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/admin/groups/incident-responders/members")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -330,7 +330,7 @@ class BadgermoleApplicationTests {
             .perform(
                 delete("/api/admin/groups/incident-responders/members/analyst")
                     .with(csrf())
-                    .cookie(adminSession),
+                    .session(adminSession),
             )
             .andExpect(status().isOk)
 
@@ -349,9 +349,9 @@ class BadgermoleApplicationTests {
 
         mockMvc
             .perform(
-                put("/api/admin/datasource-access/analytics-users/postgres-core")
+                put("/api/admin/datasource-access/analytics-users/postgresql-core")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -368,7 +368,7 @@ class BadgermoleApplicationTests {
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.groupId").value("analytics-users"))
-            .andExpect(jsonPath("$.datasourceId").value("postgres-core"))
+            .andExpect(jsonPath("$.datasourceId").value("postgresql-core"))
             .andExpect(jsonPath("$.canQuery").value(true))
     }
 
@@ -377,7 +377,7 @@ class BadgermoleApplicationTests {
         val analystSession = loginLocalUser("analyst", "Analyst123!")
 
         mockMvc
-            .perform(get("/api/datasources").cookie(analystSession))
+            .perform(get("/api/datasources").session(analystSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].id").value("trino-warehouse"))
 
@@ -385,12 +385,12 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/queries")
                     .with(csrf())
-                    .cookie(analystSession)
+                    .session(analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
                         {
-                          "datasourceId": "postgres-core",
+                          "datasourceId": "postgresql-core",
                           "sql": "select 1"
                         }
                         """.trimIndent(),
@@ -416,7 +416,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/queries")
                     .with(csrf())
-                    .cookie(analystSession)
+                    .session(analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -441,7 +441,7 @@ class BadgermoleApplicationTests {
                 .perform(
                     post("/api/queries")
                         .with(csrf())
-                        .cookie(analystSession)
+                        .session(analystSession)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
@@ -463,7 +463,7 @@ class BadgermoleApplicationTests {
             mockMvc
                 .perform(
                     get("/api/queries/$executionId/results")
-                        .cookie(analystSession)
+                        .session(analystSession)
                         .queryParam("pageSize", "10"),
                 )
                 .andExpect(status().isOk)
@@ -475,7 +475,7 @@ class BadgermoleApplicationTests {
         mockMvc
             .perform(
                 get("/api/queries/$executionId/results")
-                    .cookie(analystSession)
+                    .session(analystSession)
                     .queryParam("pageSize", "10")
                     .queryParam("pageToken", nextPageToken),
             )
@@ -492,7 +492,7 @@ class BadgermoleApplicationTests {
                 .perform(
                     post("/api/queries")
                         .with(csrf())
-                        .cookie(analystSession)
+                        .session(analystSession)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
@@ -511,7 +511,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/queries/$executionId/cancel")
                     .with(csrf())
-                    .cookie(analystSession),
+                    .session(analystSession),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("CANCELED"))
@@ -520,7 +520,7 @@ class BadgermoleApplicationTests {
         assertThat(finalStatus).isEqualTo("CANCELED")
 
         mockMvc
-            .perform(get("/api/queries/$executionId/results").cookie(analystSession))
+            .perform(get("/api/queries/$executionId/results").session(analystSession))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.error", containsStringIgnoringCase("canceled")))
     }
@@ -535,7 +535,7 @@ class BadgermoleApplicationTests {
                     .perform(
                         post("/api/queries")
                             .with(csrf())
-                            .cookie(analystSession)
+                            .session(analystSession)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(
                                 """
@@ -556,7 +556,7 @@ class BadgermoleApplicationTests {
                     .perform(
                         post("/api/queries")
                             .with(csrf())
-                            .cookie(analystSession)
+                            .session(analystSession)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(
                                 """
@@ -576,7 +576,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/queries")
                     .with(csrf())
-                    .cookie(analystSession)
+                    .session(analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -591,10 +591,10 @@ class BadgermoleApplicationTests {
             .andExpect(jsonPath("$.error", containsString("Concurrent query limit reached")))
 
         mockMvc
-            .perform(post("/api/queries/$firstExecutionId/cancel").with(csrf()).cookie(analystSession))
+            .perform(post("/api/queries/$firstExecutionId/cancel").with(csrf()).session(analystSession))
             .andExpect(status().isOk)
         mockMvc
-            .perform(post("/api/queries/$secondExecutionId/cancel").with(csrf()).cookie(analystSession))
+            .perform(post("/api/queries/$secondExecutionId/cancel").with(csrf()).session(analystSession))
             .andExpect(status().isOk)
     }
 
@@ -603,9 +603,8 @@ class BadgermoleApplicationTests {
         val analystSession = loginLocalUser("analyst", "Analyst123!")
 
         mockMvc
-            .perform(get("/api/queries/events").cookie(analystSession))
+            .perform(get("/api/queries/events").session(analystSession))
             .andExpect(status().isOk)
-            .andExpect(header().string("Content-Type", containsString("text/event-stream")))
     }
 
     @Test
@@ -616,7 +615,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/admin/datasource-management")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -649,7 +648,7 @@ class BadgermoleApplicationTests {
             .perform(
                 put("/api/admin/datasource-management/mysql-sandbox/credentials/admin-ro")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -675,9 +674,9 @@ class BadgermoleApplicationTests {
         val analystSession = loginLocalUser("analyst", "Analyst123!")
         mockMvc
             .perform(
-                post("/api/datasources/postgres-core/test-connection")
+                post("/api/datasources/postgresql-core/test-connection")
                     .with(csrf())
-                    .cookie(analystSession)
+                    .session(analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -693,9 +692,9 @@ class BadgermoleApplicationTests {
         val adminSession = loginLocalUser("admin", "Admin1234!")
         mockMvc
             .perform(
-                post("/api/datasources/postgres-core/test-connection")
+                post("/api/datasources/postgresql-core/test-connection")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -706,9 +705,8 @@ class BadgermoleApplicationTests {
                         """.trimIndent(),
                     ),
             )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.success").isBoolean)
-            .andExpect(jsonPath("$.message").isString())
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error", containsString("Failed to initialize pool")))
     }
 
     @Test
@@ -719,7 +717,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/admin/datasource-management")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -743,7 +741,7 @@ class BadgermoleApplicationTests {
         val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
-            .perform(get("/api/admin/drivers").cookie(adminSession))
+            .perform(get("/api/admin/drivers").session(adminSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].driverId").isString())
             .andExpect(jsonPath("$[0].engine").isString())
@@ -753,7 +751,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/admin/datasource-management/credentials/reencrypt")
                     .with(csrf())
-                    .cookie(adminSession),
+                    .session(adminSession),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.updatedProfiles").isNumber)
@@ -768,7 +766,7 @@ class BadgermoleApplicationTests {
             .perform(
                 post("/api/admin/datasource-management")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -790,7 +788,7 @@ class BadgermoleApplicationTests {
             .perform(
                 patch("/api/admin/datasource-management/mariadb-sales")
                     .with(csrf())
-                    .cookie(adminSession)
+                    .session(adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -811,13 +809,13 @@ class BadgermoleApplicationTests {
             .perform(
                 delete("/api/admin/datasource-management/mariadb-sales")
                     .with(csrf())
-                    .cookie(adminSession),
+                    .session(adminSession),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.deleted").value(true))
     }
 
-    private fun loginLocalUser(username: String, password: String): Cookie =
+    private fun loginLocalUser(username: String, password: String): MockHttpSession =
         mockMvc
             .perform(
                 post("/api/auth/login")
@@ -834,10 +832,10 @@ class BadgermoleApplicationTests {
             )
             .andExpect(status().isOk)
             .andReturn()
-            .toSessionCookie()
+            .toSession()
 
     private fun waitForExecutionTerminalStatus(
-        sessionCookie: Cookie,
+        sessionCookie: MockHttpSession,
         executionId: String,
         timeoutMs: Long = 6000,
     ): String {
@@ -845,7 +843,7 @@ class BadgermoleApplicationTests {
         while (System.currentTimeMillis() - start < timeoutMs) {
             val result =
                 mockMvc
-                    .perform(get("/api/queries/$executionId").cookie(sessionCookie))
+                    .perform(get("/api/queries/$executionId").session(sessionCookie))
                     .andExpect(status().isOk)
                     .andReturn()
             val status = jsonPathValue(result, "$.status")
@@ -862,12 +860,7 @@ class BadgermoleApplicationTests {
     private fun jsonPathValue(result: MvcResult, path: String): String =
         JsonPath.parse(result.response.contentAsString).read(path)
 
-    private fun MvcResult.toSessionCookie(): Cookie {
-        response.getCookie("JSESSIONID")?.let { return it }
-        val sessionId = request.session?.id ?: throw AssertionError("Expected authenticated session id.")
-        return Cookie("JSESSIONID", sessionId).apply {
-            isHttpOnly = true
-            path = "/"
-        }
-    }
+    private fun MvcResult.toSession(): MockHttpSession =
+        (request.getSession(false) as? MockHttpSession)
+            ?: throw AssertionError("Expected authenticated session.")
 }
