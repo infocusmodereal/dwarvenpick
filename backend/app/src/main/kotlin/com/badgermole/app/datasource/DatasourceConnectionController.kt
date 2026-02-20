@@ -28,7 +28,7 @@ class DatasourceConnectionController(
         @Valid @RequestBody request: TestConnectionRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val response =
                 datasourcePoolManager.testConnection(

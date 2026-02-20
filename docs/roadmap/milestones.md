@@ -47,10 +47,10 @@
 
 ## Milestone 6: Query Engine
 
-- [ ] Execution lifecycle manager
-- [ ] Cursor-session pagination (next/prev)
-- [ ] Reliable cancellation
-- [ ] Timeout and safety limit enforcement
+- [x] Execution lifecycle manager
+- [x] Cursor-session pagination (next/prev)
+- [x] Reliable cancellation
+- [x] Timeout and safety limit enforcement
 
 ## Milestone 7: Result UX + Export
 

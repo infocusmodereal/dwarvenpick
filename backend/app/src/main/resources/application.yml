@@ -23,6 +23,15 @@ server:
         same-site: lax
 
 badgermole:
+  query:
+    default-page-size: 100
+    max-page-size: 500
+    max-buffered-rows: 5000
+    max-concurrency-per-user: 5
+    result-session-ttl-seconds: 600
+    execution-retention-seconds: 3600
+    cancel-grace-period-ms: 500
+    cleanup-interval-ms: 30000
   security:
     credentials:
       active-key-id: ${BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID:v1}

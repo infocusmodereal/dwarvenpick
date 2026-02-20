@@ -6,6 +6,7 @@ import com.badgermole.app.datasource.DatasourceRegistryService
 import com.badgermole.app.rbac.RbacService
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.containsStringIgnoringCase
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.hasItem
 import org.junit.jupiter.api.BeforeEach
@@ -16,19 +17,21 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import com.jayway.jsonpath.JsonPath
 
 @SpringBootTest(
     properties = [
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
+        "badgermole.auth.password-policy.min-length=8",
         "badgermole.auth.ldap.mock.enabled=true",
         "badgermole.auth.ldap.mock.users[0].username=ldap.user",
         "badgermole.auth.ldap.mock.users[0].password=LdapUser123!",
@@ -217,9 +220,7 @@ class BadgermoleApplicationTests {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.provider").value("ldap"))
                 .andReturn()
-                .response
-                .getCookie("JSESSIONID")
-                ?: error("Expected JSESSIONID cookie for LDAP login")
+                .toSessionCookie()
 
         mockMvc
             .perform(get("/api/auth/me").cookie(ldapSession))
@@ -429,6 +430,182 @@ class BadgermoleApplicationTests {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("QUEUED"))
             .andExpect(jsonPath("$.datasourceId").value("trino-warehouse"))
+            .andExpect(jsonPath("$.queryHash").isString)
+    }
+
+    @Test
+    fun `query status and paginated results endpoints work for successful execution`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        val submitResult =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(analystSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "sql": "select generate_series(1,25)"
+                            }
+                            """.trimIndent(),
+                        ),
+                )
+                .andExpect(status().isOk)
+                .andReturn()
+        val executionId = jsonPathValue(submitResult, "$.executionId")
+
+        val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
+        assertThat(finalStatus).isEqualTo("SUCCEEDED")
+
+        val firstPage =
+            mockMvc
+                .perform(
+                    get("/api/queries/$executionId/results")
+                        .cookie(analystSession)
+                        .queryParam("pageSize", "10"),
+                )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.rows.length()").value(10))
+                .andExpect(jsonPath("$.nextPageToken").isString)
+                .andReturn()
+        val nextPageToken = jsonPathValue(firstPage, "$.nextPageToken")
+
+        mockMvc
+            .perform(
+                get("/api/queries/$executionId/results")
+                    .cookie(analystSession)
+                    .queryParam("pageSize", "10")
+                    .queryParam("pageToken", nextPageToken),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.rows.length()").value(10))
+            .andExpect(jsonPath("$.rows[0][0]").value("11"))
+    }
+
+    @Test
+    fun `cancel endpoint transitions execution to canceled and results are unavailable`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        val submitResult =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(analystSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "sql": "select pg_sleep(5)"
+                            }
+                            """.trimIndent(),
+                        ),
+                )
+                .andExpect(status().isOk)
+                .andReturn()
+        val executionId = jsonPathValue(submitResult, "$.executionId")
+
+        mockMvc
+            .perform(
+                post("/api/queries/$executionId/cancel")
+                    .with(csrf())
+                    .cookie(analystSession),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("CANCELED"))
+
+        val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
+        assertThat(finalStatus).isEqualTo("CANCELED")
+
+        mockMvc
+            .perform(get("/api/queries/$executionId/results").cookie(analystSession))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error", containsStringIgnoringCase("canceled")))
+    }
+
+    @Test
+    fun `query concurrency limits are enforced per user`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+
+        val firstExecutionId =
+            jsonPathValue(
+                mockMvc
+                    .perform(
+                        post("/api/queries")
+                            .with(csrf())
+                            .cookie(analystSession)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(
+                                """
+                                {
+                                  "datasourceId": "trino-warehouse",
+                                  "sql": "select pg_sleep(3)"
+                                }
+                                """.trimIndent(),
+                            ),
+                    )
+                    .andExpect(status().isOk)
+                    .andReturn(),
+                "$.executionId",
+            )
+        val secondExecutionId =
+            jsonPathValue(
+                mockMvc
+                    .perform(
+                        post("/api/queries")
+                            .with(csrf())
+                            .cookie(analystSession)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(
+                                """
+                                {
+                                  "datasourceId": "trino-warehouse",
+                                  "sql": "select pg_sleep(3)"
+                                }
+                                """.trimIndent(),
+                            ),
+                    )
+                    .andExpect(status().isOk)
+                    .andReturn(),
+                "$.executionId",
+            )
+
+        mockMvc
+            .perform(
+                post("/api/queries")
+                    .with(csrf())
+                    .cookie(analystSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "datasourceId": "trino-warehouse",
+                          "sql": "select pg_sleep(3)"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.error", containsString("Concurrent query limit reached")))
+
+        mockMvc
+            .perform(post("/api/queries/$firstExecutionId/cancel").with(csrf()).cookie(analystSession))
+            .andExpect(status().isOk)
+        mockMvc
+            .perform(post("/api/queries/$secondExecutionId/cancel").with(csrf()).cookie(analystSession))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `query status events endpoint is available to authenticated users`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+
+        mockMvc
+            .perform(get("/api/queries/events").cookie(analystSession))
+            .andExpect(status().isOk)
+            .andExpect(header().string("Content-Type", containsString("text/event-stream")))
     }
 
     @Test
@@ -656,10 +833,41 @@ class BadgermoleApplicationTests {
                     ),
             )
             .andExpect(status().isOk)
-            .andExpect(cookie().exists("JSESSIONID"))
-            .andExpect(cookie().httpOnly("JSESSIONID", true))
             .andReturn()
-            .response
-            .getCookie("JSESSIONID")
-            ?: error("Expected JSESSIONID cookie.")
+            .toSessionCookie()
+
+    private fun waitForExecutionTerminalStatus(
+        sessionCookie: Cookie,
+        executionId: String,
+        timeoutMs: Long = 6000,
+    ): String {
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            val result =
+                mockMvc
+                    .perform(get("/api/queries/$executionId").cookie(sessionCookie))
+                    .andExpect(status().isOk)
+                    .andReturn()
+            val status = jsonPathValue(result, "$.status")
+            if (status == "SUCCEEDED" || status == "FAILED" || status == "CANCELED") {
+                return status
+            }
+
+            Thread.sleep(100)
+        }
+
+        throw AssertionError("Timed out waiting for terminal query status for execution $executionId")
+    }
+
+    private fun jsonPathValue(result: MvcResult, path: String): String =
+        JsonPath.parse(result.response.contentAsString).read(path)
+
+    private fun MvcResult.toSessionCookie(): Cookie {
+        response.getCookie("JSESSIONID")?.let { return it }
+        val sessionId = request.session?.id ?: throw AssertionError("Expected authenticated session id.")
+        return Cookie("JSESSIONID", sessionId).apply {
+            isHttpOnly = true
+            path = "/"
+        }
+    }
 }

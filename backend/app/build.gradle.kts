@@ -5,6 +5,8 @@ plugins {
     id("io.spring.dependency-management")
 }
 
+extra["testcontainers.version"] = "1.21.0"
+
 dependencies {
     implementation(project(":backend:auth"))
     implementation(project(":backend:core"))
@@ -26,6 +28,10 @@ dependencies {
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation(enforcedPlatform("org.testcontainers:testcontainers-bom:1.21.0"))
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:mysql")
+    testImplementation("org.testcontainers:postgresql")
 }
 
 springBoot {

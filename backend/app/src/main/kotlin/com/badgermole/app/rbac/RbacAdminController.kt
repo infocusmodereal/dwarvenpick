@@ -37,7 +37,7 @@ class RbacAdminController(
         @Valid @RequestBody request: CreateGroupRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val created = rbacService.createGroup(request)
             audit(
@@ -56,7 +56,7 @@ class RbacAdminController(
         @RequestBody request: UpdateGroupRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val updated = rbacService.updateGroup(groupId, request)
             audit(
@@ -75,7 +75,7 @@ class RbacAdminController(
         @Valid @RequestBody request: GroupMemberRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val updated = rbacService.addMember(groupId, request.username)
             audit(
@@ -98,7 +98,7 @@ class RbacAdminController(
         @PathVariable username: String,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val updated = rbacService.removeMember(groupId, username)
             audit(
@@ -130,7 +130,7 @@ class RbacAdminController(
         @Valid @RequestBody request: UpsertDatasourceAccessRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val updated = rbacService.upsertDatasourceAccess(groupId, datasourceId, request)
             audit(
@@ -171,7 +171,7 @@ class RbacAdminController(
         return ResponseEntity.ok(mapOf("deleted" to deleted))
     }
 
-    private fun handleGroupErrors(ex: Throwable): ResponseEntity<Any> =
+    private fun handleGroupErrors(ex: Throwable): ResponseEntity<*> =
         when (ex) {
             is IllegalArgumentException -> ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
             is GroupNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
@@ -180,7 +180,7 @@ class RbacAdminController(
             else -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ErrorResponse("Group operation failed."))
         }
 
-    private fun handleDatasourceErrors(ex: Throwable): ResponseEntity<Any> =
+    private fun handleDatasourceErrors(ex: Throwable): ResponseEntity<*> =
         when (ex) {
             is IllegalArgumentException -> ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
             is GroupNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))

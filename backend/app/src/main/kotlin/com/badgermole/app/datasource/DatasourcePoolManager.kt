@@ -4,8 +4,14 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
+import java.sql.Connection
 import java.util.concurrent.ConcurrentHashMap
 import org.springframework.stereotype.Service
+
+data class QueryConnectionHandle(
+    val spec: ConnectionSpec,
+    val connection: Connection,
+)
 
 @Service
 class DatasourcePoolManager(
@@ -63,6 +69,18 @@ class DatasourcePoolManager(
         keys.forEach { key ->
             pools.remove(key)?.close()
         }
+    }
+
+    fun openConnection(
+        datasourceId: String,
+        credentialProfile: String,
+    ): QueryConnectionHandle {
+        val spec = datasourceRegistryService.resolveConnectionSpec(datasourceId, credentialProfile, tlsOverride = null)
+        val pool = getOrCreatePool(spec)
+        return QueryConnectionHandle(
+            spec = spec,
+            connection = pool.connection,
+        )
     }
 
     private fun getOrCreatePool(spec: ConnectionSpec): HikariDataSource {

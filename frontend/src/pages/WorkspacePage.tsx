@@ -90,6 +90,49 @@ type QueryExecutionResponse = {
     datasourceId: string;
     status: string;
     message: string;
+    queryHash: string;
+};
+
+type QueryExecutionStatusResponse = {
+    executionId: string;
+    datasourceId: string;
+    status: string;
+    message: string;
+    submittedAt: string;
+    startedAt?: string;
+    completedAt?: string;
+    queryHash: string;
+    errorSummary?: string;
+    rowCount: number;
+    columnCount: number;
+    rowLimitReached: boolean;
+    maxRowsPerQuery: number;
+    maxRuntimeSeconds: number;
+    credentialProfile: string;
+};
+
+type QueryResultColumn = {
+    name: string;
+    jdbcType: string;
+};
+
+type QueryResultsResponse = {
+    executionId: string;
+    status: string;
+    columns: QueryResultColumn[];
+    rows: Array<Array<string | null>>;
+    pageSize: number;
+    nextPageToken?: string;
+    rowLimitReached: boolean;
+};
+
+type QueryStatusEventResponse = {
+    eventId: string;
+    executionId: string;
+    datasourceId: string;
+    status: string;
+    message: string;
+    occurredAt: string;
 };
 
 type PersistentWorkspaceTab = {
@@ -104,6 +147,15 @@ type WorkspaceTab = PersistentWorkspaceTab & {
     isExecuting: boolean;
     statusMessage: string;
     errorMessage: string;
+    executionId: string;
+    executionStatus: string;
+    queryHash: string;
+    resultColumns: QueryResultColumn[];
+    resultRows: Array<Array<string | null>>;
+    nextPageToken: string;
+    currentPageToken: string;
+    previousPageTokens: string[];
+    rowLimitReached: boolean;
 };
 
 type TestConnectionResponse = {
@@ -160,6 +212,12 @@ const defaultTlsSettings: TlsSettings = {
 };
 
 const workspaceTabsStorageKey = 'badgermole.workspace.tabs.v1';
+const queryStatusPollingIntervalMs = 500;
+const queryStatusPollingMaxAttempts = 120;
+const firstPageToken = '';
+
+const isTerminalExecutionStatus = (status: string): boolean =>
+    status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELED';
 
 const defaultPortByEngine: Record<DatasourceEngine, number> = {
     POSTGRESQL: 5432,
@@ -226,7 +284,16 @@ const buildWorkspaceTab = (
     queryText,
     isExecuting: false,
     statusMessage: '',
-    errorMessage: ''
+    errorMessage: '',
+    executionId: '',
+    executionStatus: '',
+    queryHash: '',
+    resultColumns: [],
+    resultRows: [],
+    nextPageToken: '',
+    currentPageToken: '',
+    previousPageTokens: [],
+    rowLimitReached: false
 });
 
 const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
@@ -248,7 +315,11 @@ export default function WorkspacePage() {
     const [activeTabId, setActiveTabId] = useState('');
     const [tabsHydrated, setTabsHydrated] = useState(false);
     const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null);
-    const abortControllersByTabRef = useRef<Record<string, AbortController>>({});
+    const workspaceTabsRef = useRef<WorkspaceTab[]>([]);
+    const queryStatusPollingTimersRef = useRef<
+        Record<string, ReturnType<typeof setTimeout> | undefined>
+    >({});
+    const queryEventsRef = useRef<EventSource | null>(null);
 
     const [adminGroups, setAdminGroups] = useState<GroupResponse[]>([]);
     const [adminDatasourceCatalog, setAdminDatasourceCatalog] = useState<
@@ -310,6 +381,10 @@ export default function WorkspacePage() {
         () => workspaceTabs.find((tab) => tab.id === activeTabId) ?? null,
         [activeTabId, workspaceTabs]
     );
+
+    useEffect(() => {
+        workspaceTabsRef.current = workspaceTabs;
+    }, [workspaceTabs]);
 
     const selectedDatasource = useMemo(
         () =>
@@ -402,7 +477,16 @@ export default function WorkspacePage() {
                                 : 'SELECT * FROM system.healthcheck;',
                         isExecuting: false,
                         statusMessage: '',
-                        errorMessage: ''
+                        errorMessage: '',
+                        executionId: '',
+                        executionStatus: '',
+                        queryHash: '',
+                        resultColumns: [],
+                        resultRows: [],
+                        nextPageToken: '',
+                        currentPageToken: '',
+                        previousPageTokens: [],
+                        rowLimitReached: false
                     })) ?? [];
 
             const tabsToUse =
@@ -808,23 +892,184 @@ export default function WorkspacePage() {
         [updateWorkspaceTab, workspaceTabs]
     );
 
+    const clearQueryStatusPolling = useCallback((tabId: string) => {
+        const timer = queryStatusPollingTimersRef.current[tabId];
+        if (timer) {
+            clearTimeout(timer);
+        }
+        delete queryStatusPollingTimersRef.current[tabId];
+    }, []);
+
+    const fetchQueryResultsPage = useCallback(
+        async (
+            tabId: string,
+            executionId: string,
+            pageToken = firstPageToken,
+            previousPageTokens?: string[]
+        ) => {
+            const queryParams = new URLSearchParams();
+            queryParams.set('pageSize', '100');
+            if (pageToken) {
+                queryParams.set('pageToken', pageToken);
+            }
+
+            const response = await fetch(
+                `/api/queries/${executionId}/results?${queryParams.toString()}`,
+                {
+                    method: 'GET',
+                    credentials: 'include'
+                }
+            );
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as QueryResultsResponse;
+            updateWorkspaceTab(tabId, (currentTab) => {
+                if (currentTab.executionId !== executionId) {
+                    return currentTab;
+                }
+
+                return {
+                    ...currentTab,
+                    resultColumns: payload.columns,
+                    resultRows: payload.rows,
+                    nextPageToken: payload.nextPageToken ?? '',
+                    currentPageToken: pageToken,
+                    previousPageTokens: previousPageTokens ?? currentTab.previousPageTokens,
+                    rowLimitReached: payload.rowLimitReached,
+                    errorMessage: ''
+                };
+            });
+        },
+        [readFriendlyError, updateWorkspaceTab]
+    );
+
+    const fetchExecutionStatus = useCallback(
+        async (
+            tabId: string,
+            executionId: string,
+            loadFirstResultsPageOnSuccess: boolean
+        ): Promise<QueryExecutionStatusResponse> => {
+            const response = await fetch(`/api/queries/${executionId}`, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as QueryExecutionStatusResponse;
+            const terminal = isTerminalExecutionStatus(payload.status);
+            updateWorkspaceTab(tabId, (currentTab) => {
+                if (currentTab.executionId !== executionId) {
+                    return currentTab;
+                }
+
+                return {
+                    ...currentTab,
+                    executionStatus: payload.status,
+                    queryHash: payload.queryHash,
+                    statusMessage: payload.message,
+                    errorMessage:
+                        payload.status === 'FAILED'
+                            ? (payload.errorSummary ?? payload.message)
+                            : '',
+                    rowLimitReached: payload.rowLimitReached,
+                    isExecuting: !terminal
+                };
+            });
+
+            if (terminal) {
+                clearQueryStatusPolling(tabId);
+            }
+
+            if (payload.status === 'SUCCEEDED' && loadFirstResultsPageOnSuccess) {
+                await fetchQueryResultsPage(tabId, executionId, firstPageToken, []);
+            }
+
+            return payload;
+        },
+        [clearQueryStatusPolling, fetchQueryResultsPage, readFriendlyError, updateWorkspaceTab]
+    );
+
+    const startQueryStatusPolling = useCallback(
+        (tabId: string, executionId: string) => {
+            clearQueryStatusPolling(tabId);
+            let attempts = 0;
+
+            const poll = async () => {
+                const trackedTab = workspaceTabsRef.current.find((tab) => tab.id === tabId);
+                if (!trackedTab || trackedTab.executionId !== executionId) {
+                    clearQueryStatusPolling(tabId);
+                    return;
+                }
+
+                try {
+                    const status = await fetchExecutionStatus(tabId, executionId, true);
+                    if (isTerminalExecutionStatus(status.status)) {
+                        clearQueryStatusPolling(tabId);
+                        return;
+                    }
+                } catch {
+                    // Continue polling up to the max attempt count.
+                }
+
+                attempts += 1;
+                if (attempts >= queryStatusPollingMaxAttempts) {
+                    clearQueryStatusPolling(tabId);
+                    return;
+                }
+
+                queryStatusPollingTimersRef.current[tabId] = setTimeout(() => {
+                    void poll();
+                }, queryStatusPollingIntervalMs);
+            };
+
+            void poll();
+        },
+        [clearQueryStatusPolling, fetchExecutionStatus]
+    );
+
     const handleCancelRun = useCallback(
-        (tabId: string, triggeredByShortcut = false) => {
-            const abortController = abortControllersByTabRef.current[tabId];
-            if (abortController) {
-                abortController.abort();
+        async (tabId: string, triggeredByShortcut = false) => {
+            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            if (!tab || !tab.executionId || isTerminalExecutionStatus(tab.executionStatus)) {
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    statusMessage: triggeredByShortcut
+                        ? 'No query is running for this tab.'
+                        : currentTab.statusMessage,
+                    errorMessage: ''
+                }));
                 return;
             }
 
-            updateWorkspaceTab(tabId, (currentTab) => ({
-                ...currentTab,
-                statusMessage: triggeredByShortcut
-                    ? 'No query is running for this tab.'
-                    : currentTab.statusMessage,
-                errorMessage: ''
-            }));
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(`/api/queries/${tab.executionId}/cancel`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                clearQueryStatusPolling(tabId);
+                await fetchExecutionStatus(tabId, tab.executionId, false);
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to cancel query execution.';
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    errorMessage: message
+                }));
+            }
         },
-        [updateWorkspaceTab]
+        [clearQueryStatusPolling, fetchExecutionStatus, readFriendlyError, updateWorkspaceTab]
     );
 
     const handleCloseTab = useCallback(
@@ -834,8 +1079,9 @@ export default function WorkspacePage() {
                 return;
             }
 
+            clearQueryStatusPolling(tabId);
             if (closingTab.isExecuting) {
-                handleCancelRun(tabId);
+                void handleCancelRun(tabId);
             }
 
             setWorkspaceTabs((currentTabs) => {
@@ -859,7 +1105,7 @@ export default function WorkspacePage() {
                 return remainingTabs;
             });
         },
-        [activeTabId, handleCancelRun, visibleDatasources, workspaceTabs]
+        [activeTabId, clearQueryStatusPolling, handleCancelRun, visibleDatasources, workspaceTabs]
     );
 
     const executeSqlForTab = useCallback(
@@ -909,15 +1155,21 @@ export default function WorkspacePage() {
             updateWorkspaceTab(tabId, (currentTab) => ({
                 ...currentTab,
                 isExecuting: true,
+                executionId: '',
+                executionStatus: '',
+                queryHash: '',
+                resultColumns: [],
+                resultRows: [],
+                nextPageToken: '',
+                currentPageToken: firstPageToken,
+                previousPageTokens: [],
+                rowLimitReached: false,
                 statusMessage:
                     modeLabel === 'selection'
                         ? 'Running selected SQL...'
                         : 'Running full tab SQL...',
                 errorMessage: ''
             }));
-
-            const abortController = new AbortController();
-            abortControllersByTabRef.current[tabId] = abortController;
 
             try {
                 const csrfToken = await fetchCsrfToken();
@@ -931,8 +1183,7 @@ export default function WorkspacePage() {
                     body: JSON.stringify({
                         datasourceId,
                         sql: normalizedSql
-                    }),
-                    signal: abortController.signal
+                    })
                 });
 
                 if (!response.ok) {
@@ -942,34 +1193,32 @@ export default function WorkspacePage() {
                 const payload = (await response.json()) as QueryExecutionResponse;
                 updateWorkspaceTab(tabId, (currentTab) => ({
                     ...currentTab,
-                    statusMessage: `Execution ${payload.executionId} queued on ${payload.datasourceId} (${payload.status}).`,
+                    executionId: payload.executionId,
+                    executionStatus: payload.status,
+                    queryHash: payload.queryHash,
+                    statusMessage: `Execution ${payload.executionId} queued on ${payload.datasourceId}.`,
                     errorMessage: ''
                 }));
+                startQueryStatusPolling(tabId, payload.executionId);
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    updateWorkspaceTab(tabId, (currentTab) => ({
-                        ...currentTab,
-                        statusMessage:
-                            'Query request canceled from the client. Server-side cancellation will be added in Milestone 6.',
-                        errorMessage: ''
-                    }));
-                } else {
-                    const message = error instanceof Error ? error.message : 'Failed to run query.';
-                    updateWorkspaceTab(tabId, (currentTab) => ({
-                        ...currentTab,
-                        errorMessage: message,
-                        statusMessage: ''
-                    }));
-                }
-            } finally {
-                delete abortControllersByTabRef.current[tabId];
+                clearQueryStatusPolling(tabId);
+                const message = error instanceof Error ? error.message : 'Failed to run query.';
                 updateWorkspaceTab(tabId, (currentTab) => ({
                     ...currentTab,
-                    isExecuting: false
+                    isExecuting: false,
+                    errorMessage: message,
+                    statusMessage: ''
                 }));
             }
         },
-        [readFriendlyError, updateWorkspaceTab, visibleDatasources, workspaceTabs]
+        [
+            clearQueryStatusPolling,
+            readFriendlyError,
+            startQueryStatusPolling,
+            updateWorkspaceTab,
+            visibleDatasources,
+            workspaceTabs
+        ]
     );
 
     const handleRunAll = useCallback(() => {
@@ -1001,6 +1250,35 @@ export default function WorkspacePage() {
 
         void executeSqlForTab(activeTab.id, selectedSql, 'selection');
     }, [activeTab, executeSqlForTab]);
+
+    const handleLoadNextResults = useCallback(() => {
+        if (!activeTab || !activeTab.executionId || !activeTab.nextPageToken) {
+            return;
+        }
+
+        const updatedHistory = [...activeTab.previousPageTokens, activeTab.currentPageToken];
+        void fetchQueryResultsPage(
+            activeTab.id,
+            activeTab.executionId,
+            activeTab.nextPageToken,
+            updatedHistory
+        );
+    }, [activeTab, fetchQueryResultsPage]);
+
+    const handleLoadPreviousResults = useCallback(() => {
+        if (!activeTab || !activeTab.executionId || activeTab.previousPageTokens.length === 0) {
+            return;
+        }
+
+        const updatedHistory = [...activeTab.previousPageTokens];
+        const previousToken = updatedHistory.pop() ?? firstPageToken;
+        void fetchQueryResultsPage(
+            activeTab.id,
+            activeTab.executionId,
+            previousToken,
+            updatedHistory
+        );
+    }, [activeTab, fetchQueryResultsPage]);
 
     const handleEditorDidMount: OnMount = (editorInstance) => {
         editorRef.current = editorInstance;
@@ -1059,7 +1337,7 @@ export default function WorkspacePage() {
 
             if (event.key === 'Escape' && activeTab?.isExecuting) {
                 event.preventDefault();
-                handleCancelRun(activeTab.id, true);
+                void handleCancelRun(activeTab.id, true);
             }
         };
 
@@ -1068,6 +1346,83 @@ export default function WorkspacePage() {
             window.removeEventListener('keydown', handleKeyboardShortcut);
         };
     }, [activeTab?.id, activeTab?.isExecuting, handleCancelRun, handleRunSelection]);
+
+    useEffect(() => {
+        if (!tabsHydrated || typeof EventSource === 'undefined') {
+            return;
+        }
+
+        const eventSource = new EventSource('/api/queries/events', { withCredentials: true });
+        queryEventsRef.current = eventSource;
+
+        const handleStatusEvent = (event: Event) => {
+            const messageEvent = event as MessageEvent<string>;
+            if (!messageEvent.data) {
+                return;
+            }
+
+            let payload: QueryStatusEventResponse;
+            try {
+                payload = JSON.parse(messageEvent.data) as QueryStatusEventResponse;
+            } catch {
+                return;
+            }
+
+            const tab = workspaceTabsRef.current.find(
+                (candidate) => candidate.executionId === payload.executionId
+            );
+            if (!tab) {
+                return;
+            }
+
+            const terminal = isTerminalExecutionStatus(payload.status);
+            updateWorkspaceTab(tab.id, (currentTab) => {
+                if (currentTab.executionId !== payload.executionId) {
+                    return currentTab;
+                }
+
+                return {
+                    ...currentTab,
+                    executionStatus: payload.status,
+                    statusMessage: payload.message,
+                    isExecuting: !terminal,
+                    errorMessage:
+                        payload.status === 'FAILED'
+                            ? currentTab.errorMessage || payload.message
+                            : currentTab.errorMessage
+                };
+            });
+
+            if (terminal) {
+                clearQueryStatusPolling(tab.id);
+                void fetchExecutionStatus(tab.id, payload.executionId, true);
+            }
+        };
+
+        eventSource.addEventListener('query-status', handleStatusEvent as EventListener);
+
+        return () => {
+            eventSource.removeEventListener('query-status', handleStatusEvent as EventListener);
+            eventSource.close();
+            if (queryEventsRef.current === eventSource) {
+                queryEventsRef.current = null;
+            }
+        };
+    }, [clearQueryStatusPolling, fetchExecutionStatus, tabsHydrated, updateWorkspaceTab]);
+
+    useEffect(
+        () => () => {
+            Object.values(queryStatusPollingTimersRef.current).forEach((timer) => {
+                if (timer) {
+                    clearTimeout(timer);
+                }
+            });
+            queryStatusPollingTimersRef.current = {};
+            queryEventsRef.current?.close();
+            queryEventsRef.current = null;
+        },
+        []
+    );
 
     const handleCreateGroup = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -1808,16 +2163,92 @@ export default function WorkspacePage() {
 
                 <section className="panel results">
                     <h2>Results Grid</h2>
+                    {activeTab?.executionId ? (
+                        <div className="result-meta">
+                            <p>
+                                <strong>Execution:</strong> {activeTab.executionId}
+                            </p>
+                            <p>
+                                <strong>Status:</strong>{' '}
+                                {activeTab.executionStatus || 'PENDING_SUBMISSION'}
+                            </p>
+                            {activeTab.queryHash ? (
+                                <p>
+                                    <strong>Query Hash:</strong>{' '}
+                                    <code className="result-hash">{activeTab.queryHash}</code>
+                                </p>
+                            ) : null}
+                        </div>
+                    ) : (
+                        <p>Run a query to view execution status and results.</p>
+                    )}
                     {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
                     {activeTab?.errorMessage ? (
                         <p className="form-error" role="alert">
                             {activeTab.errorMessage}
                         </p>
                     ) : null}
-                    {!activeTab?.statusMessage && !activeTab?.errorMessage ? (
+                    {activeTab?.rowLimitReached ? (
+                        <p className="form-error" role="alert">
+                            Result row limit reached for this execution.
+                        </p>
+                    ) : null}
+
+                    {activeTab?.resultColumns.length ? (
+                        <>
+                            <div className="result-actions row">
+                                <button
+                                    type="button"
+                                    onClick={handleLoadPreviousResults}
+                                    disabled={activeTab.previousPageTokens.length === 0}
+                                >
+                                    Previous Page
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleLoadNextResults}
+                                    disabled={!activeTab.nextPageToken}
+                                >
+                                    Next Page
+                                </button>
+                            </div>
+                            <div className="result-table-wrap">
+                                <table className="result-table">
+                                    <thead>
+                                        <tr>
+                                            {activeTab.resultColumns.map((column) => (
+                                                <th key={`${column.name}-${column.jdbcType}`}>
+                                                    {column.name}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {activeTab.resultRows.map((row, rowIndex) => (
+                                            <tr key={`row-${rowIndex}`}>
+                                                {row.map((value, columnIndex) => (
+                                                    <td key={`cell-${rowIndex}-${columnIndex}`}>
+                                                        {value ?? 'NULL'}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    ) : null}
+                    {activeTab?.executionStatus === 'SUCCEEDED' &&
+                    activeTab.resultColumns.length === 0 &&
+                    !activeTab.errorMessage ? (
+                        <p>Query completed successfully and returned no rows.</p>
+                    ) : null}
+                    {!activeTab?.executionId &&
+                    !activeTab?.statusMessage &&
+                    !activeTab?.errorMessage ? (
                         <p>
-                            Server-side pagination and virtualization will be implemented in
-                            Milestones 6-7.
+                            Results populate after query submission. Use next/previous once paging
+                            tokens are available.
                         </p>
                     ) : null}
                     <div className="shortcut-help">
@@ -1828,8 +2259,7 @@ export default function WorkspacePage() {
                                 selection)
                             </li>
                             <li>
-                                <kbd>Esc</kbd>: Cancel in-flight tab request (server cancel wiring
-                                arrives in Milestone 6)
+                                <kbd>Esc</kbd>: Cancel currently running execution
                             </li>
                         </ul>
                     </div>

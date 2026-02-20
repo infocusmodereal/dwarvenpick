@@ -19,6 +19,17 @@ class DatasourceNotFoundException(
     override val message: String,
 ) : RuntimeException(message)
 
+class QueryAccessDeniedException(
+    override val message: String,
+) : RuntimeException(message)
+
+data class QueryAccessPolicy(
+    val credentialProfile: String,
+    val maxRowsPerQuery: Int,
+    val maxRuntimeSeconds: Int,
+    val concurrencyLimit: Int,
+)
+
 private data class GroupRecord(
     val id: String,
     val name: String,
@@ -232,6 +243,55 @@ class RbacService(
                 access.groupId in principal.groups &&
                 access.canQuery
         }
+    }
+
+    fun resolveQueryAccessPolicy(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+    ): QueryAccessPolicy {
+        if (!datasourceRegistryService.hasDatasource(datasourceId)) {
+            throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+        }
+
+        val matchingAccessRules =
+            datasourceAccess.values
+                .asSequence()
+                .filter { access ->
+                    access.datasourceId == datasourceId &&
+                        access.canQuery &&
+                        (principal.roles.contains("SYSTEM_ADMIN") || access.groupId in principal.groups)
+                }.sortedWith(compareBy({ access -> access.groupId }, { access -> access.credentialProfile }))
+                .toList()
+
+        if (matchingAccessRules.isEmpty()) {
+            if (principal.roles.contains("SYSTEM_ADMIN")) {
+                return QueryAccessPolicy(
+                    credentialProfile = "admin-ro",
+                    maxRowsPerQuery = 5000,
+                    maxRuntimeSeconds = 300,
+                    concurrencyLimit = 5,
+                )
+            }
+
+            throw QueryAccessDeniedException("Datasource access denied for query execution.")
+        }
+
+        val availableProfiles = datasourceRegistryService.credentialProfilesForDatasource(datasourceId)
+        val selectedCredentialProfile =
+            matchingAccessRules
+                .map { access -> access.credentialProfile }
+                .firstOrNull { credentialProfile -> credentialProfile in availableProfiles }
+                ?: throw QueryAccessDeniedException(
+                    "No valid credential profile is configured for datasource '$datasourceId'.",
+                )
+
+        return QueryAccessPolicy(
+            credentialProfile = selectedCredentialProfile,
+            maxRowsPerQuery = matchingAccessRules.mapNotNull { access -> access.maxRowsPerQuery }.minOrNull() ?: 5000,
+            maxRuntimeSeconds =
+                matchingAccessRules.mapNotNull { access -> access.maxRuntimeSeconds }.minOrNull() ?: 300,
+            concurrencyLimit = matchingAccessRules.mapNotNull { access -> access.concurrencyLimit }.minOrNull() ?: 5,
+        )
     }
 
     private fun seedGroups() {

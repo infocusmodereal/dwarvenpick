@@ -41,7 +41,7 @@ class DatasourceAdminController(
         @Valid @RequestBody request: CreateDatasourceRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val created = datasourceRegistryService.createDatasource(request)
             audit(
@@ -60,7 +60,7 @@ class DatasourceAdminController(
         @RequestBody request: UpdateDatasourceRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val updated = datasourceRegistryService.updateDatasource(datasourceId, request)
             datasourcePoolManager.evictPoolsForDatasource(datasourceId)
@@ -95,7 +95,7 @@ class DatasourceAdminController(
     @GetMapping("/datasource-management/{datasourceId}/credentials")
     fun listCredentialProfiles(
         @PathVariable datasourceId: String,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             ResponseEntity.ok(datasourceRegistryService.listCredentialProfiles(datasourceId))
         }.getOrElse { ex -> handleDatasourceErrors(ex) }
@@ -107,7 +107,7 @@ class DatasourceAdminController(
         @Valid @RequestBody request: UpsertCredentialProfileRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
+    ): ResponseEntity<*> =
         runCatching {
             val response = datasourceRegistryService.upsertCredentialProfile(datasourceId, profileId, request)
             datasourcePoolManager.evictPoolsForDatasource(datasourceId)
@@ -145,7 +145,7 @@ class DatasourceAdminController(
     @GetMapping("/datasource-management/pools")
     fun listPoolMetrics(): List<PoolMetricsResponse> = datasourcePoolManager.listPoolMetrics()
 
-    private fun handleDatasourceErrors(ex: Throwable): ResponseEntity<Any> =
+    private fun handleDatasourceErrors(ex: Throwable): ResponseEntity<*> =
         when (ex) {
             is IllegalArgumentException -> ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
             is ManagedDatasourceNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))

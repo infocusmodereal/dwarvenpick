@@ -532,7 +532,7 @@ Applies to every ticket:
 #### OSW-120: Query execution DB model + API contract
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Finalize `query_executions` schema fields and API DTOs.
 - Acceptance Criteria:
@@ -548,7 +548,7 @@ Applies to every ticket:
 #### OSW-121: QueryExecutionManager (lifecycle + worker execution)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement manager that runs queries in background (virtual threads) and tracks state.
 - Acceptance Criteria:
@@ -560,7 +560,7 @@ Applies to every ticket:
 #### OSW-122: Cursor session + bounded buffering for pagination
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement cursor-based paging without loading all rows.
 - Acceptance Criteria:
@@ -572,7 +572,7 @@ Applies to every ticket:
 #### OSW-123: Query cancellation (soft + hard fallback)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Support cancel via `Statement.cancel()` and fallback to connection close.
 - Acceptance Criteria:
@@ -584,7 +584,7 @@ Applies to every ticket:
 #### OSW-124: Enforce timeouts + limits (per datasource/group)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Apply policy limits for runtime, rows, and concurrency.
 - Acceptance Criteria:
@@ -597,7 +597,7 @@ Applies to every ticket:
 #### OSW-125: Query events channel (SSE or WebSocket)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend + Frontend
 - Description: Stream query status updates to UI to avoid polling.
 - Acceptance Criteria:
@@ -609,7 +609,7 @@ Applies to every ticket:
 #### OSW-126: Frontend integration: run/cancel + results fetch
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Wire editor to query API and display results (basic).
 - Acceptance Criteria:
@@ -621,7 +621,7 @@ Applies to every ticket:
 #### OSW-127: Query engine integration tests (Testcontainers)
 
 - Type: Story
-- Status: backlog
+- Status: in-progress
 - Component: Backend/QA
 - Description: Build automated tests for execute/paginate/cancel using containerized DBs.
 - Acceptance Criteria:
@@ -633,7 +633,7 @@ Applies to every ticket:
 #### OSW-128: Cleanup job for expired executions/resources
 
 - Type: Task
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Scheduled cleanup of expired cursor sessions and stuck executions.
 - Acceptance Criteria:

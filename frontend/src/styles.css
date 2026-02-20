@@ -55,6 +55,46 @@ p {
     grid-column: 1 / -1;
 }
 
+.result-meta {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.result-hash {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+}
+
+.result-actions {
+    align-items: center;
+}
+
+.result-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+}
+
+.result-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+    font-size: 0.92rem;
+}
+
+.result-table th,
+.result-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0.65rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.result-table th {
+    background: #f6fafb;
+    font-weight: 700;
+}
+
 .panel {
     background: var(--surface);
     border: 1px solid var(--border);
