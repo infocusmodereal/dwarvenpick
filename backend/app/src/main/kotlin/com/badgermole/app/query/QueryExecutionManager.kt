@@ -46,6 +46,10 @@ class QueryConcurrencyLimitException(
     override val message: String,
 ) : RuntimeException(message)
 
+class QueryExportLimitExceededException(
+    override val message: String,
+) : RuntimeException(message)
+
 private class QueryCanceledException(
     override val message: String,
 ) : RuntimeException(message)
@@ -82,6 +86,27 @@ private data class QueryExecutionRecord(
     @Volatile var executionFuture: Future<*>?,
 )
 
+private data class QueryHistoryRecord(
+    val executionId: String,
+    val actor: String,
+    val datasourceId: String,
+    val credentialProfile: String,
+    val queryHash: String,
+    val queryText: String?,
+    val queryTextRedacted: Boolean,
+    val status: QueryExecutionStatus,
+    val message: String,
+    val errorSummary: String?,
+    val rowCount: Int,
+    val columnCount: Int,
+    val rowLimitReached: Boolean,
+    val maxRowsPerQuery: Int,
+    val maxRuntimeSeconds: Int,
+    val submittedAt: Instant,
+    val startedAt: Instant?,
+    val completedAt: Instant?,
+)
+
 @Service
 class QueryExecutionManager(
     private val datasourcePoolManager: DatasourcePoolManager,
@@ -90,6 +115,7 @@ class QueryExecutionManager(
 ) {
     private val virtualExecutor = Executors.newVirtualThreadPerTaskExecutor()
     private val executions = ConcurrentHashMap<String, QueryExecutionRecord>()
+    private val queryHistory = ConcurrentHashMap<String, QueryHistoryRecord>()
     private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>()
     private val eventCounter = AtomicLong(0)
 
@@ -148,6 +174,7 @@ class QueryExecutionManager(
                     executionFuture = null,
                 )
             executions[executionId] = record
+            syncHistoryFromExecution(record)
             publishEvent(record, "Query queued.")
             auditExecution(
                 record = record,
@@ -298,6 +325,121 @@ class QueryExecutionManager(
         )
     }
 
+    fun prepareCsvExport(
+        actor: String,
+        isSystemAdmin: Boolean,
+        executionId: String,
+        includeHeaders: Boolean,
+        maxExportRows: Int,
+    ): QueryCsvExportPayload {
+        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
+        if (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) {
+            throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${record.status.name}.")
+        }
+        if (record.resultsExpired) {
+            throw QueryResultsExpiredException("Result session expired. Re-run the query.")
+        }
+        if (record.status == QueryExecutionStatus.FAILED) {
+            throw QueryResultsNotReadyException("Query failed and cannot be exported.")
+        }
+        if (record.status == QueryExecutionStatus.CANCELED) {
+            throw QueryResultsNotReadyException("Query was canceled and cannot be exported.")
+        }
+
+        val rowsSnapshot = synchronized(record.rows) { record.rows.toList() }
+        val resolvedMaxExportRows = maxExportRows.coerceAtLeast(1)
+        if (rowsSnapshot.size > resolvedMaxExportRows) {
+            throw QueryExportLimitExceededException(
+                "Export row limit exceeded (${rowsSnapshot.size} rows > $resolvedMaxExportRows allowed).",
+            )
+        }
+
+        record.lastAccessedAt = Instant.now()
+        return QueryCsvExportPayload(
+            executionId = record.executionId,
+            datasourceId = record.datasourceId,
+            includeHeaders = includeHeaders,
+            rowCount = rowsSnapshot.size,
+            columns = record.columns.toList(),
+            rows = rowsSnapshot,
+        )
+    }
+
+    fun listHistory(
+        actor: String,
+        isSystemAdmin: Boolean,
+        datasourceId: String?,
+        status: QueryExecutionStatus?,
+        from: Instant?,
+        to: Instant?,
+        limit: Int,
+        actorFilter: String?,
+    ): List<QueryHistoryEntryResponse> {
+        val resolvedLimit = limit.coerceIn(1, 1000)
+        val normalizedDatasourceId = datasourceId?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedActorFilter = actorFilter?.trim()?.takeIf { it.isNotBlank() }
+
+        return queryHistory.values
+            .asSequence()
+            .filter { historyRecord ->
+                if (isSystemAdmin) {
+                    normalizedActorFilter == null || historyRecord.actor == normalizedActorFilter
+                } else {
+                    historyRecord.actor == actor
+                }
+            }
+            .filter { historyRecord ->
+                normalizedDatasourceId == null || historyRecord.datasourceId == normalizedDatasourceId
+            }
+            .filter { historyRecord ->
+                status == null || historyRecord.status == status
+            }
+            .filter { historyRecord ->
+                from == null || !historyRecord.submittedAt.isBefore(from)
+            }
+            .filter { historyRecord ->
+                to == null || !historyRecord.submittedAt.isAfter(to)
+            }
+            .sortedByDescending { historyRecord -> historyRecord.submittedAt }
+            .take(resolvedLimit)
+            .map { historyRecord -> historyRecord.toResponse() }
+            .toList()
+    }
+
+    fun pruneHistoryOlderThan(cutoff: Instant): Int {
+        val removableExecutionIds =
+            queryHistory.values
+                .asSequence()
+                .filter { historyRecord ->
+                    val referenceTime = historyRecord.completedAt ?: historyRecord.submittedAt
+                    referenceTime.isBefore(cutoff)
+                }
+                .map { historyRecord -> historyRecord.executionId }
+                .toList()
+
+        removableExecutionIds.forEach { executionId ->
+            queryHistory.remove(executionId)
+        }
+
+        return removableExecutionIds.size
+    }
+
+    fun redactHistoryQueryTextOlderThan(cutoff: Instant): Int {
+        var redacted = 0
+        queryHistory.entries.forEach { entry ->
+            val current = entry.value
+            if (!current.queryTextRedacted && current.submittedAt.isBefore(cutoff)) {
+                queryHistory[entry.key] =
+                    current.copy(
+                        queryText = null,
+                        queryTextRedacted = true,
+                    )
+                redacted += 1
+            }
+        }
+        return redacted
+    }
+
     fun subscribeToStatusEvents(
         actor: String,
         isSystemAdmin: Boolean,
@@ -357,6 +499,7 @@ class QueryExecutionManager(
                     record.columns.clear()
                     record.resultsExpired = true
                     record.message = "Result session expired. Re-run the query."
+                    syncHistoryFromExecution(record)
                 }
             }
 
@@ -581,6 +724,7 @@ class QueryExecutionManager(
         record.status = QueryExecutionStatus.RUNNING
         record.startedAt = Instant.now()
         record.message = "Query is running."
+        syncHistoryFromExecution(record)
         publishEvent(record, record.message)
     }
 
@@ -598,6 +742,7 @@ class QueryExecutionManager(
             } else {
                 "Query succeeded."
             }
+        syncHistoryFromExecution(record)
         publishEvent(record, record.message)
     }
 
@@ -613,6 +758,7 @@ class QueryExecutionManager(
         record.errorSummary = message
         record.message = "Query failed."
         record.completedAt = Instant.now()
+        syncHistoryFromExecution(record)
         publishEvent(record, message)
     }
 
@@ -624,6 +770,7 @@ class QueryExecutionManager(
         record.errorSummary = null
         record.message = message
         record.completedAt = Instant.now()
+        syncHistoryFromExecution(record)
         publishEvent(record, message)
     }
 
@@ -794,6 +941,38 @@ class QueryExecutionManager(
         )
     }
 
+    private fun syncHistoryFromExecution(record: QueryExecutionRecord) {
+        val existing = queryHistory[record.executionId]
+        val persistedQueryText =
+            when {
+                existing == null -> record.sql
+                existing.queryTextRedacted -> null
+                else -> existing.queryText ?: record.sql
+            }
+
+        queryHistory[record.executionId] =
+            QueryHistoryRecord(
+                executionId = record.executionId,
+                actor = record.actor,
+                datasourceId = record.datasourceId,
+                credentialProfile = record.credentialProfile,
+                queryHash = record.queryHash,
+                queryText = persistedQueryText,
+                queryTextRedacted = existing?.queryTextRedacted ?: false,
+                status = record.status,
+                message = record.message,
+                errorSummary = record.errorSummary,
+                rowCount = synchronized(record.rows) { record.rows.size },
+                columnCount = record.columns.size,
+                rowLimitReached = record.rowLimitReached,
+                maxRowsPerQuery = record.maxRowsPerQuery,
+                maxRuntimeSeconds = record.maxRuntimeSeconds,
+                submittedAt = record.submittedAt,
+                startedAt = record.startedAt,
+                completedAt = record.completedAt,
+            )
+    }
+
     private fun sha256Hex(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(input.toByteArray(StandardCharsets.UTF_8))
@@ -825,4 +1004,35 @@ class QueryExecutionManager(
             maxRuntimeSeconds = maxRuntimeSeconds,
             credentialProfile = credentialProfile,
         )
+
+    private fun QueryHistoryRecord.toResponse(): QueryHistoryEntryResponse {
+        val durationMs =
+            if (startedAt != null && completedAt != null) {
+                Duration.between(startedAt, completedAt).toMillis().coerceAtLeast(0)
+            } else {
+                null
+            }
+
+        return QueryHistoryEntryResponse(
+            executionId = executionId,
+            actor = actor,
+            datasourceId = datasourceId,
+            status = status.name,
+            message = message,
+            queryHash = queryHash,
+            queryText = queryText,
+            queryTextRedacted = queryTextRedacted,
+            errorSummary = errorSummary,
+            rowCount = rowCount,
+            columnCount = columnCount,
+            rowLimitReached = rowLimitReached,
+            maxRowsPerQuery = maxRowsPerQuery,
+            maxRuntimeSeconds = maxRuntimeSeconds,
+            credentialProfile = credentialProfile,
+            submittedAt = submittedAt.toString(),
+            startedAt = startedAt?.toString(),
+            completedAt = completedAt?.toString(),
+            durationMs = durationMs,
+        )
+    }
 }

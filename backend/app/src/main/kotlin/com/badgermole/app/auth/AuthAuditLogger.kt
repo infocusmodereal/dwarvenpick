@@ -28,6 +28,54 @@ class AuthAuditEventStore {
 
     fun snapshot(): List<AuthAuditEvent> = events.toList()
 
+    fun query(
+        type: String?,
+        actor: String?,
+        outcome: String?,
+        from: Instant?,
+        to: Instant?,
+        limit: Int,
+    ): List<AuthAuditEvent> {
+        val normalizedType = type?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val normalizedActor = actor?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val normalizedOutcome = outcome?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val resolvedLimit = limit.coerceIn(1, 1000)
+
+        return snapshot()
+            .asSequence()
+            .filter { event ->
+                normalizedType == null || event.type.lowercase().contains(normalizedType)
+            }
+            .filter { event ->
+                normalizedActor == null || (event.actor?.lowercase() == normalizedActor)
+            }
+            .filter { event ->
+                normalizedOutcome == null || event.outcome.lowercase() == normalizedOutcome
+            }
+            .filter { event ->
+                from == null || !event.timestamp.isBefore(from)
+            }
+            .filter { event ->
+                to == null || !event.timestamp.isAfter(to)
+            }
+            .sortedByDescending { event -> event.timestamp }
+            .take(resolvedLimit)
+            .toList()
+    }
+
+    fun pruneOlderThan(cutoff: Instant): Int {
+        var removed = 0
+        events.removeIf { event ->
+            if (event.timestamp.isBefore(cutoff)) {
+                removed += 1
+                true
+            } else {
+                false
+            }
+        }
+        return removed
+    }
+
     fun clear() {
         events.clear()
     }

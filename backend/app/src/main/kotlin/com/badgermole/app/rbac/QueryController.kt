@@ -5,15 +5,20 @@ import com.badgermole.app.auth.AuthAuditLogger
 import com.badgermole.app.auth.AuthenticatedPrincipalResolver
 import com.badgermole.app.auth.ErrorResponse
 import com.badgermole.app.datasource.DriverNotAvailableException
+import com.badgermole.app.query.QueryCsvWriter
 import com.badgermole.app.query.QueryConcurrencyLimitException
+import com.badgermole.app.query.QueryExecutionProperties
 import com.badgermole.app.query.QueryExecutionManager
 import com.badgermole.app.query.QueryExecutionForbiddenException
 import com.badgermole.app.query.QueryExecutionNotFoundException
 import com.badgermole.app.query.QueryExecutionRequest
+import com.badgermole.app.query.QueryExecutionStatus
+import com.badgermole.app.query.QueryExportLimitExceededException
 import com.badgermole.app.query.QueryInvalidPageTokenException
 import com.badgermole.app.query.QueryResultsRequest
 import com.badgermole.app.query.QueryResultsExpiredException
 import com.badgermole.app.query.QueryResultsNotReadyException
+import java.time.Instant
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -28,6 +33,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
 @RestController
@@ -38,6 +44,7 @@ class QueryController(
     private val authAuditLogger: AuthAuditLogger,
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
     private val queryExecutionManager: QueryExecutionManager,
+    private val queryExecutionProperties: QueryExecutionProperties,
 ) {
     @PostMapping
     fun executeQuery(
@@ -149,6 +156,123 @@ class QueryController(
         )
     }
 
+    @GetMapping("/{executionId}/export.csv", produces = ["text/csv"])
+    fun exportExecutionResultsCsv(
+        @PathVariable executionId: String,
+        @RequestParam(name = "headers", required = false, defaultValue = "true") headers: Boolean,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<Any> {
+        val principal = authenticatedPrincipalResolver.resolve(authentication)
+        return handleQueryErrors {
+            val status =
+                queryExecutionManager.getExecutionStatus(
+                    actor = principal.username,
+                    isSystemAdmin = principal.roles.contains("SYSTEM_ADMIN"),
+                    executionId = executionId,
+                )
+
+            val allowedToExport = rbacService.canUserExport(principal, status.datasourceId)
+            if (!allowedToExport) {
+                authAuditLogger.log(
+                    AuthAuditEvent(
+                        type = "query.export",
+                        actor = principal.username,
+                        outcome = "denied",
+                        ipAddress = httpServletRequest.remoteAddr,
+                        details =
+                            mapOf(
+                                "executionId" to executionId,
+                                "datasourceId" to status.datasourceId,
+                            ),
+                    ),
+                )
+                return@handleQueryErrors ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ErrorResponse("Datasource export access denied for this query."))
+            }
+
+            val exportPayload =
+                queryExecutionManager.prepareCsvExport(
+                    actor = principal.username,
+                    isSystemAdmin = principal.roles.contains("SYSTEM_ADMIN"),
+                    executionId = executionId,
+                    includeHeaders = headers,
+                    maxExportRows = queryExecutionProperties.maxExportRows,
+                )
+
+            authAuditLogger.log(
+                AuthAuditEvent(
+                    type = "query.export",
+                    actor = principal.username,
+                    outcome = "success",
+                    ipAddress = httpServletRequest.remoteAddr,
+                    details =
+                        mapOf(
+                            "executionId" to executionId,
+                            "datasourceId" to exportPayload.datasourceId,
+                            "rowCount" to exportPayload.rowCount,
+                            "headers" to headers,
+                        ),
+                ),
+            )
+
+            val body =
+                StreamingResponseBody { outputStream ->
+                    QueryCsvWriter.writeCsv(
+                        outputStream = outputStream,
+                        columns = exportPayload.columns,
+                        rows = exportPayload.rows,
+                        includeHeaders = headers,
+                    )
+                }
+
+            ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
+                .body(body as Any)
+        }
+    }
+
+    @GetMapping("/history")
+    fun queryHistory(
+        @RequestParam(required = false) datasourceId: String?,
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) from: String?,
+        @RequestParam(required = false) to: String?,
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) actor: String?,
+        authentication: Authentication,
+    ): ResponseEntity<Any> {
+        val principal = authenticatedPrincipalResolver.resolve(authentication)
+        return try {
+            val fromInstant = parseInstantParam("from", from)
+            val toInstant = parseInstantParam("to", to)
+            if (fromInstant != null && toInstant != null && fromInstant.isAfter(toInstant)) {
+                throw IllegalArgumentException("from must be less than or equal to to.")
+            }
+
+            val statusFilter =
+                status?.trim()?.takeIf { it.isNotBlank() }?.let { value ->
+                    QueryExecutionStatus.valueOf(value.uppercase())
+                }
+
+            val history =
+                queryExecutionManager.listHistory(
+                    actor = principal.username,
+                    isSystemAdmin = principal.roles.contains("SYSTEM_ADMIN"),
+                    datasourceId = datasourceId,
+                    status = statusFilter,
+                    from = fromInstant,
+                    to = toInstant,
+                    limit = limit ?: 100,
+                    actorFilter = actor,
+                )
+            ResponseEntity.ok(history)
+        } catch (ex: IllegalArgumentException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message ?: "Bad request."))
+        }
+    }
+
     private fun handleQueryErrors(action: () -> ResponseEntity<Any>): ResponseEntity<Any> =
         try {
             action()
@@ -162,6 +286,10 @@ class QueryController(
             ResponseEntity.status(HttpStatus.GONE).body(ErrorResponse(ex.message))
         } catch (ex: QueryInvalidPageTokenException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
+        } catch (ex: QueryExportLimitExceededException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
+        } catch (ex: QueryAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse(ex.message ?: "Bad request."),
@@ -203,5 +331,16 @@ class QueryController(
                     ),
             ),
         )
+    }
+
+    private fun parseInstantParam(
+        name: String,
+        value: String?,
+    ): Instant? {
+        val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { Instant.parse(trimmed) }
+            .getOrElse {
+                throw IllegalArgumentException("$name must be an ISO-8601 timestamp.")
+            }
     }
 }

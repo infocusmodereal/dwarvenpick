@@ -97,7 +97,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `local login succeeds and me endpoint returns profile`() {
-        val sessionCookie = loginLocalUser("admin", "Admin123!")
+        val sessionCookie = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(get("/api/auth/me").cookie(sessionCookie))
@@ -157,7 +157,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `admin can reset password and new password works`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(
@@ -248,7 +248,7 @@ class BadgermoleApplicationTests {
                         """
                         {
                           "username": "admin",
-                          "password": "Admin123!"
+                          "password": "Admin1234!"
                         }
                         """.trimIndent(),
                     ),
@@ -259,7 +259,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `logout invalidates user session`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(
@@ -289,7 +289,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `system admin can manage groups and members`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(
@@ -345,7 +345,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `admin can manage datasource access mappings`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(
@@ -610,7 +610,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `system admin can manage datasource catalog and encrypted credential profiles`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(
@@ -690,7 +690,7 @@ class BadgermoleApplicationTests {
             )
             .andExpect(status().isForbidden)
 
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
         mockMvc
             .perform(
                 post("/api/datasources/postgres-core/test-connection")
@@ -713,7 +713,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `vertica connection test returns actionable error when external driver is missing`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(
@@ -740,7 +740,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `system admin can list drivers and reencrypt credential profiles`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(get("/api/admin/drivers").cookie(adminSession))
@@ -762,7 +762,7 @@ class BadgermoleApplicationTests {
 
     @Test
     fun `system admin can update and delete managed datasource entries`() {
-        val adminSession = loginLocalUser("admin", "Admin123!")
+        val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
             .perform(

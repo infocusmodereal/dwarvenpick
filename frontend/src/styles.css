@@ -73,6 +73,19 @@ p {
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 0.6rem;
+    max-height: 320px;
+}
+
+.result-cell-actions {
+    width: 1%;
+}
+
+.result-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.45rem;
+    min-width: 180px;
 }
 
 .result-table {
@@ -250,6 +263,42 @@ textarea:focus {
     margin-top: 1rem;
 }
 
+.history-panel,
+.admin-audit {
+    margin-top: 1rem;
+}
+
+.history-filters {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: end;
+}
+
+.history-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    max-height: 320px;
+}
+
+.history-table {
+    min-width: 840px;
+}
+
+.history-query {
+    white-space: pre-wrap;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    max-width: 460px;
+}
+
+.history-actions {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
 .admin-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -403,5 +452,9 @@ button:disabled {
 
     .results {
         grid-column: 1;
+    }
+
+    .history-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

@@ -52,12 +52,26 @@ RBAC and datasource governance endpoints:
 - `POST http://localhost:8080/api/datasources/{datasourceId}/test-connection` (`SYSTEM_ADMIN` only)
 - `GET http://localhost:8080/api/datasources` (user-scoped datasource visibility)
 - `POST http://localhost:8080/api/queries` (datasource access gate check)
+- `GET http://localhost:8080/api/queries/{executionId}/export.csv?headers=true|false` (RBAC export gate + audit)
+- `GET http://localhost:8080/api/queries/history` (user-scoped history, admin can filter by actor)
+- `GET http://localhost:8080/api/admin/audit-events` (`SYSTEM_ADMIN` only)
 
 Default local development users:
 
-- `admin / Admin123!` (roles: `SYSTEM_ADMIN`, `USER`)
+- `admin / Admin1234!` (roles: `SYSTEM_ADMIN`, `USER`)
 - `analyst / Analyst123!` (role: `USER`)
 - `disabled.user / Disabled123!` (disabled account, login blocked)
+
+Query history and audit retention settings:
+
+- `badgermole.query.history-retention-days` (default `30`)
+- `badgermole.query.audit-retention-days` (default `90`)
+- `badgermole.query.query-text-redaction-days` (default `0`, disabled)
+- `badgermole.query.retention-cleanup-interval-ms` (default `3600000`)
+
+Compliance note:
+
+- Set `query-text-redaction-days` to a non-zero value to remove stored SQL text after the configured age while preserving query hash, status, timing, and datasource metadata for auditability.
 
 ### Frontend
 

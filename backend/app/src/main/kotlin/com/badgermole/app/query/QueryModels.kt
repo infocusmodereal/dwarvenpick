@@ -82,3 +82,34 @@ data class QueryStatusEventResponse(
     val message: String,
     val occurredAt: String,
 )
+
+data class QueryCsvExportPayload(
+    val executionId: String,
+    val datasourceId: String,
+    val includeHeaders: Boolean,
+    val rowCount: Int,
+    val columns: List<QueryResultColumn>,
+    val rows: List<List<String?>>,
+)
+
+data class QueryHistoryEntryResponse(
+    val executionId: String,
+    val actor: String,
+    val datasourceId: String,
+    val status: String,
+    val message: String,
+    val queryHash: String,
+    val queryText: String?,
+    val queryTextRedacted: Boolean,
+    val errorSummary: String?,
+    val rowCount: Int,
+    val columnCount: Int,
+    val rowLimitReached: Boolean,
+    val maxRowsPerQuery: Int,
+    val maxRuntimeSeconds: Int,
+    val credentialProfile: String,
+    val submittedAt: String,
+    val startedAt: String?,
+    val completedAt: String?,
+    val durationMs: Long?,
+)

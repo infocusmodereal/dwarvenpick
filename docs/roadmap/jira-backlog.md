@@ -651,7 +651,7 @@ Applies to every ticket:
 #### OSW-140: Results grid component (paginated + virtualized)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Implement performant result table for large pages.
 - Acceptance Criteria:
@@ -664,7 +664,7 @@ Applies to every ticket:
 #### OSW-141: Copy-to-clipboard actions (cell/row)
 
 - Type: Task
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Add copy cell and copy row as CSV.
 - Acceptance Criteria:
@@ -676,7 +676,7 @@ Applies to every ticket:
 #### OSW-142: Streaming CSV export endpoint (headers optional)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Implement CSV export as a streamed response.
 - Acceptance Criteria:
@@ -690,7 +690,7 @@ Applies to every ticket:
 #### OSW-143: Export options UI
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Modal to export with/without headers (delimiter later).
 - Acceptance Criteria:
@@ -702,7 +702,7 @@ Applies to every ticket:
 #### OSW-144: Export test suite (golden files)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/QA
 - Description: Add tests verifying CSV output correctness.
 - Acceptance Criteria:
@@ -719,7 +719,7 @@ Applies to every ticket:
 #### OSW-160: Persist query execution metadata (history)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Save history for every query with safe error messages and hashes.
 - Acceptance Criteria:
@@ -732,7 +732,7 @@ Applies to every ticket:
 #### OSW-161: User query history UI (filter + rerun)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Add history panel and rerun workflow.
 - Acceptance Criteria:
@@ -744,7 +744,7 @@ Applies to every ticket:
 #### OSW-162: Admin audit log API + UI
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend + Frontend
 - Description: Admin can view audit events with filtering.
 - Acceptance Criteria:
@@ -756,7 +756,7 @@ Applies to every ticket:
 #### OSW-163: Retention policies + pruning job
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Prune history/audit based on configured retention.
 - Acceptance Criteria:
@@ -768,7 +768,7 @@ Applies to every ticket:
 #### OSW-164: Optional query text redaction after N days
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Replace `query_text` with `NULL` or `[REDACTED]` after configured interval while keeping hashes and metadata.
 - Acceptance Criteria:

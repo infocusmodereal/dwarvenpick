@@ -54,17 +54,17 @@
 
 ## Milestone 7: Result UX + Export
 
-- [ ] Virtualized result grid
-- [ ] CSV export options
-- [ ] Streaming export implementation
-- [ ] Export audit events
+- [x] Virtualized result grid
+- [x] CSV export options
+- [x] Streaming export implementation
+- [x] Export audit events
 
 ## Milestone 8: History + Audit UI
 
-- [ ] User query history panel
-- [ ] Admin audit view
-- [ ] Re-run from history
-- [ ] Retention and pruning jobs
+- [x] User query history panel
+- [x] Admin audit view
+- [x] Re-run from history
+- [x] Retention and pruning jobs
 
 ## Milestone 9: Hardening + Ops
 

@@ -27,11 +27,16 @@ badgermole:
     default-page-size: 100
     max-page-size: 500
     max-buffered-rows: 5000
+    max-export-rows: 5000
     max-concurrency-per-user: 5
     result-session-ttl-seconds: 600
     execution-retention-seconds: 3600
     cancel-grace-period-ms: 500
     cleanup-interval-ms: 30000
+    history-retention-days: 30
+    audit-retention-days: 90
+    query-text-redaction-days: 0
+    retention-cleanup-interval-ms: 3600000
   security:
     credentials:
       active-key-id: ${BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID:v1}

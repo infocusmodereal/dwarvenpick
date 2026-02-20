@@ -245,6 +245,22 @@ class RbacService(
         }
     }
 
+    fun canUserExport(principal: AuthenticatedUserPrincipal, datasourceId: String): Boolean {
+        if (!datasourceRegistryService.hasDatasource(datasourceId)) {
+            throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+        }
+
+        if (principal.roles.contains("SYSTEM_ADMIN")) {
+            return true
+        }
+
+        return datasourceAccess.values.any { access ->
+            access.datasourceId == datasourceId &&
+                access.groupId in principal.groups &&
+                access.canExport
+        }
+    }
+
     fun resolveQueryAccessPolicy(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
