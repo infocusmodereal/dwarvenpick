@@ -43,6 +43,15 @@ describe('App shell', () => {
                 });
             }
 
+            if (url.endsWith('/api/auth/methods')) {
+                return new Response(JSON.stringify({ methods: ['local', 'ldap'] }), {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
+
             return new Response('{}', { status: 200 });
         }) as unknown as typeof fetch;
     });
@@ -60,9 +69,10 @@ describe('App shell', () => {
 
         expect(screen.getByText(/badgermole workspace/i)).toBeInTheDocument();
         expect(await screen.findByText(/editor shortcuts/i)).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });
 
-    it('renders login route', () => {
+    it('renders login route', async () => {
         render(
             <MemoryRouter initialEntries={['/login']}>
                 <App />
@@ -70,6 +80,8 @@ describe('App shell', () => {
         );
 
         expect(screen.getByText(/badgermole login/i)).toBeInTheDocument();
+        expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /local/i })).not.toBeInTheDocument();
     });
 
     it('renders datasource management panel for system admin users', async () => {
@@ -155,6 +167,6 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect(await screen.findByText(/datasource management/i)).toBeInTheDocument();
+        expect(await screen.findByRole('tab', { name: /governance/i })).toBeInTheDocument();
     });
 });

@@ -246,6 +246,7 @@ type ReencryptCredentialsResponse = {
 };
 
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
+type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin';
 
 type ManagedDatasourceFormState = {
     name: string;
@@ -491,7 +492,9 @@ export default function WorkspacePage() {
     const [auditFromFilter, setAuditFromFilter] = useState('');
     const [auditToFilter, setAuditToFilter] = useState('');
 
-    const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(null);
+    const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(
+        null
+    );
     const [loadingSchemaBrowser, setLoadingSchemaBrowser] = useState(false);
     const [schemaBrowserError, setSchemaBrowserError] = useState('');
 
@@ -502,8 +505,30 @@ export default function WorkspacePage() {
     const [snippetGroupInput, setSnippetGroupInput] = useState('');
     const [savingSnippet, setSavingSnippet] = useState(false);
     const [snippetError, setSnippetError] = useState('');
+    const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
+    const [launcherDatasourceId, setLauncherDatasourceId] = useState('');
+    const [showSchemaBrowser, setShowSchemaBrowser] = useState(false);
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
+
+    useEffect(() => {
+        if (!isSystemAdmin && (activeSection === 'audit' || activeSection === 'admin')) {
+            setActiveSection('workbench');
+        }
+    }, [activeSection, isSystemAdmin]);
+
+    useEffect(() => {
+        if (visibleDatasources.length === 0) {
+            setLauncherDatasourceId('');
+            return;
+        }
+
+        setLauncherDatasourceId((current) =>
+            visibleDatasources.some((datasource) => datasource.id === current)
+                ? current
+                : visibleDatasources[0].id
+        );
+    }, [visibleDatasources]);
 
     const activeTab = useMemo(
         () => workspaceTabs.find((tab) => tab.id === activeTabId) ?? null,
@@ -555,7 +580,11 @@ export default function WorkspacePage() {
     );
 
     const explainPlanText = useMemo(() => {
-        if (!activeTab || activeTab.lastRunKind !== 'explain' || activeTab.resultRows.length === 0) {
+        if (
+            !activeTab ||
+            activeTab.lastRunKind !== 'explain' ||
+            activeTab.resultRows.length === 0
+        ) {
             return '';
         }
 
@@ -1319,16 +1348,40 @@ export default function WorkspacePage() {
         };
     }, [activeTab?.datasourceId, schemaBrowser]);
 
-    const handleOpenNewTab = useCallback(() => {
-        const datasourceId = visibleDatasources[0]?.id ?? '';
+    const handleOpenNewTabForDatasource = useCallback(
+        (datasourceId: string, initialSql = 'SELECT 1;') => {
+            const fallbackDatasourceId = visibleDatasources[0]?.id ?? '';
+            const resolvedDatasourceId =
+                datasourceId &&
+                visibleDatasources.some((datasource) => datasource.id === datasourceId)
+                    ? datasourceId
+                    : fallbackDatasourceId;
 
-        setWorkspaceTabs((currentTabs) => {
-            const nextIndex = currentTabs.length + 1;
-            const createdTab = buildWorkspaceTab(datasourceId, `Query ${nextIndex}`, 'SELECT 1;');
-            setActiveTabId(createdTab.id);
-            return [...currentTabs, createdTab];
-        });
-    }, [visibleDatasources]);
+            setWorkspaceTabs((currentTabs) => {
+                const nextIndex = currentTabs.length + 1;
+                const createdTab = buildWorkspaceTab(
+                    resolvedDatasourceId,
+                    `Query ${nextIndex}`,
+                    initialSql
+                );
+                setActiveTabId(createdTab.id);
+                return [...currentTabs, createdTab];
+            });
+            setActiveSection('workbench');
+        },
+        [visibleDatasources]
+    );
+
+    const handleOpenNewTab = useCallback(() => {
+        const preferredDatasourceId =
+            activeTab?.datasourceId || launcherDatasourceId || visibleDatasources[0]?.id || '';
+        handleOpenNewTabForDatasource(preferredDatasourceId);
+    }, [
+        activeTab?.datasourceId,
+        handleOpenNewTabForDatasource,
+        launcherDatasourceId,
+        visibleDatasources
+    ]);
 
     const handleRenameTab = useCallback(
         (tabId: string) => {
@@ -1768,8 +1821,9 @@ export default function WorkspacePage() {
             return;
         }
 
-        const explainSql =
-            /^explain\b/i.test(sqlToExplain) ? sqlToExplain : `EXPLAIN ${sqlToExplain}`;
+        const explainSql = /^explain\b/i.test(sqlToExplain)
+            ? sqlToExplain
+            : `EXPLAIN ${sqlToExplain}`;
         void executeSqlForTab(activeTab.id, explainSql, 'explain', 'explain');
     }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab]);
 
@@ -1925,6 +1979,7 @@ export default function WorkspacePage() {
             );
             setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
             setActiveTabId(createdTab.id);
+            setActiveSection('workbench');
 
             if (runImmediately) {
                 window.setTimeout(() => {
@@ -2082,6 +2137,7 @@ export default function WorkspacePage() {
             );
             setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
             setActiveTabId(createdTab.id);
+            setActiveSection('workbench');
 
             if (runImmediately) {
                 window.setTimeout(() => {
@@ -2110,7 +2166,8 @@ export default function WorkspacePage() {
 
                 await loadSnippets();
             } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to delete snippet.';
+                const message =
+                    error instanceof Error ? error.message : 'Failed to delete snippet.';
                 setSnippetError(message);
             }
         },
@@ -2157,6 +2214,7 @@ export default function WorkspacePage() {
             statusMessage: `Datasource context set to ${nextDatasourceId}.`,
             errorMessage: ''
         }));
+        setLauncherDatasourceId(nextDatasourceId);
     };
 
     useEffect(() => {
@@ -2828,36 +2886,150 @@ export default function WorkspacePage() {
                 </section>
             ) : null}
 
-            <div className="workspace-grid">
-                <aside className="panel sidebar">
-                    <h2>Connections</h2>
-                    <p>Datasource visibility is scoped by RBAC and bound per tab.</p>
-                    {visibleDatasources.length === 0 ? (
-                        <p>No datasource access has been granted yet.</p>
-                    ) : (
-                        <ul>
-                            {visibleDatasources.map((datasource) => (
-                                <li key={datasource.id}>
-                                    <button
-                                        type="button"
-                                        className={
-                                            activeTab?.datasourceId === datasource.id
-                                                ? 'datasource-button active'
-                                                : 'datasource-button'
-                                        }
-                                        onClick={() =>
-                                            handleDatasourceChangeForActiveTab(datasource.id)
-                                        }
-                                    >
-                                        {datasource.name} ({datasource.engine})
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    <button type="button" onClick={handleOpenNewTab}>
-                        New Query Tab
+            <section className="panel workspace-navigation">
+                <h2>Workspace Modes</h2>
+                <p>
+                    Keep querying focused. Open history, snippets, and admin tools only when needed.
+                </p>
+                <div className="workspace-mode-tabs" role="tablist" aria-label="Workspace sections">
+                    <button
+                        type="button"
+                        role="tab"
+                        className={
+                            activeSection === 'workbench'
+                                ? 'workspace-mode-tab active'
+                                : 'workspace-mode-tab'
+                        }
+                        aria-selected={activeSection === 'workbench'}
+                        onClick={() => setActiveSection('workbench')}
+                    >
+                        SQL Workbench
                     </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        className={
+                            activeSection === 'history'
+                                ? 'workspace-mode-tab active'
+                                : 'workspace-mode-tab'
+                        }
+                        aria-selected={activeSection === 'history'}
+                        onClick={() => setActiveSection('history')}
+                    >
+                        History
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        className={
+                            activeSection === 'snippets'
+                                ? 'workspace-mode-tab active'
+                                : 'workspace-mode-tab'
+                        }
+                        aria-selected={activeSection === 'snippets'}
+                        onClick={() => setActiveSection('snippets')}
+                    >
+                        Snippets
+                    </button>
+                    {isSystemAdmin ? (
+                        <button
+                            type="button"
+                            role="tab"
+                            className={
+                                activeSection === 'audit'
+                                    ? 'workspace-mode-tab active'
+                                    : 'workspace-mode-tab'
+                            }
+                            aria-selected={activeSection === 'audit'}
+                            onClick={() => setActiveSection('audit')}
+                        >
+                            Audit
+                        </button>
+                    ) : null}
+                    {isSystemAdmin ? (
+                        <button
+                            type="button"
+                            role="tab"
+                            className={
+                                activeSection === 'admin'
+                                    ? 'workspace-mode-tab active'
+                                    : 'workspace-mode-tab'
+                            }
+                            aria-selected={activeSection === 'admin'}
+                            onClick={() => setActiveSection('admin')}
+                        >
+                            Governance
+                        </button>
+                    ) : null}
+                </div>
+            </section>
+
+            <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
+                <aside className="panel sidebar">
+                    <h2>Datasource Launcher</h2>
+                    <p>Choose a datasource, then open a focused SQL editor.</p>
+
+                    <label htmlFor="launcher-datasource">Datasource</label>
+                    <select
+                        id="launcher-datasource"
+                        value={launcherDatasourceId}
+                        onChange={(event) => setLauncherDatasourceId(event.target.value)}
+                        disabled={visibleDatasources.length === 0}
+                    >
+                        <option value="">Select datasource</option>
+                        {visibleDatasources.map((datasource) => (
+                            <option key={`launch-${datasource.id}`} value={datasource.id}>
+                                {datasource.name} ({datasource.engine})
+                            </option>
+                        ))}
+                    </select>
+
+                    <div className="row">
+                        <button
+                            type="button"
+                            onClick={() => handleOpenNewTabForDatasource(launcherDatasourceId)}
+                            disabled={!launcherDatasourceId}
+                        >
+                            Open SQL Editor
+                        </button>
+                        {isSystemAdmin ? (
+                            <button
+                                type="button"
+                                className="chip"
+                                onClick={() => setActiveSection('admin')}
+                            >
+                                Create Datasource
+                            </button>
+                        ) : null}
+                    </div>
+
+                    <section className="datasource-library">
+                        <h3>Available Datasources</h3>
+                        <p>Datasource visibility is scoped by RBAC and can be changed per tab.</p>
+                        {visibleDatasources.length === 0 ? (
+                            <p>No datasource access has been granted yet.</p>
+                        ) : (
+                            <ul>
+                                {visibleDatasources.map((datasource) => (
+                                    <li key={datasource.id}>
+                                        <button
+                                            type="button"
+                                            className={
+                                                activeTab?.datasourceId === datasource.id
+                                                    ? 'datasource-button active'
+                                                    : 'datasource-button'
+                                            }
+                                            onClick={() =>
+                                                handleDatasourceChangeForActiveTab(datasource.id)
+                                            }
+                                        >
+                                            {datasource.name} ({datasource.engine})
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
 
                     <section className="schema-browser">
                         <div className="row">
@@ -2865,118 +3037,160 @@ export default function WorkspacePage() {
                             <button
                                 type="button"
                                 className="chip"
-                                disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
-                                onClick={() =>
-                                    activeTab?.datasourceId
-                                        ? void loadSchemaBrowser(activeTab.datasourceId, true)
-                                        : undefined
-                                }
+                                onClick={() => setShowSchemaBrowser((current) => !current)}
                             >
-                                {loadingSchemaBrowser ? 'Refreshing...' : 'Refresh'}
+                                {showSchemaBrowser ? 'Hide' : 'Show'}
                             </button>
+                            {showSchemaBrowser ? (
+                                <button
+                                    type="button"
+                                    className="chip"
+                                    disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
+                                    onClick={() =>
+                                        activeTab?.datasourceId
+                                            ? void loadSchemaBrowser(activeTab.datasourceId, true)
+                                            : undefined
+                                    }
+                                >
+                                    {loadingSchemaBrowser ? 'Refreshing...' : 'Refresh'}
+                                </button>
+                            ) : null}
                         </div>
-                        {schemaBrowserError ? <p className="form-error">{schemaBrowserError}</p> : null}
-                        {schemaBrowser ? (
-                            <ul className="schema-tree">
-                                {schemaBrowser.schemas.map((schemaEntry) => (
-                                    <li key={`schema-${schemaEntry.schema}`}>
-                                        <button
-                                            type="button"
-                                            className="chip"
-                                            onClick={() => handleInsertTextIntoActiveQuery(schemaEntry.schema)}
-                                        >
-                                            {schemaEntry.schema}
-                                        </button>
-                                        <ul>
-                                            {schemaEntry.tables.map((tableEntry) => (
-                                                <li key={`${schemaEntry.schema}-${tableEntry.table}`}>
-                                                    <button
-                                                        type="button"
-                                                        className="datasource-button"
-                                                        onClick={() =>
-                                                            handleInsertTextIntoActiveQuery(
-                                                                `${schemaEntry.schema}.${tableEntry.table}`
-                                                            )
-                                                        }
-                                                    >
-                                                        {tableEntry.table}
-                                                    </button>
-                                                    <ul>
-                                                        {tableEntry.columns.map((columnEntry) => (
-                                                            <li
-                                                                key={`${schemaEntry.schema}-${tableEntry.table}-${columnEntry.name}`}
+                        {showSchemaBrowser ? (
+                            <>
+                                {schemaBrowserError ? (
+                                    <p className="form-error">{schemaBrowserError}</p>
+                                ) : null}
+                                {schemaBrowser ? (
+                                    <ul className="schema-tree">
+                                        {schemaBrowser.schemas.map((schemaEntry) => (
+                                            <li key={`schema-${schemaEntry.schema}`}>
+                                                <button
+                                                    type="button"
+                                                    className="chip"
+                                                    onClick={() =>
+                                                        handleInsertTextIntoActiveQuery(
+                                                            schemaEntry.schema
+                                                        )
+                                                    }
+                                                >
+                                                    {schemaEntry.schema}
+                                                </button>
+                                                <ul>
+                                                    {schemaEntry.tables.map((tableEntry) => (
+                                                        <li
+                                                            key={`${schemaEntry.schema}-${tableEntry.table}`}
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                className="datasource-button"
+                                                                onClick={() =>
+                                                                    handleInsertTextIntoActiveQuery(
+                                                                        `${schemaEntry.schema}.${tableEntry.table}`
+                                                                    )
+                                                                }
                                                             >
-                                                                <button
-                                                                    type="button"
-                                                                    className="chip"
-                                                                    onClick={() =>
-                                                                        handleInsertTextIntoActiveQuery(
-                                                                            columnEntry.name
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    {columnEntry.name}
-                                                                </button>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </li>
-                                ))}
-                            </ul>
+                                                                {tableEntry.table}
+                                                            </button>
+                                                            <ul>
+                                                                {tableEntry.columns.map(
+                                                                    (columnEntry) => (
+                                                                        <li
+                                                                            key={`${schemaEntry.schema}-${tableEntry.table}-${columnEntry.name}`}
+                                                                        >
+                                                                            <button
+                                                                                type="button"
+                                                                                className="chip"
+                                                                                onClick={() =>
+                                                                                    handleInsertTextIntoActiveQuery(
+                                                                                        columnEntry.name
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                {columnEntry.name}
+                                                                            </button>
+                                                                        </li>
+                                                                    )
+                                                                )}
+                                                            </ul>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p>
+                                        Select a datasource tab to browse schemas and autocomplete
+                                        metadata.
+                                    </p>
+                                )}
+                            </>
                         ) : (
-                            <p>Select a datasource tab to browse schemas and autocomplete metadata.</p>
+                            <p>Open the schema browser when you need table and column context.</p>
                         )}
                     </section>
                 </aside>
 
                 <section className="panel editor">
-                    <h2>SQL Editor</h2>
+                    <h2>SQL Workbench</h2>
                     <p>
                         Signed in as{' '}
                         <strong>{currentUser?.displayName ?? currentUser?.username}</strong>.
                     </p>
                     <div className="editor-tabs" role="tablist" aria-label="SQL tabs">
                         {workspaceTabs.map((tab) => (
-                            <div
+                            <button
                                 key={tab.id}
+                                type="button"
+                                role="tab"
                                 className={
                                     tab.id === activeTabId ? 'editor-tab active' : 'editor-tab'
                                 }
+                                aria-selected={tab.id === activeTabId}
+                                onClick={() => setActiveTabId(tab.id)}
                             >
-                                <button
-                                    type="button"
-                                    role="tab"
-                                    className="tab-select"
-                                    aria-selected={tab.id === activeTabId}
-                                    onClick={() => setActiveTabId(tab.id)}
-                                >
-                                    {tab.title}
-                                    {tab.isExecuting ? ' (Running)' : ''}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="chip"
-                                    onClick={() => handleRenameTab(tab.id)}
-                                >
-                                    Rename
-                                </button>
-                                <button
-                                    type="button"
-                                    className="danger-button tab-close"
-                                    onClick={() => handleCloseTab(tab.id)}
-                                    aria-label={`Close ${tab.title}`}
-                                >
-                                    x
-                                </button>
-                            </div>
+                                {tab.title}
+                                {tab.isExecuting ? ' (Running)' : ''}
+                            </button>
                         ))}
+                    </div>
+                    <div className="row editor-tab-actions">
+                        <button type="button" className="chip" onClick={handleOpenNewTab}>
+                            New Tab
+                        </button>
+                        <button
+                            type="button"
+                            className="chip"
+                            disabled={!activeTab}
+                            onClick={() => {
+                                if (!activeTab) {
+                                    return;
+                                }
+
+                                handleRenameTab(activeTab.id);
+                            }}
+                        >
+                            Rename Active Tab
+                        </button>
+                        <button
+                            type="button"
+                            className="danger-button"
+                            disabled={!activeTab || workspaceTabs.length <= 1}
+                            onClick={() => {
+                                if (!activeTab) {
+                                    return;
+                                }
+
+                                handleCloseTab(activeTab.id);
+                            }}
+                        >
+                            Close Active Tab
+                        </button>
                     </div>
 
                     <div className="editor-context">
-                        <label htmlFor="tab-datasource">Datasource</label>
+                        <label htmlFor="tab-datasource">Execution Datasource</label>
                         <select
                             id="tab-datasource"
                             value={activeTab?.datasourceId ?? ''}
@@ -2993,7 +3207,7 @@ export default function WorkspacePage() {
                             ))}
                         </select>
 
-                        <label htmlFor="tab-schema">Schema (optional)</label>
+                        <label htmlFor="tab-schema">Default Schema (optional)</label>
                         <input
                             id="tab-schema"
                             value={activeTab?.schema ?? ''}
@@ -3265,8 +3479,8 @@ export default function WorkspacePage() {
                             tokens are available.
                         </p>
                     ) : null}
-                    <div className="shortcut-help">
-                        <h3>Editor Shortcuts</h3>
+                    <details className="shortcut-help">
+                        <summary>Editor Shortcuts</summary>
                         <ul>
                             <li>
                                 <kbd>Ctrl/Cmd + Enter</kbd>: Run selection (or full tab if no
@@ -3276,11 +3490,11 @@ export default function WorkspacePage() {
                                 <kbd>Esc</kbd>: Cancel currently running execution
                             </li>
                         </ul>
-                    </div>
+                    </details>
                 </section>
             </div>
 
-            <section className="panel history-panel">
+            <section className="panel history-panel" hidden={activeSection !== 'history'}>
                 <h2>Query History</h2>
                 <p>Review previous executions, filter by status/date, and rerun safely.</p>
                 <div className="history-filters">
@@ -3412,7 +3626,7 @@ export default function WorkspacePage() {
                 </div>
             </section>
 
-            <section className="panel snippets-panel">
+            <section className="panel snippets-panel" hidden={activeSection !== 'snippets'}>
                 <h2>Saved Snippets</h2>
                 <p>Save reusable SQL snippets for yourself or share with one of your groups.</p>
 
@@ -3524,7 +3738,7 @@ export default function WorkspacePage() {
 
             {isSystemAdmin ? (
                 <>
-                    <section className="panel admin-audit">
+                    <section className="panel admin-audit" hidden={activeSection !== 'audit'}>
                         <h2>Admin Audit Events</h2>
                         <p>Filter and inspect security, query, and governance audit trails.</p>
                         <div className="history-filters">
@@ -3627,7 +3841,7 @@ export default function WorkspacePage() {
                         </div>
                     </section>
 
-                    <section className="panel admin-governance">
+                    <section className="panel admin-governance" hidden={activeSection !== 'admin'}>
                         <h2>Admin Governance</h2>
                         <p>
                             Manage RBAC, datasource registry entries, credentials, and connection
@@ -3772,9 +3986,9 @@ export default function WorkspacePage() {
                                         ))}
                                     </select>
 
-                                <div className="row">
-                                    <label className="checkbox-row">
-                                        <input
+                                    <div className="row">
+                                        <label className="checkbox-row">
+                                            <input
                                                 type="checkbox"
                                                 checked={canQuery}
                                                 onChange={(event) =>
@@ -3791,19 +4005,19 @@ export default function WorkspacePage() {
                                                     setCanExport(event.target.checked)
                                                 }
                                             />
-                                        <span>Can Export</span>
-                                    </label>
-                                    <label className="checkbox-row">
-                                        <input
-                                            type="checkbox"
-                                            checked={readOnly}
-                                            onChange={(event) =>
-                                                setReadOnly(event.target.checked)
-                                            }
-                                        />
-                                        <span>Read Only</span>
-                                    </label>
-                                </div>
+                                            <span>Can Export</span>
+                                        </label>
+                                        <label className="checkbox-row">
+                                            <input
+                                                type="checkbox"
+                                                checked={readOnly}
+                                                onChange={(event) =>
+                                                    setReadOnly(event.target.checked)
+                                                }
+                                            />
+                                            <span>Read Only</span>
+                                        </label>
+                                    </div>
 
                                     <label htmlFor="credential-profile">Credential Profile</label>
                                     <select
@@ -3872,14 +4086,14 @@ export default function WorkspacePage() {
                                     <ul>
                                         {adminDatasourceAccess.map((rule) => (
                                             <li key={`${rule.groupId}-${rule.datasourceId}`}>
-                                            <strong>{rule.groupId}</strong> →{' '}
-                                            <strong>{rule.datasourceId}</strong> | query:{' '}
-                                            {rule.canQuery ? 'yes' : 'no'} | export:{' '}
-                                            {rule.canExport ? 'yes' : 'no'} | readOnly:{' '}
-                                            {rule.readOnly ? 'yes' : 'no'} | profile:{' '}
-                                            {rule.credentialProfile}
-                                        </li>
-                                    ))}
+                                                <strong>{rule.groupId}</strong> →{' '}
+                                                <strong>{rule.datasourceId}</strong> | query:{' '}
+                                                {rule.canQuery ? 'yes' : 'no'} | export:{' '}
+                                                {rule.canExport ? 'yes' : 'no'} | readOnly:{' '}
+                                                {rule.readOnly ? 'yes' : 'no'} | profile:{' '}
+                                                {rule.credentialProfile}
+                                            </li>
+                                        ))}
                                     </ul>
                                 </div>
                             </section>

@@ -968,6 +968,18 @@ Applies to every ticket:
   - Access checks enforced.
 - Dependencies: OSW-84, OSW-103
 
+#### OSW-208: Workspace UX declutter + login simplification
+
+- Type: Story
+- Status: done
+- Component: Frontend
+- Description: Reduce cognitive load by simplifying login and moving advanced workspace areas behind tabs.
+- Acceptance Criteria:
+  - Login uses credential-first flow with no visible auth-provider selector.
+  - Workspace defaults to SQL workbench; history/snippets/audit/admin are separate tabs.
+  - Datasource-first launcher supports opening a new editor quickly.
+- Dependencies: OSW-44, OSW-161, OSW-162, OSW-203
+
 #### OSW-207: Optional OIDC SSO (enterprise convenience)
 
 - Type: Story

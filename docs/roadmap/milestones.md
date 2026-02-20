@@ -80,4 +80,5 @@
 - [x] SQL formatting
 - [x] Saved snippets
 - [x] Read-only/read-write modes
+- [x] Streamlined login + workspace mode tabs
 - [ ] OIDC SSO

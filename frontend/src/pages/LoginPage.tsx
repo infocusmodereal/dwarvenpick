@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 
@@ -15,13 +15,14 @@ type ApiErrorResponse = {
 };
 
 type AuthMethodsResponse = {
-    methods: string[];
+    methods?: string[];
 };
+
+const authMethodPriority: AuthMethod[] = ['local', 'ldap'];
 
 export default function LoginPage() {
     const navigate = useNavigate();
-    const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>([]);
-    const [authMethod, setAuthMethod] = useState<AuthMethod | ''>('');
+    const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>(authMethodPriority);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [loadingMethods, setLoadingMethods] = useState(true);
@@ -44,7 +45,7 @@ export default function LoginPage() {
                 }
 
                 const payload = (await response.json()) as AuthMethodsResponse;
-                const methods = payload.methods.filter(
+                const methods = (payload.methods ?? []).filter(
                     (method): method is AuthMethod => method === 'local' || method === 'ldap'
                 );
 
@@ -52,32 +53,21 @@ export default function LoginPage() {
                     return;
                 }
 
-                setSupportedMethods(methods);
-                setAuthMethod((current) => {
-                    if (methods.length === 1) {
-                        return methods[0];
-                    }
-                    if (current && methods.includes(current)) {
-                        return current;
-                    }
-                    return '';
-                });
+                const prioritizedMethods = authMethodPriority.filter((method) =>
+                    methods.includes(method)
+                );
+                setSupportedMethods(prioritizedMethods);
 
-                if (methods.length === 0) {
-                    setErrorMessage(
-                        'No supported authentication methods are enabled. Contact an administrator.'
-                    );
+                if (prioritizedMethods.length === 0) {
+                    setErrorMessage('Sign in is currently unavailable. Contact an administrator.');
                 }
-            } catch (error) {
+            } catch {
                 if (!active) {
                     return;
                 }
 
-                if (error instanceof Error) {
-                    setErrorMessage(error.message);
-                } else {
-                    setErrorMessage('Unable to load supported authentication methods.');
-                }
+                // Fall back to trying local then LDAP when capability discovery is unavailable.
+                setSupportedMethods(authMethodPriority);
             } finally {
                 if (active) {
                     setLoadingMethods(false);
@@ -90,16 +80,6 @@ export default function LoginPage() {
             active = false;
         };
     }, []);
-
-    const authMethodLabel = useMemo(() => {
-        if (authMethod === 'local') {
-            return 'Local';
-        }
-        if (authMethod === 'ldap') {
-            return 'LDAP';
-        }
-        return 'Select Method';
-    }, [authMethod]);
 
     const fetchCsrfToken = async (): Promise<CsrfTokenResponse> => {
         const response = await fetch('/api/auth/csrf', {
@@ -114,11 +94,23 @@ export default function LoginPage() {
         return (await response.json()) as CsrfTokenResponse;
     };
 
+    const sanitizeServerError = (message: string): string => {
+        const normalized = message.toLowerCase();
+        if (
+            normalized.includes('local authentication') ||
+            normalized.includes('ldap authentication')
+        ) {
+            return 'Invalid credentials. Please try again.';
+        }
+
+        return message;
+    };
+
     const readFriendlyError = async (response: Response): Promise<string> => {
         try {
             const payload = (await response.json()) as ApiErrorResponse;
             if (payload.error?.trim()) {
-                return payload.error;
+                return sanitizeServerError(payload.error);
             }
         } catch {
             // Use fallback messages when the response is not valid JSON.
@@ -139,8 +131,8 @@ export default function LoginPage() {
         event.preventDefault();
         setErrorMessage('');
 
-        if (!authMethod) {
-            setErrorMessage('Select an authentication method before signing in.');
+        if (supportedMethods.length === 0) {
+            setErrorMessage('Sign in is currently unavailable. Contact an administrator.');
             return;
         }
 
@@ -148,25 +140,42 @@ export default function LoginPage() {
 
         try {
             const csrfToken = await fetchCsrfToken();
-            const endpoint = authMethod === 'local' ? '/api/auth/login' : '/api/auth/ldap/login';
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    [csrfToken.headerName]: csrfToken.token
-                },
-                body: JSON.stringify({
-                    username,
-                    password
-                })
-            });
+            let lastErrorMessage = 'Invalid credentials. Please try again.';
 
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
+            for (const method of supportedMethods) {
+                const endpoint = method === 'local' ? '/api/auth/login' : '/api/auth/ldap/login';
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password
+                    })
+                });
+
+                if (response.ok) {
+                    navigate('/workspace', { replace: true });
+                    return;
+                }
+
+                const responseMessage = await readFriendlyError(response);
+                if (response.status === 401 || response.status === 403) {
+                    lastErrorMessage = responseMessage;
+                    continue;
+                }
+
+                if (response.status === 400 && responseMessage.toLowerCase().includes('disabled')) {
+                    continue;
+                }
+
+                lastErrorMessage = responseMessage;
             }
 
-            navigate('/workspace', { replace: true });
+            throw new Error(lastErrorMessage);
         } catch (error) {
             if (error instanceof Error) {
                 setErrorMessage(error.message);
@@ -180,33 +189,11 @@ export default function LoginPage() {
 
     return (
         <AppShell title="badgermole Login">
-            <section className="panel">
-                <h2>Authentication</h2>
-                <p>Select Local or LDAP authentication, then sign in to continue.</p>
+            <section className="panel login-card">
+                <h2>Sign In</h2>
+                <p>Enter your username and password to continue.</p>
 
                 <form className="login-form" onSubmit={handleSubmit}>
-                    <div
-                        className="auth-methods"
-                        role="radiogroup"
-                        aria-label="Authentication method"
-                    >
-                        {loadingMethods ? (
-                            <p>Loading authentication methods...</p>
-                        ) : (
-                            supportedMethods.map((method) => (
-                                <button
-                                    key={method}
-                                    type="button"
-                                    className={authMethod === method ? 'chip active' : 'chip'}
-                                    onClick={() => setAuthMethod(method)}
-                                    aria-pressed={authMethod === method}
-                                >
-                                    {method === 'local' ? 'Local' : 'LDAP'}
-                                </button>
-                            ))
-                        )}
-                    </div>
-
                     <label htmlFor="username">Username</label>
                     <input
                         id="username"
@@ -234,16 +221,13 @@ export default function LoginPage() {
                         </p>
                     ) : null}
 
-                    <button
-                        type="submit"
-                        disabled={isSubmitting || loadingMethods || supportedMethods.length === 0}
-                    >
-                        {isSubmitting
-                            ? authMethod === 'local'
-                                ? 'Signing In...'
-                                : 'Authenticating...'
-                            : `Sign In (${authMethodLabel})`}
+                    <button type="submit" disabled={isSubmitting || supportedMethods.length === 0}>
+                        {isSubmitting ? 'Signing In...' : 'Sign In'}
                     </button>
+
+                    {loadingMethods ? (
+                        <p className="muted-id">Checking sign-in services...</p>
+                    ) : null}
                 </form>
             </section>
         </AppShell>
