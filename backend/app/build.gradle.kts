@@ -18,6 +18,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("io.micrometer:micrometer-registry-prometheus")
+    implementation("com.zaxxer:HikariCP")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.ldap:spring-ldap-core")
 

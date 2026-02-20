@@ -362,7 +362,7 @@ Applies to every ticket:
 #### OSW-80: Encrypt datasource credentials at rest
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Security
 - Description: Encrypt stored DB passwords using AES-GCM with a master key provided by env/secret.
 - Acceptance Criteria:
@@ -374,7 +374,7 @@ Applies to every ticket:
 #### OSW-81: Datasource connection testing endpoint
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Admin can test connectivity using selected credential profile and SSL options.
 - Acceptance Criteria:
@@ -386,7 +386,7 @@ Applies to every ticket:
 #### OSW-82: Connection pool manager per datasource/credential
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Create pool manager (HikariCP) keyed by datasource + credential profile.
 - Acceptance Criteria:
@@ -398,7 +398,7 @@ Applies to every ticket:
 #### OSW-83: Driver registry (built-in + external JARs via mounted volume)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend/Platform
 - Description: Support built-in drivers and external driver jars mounted at runtime.
 - Acceptance Criteria:
@@ -411,7 +411,7 @@ Applies to every ticket:
 #### OSW-84: Implement JDBC connectors: Postgres/MySQL/MariaDB
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Ensure basic query execution connectivity works (no editor yet).
 - Acceptance Criteria:
@@ -423,7 +423,7 @@ Applies to every ticket:
 #### OSW-85: Implement JDBC connectors: Trino + StarRocks
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Add driver support and recommended configs.
 - Acceptance Criteria:
@@ -435,7 +435,7 @@ Applies to every ticket:
 #### OSW-86: Vertica driver support via external JAR
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Backend
 - Description: Add Vertica datasource type that requires external driver.
 - Acceptance Criteria:
@@ -448,7 +448,7 @@ Applies to every ticket:
 #### OSW-87: Datasource admin UI (CRUD + test connection)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Admin UI to create/edit datasources, manage credential profiles, and test connections.
 - Acceptance Criteria:

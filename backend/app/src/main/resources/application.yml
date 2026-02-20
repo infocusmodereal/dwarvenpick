@@ -23,6 +23,12 @@ server:
         same-site: lax
 
 badgermole:
+  security:
+    credentials:
+      active-key-id: ${BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID:v1}
+      master-key: ${BADGERMOLE_CREDENTIAL_MASTER_KEY:badgermole-dev-master-key-change-me}
+  drivers:
+    external-dir: ${BADGERMOLE_EXTERNAL_DRIVERS_DIR:/opt/app/drivers}
   auth:
     password-policy:
       min-length: 10

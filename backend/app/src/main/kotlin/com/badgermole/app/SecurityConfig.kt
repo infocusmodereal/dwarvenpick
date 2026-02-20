@@ -52,6 +52,9 @@ class SecurityConfig(
                         "/api/admin/**",
                         "/api/auth/admin/**",
                     ).hasRole("SYSTEM_ADMIN")
+                    .requestMatchers(
+                        "/api/datasources/*/test-connection",
+                    ).hasRole("SYSTEM_ADMIN")
                     .anyRequest().authenticated()
             }
             .headers { headers ->

@@ -8,11 +8,61 @@ type CurrentUserResponse = {
     roles: string[];
 };
 
-type DatasourceResponse = {
+type CatalogDatasourceResponse = {
     id: string;
     name: string;
     engine: string;
     credentialProfiles: string[];
+};
+
+type DatasourceEngine = 'POSTGRESQL' | 'MYSQL' | 'MARIADB' | 'TRINO' | 'STARROCKS' | 'VERTICA';
+
+type TlsMode = 'DISABLE' | 'REQUIRE';
+
+type DriverDescriptorResponse = {
+    driverId: string;
+    engine: DatasourceEngine;
+    driverClass: string;
+    source: string;
+    available: boolean;
+    description: string;
+    message: string;
+};
+
+type PoolSettings = {
+    maximumPoolSize: number;
+    minimumIdle: number;
+    connectionTimeoutMs: number;
+    idleTimeoutMs: number;
+};
+
+type TlsSettings = {
+    mode: TlsMode;
+    verifyServerCertificate: boolean;
+    allowSelfSigned: boolean;
+};
+
+type ManagedCredentialProfileResponse = {
+    profileId: string;
+    username: string;
+    description?: string;
+    encryptionKeyId: string;
+    updatedAt: string;
+};
+
+type ManagedDatasourceResponse = {
+    id: string;
+    name: string;
+    engine: DatasourceEngine;
+    host: string;
+    port: number;
+    database?: string;
+    driverId: string;
+    driverClass: string;
+    pool: PoolSettings;
+    tls: TlsSettings;
+    options: Record<string, string>;
+    credentialProfiles: ManagedCredentialProfileResponse[];
 };
 
 type GroupResponse = {
@@ -40,6 +90,37 @@ type QueryExecutionResponse = {
     message: string;
 };
 
+type TestConnectionResponse = {
+    success: boolean;
+    datasourceId: string;
+    credentialProfile: string;
+    driverId: string;
+    driverClass: string;
+    message: string;
+};
+
+type ReencryptCredentialsResponse = {
+    updatedProfiles: number;
+    activeKeyId: string;
+    message: string;
+};
+
+type ManagedDatasourceFormState = {
+    name: string;
+    engine: DatasourceEngine;
+    host: string;
+    port: string;
+    database: string;
+    driverId: string;
+    maximumPoolSize: string;
+    minimumIdle: string;
+    connectionTimeoutMs: string;
+    idleTimeoutMs: string;
+    tlsMode: TlsMode;
+    verifyServerCertificate: boolean;
+    allowSelfSigned: boolean;
+};
+
 type ApiErrorResponse = {
     error?: string;
 };
@@ -49,11 +130,69 @@ type CsrfTokenResponse = {
     headerName: string;
 };
 
+const defaultPoolSettings: PoolSettings = {
+    maximumPoolSize: 5,
+    minimumIdle: 1,
+    connectionTimeoutMs: 30_000,
+    idleTimeoutMs: 600_000
+};
+
+const defaultTlsSettings: TlsSettings = {
+    mode: 'DISABLE',
+    verifyServerCertificate: true,
+    allowSelfSigned: false
+};
+
+const defaultPortByEngine: Record<DatasourceEngine, number> = {
+    POSTGRESQL: 5432,
+    MYSQL: 3306,
+    MARIADB: 3306,
+    TRINO: 8088,
+    STARROCKS: 9030,
+    VERTICA: 5433
+};
+
+const buildBlankDatasourceForm = (
+    engine: DatasourceEngine = 'POSTGRESQL'
+): ManagedDatasourceFormState => ({
+    name: '',
+    engine,
+    host: 'localhost',
+    port: defaultPortByEngine[engine].toString(),
+    database: '',
+    driverId: '',
+    maximumPoolSize: defaultPoolSettings.maximumPoolSize.toString(),
+    minimumIdle: defaultPoolSettings.minimumIdle.toString(),
+    connectionTimeoutMs: defaultPoolSettings.connectionTimeoutMs.toString(),
+    idleTimeoutMs: defaultPoolSettings.idleTimeoutMs.toString(),
+    tlsMode: defaultTlsSettings.mode,
+    verifyServerCertificate: defaultTlsSettings.verifyServerCertificate,
+    allowSelfSigned: defaultTlsSettings.allowSelfSigned
+});
+
+const buildDatasourceFormFromManaged = (
+    datasource: ManagedDatasourceResponse
+): ManagedDatasourceFormState => ({
+    name: datasource.name,
+    engine: datasource.engine,
+    host: datasource.host,
+    port: datasource.port.toString(),
+    database: datasource.database ?? '',
+    driverId: datasource.driverId,
+    maximumPoolSize: datasource.pool.maximumPoolSize.toString(),
+    minimumIdle: datasource.pool.minimumIdle.toString(),
+    connectionTimeoutMs: datasource.pool.connectionTimeoutMs.toString(),
+    idleTimeoutMs: datasource.pool.idleTimeoutMs.toString(),
+    tlsMode: datasource.tls.mode,
+    verifyServerCertificate: datasource.tls.verifyServerCertificate,
+    allowSelfSigned: datasource.tls.allowSelfSigned
+});
+
 export default function WorkspacePage() {
     const navigate = useNavigate();
 
     const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
-    const [visibleDatasources, setVisibleDatasources] = useState<DatasourceResponse[]>([]);
+    const [visibleDatasources, setVisibleDatasources] = useState<CatalogDatasourceResponse[]>([]);
     const [workspaceError, setWorkspaceError] = useState('');
     const [loadingWorkspace, setLoadingWorkspace] = useState(true);
 
@@ -64,10 +203,16 @@ export default function WorkspacePage() {
     const [runningQuery, setRunningQuery] = useState(false);
 
     const [adminGroups, setAdminGroups] = useState<GroupResponse[]>([]);
-    const [adminDatasourceCatalog, setAdminDatasourceCatalog] = useState<DatasourceResponse[]>([]);
+    const [adminDatasourceCatalog, setAdminDatasourceCatalog] = useState<
+        CatalogDatasourceResponse[]
+    >([]);
     const [adminDatasourceAccess, setAdminDatasourceAccess] = useState<DatasourceAccessResponse[]>(
         []
     );
+    const [adminManagedDatasources, setAdminManagedDatasources] = useState<
+        ManagedDatasourceResponse[]
+    >([]);
+    const [adminDrivers, setAdminDrivers] = useState<DriverDescriptorResponse[]>([]);
     const [adminError, setAdminError] = useState('');
     const [adminSuccess, setAdminSuccess] = useState('');
 
@@ -87,6 +232,29 @@ export default function WorkspacePage() {
     const [maxRuntimeSeconds, setMaxRuntimeSeconds] = useState('');
     const [concurrencyLimit, setConcurrencyLimit] = useState('');
     const [savingAccess, setSavingAccess] = useState(false);
+    const [selectedManagedDatasourceId, setSelectedManagedDatasourceId] = useState('');
+    const [managedDatasourceForm, setManagedDatasourceForm] = useState<ManagedDatasourceFormState>(
+        buildBlankDatasourceForm()
+    );
+    const [savingDatasource, setSavingDatasource] = useState(false);
+    const [deletingDatasource, setDeletingDatasource] = useState(false);
+    const [credentialProfileIdInput, setCredentialProfileIdInput] = useState('');
+    const [credentialUsernameInput, setCredentialUsernameInput] = useState('');
+    const [credentialPasswordInput, setCredentialPasswordInput] = useState('');
+    const [credentialDescriptionInput, setCredentialDescriptionInput] = useState('');
+    const [savingCredentialProfile, setSavingCredentialProfile] = useState(false);
+    const [reencryptingCredentials, setReencryptingCredentials] = useState(false);
+    const [selectedCredentialProfileForTest, setSelectedCredentialProfileForTest] = useState('');
+    const [validationQueryInput, setValidationQueryInput] = useState('SELECT 1');
+    const [overrideTlsForTest, setOverrideTlsForTest] = useState(false);
+    const [testTlsMode, setTestTlsMode] = useState<TlsMode>('DISABLE');
+    const [testVerifyServerCertificate, setTestVerifyServerCertificate] = useState(true);
+    const [testAllowSelfSigned, setTestAllowSelfSigned] = useState(false);
+    const [testingConnection, setTestingConnection] = useState(false);
+    const [testConnectionMessage, setTestConnectionMessage] = useState('');
+    const [testConnectionOutcome, setTestConnectionOutcome] = useState<'success' | 'failure' | ''>(
+        ''
+    );
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
 
@@ -114,20 +282,64 @@ export default function WorkspacePage() {
         [adminDatasourceAccess, selectedDatasourceForAccess, selectedGroupId]
     );
 
+    const selectedManagedDatasource = useMemo(
+        () =>
+            adminManagedDatasources.find(
+                (datasource) => datasource.id === selectedManagedDatasourceId
+            ) ?? null,
+        [adminManagedDatasources, selectedManagedDatasourceId]
+    );
+
+    const driversForFormEngine = useMemo(
+        () => adminDrivers.filter((driver) => driver.engine === managedDatasourceForm.engine),
+        [adminDrivers, managedDatasourceForm.engine]
+    );
+
+    const selectedDriverForForm = useMemo(
+        () =>
+            driversForFormEngine.find(
+                (driver) => driver.driverId === managedDatasourceForm.driverId
+            ) ?? null,
+        [driversForFormEngine, managedDatasourceForm.driverId]
+    );
+
     const loadAdminData = useCallback(async (active = true) => {
-        const [groupsResponse, catalogResponse, accessResponse] = await Promise.all([
+        const [
+            groupsResponse,
+            catalogResponse,
+            accessResponse,
+            managedDatasourceResponse,
+            driversResponse
+        ] = await Promise.all([
             fetch('/api/admin/groups', { method: 'GET', credentials: 'include' }),
             fetch('/api/admin/datasources', { method: 'GET', credentials: 'include' }),
-            fetch('/api/admin/datasource-access', { method: 'GET', credentials: 'include' })
+            fetch('/api/admin/datasource-access', { method: 'GET', credentials: 'include' }),
+            fetch('/api/admin/datasource-management', {
+                method: 'GET',
+                credentials: 'include'
+            }),
+            fetch('/api/admin/drivers', {
+                method: 'GET',
+                credentials: 'include'
+            })
         ]);
 
-        if (!groupsResponse.ok || !catalogResponse.ok || !accessResponse.ok) {
+        if (
+            !groupsResponse.ok ||
+            !catalogResponse.ok ||
+            !accessResponse.ok ||
+            !managedDatasourceResponse.ok ||
+            !driversResponse.ok
+        ) {
             throw new Error('Failed to load admin governance data.');
         }
 
         const groups = (await groupsResponse.json()) as GroupResponse[];
-        const datasourceCatalog = (await catalogResponse.json()) as DatasourceResponse[];
+        const datasourceCatalog = (await catalogResponse.json()) as CatalogDatasourceResponse[];
         const datasourceAccess = (await accessResponse.json()) as DatasourceAccessResponse[];
+        const managedDatasources =
+            (await managedDatasourceResponse.json()) as ManagedDatasourceResponse[];
+        const drivers = (await driversResponse.json()) as DriverDescriptorResponse[];
 
         if (!active) {
             return;
@@ -136,6 +348,8 @@ export default function WorkspacePage() {
         setAdminGroups(groups);
         setAdminDatasourceCatalog(datasourceCatalog);
         setAdminDatasourceAccess(datasourceAccess);
+        setAdminManagedDatasources(managedDatasources);
+        setAdminDrivers(drivers);
         setGroupDescriptionDrafts(
             groups.reduce<Record<string, string>>((drafts, group) => {
                 drafts[group.id] = group.description ?? '';
@@ -143,8 +357,19 @@ export default function WorkspacePage() {
             }, {})
         );
 
-        setSelectedGroupId((current) => current || groups[0]?.id || '');
-        setSelectedDatasourceForAccess((current) => current || datasourceCatalog[0]?.id || '');
+        setSelectedGroupId((current) =>
+            groups.some((group) => group.id === current) ? current : groups[0]?.id || ''
+        );
+        setSelectedDatasourceForAccess((current) =>
+            datasourceCatalog.some((datasource) => datasource.id === current)
+                ? current
+                : datasourceCatalog[0]?.id || ''
+        );
+        setSelectedManagedDatasourceId((current) =>
+            managedDatasources.some((datasource) => datasource.id === current)
+                ? current
+                : managedDatasources[0]?.id || ''
+        );
     }, []);
 
     useEffect(() => {
@@ -179,7 +404,8 @@ export default function WorkspacePage() {
                     throw new Error('Failed to load datasource list.');
                 }
 
-                const datasources = (await datasourceResponse.json()) as DatasourceResponse[];
+                const datasources =
+                    (await datasourceResponse.json()) as CatalogDatasourceResponse[];
                 if (!active) {
                     return;
                 }
@@ -250,6 +476,91 @@ export default function WorkspacePage() {
         setMaxRuntimeSeconds('');
         setConcurrencyLimit('');
     }, [selectedAccessRule, selectedAdminDatasource]);
+
+    useEffect(() => {
+        if (!selectedManagedDatasource) {
+            setManagedDatasourceForm((current) => {
+                const blank = buildBlankDatasourceForm(current.engine);
+                const matchingDrivers = adminDrivers.filter(
+                    (driver) => driver.engine === blank.engine
+                );
+                const defaultDriver =
+                    matchingDrivers.find((driver) => driver.available) ?? matchingDrivers[0];
+
+                return {
+                    ...blank,
+                    driverId: defaultDriver?.driverId ?? ''
+                };
+            });
+            setSelectedCredentialProfileForTest('');
+            setCredentialProfileIdInput('');
+            setCredentialUsernameInput('');
+            setCredentialPasswordInput('');
+            setCredentialDescriptionInput('');
+            setTestConnectionMessage('');
+            setTestConnectionOutcome('');
+            return;
+        }
+
+        setManagedDatasourceForm(buildDatasourceFormFromManaged(selectedManagedDatasource));
+        setSelectedCredentialProfileForTest(
+            selectedManagedDatasource.credentialProfiles[0]?.profileId ?? ''
+        );
+        setValidationQueryInput('SELECT 1');
+        setOverrideTlsForTest(false);
+        setTestTlsMode(selectedManagedDatasource.tls.mode);
+        setTestVerifyServerCertificate(selectedManagedDatasource.tls.verifyServerCertificate);
+        setTestAllowSelfSigned(selectedManagedDatasource.tls.allowSelfSigned);
+        setCredentialProfileIdInput(
+            selectedManagedDatasource.credentialProfiles[0]?.profileId ?? ''
+        );
+        setCredentialUsernameInput(selectedManagedDatasource.credentialProfiles[0]?.username ?? '');
+        setCredentialPasswordInput('');
+        setCredentialDescriptionInput(
+            selectedManagedDatasource.credentialProfiles[0]?.description ?? ''
+        );
+        setTestConnectionMessage('');
+        setTestConnectionOutcome('');
+    }, [adminDrivers, selectedManagedDatasource]);
+
+    useEffect(() => {
+        if (driversForFormEngine.length === 0) {
+            setManagedDatasourceForm((current) => ({ ...current, driverId: '' }));
+            return;
+        }
+
+        setManagedDatasourceForm((current) => {
+            const driverExists = driversForFormEngine.some(
+                (driver) => driver.driverId === current.driverId
+            );
+            if (driverExists) {
+                return current;
+            }
+
+            const preferred = driversForFormEngine.find((driver) => driver.available);
+            return {
+                ...current,
+                driverId: (preferred ?? driversForFormEngine[0]).driverId
+            };
+        });
+    }, [driversForFormEngine]);
+
+    useEffect(() => {
+        if (!selectedManagedDatasource || !credentialProfileIdInput.trim()) {
+            return;
+        }
+
+        const selectedProfile = selectedManagedDatasource.credentialProfiles.find(
+            (profile) => profile.profileId === credentialProfileIdInput.trim()
+        );
+        if (!selectedProfile) {
+            return;
+        }
+
+        setCredentialUsernameInput(selectedProfile.username);
+        setCredentialDescriptionInput(selectedProfile.description ?? '');
+        setCredentialPasswordInput('');
+    }, [credentialProfileIdInput, selectedManagedDatasource]);
 
     const readFriendlyError = async (response: Response): Promise<string> => {
         try {
@@ -524,6 +835,355 @@ export default function WorkspacePage() {
         }
     };
 
+    const parsePositiveInteger = (value: string, fieldName: string): number => {
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed < 1) {
+            throw new Error(`${fieldName} must be a positive whole number.`);
+        }
+        return parsed;
+    };
+
+    const handlePrepareNewDatasource = () => {
+        const defaultEngine = managedDatasourceForm.engine;
+        const empty = buildBlankDatasourceForm(defaultEngine);
+        const candidates = adminDrivers.filter((driver) => driver.engine === defaultEngine);
+        const preferredDriver = candidates.find((driver) => driver.available) ?? candidates[0];
+
+        setSelectedManagedDatasourceId('');
+        setManagedDatasourceForm({
+            ...empty,
+            driverId: preferredDriver?.driverId ?? ''
+        });
+        setCredentialProfileIdInput('');
+        setCredentialUsernameInput('');
+        setCredentialPasswordInput('');
+        setCredentialDescriptionInput('');
+        setSelectedCredentialProfileForTest('');
+        setTestConnectionMessage('');
+        setTestConnectionOutcome('');
+        setAdminError('');
+        setAdminSuccess('');
+    };
+
+    const handleSaveManagedDatasource = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setAdminError('');
+        setAdminSuccess('');
+
+        if (!managedDatasourceForm.name.trim()) {
+            setAdminError('Datasource name is required.');
+            return;
+        }
+
+        if (!managedDatasourceForm.host.trim()) {
+            setAdminError('Datasource host is required.');
+            return;
+        }
+
+        if (!managedDatasourceForm.driverId.trim()) {
+            setAdminError('Select a JDBC driver.');
+            return;
+        }
+
+        setSavingDatasource(true);
+        try {
+            const port = parsePositiveInteger(managedDatasourceForm.port, 'Port');
+            if (port > 65_535) {
+                throw new Error('Port must be between 1 and 65535.');
+            }
+
+            const poolPayload = {
+                maximumPoolSize: parsePositiveInteger(
+                    managedDatasourceForm.maximumPoolSize,
+                    'Maximum pool size'
+                ),
+                minimumIdle: parsePositiveInteger(
+                    managedDatasourceForm.minimumIdle,
+                    'Minimum idle'
+                ),
+                connectionTimeoutMs: parsePositiveInteger(
+                    managedDatasourceForm.connectionTimeoutMs,
+                    'Connection timeout'
+                ),
+                idleTimeoutMs: parsePositiveInteger(
+                    managedDatasourceForm.idleTimeoutMs,
+                    'Idle timeout'
+                )
+            };
+
+            const commonPayload = {
+                name: managedDatasourceForm.name.trim(),
+                host: managedDatasourceForm.host.trim(),
+                port,
+                database: managedDatasourceForm.database.trim()
+                    ? managedDatasourceForm.database.trim()
+                    : null,
+                driverId: managedDatasourceForm.driverId,
+                pool: poolPayload,
+                tls: {
+                    mode: managedDatasourceForm.tlsMode,
+                    verifyServerCertificate: managedDatasourceForm.verifyServerCertificate,
+                    allowSelfSigned: managedDatasourceForm.allowSelfSigned
+                }
+            };
+
+            const payload = selectedManagedDatasource
+                ? commonPayload
+                : {
+                      ...commonPayload,
+                      engine: managedDatasourceForm.engine
+                  };
+
+            const csrfToken = await fetchCsrfToken();
+            const endpoint = selectedManagedDatasource
+                ? `/api/admin/datasource-management/${selectedManagedDatasource.id}`
+                : '/api/admin/datasource-management';
+            const method = selectedManagedDatasource ? 'PATCH' : 'POST';
+
+            const response = await fetch(endpoint, {
+                method,
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    [csrfToken.headerName]: csrfToken.token
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const savedDatasource = (await response.json()) as ManagedDatasourceResponse;
+            setSelectedManagedDatasourceId(savedDatasource.id);
+            await loadAdminData();
+            setAdminSuccess(
+                selectedManagedDatasource
+                    ? `Datasource ${savedDatasource.id} updated.`
+                    : `Datasource ${savedDatasource.id} created.`
+            );
+        } catch (error) {
+            if (error instanceof Error) {
+                setAdminError(error.message);
+            } else {
+                setAdminError('Failed to save datasource.');
+            }
+        } finally {
+            setSavingDatasource(false);
+        }
+    };
+
+    const handleDeleteManagedDatasource = async () => {
+        if (!selectedManagedDatasource) {
+            setAdminError('Select a datasource to delete.');
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Delete datasource "${selectedManagedDatasource.name}" (${selectedManagedDatasource.id})?`
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        setAdminError('');
+        setAdminSuccess('');
+        setDeletingDatasource(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch(
+                `/api/admin/datasource-management/${selectedManagedDatasource.id}`,
+                {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            setSelectedManagedDatasourceId('');
+            await loadAdminData();
+            setAdminSuccess(`Datasource ${selectedManagedDatasource.id} deleted.`);
+        } catch (error) {
+            if (error instanceof Error) {
+                setAdminError(error.message);
+            } else {
+                setAdminError('Failed to delete datasource.');
+            }
+        } finally {
+            setDeletingDatasource(false);
+        }
+    };
+
+    const handleSaveCredentialProfile = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setAdminError('');
+        setAdminSuccess('');
+
+        if (!selectedManagedDatasource) {
+            setAdminError('Select a datasource first.');
+            return;
+        }
+
+        if (!credentialProfileIdInput.trim()) {
+            setAdminError('Credential profile ID is required.');
+            return;
+        }
+
+        if (!credentialUsernameInput.trim()) {
+            setAdminError('Credential username is required.');
+            return;
+        }
+
+        if (!credentialPasswordInput.trim()) {
+            setAdminError('Credential password is required.');
+            return;
+        }
+
+        setSavingCredentialProfile(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const profileId = credentialProfileIdInput.trim();
+            const response = await fetch(
+                `/api/admin/datasource-management/${selectedManagedDatasource.id}/credentials/${profileId}`,
+                {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({
+                        username: credentialUsernameInput.trim(),
+                        password: credentialPasswordInput,
+                        description: credentialDescriptionInput.trim()
+                            ? credentialDescriptionInput.trim()
+                            : null
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            setSelectedManagedDatasourceId(selectedManagedDatasource.id);
+            setSelectedCredentialProfileForTest(profileId);
+            setCredentialPasswordInput('');
+            await loadAdminData();
+            setAdminSuccess(`Credential profile ${profileId} saved.`);
+        } catch (error) {
+            if (error instanceof Error) {
+                setAdminError(error.message);
+            } else {
+                setAdminError('Failed to save credential profile.');
+            }
+        } finally {
+            setSavingCredentialProfile(false);
+        }
+    };
+
+    const handleReencryptCredentials = async () => {
+        setAdminError('');
+        setAdminSuccess('');
+        setReencryptingCredentials(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch('/api/admin/datasource-management/credentials/reencrypt', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    [csrfToken.headerName]: csrfToken.token
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as ReencryptCredentialsResponse;
+            await loadAdminData();
+            setAdminSuccess(
+                `Re-encrypted ${payload.updatedProfiles} credential profile(s) with key ${payload.activeKeyId}.`
+            );
+        } catch (error) {
+            if (error instanceof Error) {
+                setAdminError(error.message);
+            } else {
+                setAdminError('Failed to rotate credential encryption key.');
+            }
+        } finally {
+            setReencryptingCredentials(false);
+        }
+    };
+
+    const handleTestConnection = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setAdminError('');
+        setTestConnectionMessage('');
+        setTestConnectionOutcome('');
+
+        if (!selectedManagedDatasource) {
+            setAdminError('Select a datasource first.');
+            return;
+        }
+
+        if (!selectedCredentialProfileForTest.trim()) {
+            setAdminError('Select a credential profile for connection testing.');
+            return;
+        }
+
+        setTestingConnection(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const body: Record<string, unknown> = {
+                credentialProfile: selectedCredentialProfileForTest,
+                validationQuery: validationQueryInput.trim() || 'SELECT 1'
+            };
+
+            if (overrideTlsForTest) {
+                body.tls = {
+                    mode: testTlsMode,
+                    verifyServerCertificate: testVerifyServerCertificate,
+                    allowSelfSigned: testAllowSelfSigned
+                };
+            }
+
+            const response = await fetch(
+                `/api/datasources/${selectedManagedDatasource.id}/test-connection`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify(body)
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as TestConnectionResponse;
+            setTestConnectionOutcome(payload.success ? 'success' : 'failure');
+            setTestConnectionMessage(payload.message);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Connection test failed unexpectedly.';
+            setTestConnectionOutcome('failure');
+            setTestConnectionMessage(message);
+        } finally {
+            setTestingConnection(false);
+        }
+    };
+
     if (loadingWorkspace) {
         return (
             <AppShell title="badgermole Workspace">
@@ -619,7 +1279,9 @@ export default function WorkspacePage() {
             {isSystemAdmin ? (
                 <section className="panel admin-governance">
                     <h2>Admin Governance</h2>
-                    <p>Manage RBAC groups and datasource access mappings.</p>
+                    <p>
+                        Manage RBAC, datasource registry entries, credentials, and connection tests.
+                    </p>
 
                     {adminError ? (
                         <p className="form-error" role="alert">
@@ -848,6 +1510,517 @@ export default function WorkspacePage() {
                                     ))}
                                 </ul>
                             </div>
+                        </section>
+
+                        <section className="panel datasource-admin">
+                            <h3>Datasource Management</h3>
+                            <div className="row">
+                                <button type="button" onClick={handlePrepareNewDatasource}>
+                                    New Datasource
+                                </button>
+                                <button
+                                    type="button"
+                                    className="danger-button"
+                                    disabled={deletingDatasource || !selectedManagedDatasource}
+                                    onClick={() => void handleDeleteManagedDatasource()}
+                                >
+                                    {deletingDatasource ? 'Deleting...' : 'Delete Datasource'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={reencryptingCredentials}
+                                    onClick={() => void handleReencryptCredentials()}
+                                >
+                                    {reencryptingCredentials
+                                        ? 'Re-encrypting...'
+                                        : 'Re-encrypt Credentials'}
+                                </button>
+                            </div>
+
+                            <label htmlFor="managed-datasource-select">Select Datasource</label>
+                            <select
+                                id="managed-datasource-select"
+                                value={selectedManagedDatasourceId}
+                                onChange={(event) => {
+                                    const nextDatasourceId = event.target.value;
+                                    if (!nextDatasourceId) {
+                                        handlePrepareNewDatasource();
+                                        return;
+                                    }
+
+                                    setSelectedManagedDatasourceId(nextDatasourceId);
+                                    setAdminError('');
+                                    setAdminSuccess('');
+                                }}
+                            >
+                                <option value="">Create new datasource</option>
+                                {adminManagedDatasources.map((datasource) => (
+                                    <option key={datasource.id} value={datasource.id}>
+                                        {datasource.name} ({datasource.engine})
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="muted-id">
+                                {selectedManagedDatasource
+                                    ? `Editing ${selectedManagedDatasource.id}`
+                                    : 'Creating a new datasource entry.'}
+                            </p>
+
+                            <form className="stack-form" onSubmit={handleSaveManagedDatasource}>
+                                <label htmlFor="managed-name">Name</label>
+                                <input
+                                    id="managed-name"
+                                    value={managedDatasourceForm.name}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            name: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <label htmlFor="managed-engine">Engine</label>
+                                <select
+                                    id="managed-engine"
+                                    value={managedDatasourceForm.engine}
+                                    disabled={Boolean(selectedManagedDatasource)}
+                                    onChange={(event) => {
+                                        const nextEngine = event.target.value as DatasourceEngine;
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            engine: nextEngine,
+                                            port: defaultPortByEngine[nextEngine].toString()
+                                        }));
+                                    }}
+                                >
+                                    <option value="POSTGRESQL">PostgreSQL</option>
+                                    <option value="MYSQL">MySQL</option>
+                                    <option value="MARIADB">MariaDB</option>
+                                    <option value="TRINO">Trino</option>
+                                    <option value="STARROCKS">StarRocks</option>
+                                    <option value="VERTICA">Vertica</option>
+                                </select>
+
+                                <label htmlFor="managed-host">Host</label>
+                                <input
+                                    id="managed-host"
+                                    value={managedDatasourceForm.host}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            host: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <label htmlFor="managed-port">Port</label>
+                                <input
+                                    id="managed-port"
+                                    type="number"
+                                    min={1}
+                                    max={65535}
+                                    value={managedDatasourceForm.port}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            port: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <label htmlFor="managed-database">Database (optional)</label>
+                                <input
+                                    id="managed-database"
+                                    value={managedDatasourceForm.database}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            database: event.target.value
+                                        }))
+                                    }
+                                    placeholder="schema or database"
+                                />
+
+                                <label htmlFor="managed-driver">Driver</label>
+                                <select
+                                    id="managed-driver"
+                                    value={managedDatasourceForm.driverId}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            driverId: event.target.value
+                                        }))
+                                    }
+                                >
+                                    <option value="">Select driver</option>
+                                    {driversForFormEngine.map((driver) => (
+                                        <option key={driver.driverId} value={driver.driverId}>
+                                            {driver.driverId} ({driver.source}){' '}
+                                            {driver.available ? '' : '[unavailable]'}
+                                        </option>
+                                    ))}
+                                </select>
+                                {selectedDriverForForm ? (
+                                    <p
+                                        className={
+                                            selectedDriverForForm.available
+                                                ? 'form-success'
+                                                : 'form-error'
+                                        }
+                                    >
+                                        {selectedDriverForForm.description}.{' '}
+                                        {selectedDriverForForm.message}
+                                    </p>
+                                ) : null}
+
+                                <h4>Pool Settings</h4>
+                                <label htmlFor="managed-pool-max">Maximum Pool Size</label>
+                                <input
+                                    id="managed-pool-max"
+                                    type="number"
+                                    min={1}
+                                    value={managedDatasourceForm.maximumPoolSize}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            maximumPoolSize: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <label htmlFor="managed-pool-min">Minimum Idle</label>
+                                <input
+                                    id="managed-pool-min"
+                                    type="number"
+                                    min={1}
+                                    value={managedDatasourceForm.minimumIdle}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            minimumIdle: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <label htmlFor="managed-pool-connection-timeout">
+                                    Connection Timeout (ms)
+                                </label>
+                                <input
+                                    id="managed-pool-connection-timeout"
+                                    type="number"
+                                    min={1}
+                                    value={managedDatasourceForm.connectionTimeoutMs}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            connectionTimeoutMs: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <label htmlFor="managed-pool-idle-timeout">Idle Timeout (ms)</label>
+                                <input
+                                    id="managed-pool-idle-timeout"
+                                    type="number"
+                                    min={1}
+                                    value={managedDatasourceForm.idleTimeoutMs}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            idleTimeoutMs: event.target.value
+                                        }))
+                                    }
+                                    required
+                                />
+
+                                <h4>TLS Settings</h4>
+                                <label htmlFor="managed-tls-mode">TLS Mode</label>
+                                <select
+                                    id="managed-tls-mode"
+                                    value={managedDatasourceForm.tlsMode}
+                                    onChange={(event) =>
+                                        setManagedDatasourceForm((current) => ({
+                                            ...current,
+                                            tlsMode: event.target.value as TlsMode
+                                        }))
+                                    }
+                                >
+                                    <option value="DISABLE">Disable</option>
+                                    <option value="REQUIRE">Require</option>
+                                </select>
+                                <label className="checkbox-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={managedDatasourceForm.verifyServerCertificate}
+                                        onChange={(event) =>
+                                            setManagedDatasourceForm((current) => ({
+                                                ...current,
+                                                verifyServerCertificate: event.target.checked
+                                            }))
+                                        }
+                                    />
+                                    <span>Verify server certificate</span>
+                                </label>
+                                <label className="checkbox-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={managedDatasourceForm.allowSelfSigned}
+                                        onChange={(event) =>
+                                            setManagedDatasourceForm((current) => ({
+                                                ...current,
+                                                allowSelfSigned: event.target.checked
+                                            }))
+                                        }
+                                    />
+                                    <span>Allow self-signed certificates</span>
+                                </label>
+
+                                <button type="submit" disabled={savingDatasource}>
+                                    {savingDatasource
+                                        ? 'Saving...'
+                                        : selectedManagedDatasource
+                                          ? 'Update Datasource'
+                                          : 'Create Datasource'}
+                                </button>
+                            </form>
+
+                            {selectedManagedDatasource ? (
+                                <div className="managed-datasource-actions">
+                                    <h4>Credential Profiles</h4>
+                                    <ul className="credentials-list">
+                                        {selectedManagedDatasource.credentialProfiles.map(
+                                            (profile) => (
+                                                <li
+                                                    key={`${selectedManagedDatasource.id}-${profile.profileId}`}
+                                                >
+                                                    <strong>{profile.profileId}</strong> (
+                                                    {profile.username}) key:{' '}
+                                                    {profile.encryptionKeyId}
+                                                </li>
+                                            )
+                                        )}
+                                    </ul>
+
+                                    <form
+                                        className="stack-form"
+                                        onSubmit={handleSaveCredentialProfile}
+                                    >
+                                        <label htmlFor="credential-existing">
+                                            Existing Profile
+                                        </label>
+                                        <select
+                                            id="credential-existing"
+                                            value={
+                                                selectedManagedDatasource.credentialProfiles.some(
+                                                    (profile) =>
+                                                        profile.profileId ===
+                                                        credentialProfileIdInput.trim()
+                                                )
+                                                    ? credentialProfileIdInput
+                                                    : ''
+                                            }
+                                            onChange={(event) => {
+                                                const selectedProfileId = event.target.value;
+                                                if (!selectedProfileId) {
+                                                    return;
+                                                }
+
+                                                setCredentialProfileIdInput(selectedProfileId);
+                                                setSelectedCredentialProfileForTest(
+                                                    selectedProfileId
+                                                );
+                                            }}
+                                        >
+                                            <option value="">Select existing profile</option>
+                                            {selectedManagedDatasource.credentialProfiles.map(
+                                                (profile) => (
+                                                    <option
+                                                        key={profile.profileId}
+                                                        value={profile.profileId}
+                                                    >
+                                                        {profile.profileId}
+                                                    </option>
+                                                )
+                                            )}
+                                        </select>
+
+                                        <label htmlFor="credential-profile-id">Profile ID</label>
+                                        <input
+                                            id="credential-profile-id"
+                                            value={credentialProfileIdInput}
+                                            onChange={(event) =>
+                                                setCredentialProfileIdInput(event.target.value)
+                                            }
+                                            placeholder="admin-ro"
+                                            required
+                                        />
+
+                                        <label htmlFor="credential-username">Username</label>
+                                        <input
+                                            id="credential-username"
+                                            value={credentialUsernameInput}
+                                            onChange={(event) =>
+                                                setCredentialUsernameInput(event.target.value)
+                                            }
+                                            required
+                                        />
+
+                                        <label htmlFor="credential-password">Password</label>
+                                        <input
+                                            id="credential-password"
+                                            type="password"
+                                            value={credentialPasswordInput}
+                                            onChange={(event) =>
+                                                setCredentialPasswordInput(event.target.value)
+                                            }
+                                            required
+                                        />
+
+                                        <label htmlFor="credential-description">Description</label>
+                                        <input
+                                            id="credential-description"
+                                            value={credentialDescriptionInput}
+                                            onChange={(event) =>
+                                                setCredentialDescriptionInput(event.target.value)
+                                            }
+                                            placeholder="Readonly profile for analysts"
+                                        />
+
+                                        <button type="submit" disabled={savingCredentialProfile}>
+                                            {savingCredentialProfile
+                                                ? 'Saving...'
+                                                : 'Save Credential Profile'}
+                                        </button>
+                                    </form>
+
+                                    <h4>Test Connection</h4>
+                                    <form className="stack-form" onSubmit={handleTestConnection}>
+                                        <label htmlFor="test-credential-profile">
+                                            Credential Profile
+                                        </label>
+                                        <select
+                                            id="test-credential-profile"
+                                            value={selectedCredentialProfileForTest}
+                                            onChange={(event) =>
+                                                setSelectedCredentialProfileForTest(
+                                                    event.target.value
+                                                )
+                                            }
+                                        >
+                                            <option value="">Select credential profile</option>
+                                            {selectedManagedDatasource.credentialProfiles.map(
+                                                (profile) => (
+                                                    <option
+                                                        key={profile.profileId}
+                                                        value={profile.profileId}
+                                                    >
+                                                        {profile.profileId}
+                                                    </option>
+                                                )
+                                            )}
+                                        </select>
+
+                                        <label htmlFor="test-validation-query">
+                                            Validation Query
+                                        </label>
+                                        <input
+                                            id="test-validation-query"
+                                            value={validationQueryInput}
+                                            onChange={(event) =>
+                                                setValidationQueryInput(event.target.value)
+                                            }
+                                            placeholder="SELECT 1"
+                                        />
+
+                                        <label className="checkbox-row">
+                                            <input
+                                                type="checkbox"
+                                                checked={overrideTlsForTest}
+                                                onChange={(event) =>
+                                                    setOverrideTlsForTest(event.target.checked)
+                                                }
+                                            />
+                                            <span>
+                                                Override datasource TLS settings for this test
+                                            </span>
+                                        </label>
+
+                                        {overrideTlsForTest ? (
+                                            <>
+                                                <label htmlFor="test-tls-mode">TLS Mode</label>
+                                                <select
+                                                    id="test-tls-mode"
+                                                    value={testTlsMode}
+                                                    onChange={(event) =>
+                                                        setTestTlsMode(
+                                                            event.target.value as TlsMode
+                                                        )
+                                                    }
+                                                >
+                                                    <option value="DISABLE">Disable</option>
+                                                    <option value="REQUIRE">Require</option>
+                                                </select>
+
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={testVerifyServerCertificate}
+                                                        onChange={(event) =>
+                                                            setTestVerifyServerCertificate(
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Verify server certificate</span>
+                                                </label>
+
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={testAllowSelfSigned}
+                                                        onChange={(event) =>
+                                                            setTestAllowSelfSigned(
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Allow self-signed certificates</span>
+                                                </label>
+                                            </>
+                                        ) : null}
+
+                                        <button type="submit" disabled={testingConnection}>
+                                            {testingConnection
+                                                ? 'Testing...'
+                                                : 'Run Test Connection'}
+                                        </button>
+                                    </form>
+
+                                    {testConnectionMessage ? (
+                                        <p
+                                            className={
+                                                testConnectionOutcome === 'success'
+                                                    ? 'form-success'
+                                                    : 'form-error'
+                                            }
+                                            role="alert"
+                                        >
+                                            {testConnectionMessage}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <p className="muted-id">
+                                    Save a datasource first to manage credential profiles and run
+                                    connection tests.
+                                </p>
+                            )}
                         </section>
                     </div>
                 </section>

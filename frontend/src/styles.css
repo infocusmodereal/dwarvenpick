@@ -139,7 +139,9 @@ label {
     color: var(--text);
 }
 
-input {
+input,
+select,
+textarea {
     border: 1px solid var(--border);
     border-radius: 0.55rem;
     padding: 0.55rem 0.7rem;
@@ -148,7 +150,9 @@ input {
     background: #fff;
 }
 
-input:focus {
+input:focus,
+select:focus,
+textarea:focus {
     outline: 2px solid rgba(10, 108, 116, 0.2);
     border-color: var(--accent);
 }
@@ -225,6 +229,25 @@ input:focus {
 }
 
 .mapping-list ul {
+    margin: 0;
+    padding-left: 1rem;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.datasource-admin {
+    align-content: start;
+}
+
+.managed-datasource-actions {
+    border-top: 1px solid var(--border);
+    margin-top: 0.5rem;
+    padding-top: 0.8rem;
+    display: grid;
+    gap: 0.7rem;
+}
+
+.credentials-list {
     margin: 0;
     padding-left: 1rem;
     display: grid;

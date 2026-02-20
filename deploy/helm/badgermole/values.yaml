@@ -31,3 +31,17 @@ ingress:
 env:
   SPRING_PROFILES_ACTIVE: prod
   SERVER_PORT: "8080"
+  BADGERMOLE_EXTERNAL_DRIVERS_DIR: /opt/app/drivers
+
+credentials:
+  activeKeyId: v1
+  masterKey:
+    existingSecret: ""
+    key: master-key
+    value: ""
+
+drivers:
+  external:
+    enabled: false
+    mountPath: /opt/app/drivers
+    existingClaim: ""

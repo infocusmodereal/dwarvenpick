@@ -4,6 +4,8 @@ import com.badgermole.app.auth.AuthenticatedUserPrincipal
 import com.badgermole.app.auth.DisabledUserException
 import com.badgermole.app.auth.UserAccountService
 import com.badgermole.app.auth.UserNotFoundException
+import com.badgermole.app.datasource.CatalogDatasourceEntry
+import com.badgermole.app.datasource.DatasourceRegistryService
 import jakarta.annotation.PostConstruct
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -24,13 +26,6 @@ private data class GroupRecord(
     val members: MutableSet<String>,
 )
 
-private data class DatasourceRecord(
-    val id: String,
-    val name: String,
-    val engine: String,
-    val credentialProfiles: Set<String>,
-)
-
 private data class DatasourceAccessRecord(
     val groupId: String,
     val datasourceId: String,
@@ -45,9 +40,9 @@ private data class DatasourceAccessRecord(
 @Service
 class RbacService(
     private val userAccountService: UserAccountService,
+    private val datasourceRegistryService: DatasourceRegistryService,
 ) {
     private val groups = ConcurrentHashMap<String, GroupRecord>()
-    private val datasources = ConcurrentHashMap<String, DatasourceRecord>()
     private val datasourceAccess = ConcurrentHashMap<String, DatasourceAccessRecord>()
 
     @PostConstruct
@@ -58,17 +53,16 @@ class RbacService(
     @Synchronized
     fun resetState() {
         groups.clear()
-        datasources.clear()
         datasourceAccess.clear()
+        datasourceRegistryService.resetState()
         seedGroups()
-        seedDatasources()
         seedAccessMappings()
     }
 
     fun listGroups(): List<GroupResponse> =
         groups.values
             .sortedBy { it.name.lowercase(Locale.getDefault()) }
-            .map { it.toResponse() }
+            .map { group -> group.toResponse() }
 
     fun createGroup(request: CreateGroupRequest): GroupResponse {
         val groupId = slugify(request.name)
@@ -141,15 +135,13 @@ class RbacService(
     }
 
     fun listDatasourceCatalog(): List<DatasourceResponse> =
-        datasources.values
-            .sortedBy { it.name.lowercase(Locale.getDefault()) }
-            .map { datasource -> datasource.toResponse() }
+        datasourceRegistryService.listCatalogEntries().map { catalog -> catalog.toResponse() }
 
     fun listDatasourceAccess(groupId: String?): List<DatasourceAccessResponse> =
         datasourceAccess.values
             .asSequence()
             .filter { access -> groupId == null || access.groupId == groupId }
-            .sortedWith(compareBy({ it.groupId }, { it.datasourceId }))
+            .sortedWith(compareBy({ access -> access.groupId }, { access -> access.datasourceId }))
             .map { access -> access.toResponse() }
             .toList()
 
@@ -162,16 +154,16 @@ class RbacService(
             throw GroupNotFoundException("Group '$groupId' was not found.")
         }
 
-        val datasource =
-            datasources[datasourceId]
-                ?: throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+        if (!datasourceRegistryService.hasDatasource(datasourceId)) {
+            throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+        }
 
         val credentialProfile = request.credentialProfile.trim()
         if (credentialProfile.isBlank()) {
             throw IllegalArgumentException("credentialProfile is required.")
         }
 
-        if (!datasource.credentialProfiles.contains(credentialProfile)) {
+        if (!datasourceRegistryService.credentialProfilesForDatasource(datasourceId).contains(credentialProfile)) {
             throw IllegalArgumentException(
                 "credentialProfile '$credentialProfile' is not available for datasource '$datasourceId'.",
             )
@@ -219,16 +211,15 @@ class RbacService(
                 .map { access -> access.datasourceId }
                 .toSet()
 
-        return datasources.values
+        return datasourceRegistryService.listCatalogEntries()
             .asSequence()
             .filter { datasource -> datasource.id in allowedIds }
-            .sortedBy { datasource -> datasource.name.lowercase(Locale.getDefault()) }
             .map { datasource -> datasource.toResponse() }
             .toList()
     }
 
     fun canUserQuery(principal: AuthenticatedUserPrincipal, datasourceId: String): Boolean {
-        if (!datasources.containsKey(datasourceId)) {
+        if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         }
 
@@ -265,36 +256,8 @@ class RbacService(
         userAccountService.addGroupMembership("analyst", analystsGroupId)
     }
 
-    private fun seedDatasources() {
-        val seededDatasources =
-            listOf(
-                DatasourceRecord(
-                    id = "postgres-core",
-                    name = "PostgreSQL Core",
-                    engine = "PostgreSQL",
-                    credentialProfiles = setOf("admin-ro", "analyst-ro"),
-                ),
-                DatasourceRecord(
-                    id = "mysql-orders",
-                    name = "MySQL Orders",
-                    engine = "MySQL",
-                    credentialProfiles = setOf("admin-ro", "ops-ro"),
-                ),
-                DatasourceRecord(
-                    id = "trino-warehouse",
-                    name = "Trino Warehouse",
-                    engine = "Trino",
-                    credentialProfiles = setOf("admin-ro", "analyst-ro"),
-                ),
-            )
-
-        seededDatasources.forEach { datasource ->
-            datasources[datasource.id] = datasource
-        }
-    }
-
     private fun seedAccessMappings() {
-        val allDatasourceIds = datasources.keys.toList()
+        val allDatasourceIds = datasourceRegistryService.listCatalogEntries().map { datasource -> datasource.id }
         allDatasourceIds.forEach { datasourceId ->
             datasourceAccess[accessKey("platform-admins", datasourceId)] =
                 DatasourceAccessRecord(
@@ -347,14 +310,6 @@ class RbacService(
             members = members.toSet(),
         )
 
-    private fun DatasourceRecord.toResponse(): DatasourceResponse =
-        DatasourceResponse(
-            id = id,
-            name = name,
-            engine = engine,
-            credentialProfiles = credentialProfiles,
-        )
-
     private fun DatasourceAccessRecord.toResponse(): DatasourceAccessResponse =
         DatasourceAccessResponse(
             groupId = groupId,
@@ -365,5 +320,13 @@ class RbacService(
             maxRuntimeSeconds = maxRuntimeSeconds,
             concurrencyLimit = concurrencyLimit,
             credentialProfile = credentialProfile,
+        )
+
+    private fun CatalogDatasourceEntry.toResponse(): DatasourceResponse =
+        DatasourceResponse(
+            id = id,
+            name = name,
+            engine = engine.name,
+            credentialProfiles = credentialProfiles,
         )
 }

@@ -33,10 +33,10 @@
 
 ## Milestone 4: Datasource + Driver Registry
 
-- [ ] Datasource CRUD and test-connection
-- [ ] Encrypted credential storage
-- [ ] Driver registry (built-in + mounted jars)
-- [ ] Pooling per datasource/profile
+- [x] Datasource CRUD and test-connection
+- [x] Encrypted credential storage
+- [x] Driver registry (built-in + mounted jars)
+- [x] Pooling per datasource/profile
 
 ## Milestone 5: SQL Editor MVP
 

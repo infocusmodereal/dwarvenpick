@@ -44,6 +44,12 @@ RBAC and datasource governance endpoints:
 - `POST http://localhost:8080/api/admin/groups` (`SYSTEM_ADMIN` only)
 - `POST http://localhost:8080/api/admin/groups/{groupId}/members` (`SYSTEM_ADMIN` only)
 - `PUT http://localhost:8080/api/admin/datasource-access/{groupId}/{datasourceId}` (`SYSTEM_ADMIN` only)
+- `GET http://localhost:8080/api/admin/drivers` (`SYSTEM_ADMIN` only)
+- `GET http://localhost:8080/api/admin/datasource-management` (`SYSTEM_ADMIN` only)
+- `POST http://localhost:8080/api/admin/datasource-management` (`SYSTEM_ADMIN` only)
+- `PUT http://localhost:8080/api/admin/datasource-management/{datasourceId}/credentials/{profileId}` (`SYSTEM_ADMIN` only)
+- `POST http://localhost:8080/api/admin/datasource-management/credentials/reencrypt` (`SYSTEM_ADMIN` only)
+- `POST http://localhost:8080/api/datasources/{datasourceId}/test-connection` (`SYSTEM_ADMIN` only)
 - `GET http://localhost:8080/api/datasources` (user-scoped datasource visibility)
 - `POST http://localhost:8080/api/queries` (datasource access gate check)
 
@@ -65,7 +71,7 @@ Default local UI URL:
 
 - `http://localhost:5173`
 - Dev server proxies `/api` and `/actuator` requests to `http://localhost:8080`.
-- `SYSTEM_ADMIN` users see RBAC governance panels in `/workspace` for group and datasource access management.
+- `SYSTEM_ADMIN` users see RBAC and datasource management panels in `/workspace`.
 
 ### Local stack (Docker Compose)
 

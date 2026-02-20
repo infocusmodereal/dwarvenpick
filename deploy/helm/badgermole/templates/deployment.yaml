@@ -25,6 +25,26 @@ spec:
               value: {{ .Values.env.SPRING_PROFILES_ACTIVE | quote }}
             - name: SERVER_PORT
               value: {{ .Values.env.SERVER_PORT | quote }}
+            - name: BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID
+              value: {{ .Values.credentials.activeKeyId | quote }}
+            - name: BADGERMOLE_EXTERNAL_DRIVERS_DIR
+              value: {{ ternary .Values.drivers.external.mountPath .Values.env.BADGERMOLE_EXTERNAL_DRIVERS_DIR .Values.drivers.external.enabled | quote }}
+            {{- if .Values.credentials.masterKey.existingSecret }}
+            - name: BADGERMOLE_CREDENTIAL_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentials.masterKey.existingSecret | quote }}
+                  key: {{ .Values.credentials.masterKey.key | quote }}
+            {{- else if .Values.credentials.masterKey.value }}
+            - name: BADGERMOLE_CREDENTIAL_MASTER_KEY
+              value: {{ .Values.credentials.masterKey.value | quote }}
+            {{- end }}
+          {{- if .Values.drivers.external.enabled }}
+          volumeMounts:
+            - name: external-drivers
+              mountPath: {{ .Values.drivers.external.mountPath | quote }}
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
@@ -39,3 +59,13 @@ spec:
               port: {{ .Values.service.port }}
             initialDelaySeconds: 15
             periodSeconds: 15
+      {{- if .Values.drivers.external.enabled }}
+      volumes:
+        - name: external-drivers
+          {{- if .Values.drivers.external.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.drivers.external.existingClaim | quote }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}

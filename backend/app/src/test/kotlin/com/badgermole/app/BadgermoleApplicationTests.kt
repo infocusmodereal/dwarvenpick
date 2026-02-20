@@ -2,6 +2,7 @@ package com.badgermole.app
 
 import com.badgermole.app.auth.AuthAuditEventStore
 import com.badgermole.app.auth.UserAccountService
+import com.badgermole.app.datasource.DatasourceRegistryService
 import com.badgermole.app.rbac.RbacService
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
@@ -17,6 +18,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie
@@ -49,6 +51,9 @@ class BadgermoleApplicationTests {
 
     @Autowired
     private lateinit var rbacService: RbacService
+
+    @Autowired
+    private lateinit var datasourceRegistryService: DatasourceRegistryService
 
     @BeforeEach
     fun resetState() {
@@ -424,6 +429,215 @@ class BadgermoleApplicationTests {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("QUEUED"))
             .andExpect(jsonPath("$.datasourceId").value("trino-warehouse"))
+    }
+
+    @Test
+    fun `system admin can manage datasource catalog and encrypted credential profiles`() {
+        val adminSession = loginLocalUser("admin", "Admin123!")
+
+        mockMvc
+            .perform(
+                post("/api/admin/datasource-management")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "name": "MySQL Sandbox",
+                          "engine": "MYSQL",
+                          "host": "localhost",
+                          "port": 3306,
+                          "database": "sandbox",
+                          "driverId": "mysql-default",
+                          "pool": {
+                            "maximumPoolSize": 2,
+                            "minimumIdle": 1,
+                            "connectionTimeoutMs": 1000,
+                            "idleTimeoutMs": 2000
+                          },
+                          "tls": {
+                            "mode": "DISABLE",
+                            "verifyServerCertificate": false,
+                            "allowSelfSigned": true
+                          }
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id").value("mysql-sandbox"))
+
+        mockMvc
+            .perform(
+                put("/api/admin/datasource-management/mysql-sandbox/credentials/admin-ro")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "username": "sandbox_reader",
+                          "password": "SuperSecret123!",
+                          "description": "Sandbox read profile"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileId").value("admin-ro"))
+            .andExpect(jsonPath("$.encryptionKeyId").value("v1"))
+
+        val encrypted = datasourceRegistryService.encryptedPasswordForProfile("mysql-sandbox", "admin-ro")
+        assertThat(encrypted).isNotBlank()
+        assertThat(encrypted).doesNotContain("SuperSecret123!")
+    }
+
+    @Test
+    fun `connection test endpoint enforces role and returns sanitized failure`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        mockMvc
+            .perform(
+                post("/api/datasources/postgres-core/test-connection")
+                    .with(csrf())
+                    .cookie(analystSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "credentialProfile": "admin-ro",
+                          "validationQuery": "SELECT 1"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isForbidden)
+
+        val adminSession = loginLocalUser("admin", "Admin123!")
+        mockMvc
+            .perform(
+                post("/api/datasources/postgres-core/test-connection")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "credentialProfile": "admin-ro",
+                          "validationQuery": "SELECT 1"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").isBoolean)
+            .andExpect(jsonPath("$.message").isString())
+    }
+
+    @Test
+    fun `vertica connection test returns actionable error when external driver is missing`() {
+        val adminSession = loginLocalUser("admin", "Admin123!")
+
+        mockMvc
+            .perform(
+                post("/api/admin/datasource-management")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "name": "Vertica Lake",
+                          "engine": "VERTICA",
+                          "host": "vertica.local",
+                          "port": 5433,
+                          "database": "lake",
+                          "driverId": "vertica-external"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error", containsString("Driver")))
+    }
+
+    @Test
+    fun `system admin can list drivers and reencrypt credential profiles`() {
+        val adminSession = loginLocalUser("admin", "Admin123!")
+
+        mockMvc
+            .perform(get("/api/admin/drivers").cookie(adminSession))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].driverId").isString())
+            .andExpect(jsonPath("$[0].engine").isString())
+            .andExpect(jsonPath("$[0].message").isString())
+
+        mockMvc
+            .perform(
+                post("/api/admin/datasource-management/credentials/reencrypt")
+                    .with(csrf())
+                    .cookie(adminSession),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.updatedProfiles").isNumber)
+            .andExpect(jsonPath("$.activeKeyId").value("v1"))
+    }
+
+    @Test
+    fun `system admin can update and delete managed datasource entries`() {
+        val adminSession = loginLocalUser("admin", "Admin123!")
+
+        mockMvc
+            .perform(
+                post("/api/admin/datasource-management")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "name": "MariaDB Sales",
+                          "engine": "MARIADB",
+                          "host": "localhost",
+                          "port": 3306,
+                          "database": "sales",
+                          "driverId": "mariadb-default"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id").value("mariadb-sales"))
+
+        mockMvc
+            .perform(
+                patch("/api/admin/datasource-management/mariadb-sales")
+                    .with(csrf())
+                    .cookie(adminSession)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "host": "mariadb.internal",
+                          "port": 3307,
+                          "database": "sales_analytics"
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.host").value("mariadb.internal"))
+            .andExpect(jsonPath("$.port").value(3307))
+            .andExpect(jsonPath("$.database").value("sales_analytics"))
+
+        mockMvc
+            .perform(
+                delete("/api/admin/datasource-management/mariadb-sales")
+                    .with(csrf())
+                    .cookie(adminSession),
+            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.deleted").value(true))
     }
 
     private fun loginLocalUser(username: String, password: String): Cookie =

@@ -1,4 +1,4 @@
-# Deployment Notes (Skeleton)
+# Deployment Notes
 
 ## Targets
 
@@ -11,6 +11,55 @@
 - Java 21 runtime for backend
 - Node/Nginx for frontend static bundle
 - PostgreSQL metadata database
+- Credential encryption key provided by environment or secret store
+
+## Credential encryption configuration
+
+Datasource passwords are stored encrypted (AES-GCM). Configure the following runtime values:
+
+- `BADGERMOLE_CREDENTIAL_MASTER_KEY`: required in production; do not commit to source control.
+- `BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID`: key identifier used for new encryptions.
+
+Helm values that map to these env vars:
+
+- `.Values.credentials.activeKeyId`
+- `.Values.credentials.masterKey.existingSecret` + `.Values.credentials.masterKey.key` (recommended)
+- `.Values.credentials.masterKey.value` (local/dev only)
+
+After key rotation, use the admin endpoint to re-encrypt all stored credential profiles:
+
+```bash
+curl -X POST \
+  -H "X-XSRF-TOKEN: <token>" \
+  --cookie "JSESSIONID=<session>" \
+  http://localhost:8080/api/admin/datasource-management/credentials/reencrypt
+```
+
+Detailed rotation guidance: `docs/ops/credential-rotation.md`.
+
+## External JDBC drivers (Vertica)
+
+Vertica is intentionally not bundled. Driver jars must be mounted at runtime.
+
+### Kubernetes (Helm)
+
+Configure these values:
+
+- `.Values.drivers.external.enabled=true`
+- `.Values.drivers.external.mountPath` (default `/opt/app/drivers`)
+- `.Values.drivers.external.existingClaim` (PVC containing driver jars)
+
+If `existingClaim` is empty, chart uses `emptyDir` (useful for local smoke tests only).
+
+### Bare metal
+
+Create a directory and place vendor jars there, then export:
+
+```bash
+export BADGERMOLE_EXTERNAL_DRIVERS_DIR=/opt/app/drivers
+```
+
+Ensure the application user can read files in that directory.
 
 ## Local Helm smoke test (Minikube)
 
@@ -20,7 +69,9 @@ Use this to validate chart rendering, install, and cleanup in a local cluster:
 minikube start --driver=docker --install-addons=false --wait=apiserver
 helm lint deploy/helm/badgermole
 helm upgrade --install badgermole-test deploy/helm/badgermole \
-  --namespace badgermole-test --create-namespace
+  --namespace badgermole-test --create-namespace \
+  --set credentials.masterKey.value=local-dev-master-key \
+  --set drivers.external.enabled=false
 kubectl get all -n badgermole-test
 helm uninstall badgermole-test -n badgermole-test
 kubectl delete namespace badgermole-test
@@ -31,9 +82,4 @@ Notes:
 
 - The default image value (`ghcr.io/your-org/badgermole-backend:latest`) is a placeholder and will not pull until replaced.
 - Even with placeholder images, install/uninstall validates chart structure and Kubernetes resource wiring.
-
-## Security baseline for future milestones
-
-- TLS terminated at ingress/reverse proxy
-- Secure cookie + CSRF strategy
-- Credential encryption at rest (AES-GCM) planned for datasource credential service
+- For real Vertica connectivity in Kubernetes, mount the vendor JDBC jar(s) via a PVC and set `.Values.drivers.external.enabled=true`.
