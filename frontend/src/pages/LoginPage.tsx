@@ -190,8 +190,10 @@ export default function LoginPage() {
     return (
         <AppShell title="badgermole Login">
             <section className="panel login-card">
-                <h2>Sign In</h2>
-                <p>Enter your username and password to continue.</p>
+                <div className="login-intro">
+                    <h2>Welcome Back</h2>
+                    <p>Sign in to continue to your SQL workspace.</p>
+                </div>
 
                 <form className="login-form" onSubmit={handleSubmit}>
                     <label htmlFor="username">Username</label>

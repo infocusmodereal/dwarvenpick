@@ -81,4 +81,5 @@
 - [x] Saved snippets
 - [x] Read-only/read-write modes
 - [x] Streamlined login + workspace mode tabs
+- [x] Datasource tree UX + resilient editor loading
 - [ ] OIDC SSO

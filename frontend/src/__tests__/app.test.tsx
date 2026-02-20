@@ -4,6 +4,9 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import App from '../App';
 
 vi.mock('@monaco-editor/react', () => ({
+    loader: {
+        config: vi.fn()
+    },
     default: ({ value, onChange }: { value?: string; onChange?: (value: string) => void }) => (
         <textarea
             data-testid="mock-monaco-editor"

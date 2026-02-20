@@ -980,6 +980,18 @@ Applies to every ticket:
   - Datasource-first launcher supports opening a new editor quickly.
 - Dependencies: OSW-44, OSW-161, OSW-162, OSW-203
 
+#### OSW-209: Datasource tree redesign + editor resilience fixes
+
+- Type: Story
+- Status: done
+- Component: Frontend
+- Description: Refine SQL workbench IA with a single datasource tree and add editor fallback when Monaco cannot initialize.
+- Acceptance Criteria:
+  - Left rail uses one datasource tree control for datasource selection.
+  - UI avoids sidebar overflow/cut-off on common desktop widths.
+  - Editor does not remain stuck in loading; fallback mode is available.
+- Dependencies: OSW-208, OSW-200
+
 #### OSW-207: Optional OIDC SSO (enterprise convenience)
 
 - Type: Story

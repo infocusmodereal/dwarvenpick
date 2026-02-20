@@ -1,10 +1,13 @@
-import Editor, { OnMount } from '@monaco-editor/react';
+import Editor, { loader, OnMount } from '@monaco-editor/react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as MonacoModule from 'monaco-editor/esm/vs/editor/editor.api';
 import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import { statementAtCursor } from '../sql/statementSplitter';
+
+loader.config({ monaco: MonacoModule });
 
 type CurrentUserResponse = {
     username: string;
@@ -508,6 +511,9 @@ export default function WorkspacePage() {
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
     const [launcherDatasourceId, setLauncherDatasourceId] = useState('');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(false);
+    const [monacoReady, setMonacoReady] = useState(false);
+    const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
+    const [editorRenderKey, setEditorRenderKey] = useState(0);
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
 
@@ -530,10 +536,36 @@ export default function WorkspacePage() {
         );
     }, [visibleDatasources]);
 
+    useEffect(() => {
+        if (activeSection !== 'workbench' || monacoReady) {
+            return;
+        }
+
+        setMonacoLoadTimedOut(false);
+        const timeout = window.setTimeout(() => {
+            setMonacoLoadTimedOut(true);
+        }, 5000);
+
+        return () => {
+            window.clearTimeout(timeout);
+        };
+    }, [activeSection, editorRenderKey, monacoReady]);
+
     const activeTab = useMemo(
         () => workspaceTabs.find((tab) => tab.id === activeTabId) ?? null,
         [activeTabId, workspaceTabs]
     );
+
+    useEffect(() => {
+        if (!activeTab?.datasourceId) {
+            return;
+        }
+        if (!visibleDatasources.some((datasource) => datasource.id === activeTab.datasourceId)) {
+            return;
+        }
+
+        setLauncherDatasourceId(activeTab.datasourceId);
+    }, [activeTab?.datasourceId, visibleDatasources]);
 
     useEffect(() => {
         workspaceTabsRef.current = workspaceTabs;
@@ -2177,6 +2209,8 @@ export default function WorkspacePage() {
     const handleEditorDidMount: OnMount = (editorInstance, monacoInstance) => {
         editorRef.current = editorInstance;
         monacoRef.current = monacoInstance;
+        setMonacoReady(true);
+        setMonacoLoadTimedOut(false);
         editorInstance.focus();
     };
 
@@ -2216,6 +2250,12 @@ export default function WorkspacePage() {
         }));
         setLauncherDatasourceId(nextDatasourceId);
     };
+
+    const handleRetryEditorLoad = useCallback(() => {
+        setMonacoReady(false);
+        setMonacoLoadTimedOut(false);
+        setEditorRenderKey((current) => current + 1);
+    }, []);
 
     useEffect(() => {
         const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -2966,31 +3006,66 @@ export default function WorkspacePage() {
 
             <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
                 <aside className="panel sidebar">
-                    <h2>Datasource Launcher</h2>
-                    <p>Choose a datasource, then open a focused SQL editor.</p>
+                    <h2>Data Sources</h2>
+                    <p>
+                        Pick one configured source. Open a new query tab or bind your active tab to
+                        it.
+                    </p>
 
-                    <label htmlFor="launcher-datasource">Datasource</label>
-                    <select
-                        id="launcher-datasource"
-                        value={launcherDatasourceId}
-                        onChange={(event) => setLauncherDatasourceId(event.target.value)}
-                        disabled={visibleDatasources.length === 0}
-                    >
-                        <option value="">Select datasource</option>
-                        {visibleDatasources.map((datasource) => (
-                            <option key={`launch-${datasource.id}`} value={datasource.id}>
-                                {datasource.name} ({datasource.engine})
-                            </option>
-                        ))}
-                    </select>
+                    <section className="datasource-tree">
+                        <h3>Configured Connections</h3>
+                        {visibleDatasources.length === 0 ? (
+                            <p>No datasource access has been granted yet.</p>
+                        ) : (
+                            <ul className="datasource-tree-list">
+                                {visibleDatasources.map((datasource) => (
+                                    <li key={datasource.id}>
+                                        <button
+                                            type="button"
+                                            className={
+                                                launcherDatasourceId === datasource.id
+                                                    ? 'datasource-tree-button active'
+                                                    : 'datasource-tree-button'
+                                            }
+                                            onClick={() => setLauncherDatasourceId(datasource.id)}
+                                        >
+                                            <span className="datasource-tree-main">
+                                                {datasource.name}
+                                            </span>
+                                            <span className="datasource-tree-meta">
+                                                {datasource.engine}
+                                            </span>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
 
-                    <div className="row">
+                    <div className="datasource-launch-actions">
                         <button
                             type="button"
                             onClick={() => handleOpenNewTabForDatasource(launcherDatasourceId)}
                             disabled={!launcherDatasourceId}
                         >
-                            Open SQL Editor
+                            Open Query Tab
+                        </button>
+                        <button
+                            type="button"
+                            className="chip"
+                            onClick={() =>
+                                launcherDatasourceId
+                                    ? handleDatasourceChangeForActiveTab(launcherDatasourceId)
+                                    : undefined
+                            }
+                            disabled={
+                                !launcherDatasourceId ||
+                                !activeTab ||
+                                activeTab.isExecuting ||
+                                activeTab.datasourceId === launcherDatasourceId
+                            }
+                        >
+                            Use In Active Tab
                         </button>
                         {isSystemAdmin ? (
                             <button
@@ -2998,38 +3073,10 @@ export default function WorkspacePage() {
                                 className="chip"
                                 onClick={() => setActiveSection('admin')}
                             >
-                                Create Datasource
+                                Add Datasource
                             </button>
                         ) : null}
                     </div>
-
-                    <section className="datasource-library">
-                        <h3>Available Datasources</h3>
-                        <p>Datasource visibility is scoped by RBAC and can be changed per tab.</p>
-                        {visibleDatasources.length === 0 ? (
-                            <p>No datasource access has been granted yet.</p>
-                        ) : (
-                            <ul>
-                                {visibleDatasources.map((datasource) => (
-                                    <li key={datasource.id}>
-                                        <button
-                                            type="button"
-                                            className={
-                                                activeTab?.datasourceId === datasource.id
-                                                    ? 'datasource-button active'
-                                                    : 'datasource-button'
-                                            }
-                                            onClick={() =>
-                                                handleDatasourceChangeForActiveTab(datasource.id)
-                                            }
-                                        >
-                                            {datasource.name} ({datasource.engine})
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </section>
 
                     <section className="schema-browser">
                         <div className="row">
@@ -3121,8 +3168,8 @@ export default function WorkspacePage() {
                                     </ul>
                                 ) : (
                                     <p>
-                                        Select a datasource tab to browse schemas and autocomplete
-                                        metadata.
+                                        Select a datasource and open/activate a tab to browse
+                                        schemas and autocomplete metadata.
                                     </p>
                                 )}
                             </>
@@ -3190,69 +3237,97 @@ export default function WorkspacePage() {
                     </div>
 
                     <div className="editor-context">
-                        <label htmlFor="tab-datasource">Execution Datasource</label>
-                        <select
-                            id="tab-datasource"
-                            value={activeTab?.datasourceId ?? ''}
-                            onChange={(event) =>
-                                handleDatasourceChangeForActiveTab(event.target.value)
-                            }
-                            disabled={!activeTab || visibleDatasources.length === 0}
-                        >
-                            <option value="">Select datasource</option>
-                            {visibleDatasources.map((datasource) => (
-                                <option key={datasource.id} value={datasource.id}>
-                                    {datasource.name} ({datasource.engine})
-                                </option>
-                            ))}
-                        </select>
+                        <div className="editor-context-card">
+                            <span className="editor-context-label">Execution Datasource</span>
+                            <strong>{selectedDatasource?.name ?? 'No datasource selected'}</strong>
+                            <span className="muted-id">{selectedDatasource?.engine ?? ''}</span>
+                        </div>
 
-                        <label htmlFor="tab-schema">Default Schema (optional)</label>
-                        <input
-                            id="tab-schema"
-                            value={activeTab?.schema ?? ''}
-                            onChange={(event) => {
-                                if (!activeTab) {
-                                    return;
-                                }
+                        <div className="editor-context-input">
+                            <label htmlFor="tab-schema">Default Schema (optional)</label>
+                            <input
+                                id="tab-schema"
+                                value={activeTab?.schema ?? ''}
+                                onChange={(event) => {
+                                    if (!activeTab) {
+                                        return;
+                                    }
 
-                                updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                    ...currentTab,
-                                    schema: event.target.value
-                                }));
-                            }}
-                            placeholder="public"
-                            disabled={!activeTab}
-                        />
+                                    updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                        ...currentTab,
+                                        schema: event.target.value
+                                    }));
+                                }}
+                                placeholder="public"
+                                disabled={!activeTab}
+                            />
+                        </div>
                     </div>
 
                     <div className="monaco-host">
-                        <Editor
-                            height="320px"
-                            language="sql"
-                            value={activeTab?.queryText ?? ''}
-                            onMount={handleEditorDidMount}
-                            onChange={(value) => {
-                                if (!activeTab) {
-                                    return;
-                                }
+                        {monacoLoadTimedOut ? (
+                            <div className="editor-fallback">
+                                <p className="form-error">
+                                    SQL editor failed to initialize. You can continue using fallback
+                                    mode.
+                                </p>
+                                <textarea
+                                    value={activeTab?.queryText ?? ''}
+                                    onChange={(event) => {
+                                        if (!activeTab) {
+                                            return;
+                                        }
 
-                                updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                    ...currentTab,
-                                    queryText: value ?? '',
-                                    errorMessage: currentTab.errorMessage,
-                                    statusMessage: currentTab.statusMessage
-                                }));
-                            }}
-                            options={{
-                                automaticLayout: true,
-                                minimap: { enabled: false },
-                                lineNumbers: 'on',
-                                bracketPairColorization: { enabled: true },
-                                wordWrap: 'on',
-                                scrollBeyondLastLine: false
-                            }}
-                        />
+                                        updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                            ...currentTab,
+                                            queryText: event.target.value
+                                        }));
+                                    }}
+                                    rows={14}
+                                    className="fallback-editor-textarea"
+                                />
+                                <div className="row">
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        onClick={handleRetryEditorLoad}
+                                    >
+                                        Retry Monaco Editor
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <Editor
+                                key={`monaco-${editorRenderKey}`}
+                                height="360px"
+                                language="sql"
+                                loading={
+                                    <div className="editor-loading">Loading SQL editor...</div>
+                                }
+                                value={activeTab?.queryText ?? ''}
+                                onMount={handleEditorDidMount}
+                                onChange={(value) => {
+                                    if (!activeTab) {
+                                        return;
+                                    }
+
+                                    updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                        ...currentTab,
+                                        queryText: value ?? '',
+                                        errorMessage: currentTab.errorMessage,
+                                        statusMessage: currentTab.statusMessage
+                                    }));
+                                }}
+                                options={{
+                                    automaticLayout: true,
+                                    minimap: { enabled: false },
+                                    lineNumbers: 'on',
+                                    bracketPairColorization: { enabled: true },
+                                    wordWrap: 'on',
+                                    scrollBeyondLastLine: false
+                                }}
+                            />
+                        )}
                     </div>
 
                     <div className="row">
