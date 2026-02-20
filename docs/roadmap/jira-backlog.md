@@ -466,7 +466,7 @@ Applies to every ticket:
 #### OSW-100: Monaco editor integration with SQL highlighting
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Add Monaco editor with SQL language mode and basic settings.
 - Acceptance Criteria:
@@ -478,7 +478,7 @@ Applies to every ticket:
 #### OSW-101: Tabbed editor model (multiple tabs per datasource)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Implement multi-tab workspace with per-tab datasource context.
 - Acceptance Criteria:
@@ -490,7 +490,7 @@ Applies to every ticket:
 #### OSW-102: Datasource picker (user-scoped)
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Show only datasources user is allowed to query and bind selection to tab.
 - Acceptance Criteria:
@@ -502,7 +502,7 @@ Applies to every ticket:
 #### OSW-103: Run actions: run selection / run all
 
 - Type: Story
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Add Run controls and wire to backend execute endpoint (stub allowed until M6).
 - Acceptance Criteria:
@@ -514,7 +514,7 @@ Applies to every ticket:
 #### OSW-104: Keyboard shortcuts (DataGrip-ish basics)
 
 - Type: Task
-- Status: backlog
+- Status: done
 - Component: Frontend
 - Description: Add common shortcuts.
 - Acceptance Criteria:

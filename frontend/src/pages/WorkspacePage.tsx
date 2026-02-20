@@ -1,4 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import Editor, { OnMount } from '@monaco-editor/react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 
@@ -90,6 +92,20 @@ type QueryExecutionResponse = {
     message: string;
 };
 
+type PersistentWorkspaceTab = {
+    id: string;
+    title: string;
+    datasourceId: string;
+    schema: string;
+    queryText: string;
+};
+
+type WorkspaceTab = PersistentWorkspaceTab & {
+    isExecuting: boolean;
+    statusMessage: string;
+    errorMessage: string;
+};
+
 type TestConnectionResponse = {
     success: boolean;
     datasourceId: string;
@@ -143,6 +159,8 @@ const defaultTlsSettings: TlsSettings = {
     allowSelfSigned: false
 };
 
+const workspaceTabsStorageKey = 'badgermole.workspace.tabs.v1';
+
 const defaultPortByEngine: Record<DatasourceEngine, number> = {
     POSTGRESQL: 5432,
     MYSQL: 3306,
@@ -188,6 +206,37 @@ const buildDatasourceFormFromManaged = (
     allowSelfSigned: datasource.tls.allowSelfSigned
 });
 
+const createTabId = (): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const buildWorkspaceTab = (
+    datasourceId: string,
+    title: string,
+    queryText = 'SELECT * FROM system.healthcheck;'
+): WorkspaceTab => ({
+    id: createTabId(),
+    title,
+    datasourceId,
+    schema: '',
+    queryText,
+    isExecuting: false,
+    statusMessage: '',
+    errorMessage: ''
+});
+
+const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
+    id: tab.id,
+    title: tab.title,
+    datasourceId: tab.datasourceId,
+    schema: tab.schema,
+    queryText: tab.queryText
+});
+
 export default function WorkspacePage() {
     const navigate = useNavigate();
 
@@ -195,12 +244,11 @@ export default function WorkspacePage() {
     const [visibleDatasources, setVisibleDatasources] = useState<CatalogDatasourceResponse[]>([]);
     const [workspaceError, setWorkspaceError] = useState('');
     const [loadingWorkspace, setLoadingWorkspace] = useState(true);
-
-    const [sqlText, setSqlText] = useState('SELECT * FROM system.healthcheck;');
-    const [selectedDatasourceId, setSelectedDatasourceId] = useState('');
-    const [queryStatusMessage, setQueryStatusMessage] = useState('');
-    const [queryErrorMessage, setQueryErrorMessage] = useState('');
-    const [runningQuery, setRunningQuery] = useState(false);
+    const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>([]);
+    const [activeTabId, setActiveTabId] = useState('');
+    const [tabsHydrated, setTabsHydrated] = useState(false);
+    const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null);
+    const abortControllersByTabRef = useRef<Record<string, AbortController>>({});
 
     const [adminGroups, setAdminGroups] = useState<GroupResponse[]>([]);
     const [adminDatasourceCatalog, setAdminDatasourceCatalog] = useState<
@@ -258,10 +306,16 @@ export default function WorkspacePage() {
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
 
+    const activeTab = useMemo(
+        () => workspaceTabs.find((tab) => tab.id === activeTabId) ?? null,
+        [activeTabId, workspaceTabs]
+    );
+
     const selectedDatasource = useMemo(
         () =>
-            visibleDatasources.find((datasource) => datasource.id === selectedDatasourceId) ?? null,
-        [selectedDatasourceId, visibleDatasources]
+            visibleDatasources.find((datasource) => datasource.id === activeTab?.datasourceId) ??
+            null,
+        [activeTab?.datasourceId, visibleDatasources]
     );
 
     const selectedAdminDatasource = useMemo(
@@ -302,6 +356,128 @@ export default function WorkspacePage() {
             ) ?? null,
         [driversForFormEngine, managedDatasourceForm.driverId]
     );
+
+    const hydrateWorkspaceTabs = useCallback(
+        (datasources: CatalogDatasourceResponse[]) => {
+            const allowedDatasourceIds = new Set(datasources.map((datasource) => datasource.id));
+            const fallbackDatasourceId = datasources[0]?.id ?? '';
+
+            type PersistedTabsPayload = {
+                activeTabId: string;
+                tabs: PersistentWorkspaceTab[];
+            };
+
+            const fromStorage = (): PersistedTabsPayload | null => {
+                try {
+                    const raw = localStorage.getItem(workspaceTabsStorageKey);
+                    if (!raw) {
+                        return null;
+                    }
+
+                    const parsed = JSON.parse(raw) as PersistedTabsPayload;
+                    if (!Array.isArray(parsed.tabs)) {
+                        return null;
+                    }
+
+                    return parsed;
+                } catch {
+                    return null;
+                }
+            };
+
+            const stored = fromStorage();
+            const hydratedTabs =
+                stored?.tabs
+                    .filter((tab) => typeof tab.id === 'string' && typeof tab.title === 'string')
+                    .map<WorkspaceTab>((tab) => ({
+                        id: tab.id,
+                        title: tab.title.trim() || 'Query',
+                        datasourceId: allowedDatasourceIds.has(tab.datasourceId)
+                            ? tab.datasourceId
+                            : fallbackDatasourceId,
+                        schema: typeof tab.schema === 'string' ? tab.schema : '',
+                        queryText:
+                            typeof tab.queryText === 'string'
+                                ? tab.queryText
+                                : 'SELECT * FROM system.healthcheck;',
+                        isExecuting: false,
+                        statusMessage: '',
+                        errorMessage: ''
+                    })) ?? [];
+
+            const tabsToUse =
+                hydratedTabs.length > 0
+                    ? hydratedTabs
+                    : [buildWorkspaceTab(fallbackDatasourceId, 'Query 1')];
+            const activeCandidate = stored?.activeTabId ?? '';
+            const resolvedActiveTabId = tabsToUse.some((tab) => tab.id === activeCandidate)
+                ? activeCandidate
+                : tabsToUse[0].id;
+
+            setWorkspaceTabs(tabsToUse);
+            setActiveTabId(resolvedActiveTabId);
+            setTabsHydrated(true);
+        },
+        [setActiveTabId, setTabsHydrated, setWorkspaceTabs]
+    );
+
+    const updateWorkspaceTab = useCallback(
+        (tabId: string, updater: (tab: WorkspaceTab) => WorkspaceTab) => {
+            setWorkspaceTabs((currentTabs) =>
+                currentTabs.map((tab) => (tab.id === tabId ? updater(tab) : tab))
+            );
+        },
+        []
+    );
+
+    useEffect(() => {
+        if (!tabsHydrated) {
+            return;
+        }
+
+        const payload = {
+            activeTabId,
+            tabs: workspaceTabs.map(toPersistentTab)
+        };
+        localStorage.setItem(workspaceTabsStorageKey, JSON.stringify(payload));
+    }, [activeTabId, tabsHydrated, workspaceTabs]);
+
+    useEffect(() => {
+        if (workspaceTabs.length === 0) {
+            return;
+        }
+
+        if (!workspaceTabs.some((tab) => tab.id === activeTabId)) {
+            setActiveTabId(workspaceTabs[0].id);
+        }
+    }, [activeTabId, workspaceTabs]);
+
+    useEffect(() => {
+        if (!tabsHydrated) {
+            return;
+        }
+
+        const permittedDatasourceIds = new Set(
+            visibleDatasources.map((datasource) => datasource.id)
+        );
+        const fallbackDatasourceId = visibleDatasources[0]?.id ?? '';
+
+        setWorkspaceTabs((currentTabs) =>
+            currentTabs.map((tab) => {
+                if (!tab.datasourceId || permittedDatasourceIds.has(tab.datasourceId)) {
+                    return tab;
+                }
+
+                return {
+                    ...tab,
+                    datasourceId: fallbackDatasourceId,
+                    errorMessage:
+                        'Datasource access changed. Select a permitted datasource before running.',
+                    statusMessage: ''
+                };
+            })
+        );
+    }, [tabsHydrated, visibleDatasources]);
 
     const loadAdminData = useCallback(async (active = true) => {
         const [
@@ -412,7 +588,7 @@ export default function WorkspacePage() {
 
                 setCurrentUser(me);
                 setVisibleDatasources(datasources);
-                setSelectedDatasourceId((current) => current || datasources[0]?.id || '');
+                hydrateWorkspaceTabs(datasources);
 
                 if (me.roles.includes('SYSTEM_ADMIN')) {
                     await loadAdminData(active);
@@ -439,7 +615,7 @@ export default function WorkspacePage() {
         return () => {
             active = false;
         };
-    }, [loadAdminData, navigate]);
+    }, [hydrateWorkspaceTabs, loadAdminData, navigate]);
 
     useEffect(() => {
         const matchedDatasource = selectedAdminDatasource;
@@ -562,7 +738,7 @@ export default function WorkspacePage() {
         setCredentialPasswordInput('');
     }, [credentialProfileIdInput, selectedManagedDatasource]);
 
-    const readFriendlyError = async (response: Response): Promise<string> => {
+    const readFriendlyError = useCallback(async (response: Response): Promise<string> => {
         try {
             const payload = (await response.json()) as ApiErrorResponse;
             if (payload.error?.trim()) {
@@ -581,7 +757,7 @@ export default function WorkspacePage() {
         }
 
         return 'Request failed. Please try again.';
-    };
+    }, []);
 
     const fetchCsrfToken = async (): Promise<CsrfTokenResponse> => {
         const response = await fetch('/api/auth/csrf', {
@@ -596,49 +772,302 @@ export default function WorkspacePage() {
         return (await response.json()) as CsrfTokenResponse;
     };
 
-    const handleRunQuery = async () => {
-        if (!selectedDatasourceId) {
-            setQueryErrorMessage('Select a datasource before running a query.');
+    const handleOpenNewTab = useCallback(() => {
+        const datasourceId = visibleDatasources[0]?.id ?? '';
+
+        setWorkspaceTabs((currentTabs) => {
+            const nextIndex = currentTabs.length + 1;
+            const createdTab = buildWorkspaceTab(datasourceId, `Query ${nextIndex}`, 'SELECT 1;');
+            setActiveTabId(createdTab.id);
+            return [...currentTabs, createdTab];
+        });
+    }, [visibleDatasources]);
+
+    const handleRenameTab = useCallback(
+        (tabId: string) => {
+            const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
+            if (!tab) {
+                return;
+            }
+
+            const proposedName = window.prompt('Rename tab', tab.title);
+            if (proposedName === null) {
+                return;
+            }
+
+            const trimmedName = proposedName.trim();
+            if (!trimmedName) {
+                return;
+            }
+
+            updateWorkspaceTab(tabId, (currentTab) => ({
+                ...currentTab,
+                title: trimmedName
+            }));
+        },
+        [updateWorkspaceTab, workspaceTabs]
+    );
+
+    const handleCancelRun = useCallback(
+        (tabId: string, triggeredByShortcut = false) => {
+            const abortController = abortControllersByTabRef.current[tabId];
+            if (abortController) {
+                abortController.abort();
+                return;
+            }
+
+            updateWorkspaceTab(tabId, (currentTab) => ({
+                ...currentTab,
+                statusMessage: triggeredByShortcut
+                    ? 'No query is running for this tab.'
+                    : currentTab.statusMessage,
+                errorMessage: ''
+            }));
+        },
+        [updateWorkspaceTab]
+    );
+
+    const handleCloseTab = useCallback(
+        (tabId: string) => {
+            const closingTab = workspaceTabs.find((tab) => tab.id === tabId);
+            if (!closingTab) {
+                return;
+            }
+
+            if (closingTab.isExecuting) {
+                handleCancelRun(tabId);
+            }
+
+            setWorkspaceTabs((currentTabs) => {
+                if (currentTabs.length <= 1) {
+                    const replacementTab = buildWorkspaceTab(
+                        visibleDatasources[0]?.id ?? '',
+                        'Query 1',
+                        'SELECT 1;'
+                    );
+                    setActiveTabId(replacementTab.id);
+                    return [replacementTab];
+                }
+
+                const closeIndex = currentTabs.findIndex((tab) => tab.id === tabId);
+                const remainingTabs = currentTabs.filter((tab) => tab.id !== tabId);
+                if (activeTabId === tabId) {
+                    const nextTab = remainingTabs[Math.max(0, closeIndex - 1)] ?? remainingTabs[0];
+                    setActiveTabId(nextTab.id);
+                }
+
+                return remainingTabs;
+            });
+        },
+        [activeTabId, handleCancelRun, visibleDatasources, workspaceTabs]
+    );
+
+    const executeSqlForTab = useCallback(
+        async (tabId: string, sqlText: string, modeLabel: 'selection' | 'all') => {
+            const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
+            if (!tab) {
+                return;
+            }
+
+            if (tab.isExecuting) {
+                return;
+            }
+
+            const datasourceId = tab.datasourceId.trim();
+            if (!datasourceId) {
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    errorMessage: 'Select a datasource before running a query.',
+                    statusMessage: ''
+                }));
+                return;
+            }
+
+            if (!visibleDatasources.some((datasource) => datasource.id === datasourceId)) {
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    errorMessage:
+                        'Selected datasource is no longer permitted for your account. Choose another datasource.',
+                    statusMessage: ''
+                }));
+                return;
+            }
+
+            const normalizedSql = sqlText.trim();
+            if (!normalizedSql) {
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    errorMessage:
+                        modeLabel === 'selection'
+                            ? 'Select SQL text first, or use Run All.'
+                            : 'Query text is empty.',
+                    statusMessage: ''
+                }));
+                return;
+            }
+
+            updateWorkspaceTab(tabId, (currentTab) => ({
+                ...currentTab,
+                isExecuting: true,
+                statusMessage:
+                    modeLabel === 'selection'
+                        ? 'Running selected SQL...'
+                        : 'Running full tab SQL...',
+                errorMessage: ''
+            }));
+
+            const abortController = new AbortController();
+            abortControllersByTabRef.current[tabId] = abortController;
+
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch('/api/queries', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({
+                        datasourceId,
+                        sql: normalizedSql
+                    }),
+                    signal: abortController.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const payload = (await response.json()) as QueryExecutionResponse;
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    statusMessage: `Execution ${payload.executionId} queued on ${payload.datasourceId} (${payload.status}).`,
+                    errorMessage: ''
+                }));
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    updateWorkspaceTab(tabId, (currentTab) => ({
+                        ...currentTab,
+                        statusMessage:
+                            'Query request canceled from the client. Server-side cancellation will be added in Milestone 6.',
+                        errorMessage: ''
+                    }));
+                } else {
+                    const message = error instanceof Error ? error.message : 'Failed to run query.';
+                    updateWorkspaceTab(tabId, (currentTab) => ({
+                        ...currentTab,
+                        errorMessage: message,
+                        statusMessage: ''
+                    }));
+                }
+            } finally {
+                delete abortControllersByTabRef.current[tabId];
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    isExecuting: false
+                }));
+            }
+        },
+        [readFriendlyError, updateWorkspaceTab, visibleDatasources, workspaceTabs]
+    );
+
+    const handleRunAll = useCallback(() => {
+        if (!activeTab) {
             return;
         }
 
-        setRunningQuery(true);
-        setQueryErrorMessage('');
-        setQueryStatusMessage('');
+        void executeSqlForTab(activeTab.id, activeTab.queryText, 'all');
+    }, [activeTab, executeSqlForTab]);
 
-        try {
-            const csrfToken = await fetchCsrfToken();
-            const response = await fetch('/api/queries', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    [csrfToken.headerName]: csrfToken.token
-                },
-                body: JSON.stringify({
-                    datasourceId: selectedDatasourceId,
-                    sql: sqlText
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
-            }
-
-            const payload = (await response.json()) as QueryExecutionResponse;
-            setQueryStatusMessage(
-                `Execution ${payload.executionId} queued on ${payload.datasourceId} (${payload.status}).`
-            );
-        } catch (error) {
-            if (error instanceof Error) {
-                setQueryErrorMessage(error.message);
-            } else {
-                setQueryErrorMessage('Failed to run query.');
-            }
-        } finally {
-            setRunningQuery(false);
+    const handleRunSelection = useCallback(() => {
+        if (!activeTab) {
+            return;
         }
+
+        const editor = editorRef.current;
+        let selectedSql = '';
+        if (editor) {
+            const model = editor.getModel();
+            const selection = editor.getSelection();
+            if (model && selection && !selection.isEmpty()) {
+                selectedSql = model.getValueInRange(selection);
+            }
+        }
+
+        if (!selectedSql.trim()) {
+            selectedSql = activeTab.queryText;
+        }
+
+        void executeSqlForTab(activeTab.id, selectedSql, 'selection');
+    }, [activeTab, executeSqlForTab]);
+
+    const handleEditorDidMount: OnMount = (editorInstance) => {
+        editorRef.current = editorInstance;
+        editorInstance.focus();
     };
+
+    const handleDatasourceChangeForActiveTab = (nextDatasourceId: string) => {
+        if (!activeTab) {
+            return;
+        }
+
+        if (!visibleDatasources.some((datasource) => datasource.id === nextDatasourceId)) {
+            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                ...currentTab,
+                errorMessage:
+                    'Selected datasource is not permitted for this account. Choose a valid datasource.',
+                statusMessage: ''
+            }));
+            return;
+        }
+
+        if (
+            activeTab.datasourceId &&
+            activeTab.datasourceId !== nextDatasourceId &&
+            activeTab.queryText.trim()
+        ) {
+            const confirmed = window.confirm(
+                'Switching datasource changes execution context for this tab. Continue?'
+            );
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        updateWorkspaceTab(activeTab.id, (currentTab) => ({
+            ...currentTab,
+            datasourceId: nextDatasourceId,
+            statusMessage: `Datasource context set to ${nextDatasourceId}.`,
+            errorMessage: ''
+        }));
+    };
+
+    useEffect(() => {
+        const handleKeyboardShortcut = (event: KeyboardEvent) => {
+            const activeElement = document.activeElement as HTMLElement | null;
+            const focusedInEditor = activeElement?.closest('.monaco-editor');
+            if (!focusedInEditor) {
+                return;
+            }
+
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                event.preventDefault();
+                handleRunSelection();
+                return;
+            }
+
+            if (event.key === 'Escape' && activeTab?.isExecuting) {
+                event.preventDefault();
+                handleCancelRun(activeTab.id, true);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyboardShortcut);
+        return () => {
+            window.removeEventListener('keydown', handleKeyboardShortcut);
+        };
+    }, [activeTab?.id, activeTab?.isExecuting, handleCancelRun, handleRunSelection]);
 
     const handleCreateGroup = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -1205,6 +1634,7 @@ export default function WorkspacePage() {
             <div className="workspace-grid">
                 <aside className="panel sidebar">
                     <h2>Connections</h2>
+                    <p>Datasource visibility is scoped by RBAC and bound per tab.</p>
                     {visibleDatasources.length === 0 ? (
                         <p>No datasource access has been granted yet.</p>
                     ) : (
@@ -1214,11 +1644,13 @@ export default function WorkspacePage() {
                                     <button
                                         type="button"
                                         className={
-                                            selectedDatasourceId === datasource.id
+                                            activeTab?.datasourceId === datasource.id
                                                 ? 'datasource-button active'
                                                 : 'datasource-button'
                                         }
-                                        onClick={() => setSelectedDatasourceId(datasource.id)}
+                                        onClick={() =>
+                                            handleDatasourceChangeForActiveTab(datasource.id)
+                                        }
                                     >
                                         {datasource.name} ({datasource.engine})
                                     </button>
@@ -1226,6 +1658,9 @@ export default function WorkspacePage() {
                             ))}
                         </ul>
                     )}
+                    <button type="button" onClick={handleOpenNewTab}>
+                        New Query Tab
+                    </button>
                 </aside>
 
                 <section className="panel editor">
@@ -1234,23 +1669,135 @@ export default function WorkspacePage() {
                         Signed in as{' '}
                         <strong>{currentUser?.displayName ?? currentUser?.username}</strong>.
                     </p>
-                    <textarea
-                        className="sql-editor"
-                        value={sqlText}
-                        onChange={(event) => setSqlText(event.target.value)}
-                    />
+                    <div className="editor-tabs" role="tablist" aria-label="SQL tabs">
+                        {workspaceTabs.map((tab) => (
+                            <div
+                                key={tab.id}
+                                className={
+                                    tab.id === activeTabId ? 'editor-tab active' : 'editor-tab'
+                                }
+                            >
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    className="tab-select"
+                                    aria-selected={tab.id === activeTabId}
+                                    onClick={() => setActiveTabId(tab.id)}
+                                >
+                                    {tab.title}
+                                    {tab.isExecuting ? ' (Running)' : ''}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="chip"
+                                    onClick={() => handleRenameTab(tab.id)}
+                                >
+                                    Rename
+                                </button>
+                                <button
+                                    type="button"
+                                    className="danger-button tab-close"
+                                    onClick={() => handleCloseTab(tab.id)}
+                                    aria-label={`Close ${tab.title}`}
+                                >
+                                    x
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="editor-context">
+                        <label htmlFor="tab-datasource">Datasource</label>
+                        <select
+                            id="tab-datasource"
+                            value={activeTab?.datasourceId ?? ''}
+                            onChange={(event) =>
+                                handleDatasourceChangeForActiveTab(event.target.value)
+                            }
+                            disabled={!activeTab || visibleDatasources.length === 0}
+                        >
+                            <option value="">Select datasource</option>
+                            {visibleDatasources.map((datasource) => (
+                                <option key={datasource.id} value={datasource.id}>
+                                    {datasource.name} ({datasource.engine})
+                                </option>
+                            ))}
+                        </select>
+
+                        <label htmlFor="tab-schema">Schema (optional)</label>
+                        <input
+                            id="tab-schema"
+                            value={activeTab?.schema ?? ''}
+                            onChange={(event) => {
+                                if (!activeTab) {
+                                    return;
+                                }
+
+                                updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                    ...currentTab,
+                                    schema: event.target.value
+                                }));
+                            }}
+                            placeholder="public"
+                            disabled={!activeTab}
+                        />
+                    </div>
+
+                    <div className="monaco-host">
+                        <Editor
+                            height="320px"
+                            language="sql"
+                            value={activeTab?.queryText ?? ''}
+                            onMount={handleEditorDidMount}
+                            onChange={(value) => {
+                                if (!activeTab) {
+                                    return;
+                                }
+
+                                updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                    ...currentTab,
+                                    queryText: value ?? '',
+                                    errorMessage: currentTab.errorMessage,
+                                    statusMessage: currentTab.statusMessage
+                                }));
+                            }}
+                            options={{
+                                automaticLayout: true,
+                                minimap: { enabled: false },
+                                lineNumbers: 'on',
+                                bracketPairColorization: { enabled: true },
+                                wordWrap: 'on',
+                                scrollBeyondLastLine: false
+                            }}
+                        />
+                    </div>
+
                     <div className="row">
                         <button
                             type="button"
-                            disabled={runningQuery || !selectedDatasource}
-                            onClick={handleRunQuery}
+                            disabled={!activeTab || activeTab.isExecuting || !selectedDatasource}
+                            onClick={handleRunSelection}
                         >
-                            {runningQuery ? 'Running...' : 'Run'}
+                            {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
                         </button>
-                        <button type="button" disabled>
-                            Run Selection
+                        <button
+                            type="button"
+                            disabled={!activeTab || activeTab.isExecuting || !selectedDatasource}
+                            onClick={handleRunAll}
+                        >
+                            Run All
                         </button>
-                        <button type="button" disabled>
+                        <button
+                            type="button"
+                            disabled={!activeTab || !activeTab.isExecuting}
+                            onClick={() => {
+                                if (!activeTab) {
+                                    return;
+                                }
+
+                                handleCancelRun(activeTab.id);
+                            }}
+                        >
                             Cancel
                         </button>
                         <button type="button" disabled>
@@ -1261,18 +1808,31 @@ export default function WorkspacePage() {
 
                 <section className="panel results">
                     <h2>Results Grid</h2>
-                    {queryStatusMessage ? <p>{queryStatusMessage}</p> : null}
-                    {queryErrorMessage ? (
+                    {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
+                    {activeTab?.errorMessage ? (
                         <p className="form-error" role="alert">
-                            {queryErrorMessage}
+                            {activeTab.errorMessage}
                         </p>
                     ) : null}
-                    {!queryStatusMessage && !queryErrorMessage ? (
+                    {!activeTab?.statusMessage && !activeTab?.errorMessage ? (
                         <p>
                             Server-side pagination and virtualization will be implemented in
                             Milestones 6-7.
                         </p>
                     ) : null}
+                    <div className="shortcut-help">
+                        <h3>Editor Shortcuts</h3>
+                        <ul>
+                            <li>
+                                <kbd>Ctrl/Cmd + Enter</kbd>: Run selection (or full tab if no
+                                selection)
+                            </li>
+                            <li>
+                                <kbd>Esc</kbd>: Cancel in-flight tab request (server cancel wiring
+                                arrives in Milestone 6)
+                            </li>
+                        </ul>
+                    </div>
                 </section>
             </div>
 

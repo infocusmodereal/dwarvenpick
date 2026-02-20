@@ -83,16 +83,55 @@ p {
     background: #084f55;
 }
 
-.sql-editor {
-    margin: 0;
+.editor-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.editor-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    background: #0f172a;
-    color: #d9f99d;
-    padding: 1rem;
-    min-height: 180px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.92rem;
+    border-radius: 999px;
+    background: #f5fafb;
+    padding: 0.2rem 0.35rem;
+}
+
+.editor-tab.active {
+    background: #e1f2f4;
+    border-color: #82b2b6;
+}
+
+.tab-select {
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text);
+    border-color: transparent;
+    padding: 0.3rem 0.6rem;
+}
+
+.tab-select:hover {
+    filter: none;
+    background: rgba(10, 108, 116, 0.08);
+}
+
+.tab-close {
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+}
+
+.editor-context {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.monaco-host {
+    border: 1px solid var(--border);
+    border-radius: 0.55rem;
+    overflow: hidden;
 }
 
 .editor pre {
@@ -235,6 +274,32 @@ textarea:focus {
     gap: 0.4rem;
 }
 
+.shortcut-help {
+    border-top: 1px solid var(--border);
+    padding-top: 0.7rem;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.shortcut-help h3 {
+    margin: 0;
+}
+
+.shortcut-help ul {
+    margin: 0;
+    padding-left: 1rem;
+    display: grid;
+    gap: 0.35rem;
+}
+
+kbd {
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    padding: 0.1rem 0.35rem;
+    background: #f7fafc;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
 .datasource-admin {
     align-content: start;
 }
@@ -285,6 +350,10 @@ button:disabled {
 
 @media (max-width: 960px) {
     .workspace-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .editor-context {
         grid-template-columns: 1fr;
     }
 

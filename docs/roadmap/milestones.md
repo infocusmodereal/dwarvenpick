@@ -40,10 +40,10 @@
 
 ## Milestone 5: SQL Editor MVP
 
-- [ ] Monaco integration
-- [ ] Multi-tab editor state
-- [ ] Datasource context per tab
-- [ ] Run/Cancel controls wiring
+- [x] Monaco integration
+- [x] Multi-tab editor state
+- [x] Datasource context per tab
+- [x] Run/Cancel controls wiring
 
 ## Milestone 6: Query Engine
 

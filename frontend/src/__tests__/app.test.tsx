@@ -3,6 +3,16 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, vi } from 'vitest';
 import App from '../App';
 
+vi.mock('@monaco-editor/react', () => ({
+    default: ({ value, onChange }: { value?: string; onChange?: (value: string) => void }) => (
+        <textarea
+            data-testid="mock-monaco-editor"
+            value={value ?? ''}
+            onChange={(event) => onChange?.(event.target.value)}
+        />
+    )
+}));
+
 describe('App shell', () => {
     beforeEach(() => {
         globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -41,7 +51,7 @@ describe('App shell', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders workspace route', () => {
+    it('renders workspace route', async () => {
         render(
             <MemoryRouter initialEntries={['/workspace']}>
                 <App />
@@ -49,6 +59,7 @@ describe('App shell', () => {
         );
 
         expect(screen.getByText(/badgermole workspace/i)).toBeInTheDocument();
+        expect(await screen.findByText(/editor shortcuts/i)).toBeInTheDocument();
     });
 
     it('renders login route', () => {

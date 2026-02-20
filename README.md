@@ -72,6 +72,7 @@ Default local UI URL:
 - `http://localhost:5173`
 - Dev server proxies `/api` and `/actuator` requests to `http://localhost:8080`.
 - `SYSTEM_ADMIN` users see RBAC and datasource management panels in `/workspace`.
+- `/workspace` includes Monaco SQL editor tabs with per-tab datasource context, Run Selection/Run All controls, and keyboard shortcuts (`Ctrl/Cmd+Enter`, `Esc`).
 
 ### Local stack (Docker Compose)
 
