@@ -182,7 +182,7 @@ export default function LoginPage() {
     };
 
     return (
-        <AppShell title="dwarvenpick Login" showTitle={false}>
+        <AppShell title="dwarvenpick" showTitle={false}>
             <section className="panel login-card">
                 <div className="login-intro">
                     <h2>Welcome Back</h2>

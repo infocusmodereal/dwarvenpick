@@ -70,7 +70,7 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect(screen.getByText(/dwarvenpick workspace/i)).toBeInTheDocument();
+        expect(screen.getByText(/^dwarvenpick$/i)).toBeInTheDocument();
         expect(await screen.findByText(/editor shortcuts/i)).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });

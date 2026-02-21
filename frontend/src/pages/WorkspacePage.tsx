@@ -251,7 +251,7 @@ type ReencryptCredentialsResponse = {
 
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin';
-type IconGlyph = 'new' | 'rename' | 'close';
+type IconGlyph = 'new' | 'rename' | 'close' | 'refresh';
 
 type IconButtonProps = {
     icon: IconGlyph;
@@ -431,6 +431,15 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
         );
     }
 
+    if (icon === 'refresh') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M16 10a6 6 0 1 1-2.1-4.6" />
+                <path d="M16 4.5v3.8h-3.8" />
+            </svg>
+        );
+    }
+
     return (
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="m5 5 10 10" />
@@ -568,7 +577,7 @@ export default function WorkspacePage() {
     const [snippetError, setSnippetError] = useState('');
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
     const [launcherDatasourceId, setLauncherDatasourceId] = useState('');
-    const [showSchemaBrowser, setShowSchemaBrowser] = useState(false);
+    const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
     const [editorRenderKey, setEditorRenderKey] = useState(0);
@@ -1145,6 +1154,23 @@ export default function WorkspacePage() {
 
         return (await response.json()) as CsrfTokenResponse;
     }, []);
+
+    const handleLogout = useCallback(async () => {
+        try {
+            const csrfToken = await fetchCsrfToken();
+            await fetch('/api/auth/logout', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    [csrfToken.headerName]: csrfToken.token
+                }
+            });
+        } catch {
+            // Best effort logout. Client redirect still clears app session state.
+        } finally {
+            navigate('/login', { replace: true });
+        }
+    }, [fetchCsrfToken, navigate]);
 
     const toIsoTimestamp = (value: string): string | null => {
         const trimmed = value.trim();
@@ -2986,7 +3012,7 @@ export default function WorkspacePage() {
 
     if (loadingWorkspace) {
         return (
-            <AppShell title="dwarvenpick Workspace">
+            <AppShell title="dwarvenpick" showTitle={false}>
                 <section className="panel">
                     <p>Loading...</p>
                 </section>
@@ -2995,942 +3021,772 @@ export default function WorkspacePage() {
     }
 
     return (
-        <AppShell title="dwarvenpick Workspace">
+        <AppShell
+            title="dwarvenpick"
+            showTitle={false}
+            user={
+                currentUser
+                    ? {
+                          displayName: currentUser.displayName,
+                          username: currentUser.username,
+                          email: currentUser.email,
+                          onLogout: () => {
+                              void handleLogout();
+                          }
+                      }
+                    : null
+            }
+        >
             {workspaceError ? (
                 <section className="panel">
                     <p className="form-error">{workspaceError}</p>
                 </section>
             ) : null}
 
-            <section className="panel workspace-navigation">
-                <div className="workspace-mode-tabs" role="tablist" aria-label="Workspace sections">
-                    <button
-                        type="button"
-                        role="tab"
-                        className={
-                            activeSection === 'workbench'
-                                ? 'workspace-mode-tab active'
-                                : 'workspace-mode-tab'
-                        }
-                        aria-selected={activeSection === 'workbench'}
-                        onClick={() => setActiveSection('workbench')}
+            <div className="workspace-shell">
+                <aside className="panel workspace-left-rail">
+                    <nav
+                        className="workspace-mode-tabs"
+                        role="tablist"
+                        aria-label="Workspace sections"
                     >
-                        SQL Workbench
-                    </button>
-                    <button
-                        type="button"
-                        role="tab"
-                        className={
-                            activeSection === 'history'
-                                ? 'workspace-mode-tab active'
-                                : 'workspace-mode-tab'
-                        }
-                        aria-selected={activeSection === 'history'}
-                        onClick={() => setActiveSection('history')}
-                    >
-                        History
-                    </button>
-                    <button
-                        type="button"
-                        role="tab"
-                        className={
-                            activeSection === 'snippets'
-                                ? 'workspace-mode-tab active'
-                                : 'workspace-mode-tab'
-                        }
-                        aria-selected={activeSection === 'snippets'}
-                        onClick={() => setActiveSection('snippets')}
-                    >
-                        Snippets
-                    </button>
-                    {isSystemAdmin ? (
                         <button
                             type="button"
                             role="tab"
                             className={
-                                activeSection === 'audit'
+                                activeSection === 'workbench'
                                     ? 'workspace-mode-tab active'
                                     : 'workspace-mode-tab'
                             }
-                            aria-selected={activeSection === 'audit'}
-                            onClick={() => setActiveSection('audit')}
+                            aria-selected={activeSection === 'workbench'}
+                            onClick={() => setActiveSection('workbench')}
                         >
-                            Audit
+                            SQL Workbench
                         </button>
-                    ) : null}
-                    {isSystemAdmin ? (
                         <button
                             type="button"
                             role="tab"
                             className={
-                                activeSection === 'admin'
+                                activeSection === 'history'
                                     ? 'workspace-mode-tab active'
                                     : 'workspace-mode-tab'
                             }
-                            aria-selected={activeSection === 'admin'}
-                            onClick={() => setActiveSection('admin')}
+                            aria-selected={activeSection === 'history'}
+                            onClick={() => setActiveSection('history')}
                         >
-                            Governance
-                        </button>
-                    ) : null}
-                </div>
-            </section>
-
-            <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
-                <aside className="panel sidebar">
-                    <h2>Data Sources</h2>
-
-                    <section className="datasource-tree">
-                        <h3>Configured Connections</h3>
-                        {visibleDatasources.length === 0 ? (
-                            <p>No datasource access has been granted yet.</p>
-                        ) : (
-                            <ul className="datasource-tree-list">
-                                {visibleDatasources.map((datasource) => (
-                                    <li key={datasource.id}>
-                                        <button
-                                            type="button"
-                                            className={
-                                                launcherDatasourceId === datasource.id
-                                                    ? 'datasource-tree-button active'
-                                                    : 'datasource-tree-button'
-                                            }
-                                            onClick={() => setLauncherDatasourceId(datasource.id)}
-                                        >
-                                            <span className="datasource-tree-main">
-                                                {datasource.name}
-                                            </span>
-                                            <span className="datasource-tree-meta">
-                                                {datasource.engine}
-                                            </span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </section>
-
-                    <div className="datasource-launch-actions">
-                        <button
-                            type="button"
-                            onClick={() => handleOpenNewTabForDatasource(launcherDatasourceId)}
-                            disabled={!launcherDatasourceId}
-                        >
-                            Open Query Tab
+                            History
                         </button>
                         <button
                             type="button"
-                            className="chip"
-                            onClick={() =>
-                                launcherDatasourceId
-                                    ? handleDatasourceChangeForActiveTab(launcherDatasourceId)
-                                    : undefined
+                            role="tab"
+                            className={
+                                activeSection === 'snippets'
+                                    ? 'workspace-mode-tab active'
+                                    : 'workspace-mode-tab'
                             }
-                            disabled={
-                                !launcherDatasourceId ||
-                                !activeTab ||
-                                activeTab.isExecuting ||
-                                activeTab.datasourceId === launcherDatasourceId
-                            }
+                            aria-selected={activeSection === 'snippets'}
+                            onClick={() => setActiveSection('snippets')}
                         >
-                            Use In Active Tab
+                            Snippets
                         </button>
                         {isSystemAdmin ? (
                             <button
                                 type="button"
-                                className="chip"
-                                onClick={() => setActiveSection('admin')}
+                                role="tab"
+                                className={
+                                    activeSection === 'audit'
+                                        ? 'workspace-mode-tab active'
+                                        : 'workspace-mode-tab'
+                                }
+                                aria-selected={activeSection === 'audit'}
+                                onClick={() => setActiveSection('audit')}
                             >
-                                Add Datasource
+                                Audit
                             </button>
                         ) : null}
-                    </div>
-
-                    <section className="schema-browser">
-                        <div className="row">
-                            <h3>Schema Browser</h3>
+                        {isSystemAdmin ? (
                             <button
-                                type="button"
-                                className="chip"
-                                onClick={() => setShowSchemaBrowser((current) => !current)}
-                            >
-                                {showSchemaBrowser ? 'Hide' : 'Show'}
-                            </button>
-                            {showSchemaBrowser ? (
-                                <button
-                                    type="button"
-                                    className="chip"
-                                    disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
-                                    onClick={() =>
-                                        activeTab?.datasourceId
-                                            ? void loadSchemaBrowser(activeTab.datasourceId, true)
-                                            : undefined
-                                    }
-                                >
-                                    {loadingSchemaBrowser ? 'Refreshing...' : 'Refresh'}
-                                </button>
-                            ) : null}
-                        </div>
-                        {showSchemaBrowser ? (
-                            <>
-                                {schemaBrowserError ? (
-                                    <p className="form-error">{schemaBrowserError}</p>
-                                ) : null}
-                                {schemaBrowser ? (
-                                    <ul className="schema-tree">
-                                        {schemaBrowser.schemas.map((schemaEntry) => (
-                                            <li key={`schema-${schemaEntry.schema}`}>
-                                                <button
-                                                    type="button"
-                                                    className="chip"
-                                                    onClick={() =>
-                                                        handleInsertTextIntoActiveQuery(
-                                                            schemaEntry.schema
-                                                        )
-                                                    }
-                                                >
-                                                    {schemaEntry.schema}
-                                                </button>
-                                                <ul>
-                                                    {schemaEntry.tables.map((tableEntry) => (
-                                                        <li
-                                                            key={`${schemaEntry.schema}-${tableEntry.table}`}
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                className="datasource-button"
-                                                                onClick={() =>
-                                                                    handleInsertTextIntoActiveQuery(
-                                                                        `${schemaEntry.schema}.${tableEntry.table}`
-                                                                    )
-                                                                }
-                                                            >
-                                                                {tableEntry.table}
-                                                            </button>
-                                                            <ul>
-                                                                {tableEntry.columns.map(
-                                                                    (columnEntry) => (
-                                                                        <li
-                                                                            key={`${schemaEntry.schema}-${tableEntry.table}-${columnEntry.name}`}
-                                                                        >
-                                                                            <button
-                                                                                type="button"
-                                                                                className="chip"
-                                                                                onClick={() =>
-                                                                                    handleInsertTextIntoActiveQuery(
-                                                                                        columnEntry.name
-                                                                                    )
-                                                                                }
-                                                                            >
-                                                                                {columnEntry.name}
-                                                                            </button>
-                                                                        </li>
-                                                                    )
-                                                                )}
-                                                            </ul>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p>
-                                        Schema metadata will appear after a datasource is selected.
-                                    </p>
-                                )}
-                            </>
-                        ) : null}
-                    </section>
-                </aside>
-
-                <section className="panel editor">
-                    <h2>SQL Workbench</h2>
-                    <div className="editor-tabs" role="tablist" aria-label="SQL tabs">
-                        {workspaceTabs.map((tab) => (
-                            <button
-                                key={tab.id}
                                 type="button"
                                 role="tab"
                                 className={
-                                    tab.id === activeTabId ? 'editor-tab active' : 'editor-tab'
+                                    activeSection === 'admin'
+                                        ? 'workspace-mode-tab active'
+                                        : 'workspace-mode-tab'
                                 }
-                                aria-selected={tab.id === activeTabId}
-                                onClick={() => setActiveTabId(tab.id)}
+                                aria-selected={activeSection === 'admin'}
+                                onClick={() => setActiveSection('admin')}
                             >
-                                {tab.title}
-                                {tab.isExecuting ? ' (Running)' : ''}
+                                Governance
                             </button>
-                        ))}
-                    </div>
-                    <div className="row editor-tab-actions">
-                        <IconButton
-                            icon="new"
-                            title="Open new SQL tab"
-                            onClick={handleOpenNewTab}
-                        />
-                        <IconButton
-                            icon="rename"
-                            title="Rename active SQL tab"
-                            disabled={!activeTab}
-                            onClick={() => {
-                                if (!activeTab) {
-                                    return;
-                                }
+                        ) : null}
+                    </nav>
+                </aside>
 
-                                handleRenameTab(activeTab.id);
-                            }}
-                        />
-                        <IconButton
-                            icon="close"
-                            title="Close active SQL tab"
-                            variant="danger"
-                            disabled={!activeTab || workspaceTabs.length <= 1}
-                            onClick={() => {
-                                if (!activeTab) {
-                                    return;
-                                }
-
-                                handleCloseTab(activeTab.id);
-                            }}
-                        />
-                    </div>
-
-                    <div className="editor-context">
-                        <div className="editor-context-card">
-                            <span className="editor-context-label">Execution Datasource</span>
-                            <strong>{selectedDatasource?.name ?? 'No datasource selected'}</strong>
-                            <span className="muted-id">{selectedDatasource?.engine ?? ''}</span>
-                        </div>
-
-                        <div className="editor-context-input">
-                            <label htmlFor="tab-schema">Default Schema (optional)</label>
-                            <input
-                                id="tab-schema"
-                                value={activeTab?.schema ?? ''}
-                                onChange={(event) => {
-                                    if (!activeTab) {
-                                        return;
+                <section className="workspace-main">
+                    <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
+                        <aside className="panel sidebar">
+                            <section className="datasource-tree">
+                                <label htmlFor="launcher-datasource">Connections</label>
+                                <select
+                                    id="launcher-datasource"
+                                    value={launcherDatasourceId}
+                                    onChange={(event) =>
+                                        setLauncherDatasourceId(event.target.value)
                                     }
+                                >
+                                    {visibleDatasources.length === 0 ? (
+                                        <option value="">No datasource access</option>
+                                    ) : null}
+                                    {visibleDatasources.map((datasource) => (
+                                        <option key={datasource.id} value={datasource.id}>
+                                            {datasource.name} ({datasource.engine})
+                                        </option>
+                                    ))}
+                                </select>
 
-                                    updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                        ...currentTab,
-                                        schema: event.target.value
-                                    }));
-                                }}
-                                placeholder="public"
-                                disabled={!activeTab}
-                            />
-                        </div>
-                    </div>
+                                <div className="datasource-launch-actions">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleOpenNewTabForDatasource(launcherDatasourceId)
+                                        }
+                                        disabled={!launcherDatasourceId}
+                                    >
+                                        Open Query Tab
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        onClick={() =>
+                                            launcherDatasourceId
+                                                ? handleDatasourceChangeForActiveTab(
+                                                      launcherDatasourceId
+                                                  )
+                                                : undefined
+                                        }
+                                        disabled={
+                                            !launcherDatasourceId ||
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            activeTab.datasourceId === launcherDatasourceId
+                                        }
+                                    >
+                                        Use In Active Tab
+                                    </button>
+                                    {isSystemAdmin ? (
+                                        <button
+                                            type="button"
+                                            className="chip"
+                                            onClick={() => setActiveSection('admin')}
+                                        >
+                                            Add Datasource
+                                        </button>
+                                    ) : null}
+                                </div>
+                            </section>
 
-                    <div className="monaco-host">
-                        {monacoLoadTimedOut ? (
-                            <div className="editor-fallback">
-                                <p className="form-error">
-                                    SQL editor failed to initialize. You can continue using fallback
-                                    mode.
-                                </p>
-                                <textarea
-                                    value={activeTab?.queryText ?? ''}
-                                    onChange={(event) => {
+                            <section className="schema-browser">
+                                <div className="row schema-browser-header">
+                                    <h3>Schema</h3>
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        onClick={() => setShowSchemaBrowser((current) => !current)}
+                                    >
+                                        {showSchemaBrowser ? 'Hide' : 'Show'}
+                                    </button>
+                                    {showSchemaBrowser ? (
+                                        <IconButton
+                                            icon="refresh"
+                                            title="Refresh schema metadata"
+                                            disabled={
+                                                !activeTab?.datasourceId || loadingSchemaBrowser
+                                            }
+                                            onClick={() =>
+                                                activeTab?.datasourceId
+                                                    ? void loadSchemaBrowser(
+                                                          activeTab.datasourceId,
+                                                          true
+                                                      )
+                                                    : undefined
+                                            }
+                                        />
+                                    ) : null}
+                                </div>
+                                {showSchemaBrowser ? (
+                                    <>
+                                        {schemaBrowserError ? (
+                                            <p className="form-error">{schemaBrowserError}</p>
+                                        ) : null}
+                                        {schemaBrowser ? (
+                                            <ul className="schema-tree" role="tree">
+                                                {schemaBrowser.schemas.map((schemaEntry) => (
+                                                    <li
+                                                        key={`schema-${schemaEntry.schema}`}
+                                                        className="schema-tree-schema"
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className="tree-link tree-link-schema"
+                                                            onClick={() =>
+                                                                handleInsertTextIntoActiveQuery(
+                                                                    schemaEntry.schema
+                                                                )
+                                                            }
+                                                        >
+                                                            {schemaEntry.schema}
+                                                        </button>
+                                                        <ul>
+                                                            {schemaEntry.tables.map(
+                                                                (tableEntry) => (
+                                                                    <li
+                                                                        key={`${schemaEntry.schema}-${tableEntry.table}`}
+                                                                        className="schema-tree-table"
+                                                                    >
+                                                                        <button
+                                                                            type="button"
+                                                                            className="tree-link tree-link-table"
+                                                                            onClick={() =>
+                                                                                handleInsertTextIntoActiveQuery(
+                                                                                    `${schemaEntry.schema}.${tableEntry.table}`
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            {tableEntry.table}
+                                                                        </button>
+                                                                        <ul>
+                                                                            {tableEntry.columns.map(
+                                                                                (columnEntry) => (
+                                                                                    <li
+                                                                                        key={`${schemaEntry.schema}-${tableEntry.table}-${columnEntry.name}`}
+                                                                                        className="schema-tree-column"
+                                                                                    >
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            className="tree-link tree-link-column"
+                                                                                            onClick={() =>
+                                                                                                handleInsertTextIntoActiveQuery(
+                                                                                                    columnEntry.name
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            {
+                                                                                                columnEntry.name
+                                                                                            }
+                                                                                        </button>
+                                                                                    </li>
+                                                                                )
+                                                                            )}
+                                                                        </ul>
+                                                                    </li>
+                                                                )
+                                                            )}
+                                                        </ul>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p>
+                                                Schema metadata appears after a datasource is
+                                                selected.
+                                            </p>
+                                        )}
+                                    </>
+                                ) : null}
+                            </section>
+                        </aside>
+
+                        <section className="panel editor">
+                            <div className="editor-toolbar">
+                                <div className="editor-tabs" role="tablist" aria-label="SQL tabs">
+                                    {workspaceTabs.map((tab) => (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            role="tab"
+                                            className={
+                                                tab.id === activeTabId
+                                                    ? 'editor-tab active'
+                                                    : 'editor-tab'
+                                            }
+                                            aria-selected={tab.id === activeTabId}
+                                            onClick={() => setActiveTabId(tab.id)}
+                                        >
+                                            {tab.title}
+                                            {tab.isExecuting ? ' (Running)' : ''}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="row editor-tab-actions">
+                                    <IconButton
+                                        icon="new"
+                                        title="Open new SQL tab"
+                                        onClick={handleOpenNewTab}
+                                    />
+                                    <IconButton
+                                        icon="rename"
+                                        title="Rename active SQL tab"
+                                        disabled={!activeTab}
+                                        onClick={() => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+
+                                            handleRenameTab(activeTab.id);
+                                        }}
+                                    />
+                                    <IconButton
+                                        icon="close"
+                                        title="Close active SQL tab"
+                                        variant="danger"
+                                        disabled={!activeTab || workspaceTabs.length <= 1}
+                                        onClick={() => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+
+                                            handleCloseTab(activeTab.id);
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="editor-toolbar-fields">
+                                    <select
+                                        aria-label="Active tab datasource"
+                                        value={activeTab?.datasourceId ?? ''}
+                                        onChange={(event) =>
+                                            handleDatasourceChangeForActiveTab(event.target.value)
+                                        }
+                                        disabled={!activeTab || activeTab.isExecuting}
+                                    >
+                                        {visibleDatasources.map((datasource) => (
+                                            <option
+                                                key={`tab-ds-${datasource.id}`}
+                                                value={datasource.id}
+                                            >
+                                                {datasource.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        id="tab-schema"
+                                        value={activeTab?.schema ?? ''}
+                                        onChange={(event) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                schema: event.target.value
+                                            }));
+                                        }}
+                                        placeholder="Schema (optional)"
+                                        disabled={!activeTab}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="monaco-host">
+                                {monacoLoadTimedOut ? (
+                                    <div className="editor-fallback">
+                                        <p className="form-error">
+                                            SQL editor failed to initialize. You can continue using
+                                            fallback mode.
+                                        </p>
+                                        <textarea
+                                            value={activeTab?.queryText ?? ''}
+                                            onChange={(event) => {
+                                                if (!activeTab) {
+                                                    return;
+                                                }
+
+                                                updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                    ...currentTab,
+                                                    queryText: event.target.value
+                                                }));
+                                            }}
+                                            rows={14}
+                                            className="fallback-editor-textarea"
+                                        />
+                                        <div className="row">
+                                            <button
+                                                type="button"
+                                                className="chip"
+                                                onClick={handleRetryEditorLoad}
+                                            >
+                                                Retry Monaco Editor
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <Editor
+                                        key={`monaco-${editorRenderKey}`}
+                                        height="360px"
+                                        language="sql"
+                                        beforeMount={handleEditorWillMount}
+                                        theme="dwarvenpick-sql"
+                                        loading={
+                                            <div className="editor-loading">
+                                                Loading SQL editor...
+                                            </div>
+                                        }
+                                        value={activeTab?.queryText ?? ''}
+                                        onMount={handleEditorDidMount}
+                                        onChange={(value) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                queryText: value ?? '',
+                                                errorMessage: currentTab.errorMessage,
+                                                statusMessage: currentTab.statusMessage
+                                            }));
+                                        }}
+                                        options={{
+                                            automaticLayout: true,
+                                            minimap: { enabled: false },
+                                            lineNumbers: 'on',
+                                            bracketPairColorization: { enabled: true },
+                                            wordWrap: 'on',
+                                            scrollBeyondLastLine: false
+                                        }}
+                                    />
+                                )}
+                            </div>
+
+                            <div className="row">
+                                <button
+                                    type="button"
+                                    disabled={
+                                        !activeTab || activeTab.isExecuting || !selectedDatasource
+                                    }
+                                    onClick={handleRunSelection}
+                                >
+                                    {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={
+                                        !activeTab || activeTab.isExecuting || !selectedDatasource
+                                    }
+                                    onClick={handleRunAll}
+                                >
+                                    Run All
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={
+                                        !activeTab || activeTab.isExecuting || !selectedDatasource
+                                    }
+                                    onClick={handleExplain}
+                                >
+                                    Explain
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!activeTab || activeTab.isExecuting}
+                                    onClick={handleFormatSql}
+                                >
+                                    Format SQL
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!activeTab || !activeTab.isExecuting}
+                                    onClick={() => {
                                         if (!activeTab) {
                                             return;
                                         }
 
-                                        updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                            ...currentTab,
-                                            queryText: event.target.value
-                                        }));
+                                        void handleCancelRun(activeTab.id);
                                     }}
-                                    rows={14}
-                                    className="fallback-editor-textarea"
-                                />
-                                <div className="row">
-                                    <button
-                                        type="button"
-                                        className="chip"
-                                        onClick={handleRetryEditorLoad}
-                                    >
-                                        Retry Monaco Editor
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <Editor
-                                key={`monaco-${editorRenderKey}`}
-                                height="360px"
-                                language="sql"
-                                beforeMount={handleEditorWillMount}
-                                theme="dwarvenpick-sql"
-                                loading={
-                                    <div className="editor-loading">Loading SQL editor...</div>
-                                }
-                                value={activeTab?.queryText ?? ''}
-                                onMount={handleEditorDidMount}
-                                onChange={(value) => {
-                                    if (!activeTab) {
-                                        return;
-                                    }
-
-                                    updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                        ...currentTab,
-                                        queryText: value ?? '',
-                                        errorMessage: currentTab.errorMessage,
-                                        statusMessage: currentTab.statusMessage
-                                    }));
-                                }}
-                                options={{
-                                    automaticLayout: true,
-                                    minimap: { enabled: false },
-                                    lineNumbers: 'on',
-                                    bracketPairColorization: { enabled: true },
-                                    wordWrap: 'on',
-                                    scrollBeyondLastLine: false
-                                }}
-                            />
-                        )}
-                    </div>
-
-                    <div className="row">
-                        <button
-                            type="button"
-                            disabled={!activeTab || activeTab.isExecuting || !selectedDatasource}
-                            onClick={handleRunSelection}
-                        >
-                            {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!activeTab || activeTab.isExecuting || !selectedDatasource}
-                            onClick={handleRunAll}
-                        >
-                            Run All
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!activeTab || activeTab.isExecuting || !selectedDatasource}
-                            onClick={handleExplain}
-                        >
-                            Explain
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!activeTab || activeTab.isExecuting}
-                            onClick={handleFormatSql}
-                        >
-                            Format SQL
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!activeTab || !activeTab.isExecuting}
-                            onClick={() => {
-                                if (!activeTab) {
-                                    return;
-                                }
-
-                                void handleCancelRun(activeTab.id);
-                            }}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => void handleExportCsv()}
-                            disabled={!activeTab?.executionId || exportingCsv}
-                        >
-                            {exportingCsv ? 'Exporting...' : 'Export CSV'}
-                        </button>
-                    </div>
-                </section>
-
-                <section className="panel results">
-                    <h2>Results Grid</h2>
-                    {activeTab?.executionId ? (
-                        <div className="result-meta">
-                            <p>
-                                <strong>Execution:</strong> {activeTab.executionId}
-                            </p>
-                            <p>
-                                <strong>Status:</strong>{' '}
-                                {activeTab.executionStatus || 'PENDING_SUBMISSION'}
-                            </p>
-                            {activeTab.queryHash ? (
-                                <p>
-                                    <strong>Query Hash:</strong>{' '}
-                                    <code className="result-hash">{activeTab.queryHash}</code>
-                                </p>
-                            ) : null}
-                        </div>
-                    ) : (
-                        <p>Run a query to view execution status and results.</p>
-                    )}
-                    {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
-                    {activeTab?.errorMessage ? (
-                        <p className="form-error" role="alert">
-                            {activeTab.errorMessage}
-                        </p>
-                    ) : null}
-                    {activeTab?.rowLimitReached ? (
-                        <p className="form-error" role="alert">
-                            Result row limit reached for this execution.
-                        </p>
-                    ) : null}
-                    {copyFeedback ? <p className="form-success">{copyFeedback}</p> : null}
-                    {explainPlanText ? (
-                        <div className="explain-plan">
-                            <h3>Explain Plan</h3>
-                            <pre>{explainPlanText}</pre>
-                        </div>
-                    ) : null}
-
-                    {activeTab?.resultColumns.length ? (
-                        <>
-                            <div className="result-actions row">
-                                <label className="checkbox-row">
-                                    <input
-                                        type="checkbox"
-                                        checked={exportIncludeHeaders}
-                                        onChange={(event) =>
-                                            setExportIncludeHeaders(event.target.checked)
-                                        }
-                                    />
-                                    <span>Include CSV headers</span>
-                                </label>
-                                <button
-                                    type="button"
-                                    onClick={handleLoadPreviousResults}
-                                    disabled={activeTab.previousPageTokens.length === 0}
                                 >
-                                    Previous Page
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleLoadNextResults}
-                                    disabled={!activeTab.nextPageToken}
-                                >
-                                    Next Page
+                                    Cancel
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => void handleExportCsv()}
-                                    disabled={exportingCsv}
+                                    disabled={!activeTab?.executionId || exportingCsv}
                                 >
-                                    {exportingCsv ? 'Exporting...' : 'Download CSV'}
+                                    {exportingCsv ? 'Exporting...' : 'Export CSV'}
                                 </button>
                             </div>
-                            <div
-                                className="result-table-wrap"
-                                onScroll={(event) =>
-                                    setResultGridScrollTop(event.currentTarget.scrollTop)
-                                }
-                            >
-                                <table className="result-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Row</th>
-                                            <th>Actions</th>
-                                            {activeTab.resultColumns.map((column) => (
-                                                <th key={`${column.name}-${column.jdbcType}`}>
-                                                    {column.name}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {visibleResultRows.topSpacerPx > 0 ? (
-                                            <tr>
-                                                <td
-                                                    colSpan={activeTab.resultColumns.length + 2}
-                                                    style={{
-                                                        height: `${visibleResultRows.topSpacerPx}px`,
-                                                        padding: 0,
-                                                        border: 'none'
-                                                    }}
-                                                />
-                                            </tr>
-                                        ) : null}
-                                        {visibleResultRows.rows.map((row, relativeIndex) => {
-                                            const absoluteIndex =
-                                                visibleResultRows.start + relativeIndex;
-                                            return (
-                                                <tr key={`row-${absoluteIndex}`}>
-                                                    <td>{absoluteIndex + 1}</td>
-                                                    <td className="result-cell-actions">
-                                                        <button
-                                                            type="button"
-                                                            className="chip"
-                                                            onClick={() => void handleCopyRow(row)}
+                        </section>
+
+                        <section className="panel results">
+                            <h2>Results Grid</h2>
+                            {activeTab?.executionId ? (
+                                <div className="result-meta">
+                                    <p>
+                                        <strong>Execution:</strong> {activeTab.executionId}
+                                    </p>
+                                    <p>
+                                        <strong>Status:</strong>{' '}
+                                        {activeTab.executionStatus || 'PENDING_SUBMISSION'}
+                                    </p>
+                                    {activeTab.queryHash ? (
+                                        <p>
+                                            <strong>Query Hash:</strong>{' '}
+                                            <code className="result-hash">
+                                                {activeTab.queryHash}
+                                            </code>
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <p>Run a query to view execution status and results.</p>
+                            )}
+                            {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
+                            {activeTab?.errorMessage ? (
+                                <p className="form-error" role="alert">
+                                    {activeTab.errorMessage}
+                                </p>
+                            ) : null}
+                            {activeTab?.rowLimitReached ? (
+                                <p className="form-error" role="alert">
+                                    Result row limit reached for this execution.
+                                </p>
+                            ) : null}
+                            {copyFeedback ? <p className="form-success">{copyFeedback}</p> : null}
+                            {explainPlanText ? (
+                                <div className="explain-plan">
+                                    <h3>Explain Plan</h3>
+                                    <pre>{explainPlanText}</pre>
+                                </div>
+                            ) : null}
+
+                            {activeTab?.resultColumns.length ? (
+                                <>
+                                    <div className="result-actions row">
+                                        <label className="checkbox-row">
+                                            <input
+                                                type="checkbox"
+                                                checked={exportIncludeHeaders}
+                                                onChange={(event) =>
+                                                    setExportIncludeHeaders(event.target.checked)
+                                                }
+                                            />
+                                            <span>Include CSV headers</span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={handleLoadPreviousResults}
+                                            disabled={activeTab.previousPageTokens.length === 0}
+                                        >
+                                            Previous Page
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleLoadNextResults}
+                                            disabled={!activeTab.nextPageToken}
+                                        >
+                                            Next Page
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleExportCsv()}
+                                            disabled={exportingCsv}
+                                        >
+                                            {exportingCsv ? 'Exporting...' : 'Download CSV'}
+                                        </button>
+                                    </div>
+                                    <div
+                                        className="result-table-wrap"
+                                        onScroll={(event) =>
+                                            setResultGridScrollTop(event.currentTarget.scrollTop)
+                                        }
+                                    >
+                                        <table className="result-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Row</th>
+                                                    <th>Actions</th>
+                                                    {activeTab.resultColumns.map((column) => (
+                                                        <th
+                                                            key={`${column.name}-${column.jdbcType}`}
                                                         >
-                                                            Copy Row
-                                                        </button>
-                                                    </td>
-                                                    {row.map((value, columnIndex) => (
-                                                        <td
-                                                            key={`cell-${absoluteIndex}-${columnIndex}`}
-                                                        >
-                                                            <div className="result-cell">
-                                                                <span>{value ?? 'NULL'}</span>
-                                                                <button
-                                                                    type="button"
-                                                                    className="chip"
-                                                                    onClick={() =>
-                                                                        void handleCopyCell(value)
-                                                                    }
-                                                                >
-                                                                    Copy
-                                                                </button>
-                                                            </div>
-                                                        </td>
+                                                            {column.name}
+                                                        </th>
                                                     ))}
                                                 </tr>
-                                            );
-                                        })}
-                                        {visibleResultRows.bottomSpacerPx > 0 ? (
-                                            <tr>
-                                                <td
-                                                    colSpan={activeTab.resultColumns.length + 2}
-                                                    style={{
-                                                        height: `${visibleResultRows.bottomSpacerPx}px`,
-                                                        padding: 0,
-                                                        border: 'none'
-                                                    }}
-                                                />
-                                            </tr>
-                                        ) : null}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </>
-                    ) : null}
-                    {activeTab?.executionStatus === 'SUCCEEDED' &&
-                    activeTab.resultColumns.length === 0 &&
-                    !activeTab.errorMessage ? (
-                        <p>Query completed successfully and returned no rows.</p>
-                    ) : null}
-                    {!activeTab?.executionId &&
-                    !activeTab?.statusMessage &&
-                    !activeTab?.errorMessage ? (
-                        <p>
-                            Results populate after query submission. Use next/previous once paging
-                            tokens are available.
-                        </p>
-                    ) : null}
-                    <details className="shortcut-help">
-                        <summary>Editor Shortcuts</summary>
-                        <ul>
-                            <li>
-                                <kbd>Ctrl/Cmd + Enter</kbd>: Run selection (or full tab if no
-                                selection)
-                            </li>
-                            <li>
-                                <kbd>Esc</kbd>: Cancel currently running execution
-                            </li>
-                        </ul>
-                    </details>
-                </section>
-            </div>
+                                            </thead>
+                                            <tbody>
+                                                {visibleResultRows.topSpacerPx > 0 ? (
+                                                    <tr>
+                                                        <td
+                                                            colSpan={
+                                                                activeTab.resultColumns.length + 2
+                                                            }
+                                                            style={{
+                                                                height: `${visibleResultRows.topSpacerPx}px`,
+                                                                padding: 0,
+                                                                border: 'none'
+                                                            }}
+                                                        />
+                                                    </tr>
+                                                ) : null}
+                                                {visibleResultRows.rows.map(
+                                                    (row, relativeIndex) => {
+                                                        const absoluteIndex =
+                                                            visibleResultRows.start + relativeIndex;
+                                                        return (
+                                                            <tr key={`row-${absoluteIndex}`}>
+                                                                <td>{absoluteIndex + 1}</td>
+                                                                <td className="result-cell-actions">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="chip"
+                                                                        onClick={() =>
+                                                                            void handleCopyRow(row)
+                                                                        }
+                                                                    >
+                                                                        Copy Row
+                                                                    </button>
+                                                                </td>
+                                                                {row.map((value, columnIndex) => (
+                                                                    <td
+                                                                        key={`cell-${absoluteIndex}-${columnIndex}`}
+                                                                    >
+                                                                        <div className="result-cell">
+                                                                            <span>
+                                                                                {value ?? 'NULL'}
+                                                                            </span>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="chip"
+                                                                                onClick={() =>
+                                                                                    void handleCopyCell(
+                                                                                        value
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Copy
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        );
+                                                    }
+                                                )}
+                                                {visibleResultRows.bottomSpacerPx > 0 ? (
+                                                    <tr>
+                                                        <td
+                                                            colSpan={
+                                                                activeTab.resultColumns.length + 2
+                                                            }
+                                                            style={{
+                                                                height: `${visibleResultRows.bottomSpacerPx}px`,
+                                                                padding: 0,
+                                                                border: 'none'
+                                                            }}
+                                                        />
+                                                    </tr>
+                                                ) : null}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            ) : null}
+                            {activeTab?.executionStatus === 'SUCCEEDED' &&
+                            activeTab.resultColumns.length === 0 &&
+                            !activeTab.errorMessage ? (
+                                <p>Query completed successfully and returned no rows.</p>
+                            ) : null}
+                            {!activeTab?.executionId &&
+                            !activeTab?.statusMessage &&
+                            !activeTab?.errorMessage ? (
+                                <p>
+                                    Results populate after query submission. Use next/previous once
+                                    paging tokens are available.
+                                </p>
+                            ) : null}
+                            <details className="shortcut-help">
+                                <summary>Editor Shortcuts</summary>
+                                <ul>
+                                    <li>
+                                        <kbd>Ctrl/Cmd + Enter</kbd>: Run selection (or full tab if
+                                        no selection)
+                                    </li>
+                                    <li>
+                                        <kbd>Esc</kbd>: Cancel currently running execution
+                                    </li>
+                                </ul>
+                            </details>
+                        </section>
+                    </div>
 
-            <section className="panel history-panel" hidden={activeSection !== 'history'}>
-                <h2>Query History</h2>
-                <div className="history-filters">
-                    <label htmlFor="history-datasource-filter">Datasource</label>
-                    <select
-                        id="history-datasource-filter"
-                        value={historyDatasourceFilter}
-                        onChange={(event) => setHistoryDatasourceFilter(event.target.value)}
-                    >
-                        <option value="">All datasources</option>
-                        {visibleDatasources.map((datasource) => (
-                            <option key={`history-${datasource.id}`} value={datasource.id}>
-                                {datasource.name}
-                            </option>
-                        ))}
-                    </select>
-
-                    <label htmlFor="history-status-filter">Status</label>
-                    <select
-                        id="history-status-filter"
-                        value={historyStatusFilter}
-                        onChange={(event) => setHistoryStatusFilter(event.target.value)}
-                    >
-                        <option value="">All statuses</option>
-                        <option value="QUEUED">QUEUED</option>
-                        <option value="RUNNING">RUNNING</option>
-                        <option value="SUCCEEDED">SUCCEEDED</option>
-                        <option value="FAILED">FAILED</option>
-                        <option value="CANCELED">CANCELED</option>
-                    </select>
-
-                    <label htmlFor="history-from-filter">From</label>
-                    <input
-                        id="history-from-filter"
-                        type="datetime-local"
-                        value={historyFromFilter}
-                        onChange={(event) => setHistoryFromFilter(event.target.value)}
-                    />
-
-                    <label htmlFor="history-to-filter">To</label>
-                    <input
-                        id="history-to-filter"
-                        type="datetime-local"
-                        value={historyToFilter}
-                        onChange={(event) => setHistoryToFilter(event.target.value)}
-                    />
-                </div>
-                <div className="row">
-                    <button type="button" onClick={() => void loadQueryHistory()}>
-                        {loadingQueryHistory ? 'Loading...' : 'Refresh History'}
-                    </button>
-                    <button
-                        type="button"
-                        className="chip"
-                        onClick={() => {
-                            setHistoryDatasourceFilter('');
-                            setHistoryStatusFilter('');
-                            setHistoryFromFilter('');
-                            setHistoryToFilter('');
-                            window.setTimeout(() => {
-                                void loadQueryHistory();
-                            }, 0);
-                        }}
-                    >
-                        Clear Filters
-                    </button>
-                </div>
-                <div className="history-table-wrap">
-                    <table className="result-table history-table">
-                        <thead>
-                            <tr>
-                                <th>Submitted</th>
-                                <th>Status</th>
-                                <th>Datasource</th>
-                                <th>Duration</th>
-                                <th>Query</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {queryHistoryEntries.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6}>
-                                        No history entries found for current filters.
-                                    </td>
-                                </tr>
-                            ) : (
-                                queryHistoryEntries.map((entry) => (
-                                    <tr key={`history-${entry.executionId}`}>
-                                        <td>{new Date(entry.submittedAt).toLocaleString()}</td>
-                                        <td>{entry.status}</td>
-                                        <td>{entry.datasourceId}</td>
-                                        <td>
-                                            {typeof entry.durationMs === 'number'
-                                                ? `${entry.durationMs} ms`
-                                                : '-'}
-                                        </td>
-                                        <td className="history-query">
-                                            {entry.queryTextRedacted
-                                                ? '[REDACTED]'
-                                                : (entry.queryText ?? '[empty]')}
-                                        </td>
-                                        <td className="history-actions">
-                                            <button
-                                                type="button"
-                                                className="chip"
-                                                disabled={
-                                                    !entry.queryText || entry.queryTextRedacted
-                                                }
-                                                onClick={() => handleOpenHistoryEntry(entry, false)}
-                                            >
-                                                Open
-                                            </button>
-                                            <button
-                                                type="button"
-                                                disabled={
-                                                    !entry.queryText || entry.queryTextRedacted
-                                                }
-                                                onClick={() => handleOpenHistoryEntry(entry, true)}
-                                            >
-                                                Rerun
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section className="panel snippets-panel" hidden={activeSection !== 'snippets'}>
-                <h2>Saved Snippets</h2>
-
-                <div className="history-filters">
-                    <label htmlFor="snippet-scope">Scope</label>
-                    <select
-                        id="snippet-scope"
-                        value={snippetScope}
-                        onChange={(event) =>
-                            setSnippetScope(event.target.value as 'all' | 'personal' | 'group')
-                        }
-                    >
-                        <option value="all">All visible</option>
-                        <option value="personal">Personal</option>
-                        <option value="group">Group shared</option>
-                    </select>
-
-                    <label htmlFor="snippet-title">Snippet Title</label>
-                    <input
-                        id="snippet-title"
-                        value={snippetTitleInput}
-                        onChange={(event) => setSnippetTitleInput(event.target.value)}
-                        placeholder="Daily health query"
-                    />
-
-                    <label htmlFor="snippet-group-id">Group ID (optional)</label>
-                    <input
-                        id="snippet-group-id"
-                        value={snippetGroupInput}
-                        onChange={(event) => setSnippetGroupInput(event.target.value)}
-                        placeholder={currentUser?.groups?.[0] ?? 'analytics-users'}
-                    />
-                </div>
-                <div className="row">
-                    <button
-                        type="button"
-                        disabled={!activeTab || savingSnippet}
-                        onClick={() => void handleSaveSnippet()}
-                    >
-                        {savingSnippet ? 'Saving...' : 'Save Current Query'}
-                    </button>
-                    <button type="button" className="chip" onClick={() => void loadSnippets()}>
-                        {loadingSnippets ? 'Refreshing...' : 'Refresh Snippets'}
-                    </button>
-                </div>
-
-                {snippetError ? (
-                    <p className="form-error" role="alert">
-                        {snippetError}
-                    </p>
-                ) : null}
-
-                <div className="history-table-wrap">
-                    <table className="result-table history-table">
-                        <thead>
-                            <tr>
-                                <th>Updated</th>
-                                <th>Title</th>
-                                <th>Owner</th>
-                                <th>Group</th>
-                                <th>SQL</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {snippets.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6}>No snippets available for this scope.</td>
-                                </tr>
-                            ) : (
-                                snippets.map((snippet) => (
-                                    <tr key={`snippet-${snippet.snippetId}`}>
-                                        <td>{new Date(snippet.updatedAt).toLocaleString()}</td>
-                                        <td>{snippet.title}</td>
-                                        <td>{snippet.owner}</td>
-                                        <td>{snippet.groupId ?? '-'}</td>
-                                        <td className="history-query">{snippet.sql}</td>
-                                        <td className="history-actions">
-                                            <button
-                                                type="button"
-                                                className="chip"
-                                                onClick={() => handleOpenSnippet(snippet, false)}
-                                            >
-                                                Open
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenSnippet(snippet, true)}
-                                            >
-                                                Run
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="danger-button"
-                                                onClick={() =>
-                                                    void handleDeleteSnippet(snippet.snippetId)
-                                                }
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            {isSystemAdmin ? (
-                <>
-                    <section className="panel admin-audit" hidden={activeSection !== 'audit'}>
-                        <h2>Admin Audit Events</h2>
+                    <section className="panel history-panel" hidden={activeSection !== 'history'}>
+                        <h2>Query History</h2>
                         <div className="history-filters">
-                            <label htmlFor="audit-type-filter">Action</label>
-                            <input
-                                id="audit-type-filter"
-                                value={auditTypeFilter}
-                                onChange={(event) => setAuditTypeFilter(event.target.value)}
-                                placeholder="query.execute"
-                            />
+                            <label htmlFor="history-datasource-filter">Datasource</label>
+                            <select
+                                id="history-datasource-filter"
+                                value={historyDatasourceFilter}
+                                onChange={(event) => setHistoryDatasourceFilter(event.target.value)}
+                            >
+                                <option value="">All datasources</option>
+                                {visibleDatasources.map((datasource) => (
+                                    <option key={`history-${datasource.id}`} value={datasource.id}>
+                                        {datasource.name}
+                                    </option>
+                                ))}
+                            </select>
 
-                            <label htmlFor="audit-actor-filter">Actor</label>
-                            <input
-                                id="audit-actor-filter"
-                                value={auditActorFilter}
-                                onChange={(event) => setAuditActorFilter(event.target.value)}
-                                placeholder="admin"
-                            />
+                            <label htmlFor="history-status-filter">Status</label>
+                            <select
+                                id="history-status-filter"
+                                value={historyStatusFilter}
+                                onChange={(event) => setHistoryStatusFilter(event.target.value)}
+                            >
+                                <option value="">All statuses</option>
+                                <option value="QUEUED">QUEUED</option>
+                                <option value="RUNNING">RUNNING</option>
+                                <option value="SUCCEEDED">SUCCEEDED</option>
+                                <option value="FAILED">FAILED</option>
+                                <option value="CANCELED">CANCELED</option>
+                            </select>
 
-                            <label htmlFor="audit-outcome-filter">Outcome</label>
+                            <label htmlFor="history-from-filter">From</label>
                             <input
-                                id="audit-outcome-filter"
-                                value={auditOutcomeFilter}
-                                onChange={(event) => setAuditOutcomeFilter(event.target.value)}
-                                placeholder="success"
-                            />
-
-                            <label htmlFor="audit-from-filter">From</label>
-                            <input
-                                id="audit-from-filter"
+                                id="history-from-filter"
                                 type="datetime-local"
-                                value={auditFromFilter}
-                                onChange={(event) => setAuditFromFilter(event.target.value)}
+                                value={historyFromFilter}
+                                onChange={(event) => setHistoryFromFilter(event.target.value)}
                             />
 
-                            <label htmlFor="audit-to-filter">To</label>
+                            <label htmlFor="history-to-filter">To</label>
                             <input
-                                id="audit-to-filter"
+                                id="history-to-filter"
                                 type="datetime-local"
-                                value={auditToFilter}
-                                onChange={(event) => setAuditToFilter(event.target.value)}
+                                value={historyToFilter}
+                                onChange={(event) => setHistoryToFilter(event.target.value)}
                             />
                         </div>
                         <div className="row">
-                            <button type="button" onClick={() => void loadAuditEvents()}>
-                                {loadingAuditEvents ? 'Loading...' : 'Refresh Audit Events'}
-                            </button>
+                            <IconButton
+                                icon="refresh"
+                                title={
+                                    loadingQueryHistory
+                                        ? 'Refreshing history...'
+                                        : 'Refresh history'
+                                }
+                                onClick={() => void loadQueryHistory()}
+                                disabled={loadingQueryHistory}
+                            />
                             <button
                                 type="button"
                                 className="chip"
                                 onClick={() => {
-                                    setAuditTypeFilter('');
-                                    setAuditActorFilter('');
-                                    setAuditOutcomeFilter('');
-                                    setAuditFromFilter('');
-                                    setAuditToFilter('');
+                                    setHistoryDatasourceFilter('');
+                                    setHistoryStatusFilter('');
+                                    setHistoryFromFilter('');
+                                    setHistoryToFilter('');
                                     window.setTimeout(() => {
-                                        void loadAuditEvents();
+                                        void loadQueryHistory();
                                     }, 0);
                                 }}
                             >
@@ -3941,31 +3797,65 @@ export default function WorkspacePage() {
                             <table className="result-table history-table">
                                 <thead>
                                     <tr>
-                                        <th>Timestamp</th>
-                                        <th>Action</th>
-                                        <th>Actor</th>
-                                        <th>Outcome</th>
-                                        <th>Details</th>
+                                        <th>Submitted</th>
+                                        <th>Status</th>
+                                        <th>Datasource</th>
+                                        <th>Duration</th>
+                                        <th>Query</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {auditEvents.length === 0 ? (
+                                    {queryHistoryEntries.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5}>
-                                                No audit events found for current filters.
+                                            <td colSpan={6}>
+                                                No history entries found for current filters.
                                             </td>
                                         </tr>
                                     ) : (
-                                        auditEvents.map((event, index) => (
-                                            <tr key={`audit-${event.timestamp}-${index}`}>
+                                        queryHistoryEntries.map((entry) => (
+                                            <tr key={`history-${entry.executionId}`}>
                                                 <td>
-                                                    {new Date(event.timestamp).toLocaleString()}
+                                                    {new Date(entry.submittedAt).toLocaleString()}
                                                 </td>
-                                                <td>{event.type}</td>
-                                                <td>{event.actor ?? 'anonymous'}</td>
-                                                <td>{event.outcome}</td>
+                                                <td>{entry.status}</td>
+                                                <td>{entry.datasourceId}</td>
+                                                <td>
+                                                    {typeof entry.durationMs === 'number'
+                                                        ? `${entry.durationMs} ms`
+                                                        : '-'}
+                                                </td>
                                                 <td className="history-query">
-                                                    {JSON.stringify(event.details)}
+                                                    {entry.queryTextRedacted
+                                                        ? '[REDACTED]'
+                                                        : (entry.queryText ?? '[empty]')}
+                                                </td>
+                                                <td className="history-actions">
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        disabled={
+                                                            !entry.queryText ||
+                                                            entry.queryTextRedacted
+                                                        }
+                                                        onClick={() =>
+                                                            handleOpenHistoryEntry(entry, false)
+                                                        }
+                                                    >
+                                                        Open
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={
+                                                            !entry.queryText ||
+                                                            entry.queryTextRedacted
+                                                        }
+                                                        onClick={() =>
+                                                            handleOpenHistoryEntry(entry, true)
+                                                        }
+                                                    >
+                                                        Rerun
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))
@@ -3975,788 +3865,1134 @@ export default function WorkspacePage() {
                         </div>
                     </section>
 
-                    <section className="panel admin-governance" hidden={activeSection !== 'admin'}>
-                        <h2>Admin Governance</h2>
+                    <section className="panel snippets-panel" hidden={activeSection !== 'snippets'}>
+                        <h2>Saved Snippets</h2>
 
-                        {adminError ? (
+                        <div className="history-filters">
+                            <label htmlFor="snippet-scope">Scope</label>
+                            <select
+                                id="snippet-scope"
+                                value={snippetScope}
+                                onChange={(event) =>
+                                    setSnippetScope(
+                                        event.target.value as 'all' | 'personal' | 'group'
+                                    )
+                                }
+                            >
+                                <option value="all">All visible</option>
+                                <option value="personal">Personal</option>
+                                <option value="group">Group shared</option>
+                            </select>
+
+                            <label htmlFor="snippet-title">Snippet Title</label>
+                            <input
+                                id="snippet-title"
+                                value={snippetTitleInput}
+                                onChange={(event) => setSnippetTitleInput(event.target.value)}
+                                placeholder="Daily health query"
+                            />
+
+                            <label htmlFor="snippet-group-id">Group ID (optional)</label>
+                            <input
+                                id="snippet-group-id"
+                                value={snippetGroupInput}
+                                onChange={(event) => setSnippetGroupInput(event.target.value)}
+                                placeholder={currentUser?.groups?.[0] ?? 'analytics-users'}
+                            />
+                        </div>
+                        <div className="row">
+                            <button
+                                type="button"
+                                disabled={!activeTab || savingSnippet}
+                                onClick={() => void handleSaveSnippet()}
+                            >
+                                {savingSnippet ? 'Saving...' : 'Save Current Query'}
+                            </button>
+                            <IconButton
+                                icon="refresh"
+                                title={
+                                    loadingSnippets ? 'Refreshing snippets...' : 'Refresh snippets'
+                                }
+                                onClick={() => void loadSnippets()}
+                                disabled={loadingSnippets}
+                            />
+                        </div>
+
+                        {snippetError ? (
                             <p className="form-error" role="alert">
-                                {adminError}
+                                {snippetError}
                             </p>
                         ) : null}
-                        {adminSuccess ? <p className="form-success">{adminSuccess}</p> : null}
 
-                        <div className="admin-grid">
-                            <section className="panel">
-                                <h3>Groups</h3>
-                                <form onSubmit={handleCreateGroup} className="stack-form">
-                                    <label htmlFor="new-group-name">New Group</label>
+                        <div className="history-table-wrap">
+                            <table className="result-table history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Updated</th>
+                                        <th>Title</th>
+                                        <th>Owner</th>
+                                        <th>Group</th>
+                                        <th>SQL</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {snippets.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6}>
+                                                No snippets available for this scope.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        snippets.map((snippet) => (
+                                            <tr key={`snippet-${snippet.snippetId}`}>
+                                                <td>
+                                                    {new Date(snippet.updatedAt).toLocaleString()}
+                                                </td>
+                                                <td>{snippet.title}</td>
+                                                <td>{snippet.owner}</td>
+                                                <td>{snippet.groupId ?? '-'}</td>
+                                                <td className="history-query">{snippet.sql}</td>
+                                                <td className="history-actions">
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        onClick={() =>
+                                                            handleOpenSnippet(snippet, false)
+                                                        }
+                                                    >
+                                                        Open
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleOpenSnippet(snippet, true)
+                                                        }
+                                                    >
+                                                        Run
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="danger-button"
+                                                        onClick={() =>
+                                                            void handleDeleteSnippet(
+                                                                snippet.snippetId
+                                                            )
+                                                        }
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    {isSystemAdmin ? (
+                        <>
+                            <section
+                                className="panel admin-audit"
+                                hidden={activeSection !== 'audit'}
+                            >
+                                <h2>Admin Audit Events</h2>
+                                <div className="history-filters">
+                                    <label htmlFor="audit-type-filter">Action</label>
                                     <input
-                                        id="new-group-name"
-                                        value={groupNameInput}
-                                        onChange={(event) => setGroupNameInput(event.target.value)}
-                                        placeholder="Incident Responders"
-                                        required
+                                        id="audit-type-filter"
+                                        value={auditTypeFilter}
+                                        onChange={(event) => setAuditTypeFilter(event.target.value)}
+                                        placeholder="query.execute"
                                     />
-                                    <label htmlFor="new-group-description">Description</label>
+
+                                    <label htmlFor="audit-actor-filter">Actor</label>
                                     <input
-                                        id="new-group-description"
-                                        value={groupDescriptionInput}
+                                        id="audit-actor-filter"
+                                        value={auditActorFilter}
                                         onChange={(event) =>
-                                            setGroupDescriptionInput(event.target.value)
+                                            setAuditActorFilter(event.target.value)
                                         }
-                                        placeholder="Optional description"
+                                        placeholder="admin"
                                     />
-                                    <button type="submit">Create Group</button>
-                                </form>
 
-                                <div className="group-list">
-                                    {adminGroups.map((group) => (
-                                        <article key={group.id} className="group-card">
-                                            <h4>{group.name}</h4>
-                                            <p className="muted-id">{group.id}</p>
-                                            <label htmlFor={`group-description-${group.id}`}>
-                                                Description
-                                            </label>
-                                            <input
-                                                id={`group-description-${group.id}`}
-                                                value={groupDescriptionDrafts[group.id] ?? ''}
-                                                onChange={(event) =>
-                                                    setGroupDescriptionDrafts((drafts) => ({
-                                                        ...drafts,
-                                                        [group.id]: event.target.value
-                                                    }))
-                                                }
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    void handleUpdateGroupDescription(group.id)
-                                                }
-                                            >
-                                                Save Description
-                                            </button>
+                                    <label htmlFor="audit-outcome-filter">Outcome</label>
+                                    <input
+                                        id="audit-outcome-filter"
+                                        value={auditOutcomeFilter}
+                                        onChange={(event) =>
+                                            setAuditOutcomeFilter(event.target.value)
+                                        }
+                                        placeholder="success"
+                                    />
 
-                                            <div className="member-row">
-                                                <input
-                                                    value={memberDrafts[group.id] ?? ''}
-                                                    onChange={(event) =>
-                                                        setMemberDrafts((drafts) => ({
-                                                            ...drafts,
-                                                            [group.id]: event.target.value
-                                                        }))
-                                                    }
-                                                    placeholder="username"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void handleAddMember(group.id)}
-                                                >
-                                                    Add Member
-                                                </button>
-                                            </div>
+                                    <label htmlFor="audit-from-filter">From</label>
+                                    <input
+                                        id="audit-from-filter"
+                                        type="datetime-local"
+                                        value={auditFromFilter}
+                                        onChange={(event) => setAuditFromFilter(event.target.value)}
+                                    />
 
-                                            <ul className="members-list">
-                                                {group.members.length === 0 ? (
-                                                    <li>No members</li>
-                                                ) : (
-                                                    group.members.map((member) => (
-                                                        <li key={`${group.id}-${member}`}>
-                                                            <span>{member}</span>
-                                                            <button
-                                                                type="button"
-                                                                className="danger-button"
-                                                                onClick={() =>
-                                                                    void handleRemoveMember(
-                                                                        group.id,
-                                                                        member
-                                                                    )
-                                                                }
-                                                            >
-                                                                Remove
-                                                            </button>
-                                                        </li>
-                                                    ))
-                                                )}
-                                            </ul>
-                                        </article>
-                                    ))}
+                                    <label htmlFor="audit-to-filter">To</label>
+                                    <input
+                                        id="audit-to-filter"
+                                        type="datetime-local"
+                                        value={auditToFilter}
+                                        onChange={(event) => setAuditToFilter(event.target.value)}
+                                    />
                                 </div>
-                            </section>
-
-                            <section className="panel">
-                                <h3>Datasource Access Mapping</h3>
-                                <form className="stack-form" onSubmit={handleSaveDatasourceAccess}>
-                                    <label htmlFor="access-group">Group</label>
-                                    <select
-                                        id="access-group"
-                                        value={selectedGroupId}
-                                        onChange={(event) => setSelectedGroupId(event.target.value)}
-                                    >
-                                        <option value="">Select group</option>
-                                        {adminGroups.map((group) => (
-                                            <option key={group.id} value={group.id}>
-                                                {group.name} ({group.id})
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    <label htmlFor="access-datasource">Datasource</label>
-                                    <select
-                                        id="access-datasource"
-                                        value={selectedDatasourceForAccess}
-                                        onChange={(event) =>
-                                            setSelectedDatasourceForAccess(event.target.value)
-                                        }
-                                    >
-                                        <option value="">Select datasource</option>
-                                        {adminDatasourceCatalog.map((datasource) => (
-                                            <option key={datasource.id} value={datasource.id}>
-                                                {datasource.name} ({datasource.engine})
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    <div className="row">
-                                        <label className="checkbox-row">
-                                            <input
-                                                type="checkbox"
-                                                checked={canQuery}
-                                                onChange={(event) =>
-                                                    setCanQuery(event.target.checked)
-                                                }
-                                            />
-                                            <span>Can Query</span>
-                                        </label>
-                                        <label className="checkbox-row">
-                                            <input
-                                                type="checkbox"
-                                                checked={canExport}
-                                                onChange={(event) =>
-                                                    setCanExport(event.target.checked)
-                                                }
-                                            />
-                                            <span>Can Export</span>
-                                        </label>
-                                        <label className="checkbox-row">
-                                            <input
-                                                type="checkbox"
-                                                checked={readOnly}
-                                                onChange={(event) =>
-                                                    setReadOnly(event.target.checked)
-                                                }
-                                            />
-                                            <span>Read Only</span>
-                                        </label>
-                                    </div>
-
-                                    <label htmlFor="credential-profile">Credential Profile</label>
-                                    <select
-                                        id="credential-profile"
-                                        value={credentialProfile}
-                                        onChange={(event) =>
-                                            setCredentialProfile(event.target.value)
-                                        }
-                                    >
-                                        <option value="">Select credential profile</option>
-                                        {(selectedAdminDatasource?.credentialProfiles ?? []).map(
-                                            (profile) => (
-                                                <option key={profile} value={profile}>
-                                                    {profile}
-                                                </option>
-                                            )
-                                        )}
-                                    </select>
-
-                                    <label htmlFor="max-rows">Max Rows Per Query</label>
-                                    <input
-                                        id="max-rows"
-                                        type="number"
-                                        min={1}
-                                        value={maxRowsPerQuery}
-                                        onChange={(event) => setMaxRowsPerQuery(event.target.value)}
-                                    />
-
-                                    <label htmlFor="max-runtime">Max Runtime Seconds</label>
-                                    <input
-                                        id="max-runtime"
-                                        type="number"
-                                        min={1}
-                                        value={maxRuntimeSeconds}
-                                        onChange={(event) =>
-                                            setMaxRuntimeSeconds(event.target.value)
-                                        }
-                                    />
-
-                                    <label htmlFor="concurrency-limit">Concurrency Limit</label>
-                                    <input
-                                        id="concurrency-limit"
-                                        type="number"
-                                        min={1}
-                                        value={concurrencyLimit}
-                                        onChange={(event) =>
-                                            setConcurrencyLimit(event.target.value)
-                                        }
-                                    />
-
-                                    <button
-                                        type="submit"
-                                        disabled={
-                                            savingAccess ||
-                                            !selectedGroupId ||
-                                            !selectedDatasourceForAccess ||
-                                            !credentialProfile.trim()
-                                        }
-                                    >
-                                        {savingAccess ? 'Saving...' : 'Save Mapping'}
-                                    </button>
-                                </form>
-
-                                <div className="mapping-list">
-                                    <h4>Current Access Rules</h4>
-                                    <ul>
-                                        {adminDatasourceAccess.map((rule) => (
-                                            <li key={`${rule.groupId}-${rule.datasourceId}`}>
-                                                <strong>{rule.groupId}</strong> →{' '}
-                                                <strong>{rule.datasourceId}</strong> | query:{' '}
-                                                {rule.canQuery ? 'yes' : 'no'} | export:{' '}
-                                                {rule.canExport ? 'yes' : 'no'} | readOnly:{' '}
-                                                {rule.readOnly ? 'yes' : 'no'} | profile:{' '}
-                                                {rule.credentialProfile}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </section>
-
-                            <section className="panel datasource-admin">
-                                <h3>Datasource Management</h3>
                                 <div className="row">
-                                    <button type="button" onClick={handlePrepareNewDatasource}>
-                                        New Datasource
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="danger-button"
-                                        disabled={deletingDatasource || !selectedManagedDatasource}
-                                        onClick={() => void handleDeleteManagedDatasource()}
-                                    >
-                                        {deletingDatasource ? 'Deleting...' : 'Delete Datasource'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={reencryptingCredentials}
-                                        onClick={() => void handleReencryptCredentials()}
-                                    >
-                                        {reencryptingCredentials
-                                            ? 'Re-encrypting...'
-                                            : 'Re-encrypt Credentials'}
-                                    </button>
-                                </div>
-
-                                <label htmlFor="managed-datasource-select">Select Datasource</label>
-                                <select
-                                    id="managed-datasource-select"
-                                    value={selectedManagedDatasourceId}
-                                    onChange={(event) => {
-                                        const nextDatasourceId = event.target.value;
-                                        if (!nextDatasourceId) {
-                                            handlePrepareNewDatasource();
-                                            return;
+                                    <IconButton
+                                        icon="refresh"
+                                        title={
+                                            loadingAuditEvents
+                                                ? 'Refreshing audit events...'
+                                                : 'Refresh audit events'
                                         }
-
-                                        setSelectedManagedDatasourceId(nextDatasourceId);
-                                        setAdminError('');
-                                        setAdminSuccess('');
-                                    }}
-                                >
-                                    <option value="">Create new datasource</option>
-                                    {adminManagedDatasources.map((datasource) => (
-                                        <option key={datasource.id} value={datasource.id}>
-                                            {datasource.name} ({datasource.engine})
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="muted-id">
-                                    {selectedManagedDatasource
-                                        ? `Editing ${selectedManagedDatasource.id}`
-                                        : 'Creating a new datasource entry.'}
-                                </p>
-
-                                <form className="stack-form" onSubmit={handleSaveManagedDatasource}>
-                                    <label htmlFor="managed-name">Name</label>
-                                    <input
-                                        id="managed-name"
-                                        value={managedDatasourceForm.name}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                name: event.target.value
-                                            }))
-                                        }
-                                        required
+                                        onClick={() => void loadAuditEvents()}
+                                        disabled={loadingAuditEvents}
                                     />
-
-                                    <label htmlFor="managed-engine">Engine</label>
-                                    <select
-                                        id="managed-engine"
-                                        value={managedDatasourceForm.engine}
-                                        disabled={Boolean(selectedManagedDatasource)}
-                                        onChange={(event) => {
-                                            const nextEngine = event.target
-                                                .value as DatasourceEngine;
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                engine: nextEngine,
-                                                port: defaultPortByEngine[nextEngine].toString()
-                                            }));
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        onClick={() => {
+                                            setAuditTypeFilter('');
+                                            setAuditActorFilter('');
+                                            setAuditOutcomeFilter('');
+                                            setAuditFromFilter('');
+                                            setAuditToFilter('');
+                                            window.setTimeout(() => {
+                                                void loadAuditEvents();
+                                            }, 0);
                                         }}
                                     >
-                                        <option value="POSTGRESQL">PostgreSQL</option>
-                                        <option value="MYSQL">MySQL</option>
-                                        <option value="MARIADB">MariaDB</option>
-                                        <option value="TRINO">Trino</option>
-                                        <option value="STARROCKS">StarRocks</option>
-                                        <option value="VERTICA">Vertica</option>
-                                    </select>
-
-                                    <label htmlFor="managed-host">Host</label>
-                                    <input
-                                        id="managed-host"
-                                        value={managedDatasourceForm.host}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                host: event.target.value
-                                            }))
-                                        }
-                                        required
-                                    />
-
-                                    <label htmlFor="managed-port">Port</label>
-                                    <input
-                                        id="managed-port"
-                                        type="number"
-                                        min={1}
-                                        max={65535}
-                                        value={managedDatasourceForm.port}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                port: event.target.value
-                                            }))
-                                        }
-                                        required
-                                    />
-
-                                    <label htmlFor="managed-database">Database (optional)</label>
-                                    <input
-                                        id="managed-database"
-                                        value={managedDatasourceForm.database}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                database: event.target.value
-                                            }))
-                                        }
-                                        placeholder="schema or database"
-                                    />
-
-                                    <label htmlFor="managed-driver">Driver</label>
-                                    <select
-                                        id="managed-driver"
-                                        value={managedDatasourceForm.driverId}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                driverId: event.target.value
-                                            }))
-                                        }
-                                    >
-                                        <option value="">Select driver</option>
-                                        {driversForFormEngine.map((driver) => (
-                                            <option key={driver.driverId} value={driver.driverId}>
-                                                {driver.driverId} ({driver.source}){' '}
-                                                {driver.available ? '' : '[unavailable]'}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {selectedDriverForForm ? (
-                                        <p
-                                            className={
-                                                selectedDriverForForm.available
-                                                    ? 'form-success'
-                                                    : 'form-error'
-                                            }
-                                        >
-                                            {selectedDriverForForm.description}.{' '}
-                                            {selectedDriverForForm.message}
-                                        </p>
-                                    ) : null}
-
-                                    <h4>Pool Settings</h4>
-                                    <label htmlFor="managed-pool-max">Maximum Pool Size</label>
-                                    <input
-                                        id="managed-pool-max"
-                                        type="number"
-                                        min={1}
-                                        value={managedDatasourceForm.maximumPoolSize}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                maximumPoolSize: event.target.value
-                                            }))
-                                        }
-                                        required
-                                    />
-
-                                    <label htmlFor="managed-pool-min">Minimum Idle</label>
-                                    <input
-                                        id="managed-pool-min"
-                                        type="number"
-                                        min={1}
-                                        value={managedDatasourceForm.minimumIdle}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                minimumIdle: event.target.value
-                                            }))
-                                        }
-                                        required
-                                    />
-
-                                    <label htmlFor="managed-pool-connection-timeout">
-                                        Connection Timeout (ms)
-                                    </label>
-                                    <input
-                                        id="managed-pool-connection-timeout"
-                                        type="number"
-                                        min={1}
-                                        value={managedDatasourceForm.connectionTimeoutMs}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                connectionTimeoutMs: event.target.value
-                                            }))
-                                        }
-                                        required
-                                    />
-
-                                    <label htmlFor="managed-pool-idle-timeout">
-                                        Idle Timeout (ms)
-                                    </label>
-                                    <input
-                                        id="managed-pool-idle-timeout"
-                                        type="number"
-                                        min={1}
-                                        value={managedDatasourceForm.idleTimeoutMs}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                idleTimeoutMs: event.target.value
-                                            }))
-                                        }
-                                        required
-                                    />
-
-                                    <h4>TLS Settings</h4>
-                                    <label htmlFor="managed-tls-mode">TLS Mode</label>
-                                    <select
-                                        id="managed-tls-mode"
-                                        value={managedDatasourceForm.tlsMode}
-                                        onChange={(event) =>
-                                            setManagedDatasourceForm((current) => ({
-                                                ...current,
-                                                tlsMode: event.target.value as TlsMode
-                                            }))
-                                        }
-                                    >
-                                        <option value="DISABLE">Disable</option>
-                                        <option value="REQUIRE">Require</option>
-                                    </select>
-                                    <label className="checkbox-row">
-                                        <input
-                                            type="checkbox"
-                                            checked={managedDatasourceForm.verifyServerCertificate}
-                                            onChange={(event) =>
-                                                setManagedDatasourceForm((current) => ({
-                                                    ...current,
-                                                    verifyServerCertificate: event.target.checked
-                                                }))
-                                            }
-                                        />
-                                        <span>Verify server certificate</span>
-                                    </label>
-                                    <label className="checkbox-row">
-                                        <input
-                                            type="checkbox"
-                                            checked={managedDatasourceForm.allowSelfSigned}
-                                            onChange={(event) =>
-                                                setManagedDatasourceForm((current) => ({
-                                                    ...current,
-                                                    allowSelfSigned: event.target.checked
-                                                }))
-                                            }
-                                        />
-                                        <span>Allow self-signed certificates</span>
-                                    </label>
-
-                                    <button type="submit" disabled={savingDatasource}>
-                                        {savingDatasource
-                                            ? 'Saving...'
-                                            : selectedManagedDatasource
-                                              ? 'Update Datasource'
-                                              : 'Create Datasource'}
+                                        Clear Filters
                                     </button>
-                                </form>
-
-                                {selectedManagedDatasource ? (
-                                    <div className="managed-datasource-actions">
-                                        <h4>Credential Profiles</h4>
-                                        <ul className="credentials-list">
-                                            {selectedManagedDatasource.credentialProfiles.map(
-                                                (profile) => (
-                                                    <li
-                                                        key={`${selectedManagedDatasource.id}-${profile.profileId}`}
-                                                    >
-                                                        <strong>{profile.profileId}</strong> (
-                                                        {profile.username}) key:{' '}
-                                                        {profile.encryptionKeyId}
-                                                    </li>
-                                                )
+                                </div>
+                                <div className="history-table-wrap">
+                                    <table className="result-table history-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Timestamp</th>
+                                                <th>Action</th>
+                                                <th>Actor</th>
+                                                <th>Outcome</th>
+                                                <th>Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {auditEvents.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5}>
+                                                        No audit events found for current filters.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                auditEvents.map((event, index) => (
+                                                    <tr key={`audit-${event.timestamp}-${index}`}>
+                                                        <td>
+                                                            {new Date(
+                                                                event.timestamp
+                                                            ).toLocaleString()}
+                                                        </td>
+                                                        <td>{event.type}</td>
+                                                        <td>{event.actor ?? 'anonymous'}</td>
+                                                        <td>{event.outcome}</td>
+                                                        <td className="history-query">
+                                                            {JSON.stringify(event.details)}
+                                                        </td>
+                                                    </tr>
+                                                ))
                                             )}
-                                        </ul>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
 
-                                        <form
-                                            className="stack-form"
-                                            onSubmit={handleSaveCredentialProfile}
-                                        >
-                                            <label htmlFor="credential-existing">
-                                                Existing Profile
-                                            </label>
-                                            <select
-                                                id="credential-existing"
-                                                value={
-                                                    selectedManagedDatasource.credentialProfiles.some(
-                                                        (profile) =>
-                                                            profile.profileId ===
-                                                            credentialProfileIdInput.trim()
-                                                    )
-                                                        ? credentialProfileIdInput
-                                                        : ''
-                                                }
-                                                onChange={(event) => {
-                                                    const selectedProfileId = event.target.value;
-                                                    if (!selectedProfileId) {
-                                                        return;
-                                                    }
+                            <section
+                                className="panel admin-governance"
+                                hidden={activeSection !== 'admin'}
+                            >
+                                <h2>Admin Governance</h2>
 
-                                                    setCredentialProfileIdInput(selectedProfileId);
-                                                    setSelectedCredentialProfileForTest(
-                                                        selectedProfileId
-                                                    );
-                                                }}
-                                            >
-                                                <option value="">Select existing profile</option>
-                                                {selectedManagedDatasource.credentialProfiles.map(
-                                                    (profile) => (
-                                                        <option
-                                                            key={profile.profileId}
-                                                            value={profile.profileId}
-                                                        >
-                                                            {profile.profileId}
-                                                        </option>
-                                                    )
-                                                )}
-                                            </select>
+                                {adminError ? (
+                                    <p className="form-error" role="alert">
+                                        {adminError}
+                                    </p>
+                                ) : null}
+                                {adminSuccess ? (
+                                    <p className="form-success">{adminSuccess}</p>
+                                ) : null}
 
-                                            <label htmlFor="credential-profile-id">
-                                                Profile ID
-                                            </label>
+                                <div className="admin-grid">
+                                    <section className="panel">
+                                        <h3>Groups</h3>
+                                        <form onSubmit={handleCreateGroup} className="stack-form">
+                                            <label htmlFor="new-group-name">New Group</label>
                                             <input
-                                                id="credential-profile-id"
-                                                value={credentialProfileIdInput}
+                                                id="new-group-name"
+                                                value={groupNameInput}
                                                 onChange={(event) =>
-                                                    setCredentialProfileIdInput(event.target.value)
+                                                    setGroupNameInput(event.target.value)
                                                 }
-                                                placeholder="admin-ro"
+                                                placeholder="Incident Responders"
                                                 required
                                             />
-
-                                            <label htmlFor="credential-username">Username</label>
-                                            <input
-                                                id="credential-username"
-                                                value={credentialUsernameInput}
-                                                onChange={(event) =>
-                                                    setCredentialUsernameInput(event.target.value)
-                                                }
-                                                required
-                                            />
-
-                                            <label htmlFor="credential-password">Password</label>
-                                            <input
-                                                id="credential-password"
-                                                type="password"
-                                                value={credentialPasswordInput}
-                                                onChange={(event) =>
-                                                    setCredentialPasswordInput(event.target.value)
-                                                }
-                                                required
-                                            />
-
-                                            <label htmlFor="credential-description">
+                                            <label htmlFor="new-group-description">
                                                 Description
                                             </label>
                                             <input
-                                                id="credential-description"
-                                                value={credentialDescriptionInput}
+                                                id="new-group-description"
+                                                value={groupDescriptionInput}
                                                 onChange={(event) =>
-                                                    setCredentialDescriptionInput(
+                                                    setGroupDescriptionInput(event.target.value)
+                                                }
+                                                placeholder="Optional description"
+                                            />
+                                            <button type="submit">Create Group</button>
+                                        </form>
+
+                                        <div className="group-list">
+                                            {adminGroups.map((group) => (
+                                                <article key={group.id} className="group-card">
+                                                    <h4>{group.name}</h4>
+                                                    <p className="muted-id">{group.id}</p>
+                                                    <label
+                                                        htmlFor={`group-description-${group.id}`}
+                                                    >
+                                                        Description
+                                                    </label>
+                                                    <input
+                                                        id={`group-description-${group.id}`}
+                                                        value={
+                                                            groupDescriptionDrafts[group.id] ?? ''
+                                                        }
+                                                        onChange={(event) =>
+                                                            setGroupDescriptionDrafts((drafts) => ({
+                                                                ...drafts,
+                                                                [group.id]: event.target.value
+                                                            }))
+                                                        }
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void handleUpdateGroupDescription(
+                                                                group.id
+                                                            )
+                                                        }
+                                                    >
+                                                        Save Description
+                                                    </button>
+
+                                                    <div className="member-row">
+                                                        <input
+                                                            value={memberDrafts[group.id] ?? ''}
+                                                            onChange={(event) =>
+                                                                setMemberDrafts((drafts) => ({
+                                                                    ...drafts,
+                                                                    [group.id]: event.target.value
+                                                                }))
+                                                            }
+                                                            placeholder="username"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                void handleAddMember(group.id)
+                                                            }
+                                                        >
+                                                            Add Member
+                                                        </button>
+                                                    </div>
+
+                                                    <ul className="members-list">
+                                                        {group.members.length === 0 ? (
+                                                            <li>No members</li>
+                                                        ) : (
+                                                            group.members.map((member) => (
+                                                                <li key={`${group.id}-${member}`}>
+                                                                    <span>{member}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="danger-button"
+                                                                        onClick={() =>
+                                                                            void handleRemoveMember(
+                                                                                group.id,
+                                                                                member
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Remove
+                                                                    </button>
+                                                                </li>
+                                                            ))
+                                                        )}
+                                                    </ul>
+                                                </article>
+                                            ))}
+                                        </div>
+                                    </section>
+
+                                    <section className="panel">
+                                        <h3>Datasource Access Mapping</h3>
+                                        <form
+                                            className="stack-form"
+                                            onSubmit={handleSaveDatasourceAccess}
+                                        >
+                                            <label htmlFor="access-group">Group</label>
+                                            <select
+                                                id="access-group"
+                                                value={selectedGroupId}
+                                                onChange={(event) =>
+                                                    setSelectedGroupId(event.target.value)
+                                                }
+                                            >
+                                                <option value="">Select group</option>
+                                                {adminGroups.map((group) => (
+                                                    <option key={group.id} value={group.id}>
+                                                        {group.name} ({group.id})
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            <label htmlFor="access-datasource">Datasource</label>
+                                            <select
+                                                id="access-datasource"
+                                                value={selectedDatasourceForAccess}
+                                                onChange={(event) =>
+                                                    setSelectedDatasourceForAccess(
                                                         event.target.value
                                                     )
                                                 }
-                                                placeholder="Readonly profile for analysts"
+                                            >
+                                                <option value="">Select datasource</option>
+                                                {adminDatasourceCatalog.map((datasource) => (
+                                                    <option
+                                                        key={datasource.id}
+                                                        value={datasource.id}
+                                                    >
+                                                        {datasource.name} ({datasource.engine})
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            <div className="row">
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={canQuery}
+                                                        onChange={(event) =>
+                                                            setCanQuery(event.target.checked)
+                                                        }
+                                                    />
+                                                    <span>Can Query</span>
+                                                </label>
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={canExport}
+                                                        onChange={(event) =>
+                                                            setCanExport(event.target.checked)
+                                                        }
+                                                    />
+                                                    <span>Can Export</span>
+                                                </label>
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={readOnly}
+                                                        onChange={(event) =>
+                                                            setReadOnly(event.target.checked)
+                                                        }
+                                                    />
+                                                    <span>Read Only</span>
+                                                </label>
+                                            </div>
+
+                                            <label htmlFor="credential-profile">
+                                                Credential Profile
+                                            </label>
+                                            <select
+                                                id="credential-profile"
+                                                value={credentialProfile}
+                                                onChange={(event) =>
+                                                    setCredentialProfile(event.target.value)
+                                                }
+                                            >
+                                                <option value="">Select credential profile</option>
+                                                {(
+                                                    selectedAdminDatasource?.credentialProfiles ??
+                                                    []
+                                                ).map((profile) => (
+                                                    <option key={profile} value={profile}>
+                                                        {profile}
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            <label htmlFor="max-rows">Max Rows Per Query</label>
+                                            <input
+                                                id="max-rows"
+                                                type="number"
+                                                min={1}
+                                                value={maxRowsPerQuery}
+                                                onChange={(event) =>
+                                                    setMaxRowsPerQuery(event.target.value)
+                                                }
+                                            />
+
+                                            <label htmlFor="max-runtime">Max Runtime Seconds</label>
+                                            <input
+                                                id="max-runtime"
+                                                type="number"
+                                                min={1}
+                                                value={maxRuntimeSeconds}
+                                                onChange={(event) =>
+                                                    setMaxRuntimeSeconds(event.target.value)
+                                                }
+                                            />
+
+                                            <label htmlFor="concurrency-limit">
+                                                Concurrency Limit
+                                            </label>
+                                            <input
+                                                id="concurrency-limit"
+                                                type="number"
+                                                min={1}
+                                                value={concurrencyLimit}
+                                                onChange={(event) =>
+                                                    setConcurrencyLimit(event.target.value)
+                                                }
                                             />
 
                                             <button
                                                 type="submit"
-                                                disabled={savingCredentialProfile}
+                                                disabled={
+                                                    savingAccess ||
+                                                    !selectedGroupId ||
+                                                    !selectedDatasourceForAccess ||
+                                                    !credentialProfile.trim()
+                                                }
                                             >
-                                                {savingCredentialProfile
-                                                    ? 'Saving...'
-                                                    : 'Save Credential Profile'}
+                                                {savingAccess ? 'Saving...' : 'Save Mapping'}
                                             </button>
                                         </form>
 
-                                        <h4>Test Connection</h4>
+                                        <div className="mapping-list">
+                                            <h4>Current Access Rules</h4>
+                                            <ul>
+                                                {adminDatasourceAccess.map((rule) => (
+                                                    <li
+                                                        key={`${rule.groupId}-${rule.datasourceId}`}
+                                                    >
+                                                        <strong>{rule.groupId}</strong> →{' '}
+                                                        <strong>{rule.datasourceId}</strong> |
+                                                        query: {rule.canQuery ? 'yes' : 'no'} |
+                                                        export: {rule.canExport ? 'yes' : 'no'} |
+                                                        readOnly: {rule.readOnly ? 'yes' : 'no'} |
+                                                        profile: {rule.credentialProfile}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </section>
+
+                                    <section className="panel datasource-admin">
+                                        <h3>Datasource Management</h3>
+                                        <div className="row">
+                                            <button
+                                                type="button"
+                                                onClick={handlePrepareNewDatasource}
+                                            >
+                                                New Datasource
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="danger-button"
+                                                disabled={
+                                                    deletingDatasource || !selectedManagedDatasource
+                                                }
+                                                onClick={() => void handleDeleteManagedDatasource()}
+                                            >
+                                                {deletingDatasource
+                                                    ? 'Deleting...'
+                                                    : 'Delete Datasource'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={reencryptingCredentials}
+                                                onClick={() => void handleReencryptCredentials()}
+                                            >
+                                                {reencryptingCredentials
+                                                    ? 'Re-encrypting...'
+                                                    : 'Re-encrypt Credentials'}
+                                            </button>
+                                        </div>
+
+                                        <label htmlFor="managed-datasource-select">
+                                            Select Datasource
+                                        </label>
+                                        <select
+                                            id="managed-datasource-select"
+                                            value={selectedManagedDatasourceId}
+                                            onChange={(event) => {
+                                                const nextDatasourceId = event.target.value;
+                                                if (!nextDatasourceId) {
+                                                    handlePrepareNewDatasource();
+                                                    return;
+                                                }
+
+                                                setSelectedManagedDatasourceId(nextDatasourceId);
+                                                setAdminError('');
+                                                setAdminSuccess('');
+                                            }}
+                                        >
+                                            <option value="">Create new datasource</option>
+                                            {adminManagedDatasources.map((datasource) => (
+                                                <option key={datasource.id} value={datasource.id}>
+                                                    {datasource.name} ({datasource.engine})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="muted-id">
+                                            {selectedManagedDatasource
+                                                ? `Editing ${selectedManagedDatasource.id}`
+                                                : 'Creating a new datasource entry.'}
+                                        </p>
+
                                         <form
                                             className="stack-form"
-                                            onSubmit={handleTestConnection}
+                                            onSubmit={handleSaveManagedDatasource}
                                         >
-                                            <label htmlFor="test-credential-profile">
-                                                Credential Profile
-                                            </label>
-                                            <select
-                                                id="test-credential-profile"
-                                                value={selectedCredentialProfileForTest}
-                                                onChange={(event) =>
-                                                    setSelectedCredentialProfileForTest(
-                                                        event.target.value
-                                                    )
-                                                }
-                                            >
-                                                <option value="">Select credential profile</option>
-                                                {selectedManagedDatasource.credentialProfiles.map(
-                                                    (profile) => (
-                                                        <option
-                                                            key={profile.profileId}
-                                                            value={profile.profileId}
-                                                        >
-                                                            {profile.profileId}
-                                                        </option>
-                                                    )
-                                                )}
-                                            </select>
-
-                                            <label htmlFor="test-validation-query">
-                                                Validation Query
-                                            </label>
+                                            <label htmlFor="managed-name">Name</label>
                                             <input
-                                                id="test-validation-query"
-                                                value={validationQueryInput}
+                                                id="managed-name"
+                                                value={managedDatasourceForm.name}
                                                 onChange={(event) =>
-                                                    setValidationQueryInput(event.target.value)
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        name: event.target.value
+                                                    }))
                                                 }
-                                                placeholder="SELECT 1"
+                                                required
                                             />
 
+                                            <label htmlFor="managed-engine">Engine</label>
+                                            <select
+                                                id="managed-engine"
+                                                value={managedDatasourceForm.engine}
+                                                disabled={Boolean(selectedManagedDatasource)}
+                                                onChange={(event) => {
+                                                    const nextEngine = event.target
+                                                        .value as DatasourceEngine;
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        engine: nextEngine,
+                                                        port: defaultPortByEngine[
+                                                            nextEngine
+                                                        ].toString()
+                                                    }));
+                                                }}
+                                            >
+                                                <option value="POSTGRESQL">PostgreSQL</option>
+                                                <option value="MYSQL">MySQL</option>
+                                                <option value="MARIADB">MariaDB</option>
+                                                <option value="TRINO">Trino</option>
+                                                <option value="STARROCKS">StarRocks</option>
+                                                <option value="VERTICA">Vertica</option>
+                                            </select>
+
+                                            <label htmlFor="managed-host">Host</label>
+                                            <input
+                                                id="managed-host"
+                                                value={managedDatasourceForm.host}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        host: event.target.value
+                                                    }))
+                                                }
+                                                required
+                                            />
+
+                                            <label htmlFor="managed-port">Port</label>
+                                            <input
+                                                id="managed-port"
+                                                type="number"
+                                                min={1}
+                                                max={65535}
+                                                value={managedDatasourceForm.port}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        port: event.target.value
+                                                    }))
+                                                }
+                                                required
+                                            />
+
+                                            <label htmlFor="managed-database">
+                                                Database (optional)
+                                            </label>
+                                            <input
+                                                id="managed-database"
+                                                value={managedDatasourceForm.database}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        database: event.target.value
+                                                    }))
+                                                }
+                                                placeholder="schema or database"
+                                            />
+
+                                            <label htmlFor="managed-driver">Driver</label>
+                                            <select
+                                                id="managed-driver"
+                                                value={managedDatasourceForm.driverId}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        driverId: event.target.value
+                                                    }))
+                                                }
+                                            >
+                                                <option value="">Select driver</option>
+                                                {driversForFormEngine.map((driver) => (
+                                                    <option
+                                                        key={driver.driverId}
+                                                        value={driver.driverId}
+                                                    >
+                                                        {driver.driverId} ({driver.source}){' '}
+                                                        {driver.available ? '' : '[unavailable]'}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {selectedDriverForForm ? (
+                                                <p
+                                                    className={
+                                                        selectedDriverForForm.available
+                                                            ? 'form-success'
+                                                            : 'form-error'
+                                                    }
+                                                >
+                                                    {selectedDriverForForm.description}.{' '}
+                                                    {selectedDriverForForm.message}
+                                                </p>
+                                            ) : null}
+
+                                            <h4>Pool Settings</h4>
+                                            <label htmlFor="managed-pool-max">
+                                                Maximum Pool Size
+                                            </label>
+                                            <input
+                                                id="managed-pool-max"
+                                                type="number"
+                                                min={1}
+                                                value={managedDatasourceForm.maximumPoolSize}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        maximumPoolSize: event.target.value
+                                                    }))
+                                                }
+                                                required
+                                            />
+
+                                            <label htmlFor="managed-pool-min">Minimum Idle</label>
+                                            <input
+                                                id="managed-pool-min"
+                                                type="number"
+                                                min={1}
+                                                value={managedDatasourceForm.minimumIdle}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        minimumIdle: event.target.value
+                                                    }))
+                                                }
+                                                required
+                                            />
+
+                                            <label htmlFor="managed-pool-connection-timeout">
+                                                Connection Timeout (ms)
+                                            </label>
+                                            <input
+                                                id="managed-pool-connection-timeout"
+                                                type="number"
+                                                min={1}
+                                                value={managedDatasourceForm.connectionTimeoutMs}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        connectionTimeoutMs: event.target.value
+                                                    }))
+                                                }
+                                                required
+                                            />
+
+                                            <label htmlFor="managed-pool-idle-timeout">
+                                                Idle Timeout (ms)
+                                            </label>
+                                            <input
+                                                id="managed-pool-idle-timeout"
+                                                type="number"
+                                                min={1}
+                                                value={managedDatasourceForm.idleTimeoutMs}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        idleTimeoutMs: event.target.value
+                                                    }))
+                                                }
+                                                required
+                                            />
+
+                                            <h4>TLS Settings</h4>
+                                            <label htmlFor="managed-tls-mode">TLS Mode</label>
+                                            <select
+                                                id="managed-tls-mode"
+                                                value={managedDatasourceForm.tlsMode}
+                                                onChange={(event) =>
+                                                    setManagedDatasourceForm((current) => ({
+                                                        ...current,
+                                                        tlsMode: event.target.value as TlsMode
+                                                    }))
+                                                }
+                                            >
+                                                <option value="DISABLE">Disable</option>
+                                                <option value="REQUIRE">Require</option>
+                                            </select>
                                             <label className="checkbox-row">
                                                 <input
                                                     type="checkbox"
-                                                    checked={overrideTlsForTest}
+                                                    checked={
+                                                        managedDatasourceForm.verifyServerCertificate
+                                                    }
                                                     onChange={(event) =>
-                                                        setOverrideTlsForTest(event.target.checked)
+                                                        setManagedDatasourceForm((current) => ({
+                                                            ...current,
+                                                            verifyServerCertificate:
+                                                                event.target.checked
+                                                        }))
                                                     }
                                                 />
-                                                <span>
-                                                    Override datasource TLS settings for this test
-                                                </span>
+                                                <span>Verify server certificate</span>
+                                            </label>
+                                            <label className="checkbox-row">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={managedDatasourceForm.allowSelfSigned}
+                                                    onChange={(event) =>
+                                                        setManagedDatasourceForm((current) => ({
+                                                            ...current,
+                                                            allowSelfSigned: event.target.checked
+                                                        }))
+                                                    }
+                                                />
+                                                <span>Allow self-signed certificates</span>
                                             </label>
 
-                                            {overrideTlsForTest ? (
-                                                <>
-                                                    <label htmlFor="test-tls-mode">TLS Mode</label>
-                                                    <select
-                                                        id="test-tls-mode"
-                                                        value={testTlsMode}
-                                                        onChange={(event) =>
-                                                            setTestTlsMode(
-                                                                event.target.value as TlsMode
-                                                            )
-                                                        }
-                                                    >
-                                                        <option value="DISABLE">Disable</option>
-                                                        <option value="REQUIRE">Require</option>
-                                                    </select>
-
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={testVerifyServerCertificate}
-                                                            onChange={(event) =>
-                                                                setTestVerifyServerCertificate(
-                                                                    event.target.checked
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>Verify server certificate</span>
-                                                    </label>
-
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={testAllowSelfSigned}
-                                                            onChange={(event) =>
-                                                                setTestAllowSelfSigned(
-                                                                    event.target.checked
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>Allow self-signed certificates</span>
-                                                    </label>
-                                                </>
-                                            ) : null}
-
-                                            <button type="submit" disabled={testingConnection}>
-                                                {testingConnection
-                                                    ? 'Testing...'
-                                                    : 'Run Test Connection'}
+                                            <button type="submit" disabled={savingDatasource}>
+                                                {savingDatasource
+                                                    ? 'Saving...'
+                                                    : selectedManagedDatasource
+                                                      ? 'Update Datasource'
+                                                      : 'Create Datasource'}
                                             </button>
                                         </form>
 
-                                        {testConnectionMessage ? (
-                                            <p
-                                                className={
-                                                    testConnectionOutcome === 'success'
-                                                        ? 'form-success'
-                                                        : 'form-error'
-                                                }
-                                                role="alert"
-                                            >
-                                                {testConnectionMessage}
+                                        {selectedManagedDatasource ? (
+                                            <div className="managed-datasource-actions">
+                                                <h4>Credential Profiles</h4>
+                                                <ul className="credentials-list">
+                                                    {selectedManagedDatasource.credentialProfiles.map(
+                                                        (profile) => (
+                                                            <li
+                                                                key={`${selectedManagedDatasource.id}-${profile.profileId}`}
+                                                            >
+                                                                <strong>{profile.profileId}</strong>{' '}
+                                                                ({profile.username}) key:{' '}
+                                                                {profile.encryptionKeyId}
+                                                            </li>
+                                                        )
+                                                    )}
+                                                </ul>
+
+                                                <form
+                                                    className="stack-form"
+                                                    onSubmit={handleSaveCredentialProfile}
+                                                >
+                                                    <label htmlFor="credential-existing">
+                                                        Existing Profile
+                                                    </label>
+                                                    <select
+                                                        id="credential-existing"
+                                                        value={
+                                                            selectedManagedDatasource.credentialProfiles.some(
+                                                                (profile) =>
+                                                                    profile.profileId ===
+                                                                    credentialProfileIdInput.trim()
+                                                            )
+                                                                ? credentialProfileIdInput
+                                                                : ''
+                                                        }
+                                                        onChange={(event) => {
+                                                            const selectedProfileId =
+                                                                event.target.value;
+                                                            if (!selectedProfileId) {
+                                                                return;
+                                                            }
+
+                                                            setCredentialProfileIdInput(
+                                                                selectedProfileId
+                                                            );
+                                                            setSelectedCredentialProfileForTest(
+                                                                selectedProfileId
+                                                            );
+                                                        }}
+                                                    >
+                                                        <option value="">
+                                                            Select existing profile
+                                                        </option>
+                                                        {selectedManagedDatasource.credentialProfiles.map(
+                                                            (profile) => (
+                                                                <option
+                                                                    key={profile.profileId}
+                                                                    value={profile.profileId}
+                                                                >
+                                                                    {profile.profileId}
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+
+                                                    <label htmlFor="credential-profile-id">
+                                                        Profile ID
+                                                    </label>
+                                                    <input
+                                                        id="credential-profile-id"
+                                                        value={credentialProfileIdInput}
+                                                        onChange={(event) =>
+                                                            setCredentialProfileIdInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="admin-ro"
+                                                        required
+                                                    />
+
+                                                    <label htmlFor="credential-username">
+                                                        Username
+                                                    </label>
+                                                    <input
+                                                        id="credential-username"
+                                                        value={credentialUsernameInput}
+                                                        onChange={(event) =>
+                                                            setCredentialUsernameInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        required
+                                                    />
+
+                                                    <label htmlFor="credential-password">
+                                                        Password
+                                                    </label>
+                                                    <input
+                                                        id="credential-password"
+                                                        type="password"
+                                                        value={credentialPasswordInput}
+                                                        onChange={(event) =>
+                                                            setCredentialPasswordInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        required
+                                                    />
+
+                                                    <label htmlFor="credential-description">
+                                                        Description
+                                                    </label>
+                                                    <input
+                                                        id="credential-description"
+                                                        value={credentialDescriptionInput}
+                                                        onChange={(event) =>
+                                                            setCredentialDescriptionInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="Readonly profile for analysts"
+                                                    />
+
+                                                    <button
+                                                        type="submit"
+                                                        disabled={savingCredentialProfile}
+                                                    >
+                                                        {savingCredentialProfile
+                                                            ? 'Saving...'
+                                                            : 'Save Credential Profile'}
+                                                    </button>
+                                                </form>
+
+                                                <h4>Test Connection</h4>
+                                                <form
+                                                    className="stack-form"
+                                                    onSubmit={handleTestConnection}
+                                                >
+                                                    <label htmlFor="test-credential-profile">
+                                                        Credential Profile
+                                                    </label>
+                                                    <select
+                                                        id="test-credential-profile"
+                                                        value={selectedCredentialProfileForTest}
+                                                        onChange={(event) =>
+                                                            setSelectedCredentialProfileForTest(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    >
+                                                        <option value="">
+                                                            Select credential profile
+                                                        </option>
+                                                        {selectedManagedDatasource.credentialProfiles.map(
+                                                            (profile) => (
+                                                                <option
+                                                                    key={profile.profileId}
+                                                                    value={profile.profileId}
+                                                                >
+                                                                    {profile.profileId}
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+
+                                                    <label htmlFor="test-validation-query">
+                                                        Validation Query
+                                                    </label>
+                                                    <input
+                                                        id="test-validation-query"
+                                                        value={validationQueryInput}
+                                                        onChange={(event) =>
+                                                            setValidationQueryInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="SELECT 1"
+                                                    />
+
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={overrideTlsForTest}
+                                                            onChange={(event) =>
+                                                                setOverrideTlsForTest(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>
+                                                            Override datasource TLS settings for
+                                                            this test
+                                                        </span>
+                                                    </label>
+
+                                                    {overrideTlsForTest ? (
+                                                        <>
+                                                            <label htmlFor="test-tls-mode">
+                                                                TLS Mode
+                                                            </label>
+                                                            <select
+                                                                id="test-tls-mode"
+                                                                value={testTlsMode}
+                                                                onChange={(event) =>
+                                                                    setTestTlsMode(
+                                                                        event.target
+                                                                            .value as TlsMode
+                                                                    )
+                                                                }
+                                                            >
+                                                                <option value="DISABLE">
+                                                                    Disable
+                                                                </option>
+                                                                <option value="REQUIRE">
+                                                                    Require
+                                                                </option>
+                                                            </select>
+
+                                                            <label className="checkbox-row">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={
+                                                                        testVerifyServerCertificate
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setTestVerifyServerCertificate(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                />
+                                                                <span>
+                                                                    Verify server certificate
+                                                                </span>
+                                                            </label>
+
+                                                            <label className="checkbox-row">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={testAllowSelfSigned}
+                                                                    onChange={(event) =>
+                                                                        setTestAllowSelfSigned(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                />
+                                                                <span>
+                                                                    Allow self-signed certificates
+                                                                </span>
+                                                            </label>
+                                                        </>
+                                                    ) : null}
+
+                                                    <button
+                                                        type="submit"
+                                                        disabled={testingConnection}
+                                                    >
+                                                        {testingConnection
+                                                            ? 'Testing...'
+                                                            : 'Run Test Connection'}
+                                                    </button>
+                                                </form>
+
+                                                {testConnectionMessage ? (
+                                                    <p
+                                                        className={
+                                                            testConnectionOutcome === 'success'
+                                                                ? 'form-success'
+                                                                : 'form-error'
+                                                        }
+                                                        role="alert"
+                                                    >
+                                                        {testConnectionMessage}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                        ) : (
+                                            <p className="muted-id">
+                                                Save a datasource first to manage credential
+                                                profiles and run connection tests.
                                             </p>
-                                        ) : null}
-                                    </div>
-                                ) : (
-                                    <p className="muted-id">
-                                        Save a datasource first to manage credential profiles and
-                                        run connection tests.
-                                    </p>
-                                )}
+                                        )}
+                                    </section>
+                                </div>
                             </section>
-                        </div>
-                    </section>
-                </>
-            ) : null}
+                        </>
+                    ) : null}
+                </section>
+            </div>
         </AppShell>
     );
 }
