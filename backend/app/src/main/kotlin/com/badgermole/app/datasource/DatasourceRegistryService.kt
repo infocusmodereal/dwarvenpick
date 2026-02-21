@@ -65,6 +65,16 @@ class DatasourceRegistryService(
     private val datasourceNetworkGuard: DatasourceNetworkGuard,
 ) {
     private val datasources = ConcurrentHashMap<String, ManagedDatasourceRecord>()
+    private val seedPostgresHost = readStringEnv("BADGERMOLE_SEED_POSTGRES_HOST", "localhost")
+    private val seedPostgresPort = readIntEnv("BADGERMOLE_SEED_POSTGRES_PORT", 5432)
+    private val seedPostgresDatabase = readStringEnv("BADGERMOLE_SEED_POSTGRES_DATABASE", "badgermole")
+    private val seedPostgresUsername = readStringEnv("BADGERMOLE_SEED_POSTGRES_USERNAME", "badgermole")
+    private val seedPostgresPassword = readStringEnv("BADGERMOLE_SEED_POSTGRES_PASSWORD", "badgermole")
+    private val seedMysqlHost = readStringEnv("BADGERMOLE_SEED_MYSQL_HOST", "localhost")
+    private val seedMysqlPort = readIntEnv("BADGERMOLE_SEED_MYSQL_PORT", 3306)
+    private val seedMysqlDatabase = readStringEnv("BADGERMOLE_SEED_MYSQL_DATABASE", "orders")
+    private val seedMysqlUsername = readStringEnv("BADGERMOLE_SEED_MYSQL_USERNAME", "readonly")
+    private val seedMysqlPassword = readStringEnv("BADGERMOLE_SEED_MYSQL_PASSWORD", "readonly")
 
     @PostConstruct
     fun initialize() {
@@ -80,9 +90,9 @@ class DatasourceRegistryService(
                 CreateDatasourceRequest(
                     name = "PostgreSQL Core",
                     engine = DatasourceEngine.POSTGRESQL,
-                    host = "localhost",
-                    port = 5432,
-                    database = "badgermole",
+                    host = seedPostgresHost,
+                    port = seedPostgresPort,
+                    database = seedPostgresDatabase,
                     driverId = "postgres-default",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
                 ),
@@ -91,8 +101,8 @@ class DatasourceRegistryService(
             postgresId,
             "admin-ro",
             UpsertCredentialProfileRequest(
-                username = "badgermole",
-                password = "badgermole",
+                username = seedPostgresUsername,
+                password = seedPostgresPassword,
                 description = "Admin readonly profile for local compose.",
             ),
         )
@@ -100,8 +110,8 @@ class DatasourceRegistryService(
             postgresId,
             "analyst-ro",
             UpsertCredentialProfileRequest(
-                username = "badgermole",
-                password = "badgermole",
+                username = seedPostgresUsername,
+                password = seedPostgresPassword,
                 description = "Analyst readonly profile for local compose.",
             ),
         )
@@ -111,19 +121,24 @@ class DatasourceRegistryService(
                 CreateDatasourceRequest(
                     name = "MySQL Orders",
                     engine = DatasourceEngine.MYSQL,
-                    host = "localhost",
-                    port = 3306,
-                    database = "orders",
+                    host = seedMysqlHost,
+                    port = seedMysqlPort,
+                    database = seedMysqlDatabase,
                     driverId = "mysql-default",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
+                    options =
+                        mapOf(
+                            "allowPublicKeyRetrieval" to "true",
+                            "serverTimezone" to "UTC",
+                        ),
                 ),
             ).id
         upsertCredentialProfile(
             mysqlId,
             "admin-ro",
             UpsertCredentialProfileRequest(
-                username = "readonly",
-                password = "readonly",
+                username = seedMysqlUsername,
+                password = seedMysqlPassword,
                 description = "Admin readonly profile.",
             ),
         )
@@ -131,8 +146,8 @@ class DatasourceRegistryService(
             mysqlId,
             "ops-ro",
             UpsertCredentialProfileRequest(
-                username = "readonly",
-                password = "readonly",
+                username = seedMysqlUsername,
+                password = seedMysqlPassword,
                 description = "Ops readonly profile.",
             ),
         )
@@ -471,6 +486,16 @@ class DatasourceRegistryService(
 
         return slug
     }
+
+    private fun readStringEnv(
+        key: String,
+        fallback: String,
+    ): String = System.getenv(key)?.trim()?.ifBlank { fallback } ?: fallback
+
+    private fun readIntEnv(
+        key: String,
+        fallback: Int,
+    ): Int = System.getenv(key)?.toIntOrNull() ?: fallback
 
     private fun ManagedDatasourceRecord.toResponse(): ManagedDatasourceResponse =
         ManagedDatasourceResponse(

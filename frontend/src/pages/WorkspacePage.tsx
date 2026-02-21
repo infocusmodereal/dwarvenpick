@@ -382,7 +382,7 @@ const createTabId = (): string => {
 const buildWorkspaceTab = (
     datasourceId: string,
     title: string,
-    queryText = 'SELECT * FROM system.healthcheck;'
+    queryText = 'SELECT 1;'
 ): WorkspaceTab => ({
     id: createTabId(),
     title,
@@ -761,10 +761,7 @@ export default function WorkspacePage() {
                             ? tab.datasourceId
                             : fallbackDatasourceId,
                         schema: typeof tab.schema === 'string' ? tab.schema : '',
-                        queryText:
-                            typeof tab.queryText === 'string'
-                                ? tab.queryText
-                                : 'SELECT * FROM system.healthcheck;',
+                        queryText: typeof tab.queryText === 'string' ? tab.queryText : 'SELECT 1;',
                         isExecuting: false,
                         statusMessage: '',
                         errorMessage: '',

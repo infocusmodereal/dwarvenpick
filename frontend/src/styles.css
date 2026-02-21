@@ -43,7 +43,7 @@ p {
     min-height: 100vh;
     max-width: 1760px;
     margin: 0 auto;
-    padding: 1.35rem;
+    padding: 1.25rem 1.5rem 1.5rem;
 }
 
 .app-header {
@@ -69,6 +69,15 @@ p {
     display: grid;
     gap: 0.75rem;
     overflow: hidden;
+    min-width: 0;
+    transition:
+        box-shadow 140ms ease,
+        border-color 140ms ease;
+}
+
+.panel:hover {
+    border-color: #b7ccd6;
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1);
 }
 
 .panel[hidden],
@@ -92,6 +101,10 @@ p {
     border: 1px solid var(--border);
     font-size: 0.84rem;
     padding: 0.38rem 0.8rem;
+    transition:
+        background-color 140ms ease,
+        color 140ms ease,
+        border-color 140ms ease;
 }
 
 .workspace-mode-tab.active {
@@ -213,6 +226,7 @@ p {
 
 .editor {
     align-content: start;
+    min-width: 0;
 }
 
 .editor-tabs {
@@ -377,6 +391,7 @@ p {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+    min-width: 0;
 }
 
 .login-card {
@@ -619,6 +634,16 @@ button:disabled {
     background: var(--surface-alt);
     border: 1px solid var(--border);
     color: var(--accent-strong);
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+}
+
+.icon-button:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: #8ec5c6;
+    color: var(--accent);
 }
 
 .icon-button-glyph {

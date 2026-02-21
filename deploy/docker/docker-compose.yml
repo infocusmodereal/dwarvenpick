@@ -11,6 +11,20 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  mysql:
+    image: mysql:8.4
+    container_name: badgermole-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: badgermole
+      MYSQL_DATABASE: orders
+      MYSQL_USER: readonly
+      MYSQL_PASSWORD: readonly
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./mysql-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
   backend:
     build:
       context: ../../
@@ -20,11 +34,22 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badgermole
       SPRING_DATASOURCE_USERNAME: badgermole
       SPRING_DATASOURCE_PASSWORD: badgermole
+      BADGERMOLE_SEED_POSTGRES_HOST: postgres
+      BADGERMOLE_SEED_POSTGRES_PORT: 5432
+      BADGERMOLE_SEED_POSTGRES_DATABASE: badgermole
+      BADGERMOLE_SEED_POSTGRES_USERNAME: badgermole
+      BADGERMOLE_SEED_POSTGRES_PASSWORD: badgermole
+      BADGERMOLE_SEED_MYSQL_HOST: mysql
+      BADGERMOLE_SEED_MYSQL_PORT: 3306
+      BADGERMOLE_SEED_MYSQL_DATABASE: orders
+      BADGERMOLE_SEED_MYSQL_USERNAME: readonly
+      BADGERMOLE_SEED_MYSQL_PASSWORD: readonly
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
     depends_on:
       - postgres
+      - mysql
 
   frontend:
     build:
@@ -38,3 +63,4 @@ services:
 
 volumes:
   pgdata:
+  mysqldata:

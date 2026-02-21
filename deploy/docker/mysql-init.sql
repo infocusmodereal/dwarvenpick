@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS orders.healthcheck (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    status VARCHAR(64) NOT NULL,
+    checked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO orders.healthcheck (status)
+VALUES ('ok')
+ON DUPLICATE KEY UPDATE status = VALUES(status), checked_at = CURRENT_TIMESTAMP;

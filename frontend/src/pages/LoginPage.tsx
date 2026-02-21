@@ -25,7 +25,6 @@ export default function LoginPage() {
     const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>(authMethodPriority);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [loadingMethods, setLoadingMethods] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -33,7 +32,6 @@ export default function LoginPage() {
         let active = true;
 
         const loadAuthMethods = async () => {
-            setLoadingMethods(true);
             setErrorMessage('');
             try {
                 const response = await fetch('/api/auth/methods', {
@@ -68,10 +66,6 @@ export default function LoginPage() {
 
                 // Fall back to trying local then LDAP when capability discovery is unavailable.
                 setSupportedMethods(authMethodPriority);
-            } finally {
-                if (active) {
-                    setLoadingMethods(false);
-                }
             }
         };
 
@@ -225,10 +219,6 @@ export default function LoginPage() {
                     <button type="submit" disabled={isSubmitting || supportedMethods.length === 0}>
                         {isSubmitting ? 'Signing In...' : 'Sign In'}
                     </button>
-
-                    {loadingMethods ? (
-                        <p className="muted-id">Checking sign-in services...</p>
-                    ) : null}
                 </form>
             </section>
         </AppShell>
