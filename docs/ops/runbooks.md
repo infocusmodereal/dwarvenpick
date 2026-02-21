@@ -28,7 +28,7 @@ Actions:
 
 Symptoms:
 - queued/running executions not progressing
-- high `badgermole_query_active{status="running"}` for sustained period
+- high `dwarvenpick_query_active{status="running"}` for sustained period
 
 Actions:
 1. Inspect query history and audit events for affected datasource/user.

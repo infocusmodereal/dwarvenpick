@@ -1,4 +1,4 @@
-# badgermole Jira-Style Backlog
+# dwarvenpick Jira-Style Backlog
 
 ## Global Definition of Done
 

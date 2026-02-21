@@ -1,0 +1,87 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/your-org/dwarvenpick-backend
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8080
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: dwarvenpick.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+env:
+  SPRING_PROFILES_ACTIVE: prod
+  SERVER_PORT: "8080"
+  DWARVENPICK_EXTERNAL_DRIVERS_DIR: /opt/app/drivers
+  SPRING_DATASOURCE_URL: ""
+  SPRING_DATASOURCE_USERNAME: ""
+  SPRING_DATASOURCE_PASSWORD: ""
+  DWARVENPICK_AUTH_LDAP_ENABLED: "false"
+  DWARVENPICK_AUTH_LDAP_URL: ""
+  DWARVENPICK_AUTH_LDAP_BIND_DN: ""
+  DWARVENPICK_AUTH_LDAP_BIND_PASSWORD: ""
+  DWARVENPICK_AUTH_LDAP_USER_SEARCH_BASE: ""
+  DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE: ""
+extraEnv: {}
+envFromSecrets: []
+
+credentials:
+  activeKeyId: v1
+  masterKey:
+    existingSecret: ""
+    key: master-key
+    value: ""
+
+drivers:
+  external:
+    enabled: false
+    mountPath: /opt/app/drivers
+    existingClaim: ""
+
+probes:
+  liveness:
+    initialDelaySeconds: 20
+    periodSeconds: 20
+  readiness:
+    initialDelaySeconds: 15
+    periodSeconds: 15

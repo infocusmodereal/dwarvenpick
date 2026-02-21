@@ -1,0 +1,15 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "dwarvenpick.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "dwarvenpick.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "dwarvenpick.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

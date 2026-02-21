@@ -1,6 +1,6 @@
-# badgermole (OpenSQL Workbench)
+# dwarvenpick (OpenSQL Workbench)
 
-`badgermole` is an enterprise-focused, web-based SQL workbench for secure ad-hoc querying across multiple data platforms.
+`dwarvenpick` is an enterprise-focused, web-based SQL workbench for secure ad-hoc querying across multiple data platforms.
 
 ## Repository layout
 
@@ -64,10 +64,10 @@ Default local development users:
 
 Query history and audit retention settings:
 
-- `badgermole.query.history-retention-days` (default `30`)
-- `badgermole.query.audit-retention-days` (default `90`)
-- `badgermole.query.query-text-redaction-days` (default `0`, disabled)
-- `badgermole.query.retention-cleanup-interval-ms` (default `3600000`)
+- `dwarvenpick.query.history-retention-days` (default `30`)
+- `dwarvenpick.query.audit-retention-days` (default `90`)
+- `dwarvenpick.query.query-text-redaction-days` (default `0`, disabled)
+- `dwarvenpick.query.retention-cleanup-interval-ms` (default `3600000`)
 
 Compliance note:
 

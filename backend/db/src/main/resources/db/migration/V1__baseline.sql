@@ -8,5 +8,5 @@ create table if not exists schema_version_notes (
 );
 
 insert into schema_version_notes (note)
-values ('badgermole schema baseline initialized')
+values ('dwarvenpick schema baseline initialized')
 on conflict do nothing;

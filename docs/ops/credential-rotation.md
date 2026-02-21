@@ -4,15 +4,15 @@ This project encrypts datasource credential passwords at rest using AES-GCM.
 
 ## Runtime settings
 
-- `BADGERMOLE_CREDENTIAL_MASTER_KEY`: current master key material.
-- `BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID`: logical key id stored with each encrypted credential.
+- `DWARVENPICK_CREDENTIAL_MASTER_KEY`: current master key material.
+- `DWARVENPICK_CREDENTIAL_ACTIVE_KEY_ID`: logical key id stored with each encrypted credential.
 
 ## Rotation workflow
 
 1. Provision a new master key in your secret manager.
 2. Deploy the application with:
-   - new `BADGERMOLE_CREDENTIAL_MASTER_KEY`
-   - new `BADGERMOLE_CREDENTIAL_ACTIVE_KEY_ID` (for example `v2`)
+   - new `DWARVENPICK_CREDENTIAL_MASTER_KEY`
+   - new `DWARVENPICK_CREDENTIAL_ACTIVE_KEY_ID` (for example `v2`)
 3. Run credential re-encryption:
    - `POST /api/admin/datasource-management/credentials/reencrypt`
 4. Verify response reports all expected credential profiles updated.

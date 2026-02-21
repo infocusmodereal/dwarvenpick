@@ -7,7 +7,7 @@ plugins {
 }
 
 allprojects {
-    group = "com.badgermole"
+    group = "com.dwarvenpick"
     version = "0.1.0-SNAPSHOT"
 
     repositories {

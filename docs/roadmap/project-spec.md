@@ -1,4 +1,4 @@
-# Project Spec: OpenSQL Workbench (codename: `badgermole`)
+# Project Spec: OpenSQL Workbench (codename: `dwarvenpick`)
 
 ## 1) Purpose and vision
 

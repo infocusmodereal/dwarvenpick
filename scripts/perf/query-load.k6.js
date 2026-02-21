@@ -2,8 +2,8 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const baseUrl = __ENV.BASE_URL || 'http://localhost:3000';
-const username = __ENV.BADGERMOLE_USER || 'admin';
-const password = __ENV.BADGERMOLE_PASSWORD || 'Admin1234!';
+const username = __ENV.DWARVENPICK_USER || 'admin';
+const password = __ENV.DWARVENPICK_PASSWORD || 'Admin1234!';
 
 export const options = {
   vus: Number(__ENV.VUS || 5),

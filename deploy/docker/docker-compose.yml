@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: badgermole-postgres
+    container_name: dwarvenpick-postgres
     environment:
-      POSTGRES_USER: badgermole
-      POSTGRES_PASSWORD: badgermole
-      POSTGRES_DB: badgermole
+      POSTGRES_USER: dwarvenpick
+      POSTGRES_PASSWORD: dwarvenpick
+      POSTGRES_DB: dwarvenpick
     ports:
       - "5432:5432"
     volumes:
@@ -13,9 +13,9 @@ services:
 
   mysql:
     image: mysql:8.4
-    container_name: badgermole-mysql
+    container_name: dwarvenpick-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: badgermole
+      MYSQL_ROOT_PASSWORD: dwarvenpick
       MYSQL_DATABASE: orders
       MYSQL_USER: readonly
       MYSQL_PASSWORD: readonly
@@ -29,21 +29,21 @@ services:
     build:
       context: ../../
       dockerfile: deploy/docker/Dockerfile.backend
-    container_name: badgermole-backend
+    container_name: dwarvenpick-backend
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badgermole
-      SPRING_DATASOURCE_USERNAME: badgermole
-      SPRING_DATASOURCE_PASSWORD: badgermole
-      BADGERMOLE_SEED_POSTGRES_HOST: postgres
-      BADGERMOLE_SEED_POSTGRES_PORT: 5432
-      BADGERMOLE_SEED_POSTGRES_DATABASE: badgermole
-      BADGERMOLE_SEED_POSTGRES_USERNAME: badgermole
-      BADGERMOLE_SEED_POSTGRES_PASSWORD: badgermole
-      BADGERMOLE_SEED_MYSQL_HOST: mysql
-      BADGERMOLE_SEED_MYSQL_PORT: 3306
-      BADGERMOLE_SEED_MYSQL_DATABASE: orders
-      BADGERMOLE_SEED_MYSQL_USERNAME: readonly
-      BADGERMOLE_SEED_MYSQL_PASSWORD: readonly
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dwarvenpick
+      SPRING_DATASOURCE_USERNAME: dwarvenpick
+      SPRING_DATASOURCE_PASSWORD: dwarvenpick
+      DWARVENPICK_SEED_POSTGRES_HOST: postgres
+      DWARVENPICK_SEED_POSTGRES_PORT: 5432
+      DWARVENPICK_SEED_POSTGRES_DATABASE: dwarvenpick
+      DWARVENPICK_SEED_POSTGRES_USERNAME: dwarvenpick
+      DWARVENPICK_SEED_POSTGRES_PASSWORD: dwarvenpick
+      DWARVENPICK_SEED_MYSQL_HOST: mysql
+      DWARVENPICK_SEED_MYSQL_PORT: 3306
+      DWARVENPICK_SEED_MYSQL_DATABASE: orders
+      DWARVENPICK_SEED_MYSQL_USERNAME: readonly
+      DWARVENPICK_SEED_MYSQL_PASSWORD: readonly
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
@@ -55,7 +55,7 @@ services:
     build:
       context: ../../
       dockerfile: deploy/docker/Dockerfile.frontend
-    container_name: badgermole-frontend
+    container_name: dwarvenpick-frontend
     ports:
       - "3000:80"
     depends_on:

@@ -1,4 +1,4 @@
-# badgermole Roadmap Milestones
+# dwarvenpick Roadmap Milestones
 
 ## Milestone 0: Repo + Foundation
 

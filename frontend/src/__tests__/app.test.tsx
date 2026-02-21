@@ -70,7 +70,7 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect(screen.getByText(/badgermole workspace/i)).toBeInTheDocument();
+        expect(screen.getByText(/dwarvenpick workspace/i)).toBeInTheDocument();
         expect(await screen.findByText(/editor shortcuts/i)).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });
@@ -82,7 +82,7 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect(screen.queryByText(/badgermole login/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/dwarvenpick login/i)).not.toBeInTheDocument();
         expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
         expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /local/i })).not.toBeInTheDocument();

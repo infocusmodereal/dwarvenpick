@@ -299,7 +299,7 @@ const defaultTlsSettings: TlsSettings = {
     allowSelfSigned: false
 };
 
-const workspaceTabsStorageKey = 'badgermole.workspace.tabs.v1';
+const workspaceTabsStorageKey = 'dwarvenpick.workspace.tabs.v1';
 const queryStatusPollingIntervalMs = 500;
 const queryStatusPollingMaxAttempts = 120;
 const firstPageToken = '';
@@ -2262,7 +2262,7 @@ export default function WorkspacePage() {
     );
 
     const handleEditorWillMount: BeforeMount = (monacoInstance) => {
-        monacoInstance.editor.defineTheme('badgermole-sql', {
+        monacoInstance.editor.defineTheme('dwarvenpick-sql', {
             base: 'vs',
             inherit: true,
             rules: [
@@ -2986,7 +2986,7 @@ export default function WorkspacePage() {
 
     if (loadingWorkspace) {
         return (
-            <AppShell title="badgermole Workspace">
+            <AppShell title="dwarvenpick Workspace">
                 <section className="panel">
                     <p>Loading...</p>
                 </section>
@@ -2995,7 +2995,7 @@ export default function WorkspacePage() {
     }
 
     return (
-        <AppShell title="badgermole Workspace">
+        <AppShell title="dwarvenpick Workspace">
             {workspaceError ? (
                 <section className="panel">
                     <p className="form-error">{workspaceError}</p>
@@ -3362,7 +3362,7 @@ export default function WorkspacePage() {
                                 height="360px"
                                 language="sql"
                                 beforeMount={handleEditorWillMount}
-                                theme="badgermole-sql"
+                                theme="dwarvenpick-sql"
                                 loading={
                                     <div className="editor-loading">Loading SQL editor...</div>
                                 }

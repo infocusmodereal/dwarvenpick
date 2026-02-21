@@ -1,6 +1,6 @@
-# Contributing to badgermole
+# Contributing to dwarvenpick
 
-Thanks for contributing to `badgermole`.
+Thanks for contributing to `dwarvenpick`.
 
 ## Development workflow
 
