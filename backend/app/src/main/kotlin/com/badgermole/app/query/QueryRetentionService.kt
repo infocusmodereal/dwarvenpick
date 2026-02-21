@@ -1,11 +1,11 @@
 package com.badgermole.app.query
 
 import com.badgermole.app.auth.AuthAuditEventStore
-import java.time.Duration
-import java.time.Instant
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
+import java.time.Duration
+import java.time.Instant
 
 @Service
 class QueryRetentionService(

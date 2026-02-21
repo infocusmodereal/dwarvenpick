@@ -1,10 +1,10 @@
 package com.badgermole.app.snippet
 
 import com.badgermole.app.auth.AuthenticatedUserPrincipal
+import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import org.springframework.stereotype.Service
 
 class SnippetNotFoundException(
     override val message: String,
@@ -41,8 +41,7 @@ class SnippetService {
             .filter { record ->
                 (includePersonal && record.owner == principal.username) ||
                     (includeGroup && canAccessGroupSnippet(principal, record))
-            }
-            .sortedByDescending { record -> record.updatedAt }
+            }.sortedByDescending { record -> record.updatedAt }
             .map { record -> record.toResponse() }
             .toList()
     }

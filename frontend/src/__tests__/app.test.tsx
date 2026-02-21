@@ -82,7 +82,8 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect(screen.getByText(/badgermole login/i)).toBeInTheDocument();
+        expect(screen.queryByText(/badgermole login/i)).not.toBeInTheDocument();
+        expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
         expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /local/i })).not.toBeInTheDocument();
     });

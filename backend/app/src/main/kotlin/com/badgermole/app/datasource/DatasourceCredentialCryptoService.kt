@@ -1,12 +1,12 @@
 package com.badgermole.app.datasource
 
+import org.springframework.stereotype.Service
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import org.springframework.stereotype.Service
 
 data class EncryptedCredential(
     val keyId: String,
@@ -53,8 +53,7 @@ class DatasourceCredentialCryptoService(
         return cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
     }
 
-    fun reencrypt(encryptedCredential: EncryptedCredential): EncryptedCredential =
-        encryptPassword(decryptPassword(encryptedCredential))
+    fun reencrypt(encryptedCredential: EncryptedCredential): EncryptedCredential = encryptPassword(decryptPassword(encryptedCredential))
 
     fun activeKeyId(): String = credentialEncryptionProperties.activeKeyId
 

@@ -5,24 +5,23 @@ import com.badgermole.app.auth.AuthAuditLogger
 import com.badgermole.app.auth.AuthenticatedPrincipalResolver
 import com.badgermole.app.auth.ErrorResponse
 import com.badgermole.app.datasource.DriverNotAvailableException
-import com.badgermole.app.query.QueryCsvWriter
 import com.badgermole.app.query.QueryConcurrencyLimitException
-import com.badgermole.app.query.QueryExecutionProperties
-import com.badgermole.app.query.QueryExecutionManager
+import com.badgermole.app.query.QueryCsvWriter
 import com.badgermole.app.query.QueryExecutionForbiddenException
+import com.badgermole.app.query.QueryExecutionManager
 import com.badgermole.app.query.QueryExecutionNotFoundException
+import com.badgermole.app.query.QueryExecutionProperties
 import com.badgermole.app.query.QueryExecutionRequest
 import com.badgermole.app.query.QueryExecutionStatus
 import com.badgermole.app.query.QueryExportLimitExceededException
 import com.badgermole.app.query.QueryInvalidPageTokenException
 import com.badgermole.app.query.QueryReadOnlyViolationException
-import com.badgermole.app.query.QueryResultsRequest
 import com.badgermole.app.query.QueryResultsExpiredException
 import com.badgermole.app.query.QueryResultsNotReadyException
+import com.badgermole.app.query.QueryResultsRequest
 import io.micrometer.core.instrument.MeterRegistry
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
-import java.time.Instant
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -35,8 +34,9 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
+import java.time.Instant
 
 @RestController
 @Validated
@@ -198,7 +198,8 @@ class QueryController(
                             ),
                     ),
                 )
-                return@handleQueryErrors ResponseEntity.status(HttpStatus.FORBIDDEN)
+                return@handleQueryErrors ResponseEntity
+                    .status(HttpStatus.FORBIDDEN)
                     .body(ErrorResponse("Datasource export access denied for this query."))
             }
 
@@ -238,7 +239,8 @@ class QueryController(
                     )
                 }
 
-            ResponseEntity.ok()
+            ResponseEntity
+                .ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
                 .body(body as Any)
@@ -362,12 +364,13 @@ class QueryController(
         outcome: String,
         datasourceId: String,
     ) {
-        meterRegistry.counter(
-            "badgermole.query.export.attempts",
-            "outcome",
-            outcome,
-            "datasourceId",
-            datasourceId,
-        ).increment()
+        meterRegistry
+            .counter(
+                "badgermole.query.export.attempts",
+                "outcome",
+                outcome,
+                "datasourceId",
+                datasourceId,
+            ).increment()
     }
 }

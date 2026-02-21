@@ -1,9 +1,9 @@
 package com.badgermole.app.auth
 
 import jakarta.annotation.PostConstruct
-import java.util.concurrent.ConcurrentHashMap
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import java.util.concurrent.ConcurrentHashMap
 
 class DisabledUserException(
     override val message: String = "User account is disabled.",
@@ -58,7 +58,10 @@ class UserAccountService(
         }
     }
 
-    fun authenticateLocal(username: String, password: String): AuthenticatedUserPrincipal? {
+    fun authenticateLocal(
+        username: String,
+        password: String,
+    ): AuthenticatedUserPrincipal? {
         val user = users[normalizeUsername(username)] ?: return null
 
         if (!user.enabled) {
@@ -78,7 +81,10 @@ class UserAccountService(
         return toPrincipal(user)
     }
 
-    fun resetPassword(username: String, newPassword: String): AuthenticatedUserPrincipal {
+    fun resetPassword(
+        username: String,
+        newPassword: String,
+    ): AuthenticatedUserPrincipal {
         passwordPolicyValidator.validateOrThrow(newPassword)
 
         val user =
@@ -94,7 +100,10 @@ class UserAccountService(
         return toPrincipal(user)
     }
 
-    fun provisionOrUpdateLdapUser(profile: LdapUserProfile, internalGroups: Set<String>): AuthenticatedUserPrincipal {
+    fun provisionOrUpdateLdapUser(
+        profile: LdapUserProfile,
+        internalGroups: Set<String>,
+    ): AuthenticatedUserPrincipal {
         val normalizedUsername = normalizeUsername(profile.username)
         val existingUser = users[normalizedUsername]
 
@@ -130,7 +139,10 @@ class UserAccountService(
         return toPrincipal(existingUser)
     }
 
-    fun addGroupMembership(username: String, groupId: String): AuthenticatedUserPrincipal {
+    fun addGroupMembership(
+        username: String,
+        groupId: String,
+    ): AuthenticatedUserPrincipal {
         val user =
             users[normalizeUsername(username)]
                 ?: throw UserNotFoundException("User '$username' does not exist.")
@@ -143,7 +155,10 @@ class UserAccountService(
         return toPrincipal(user)
     }
 
-    fun removeGroupMembership(username: String, groupId: String): AuthenticatedUserPrincipal {
+    fun removeGroupMembership(
+        username: String,
+        groupId: String,
+    ): AuthenticatedUserPrincipal {
         val user =
             users[normalizeUsername(username)]
                 ?: throw UserNotFoundException("User '$username' does not exist.")

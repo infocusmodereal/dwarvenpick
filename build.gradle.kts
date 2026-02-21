@@ -30,6 +30,10 @@ subprojects {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
             jvmToolchain(21)
         }
+
+        extensions.configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+            version.set("1.5.0")
+        }
     }
 
     tasks.withType<Test>().configureEach {

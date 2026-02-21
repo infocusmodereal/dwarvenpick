@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/version")
-class VersionController(buildPropertiesProvider: ObjectProvider<BuildProperties>) {
+class VersionController(
+    buildPropertiesProvider: ObjectProvider<BuildProperties>,
+) {
     private val buildProperties: BuildProperties? = buildPropertiesProvider.ifAvailable
 
     @GetMapping

@@ -1,10 +1,10 @@
 package com.badgermole.app.datasource
 
+import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import org.springframework.stereotype.Service
 
 private data class SchemaCacheSnapshot(
     val response: DatasourceSchemaBrowserResponse,
@@ -53,10 +53,17 @@ class SchemaBrowserService(
         val maxTablesPerSchema = schemaBrowserProperties.maxTablesPerSchema.coerceAtLeast(1)
         val maxColumnsPerTable = schemaBrowserProperties.maxColumnsPerTable.coerceAtLeast(1)
         val handle =
-            datasourcePoolManager.openConnection(
-                datasourceId = datasourceId,
-                credentialProfile = credentialProfile,
-            )
+            try {
+                datasourcePoolManager.openConnection(
+                    datasourceId = datasourceId,
+                    credentialProfile = credentialProfile,
+                )
+            } catch (exception: RuntimeException) {
+                throw SchemaBrowserUnavailableException(
+                    message = "Unable to connect to datasource for schema browser.",
+                    cause = exception,
+                )
+            }
 
         handle.connection.use { connection ->
             val metadata = connection.metaData

@@ -1,6 +1,7 @@
-import Editor, { loader, OnMount } from '@monaco-editor/react';
+import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as MonacoModule from 'monaco-editor/esm/vs/editor/editor.api';
+import 'monaco-editor/esm/vs/basic-languages/sql/sql.contribution';
 import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
@@ -250,6 +251,15 @@ type ReencryptCredentialsResponse = {
 
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin';
+type IconGlyph = 'new' | 'rename' | 'close';
+
+type IconButtonProps = {
+    icon: IconGlyph;
+    title: string;
+    onClick: () => void;
+    disabled?: boolean;
+    variant?: 'default' | 'danger';
+};
 
 type ManagedDatasourceFormState = {
     name: string;
@@ -401,6 +411,54 @@ const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
     schema: tab.schema,
     queryText: tab.queryText
 });
+
+const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
+    if (icon === 'new') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M10 4v12" />
+                <path d="M4 10h12" />
+            </svg>
+        );
+    }
+
+    if (icon === 'rename') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 14.8 5 11l7.8-7.8a1.8 1.8 0 0 1 2.5 0l1.5 1.5a1.8 1.8 0 0 1 0 2.5L9 15l-5 1.2Z" />
+                <path d="m11.9 4.1 4 4" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="m5 5 10 10" />
+            <path d="m15 5-10 10" />
+        </svg>
+    );
+};
+
+const IconButton = ({
+    icon,
+    title,
+    onClick,
+    disabled = false,
+    variant = 'default'
+}: IconButtonProps) => (
+    <button
+        type="button"
+        className={variant === 'danger' ? 'icon-button danger-button' : 'icon-button'}
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={title}
+        title={title}
+    >
+        <span aria-hidden className="icon-button-glyph">
+            <IconGlyph icon={icon} />
+        </span>
+    </button>
+);
 
 export default function WorkspacePage() {
     const navigate = useNavigate();
@@ -2206,6 +2264,27 @@ export default function WorkspacePage() {
         [fetchCsrfToken, loadSnippets, readFriendlyError]
     );
 
+    const handleEditorWillMount: BeforeMount = (monacoInstance) => {
+        monacoInstance.editor.defineTheme('badgermole-sql', {
+            base: 'vs',
+            inherit: true,
+            rules: [
+                { token: 'keyword', foreground: '0b5cad', fontStyle: 'bold' },
+                { token: 'number', foreground: '8b3da6' },
+                { token: 'string', foreground: '1f7a45' },
+                { token: 'comment', foreground: '758596', fontStyle: 'italic' },
+                { token: 'delimiter', foreground: '2a3b4c' }
+            ],
+            colors: {
+                'editor.background': '#fbfeff',
+                'editorLineNumber.foreground': '#8ea2b1',
+                'editorLineNumber.activeForeground': '#304759',
+                'editorCursor.foreground': '#0b5cad',
+                'editor.selectionBackground': '#d4e9fb'
+            }
+        });
+    };
+
     const handleEditorDidMount: OnMount = (editorInstance, monacoInstance) => {
         editorRef.current = editorInstance;
         monacoRef.current = monacoInstance;
@@ -2912,7 +2991,7 @@ export default function WorkspacePage() {
         return (
             <AppShell title="badgermole Workspace">
                 <section className="panel">
-                    <p>Loading workspace...</p>
+                    <p>Loading...</p>
                 </section>
             </AppShell>
         );
@@ -2927,10 +3006,6 @@ export default function WorkspacePage() {
             ) : null}
 
             <section className="panel workspace-navigation">
-                <h2>Workspace Modes</h2>
-                <p>
-                    Keep querying focused. Open history, snippets, and admin tools only when needed.
-                </p>
                 <div className="workspace-mode-tabs" role="tablist" aria-label="Workspace sections">
                     <button
                         type="button"
@@ -3007,10 +3082,6 @@ export default function WorkspacePage() {
             <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
                 <aside className="panel sidebar">
                     <h2>Data Sources</h2>
-                    <p>
-                        Pick one configured source. Open a new query tab or bind your active tab to
-                        it.
-                    </p>
 
                     <section className="datasource-tree">
                         <h3>Configured Connections</h3>
@@ -3168,23 +3239,16 @@ export default function WorkspacePage() {
                                     </ul>
                                 ) : (
                                     <p>
-                                        Select a datasource and open/activate a tab to browse
-                                        schemas and autocomplete metadata.
+                                        Schema metadata will appear after a datasource is selected.
                                     </p>
                                 )}
                             </>
-                        ) : (
-                            <p>Open the schema browser when you need table and column context.</p>
-                        )}
+                        ) : null}
                     </section>
                 </aside>
 
                 <section className="panel editor">
                     <h2>SQL Workbench</h2>
-                    <p>
-                        Signed in as{' '}
-                        <strong>{currentUser?.displayName ?? currentUser?.username}</strong>.
-                    </p>
                     <div className="editor-tabs" role="tablist" aria-label="SQL tabs">
                         {workspaceTabs.map((tab) => (
                             <button
@@ -3203,12 +3267,14 @@ export default function WorkspacePage() {
                         ))}
                     </div>
                     <div className="row editor-tab-actions">
-                        <button type="button" className="chip" onClick={handleOpenNewTab}>
-                            New Tab
-                        </button>
-                        <button
-                            type="button"
-                            className="chip"
+                        <IconButton
+                            icon="new"
+                            title="Open new SQL tab"
+                            onClick={handleOpenNewTab}
+                        />
+                        <IconButton
+                            icon="rename"
+                            title="Rename active SQL tab"
                             disabled={!activeTab}
                             onClick={() => {
                                 if (!activeTab) {
@@ -3217,12 +3283,11 @@ export default function WorkspacePage() {
 
                                 handleRenameTab(activeTab.id);
                             }}
-                        >
-                            Rename Active Tab
-                        </button>
-                        <button
-                            type="button"
-                            className="danger-button"
+                        />
+                        <IconButton
+                            icon="close"
+                            title="Close active SQL tab"
+                            variant="danger"
                             disabled={!activeTab || workspaceTabs.length <= 1}
                             onClick={() => {
                                 if (!activeTab) {
@@ -3231,9 +3296,7 @@ export default function WorkspacePage() {
 
                                 handleCloseTab(activeTab.id);
                             }}
-                        >
-                            Close Active Tab
-                        </button>
+                        />
                     </div>
 
                     <div className="editor-context">
@@ -3301,6 +3364,8 @@ export default function WorkspacePage() {
                                 key={`monaco-${editorRenderKey}`}
                                 height="360px"
                                 language="sql"
+                                beforeMount={handleEditorWillMount}
+                                theme="badgermole-sql"
                                 loading={
                                     <div className="editor-loading">Loading SQL editor...</div>
                                 }
@@ -3571,7 +3636,6 @@ export default function WorkspacePage() {
 
             <section className="panel history-panel" hidden={activeSection !== 'history'}>
                 <h2>Query History</h2>
-                <p>Review previous executions, filter by status/date, and rerun safely.</p>
                 <div className="history-filters">
                     <label htmlFor="history-datasource-filter">Datasource</label>
                     <select
@@ -3703,7 +3767,6 @@ export default function WorkspacePage() {
 
             <section className="panel snippets-panel" hidden={activeSection !== 'snippets'}>
                 <h2>Saved Snippets</h2>
-                <p>Save reusable SQL snippets for yourself or share with one of your groups.</p>
 
                 <div className="history-filters">
                     <label htmlFor="snippet-scope">Scope</label>
@@ -3815,7 +3878,6 @@ export default function WorkspacePage() {
                 <>
                     <section className="panel admin-audit" hidden={activeSection !== 'audit'}>
                         <h2>Admin Audit Events</h2>
-                        <p>Filter and inspect security, query, and governance audit trails.</p>
                         <div className="history-filters">
                             <label htmlFor="audit-type-filter">Action</label>
                             <input
@@ -3918,10 +3980,6 @@ export default function WorkspacePage() {
 
                     <section className="panel admin-governance" hidden={activeSection !== 'admin'}>
                         <h2>Admin Governance</h2>
-                        <p>
-                            Manage RBAC, datasource registry entries, credentials, and connection
-                            tests.
-                        </p>
 
                         {adminError ? (
                             <p className="form-error" role="alert">

@@ -134,7 +134,8 @@ class SnippetController(
             is IllegalArgumentException ->
                 ResponseEntity.badRequest().body(ErrorResponse(exception.message ?: "Bad request."))
             else ->
-                ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ErrorResponse("Snippet operation failed."))
         }
 

@@ -22,8 +22,7 @@ object QueryCsvWriter {
         writer.flush()
     }
 
-    internal fun formatRow(values: List<String?>): String =
-        values.joinToString(",") { value -> formatCell(value) } + "\n"
+    internal fun formatRow(values: List<String?>): String = values.joinToString(",") { value -> formatCell(value) } + "\n"
 
     private fun formatCell(value: String?): String {
         if (value == null) {

@@ -27,7 +27,10 @@ class LdapAuthenticationService(
 ) {
     private val logger = LoggerFactory.getLogger(LdapAuthenticationService::class.java)
 
-    fun authenticate(username: String, password: String): LdapAuthenticationResult? {
+    fun authenticate(
+        username: String,
+        password: String,
+    ): LdapAuthenticationResult? {
         val trimmedUsername = username.trim()
         val trimmedPassword = password.trim()
 
@@ -72,7 +75,10 @@ class LdapAuthenticationService(
         }
     }
 
-    private fun authenticateWithMock(username: String, password: String): LdapAuthenticationResult? {
+    private fun authenticateWithMock(
+        username: String,
+        password: String,
+    ): LdapAuthenticationResult? {
         val mockUser =
             authProperties.ldap.mock.users.firstOrNull {
                 it.username.equals(username, ignoreCase = true) && it.password == password
@@ -121,24 +127,31 @@ class LdapAuthenticationService(
         return searchResults.firstOrNull()
     }
 
-    private fun resolveMappedGroups(ldapTemplate: LdapTemplate, profile: LdapUserProfile): Set<String> {
+    private fun resolveMappedGroups(
+        ldapTemplate: LdapTemplate,
+        profile: LdapUserProfile,
+    ): Set<String> {
         if (!authProperties.ldap.groupSync.enabled) {
             return emptySet()
         }
 
         val escapedDn = LdapEncoder.filterEncode(profile.distinguishedName)
-        val groupFilter = authProperties.ldap.groupSync.groupFilter.replace("{0}", escapedDn)
+        val groupFilter =
+            authProperties.ldap.groupSync.groupFilter
+                .replace("{0}", escapedDn)
         val groupSearchBase = authProperties.ldap.groupSync.groupSearchBase
         val groupNameAttribute = authProperties.ldap.groupSync.groupNameAttribute
 
         val ldapGroups =
-            ldapTemplate.search(
-                groupSearchBase,
-                groupFilter,
-                AttributesMapper<String> { attributes ->
-                    attributes.get(groupNameAttribute)?.get()?.toString() ?: ""
-                },
-            ).filter { it.isNotBlank() }.toSet()
+            ldapTemplate
+                .search(
+                    groupSearchBase,
+                    groupFilter,
+                    AttributesMapper<String> { attributes ->
+                        attributes.get(groupNameAttribute)?.get()?.toString() ?: ""
+                    },
+                ).filter { it.isNotBlank() }
+                .toSet()
 
         return mapGroups(ldapGroups)
     }

@@ -12,7 +12,6 @@ import com.badgermole.app.query.QueryExecutionStatusResponse
 import com.badgermole.app.query.QueryResultsRequest
 import com.badgermole.app.rbac.QueryAccessPolicy
 import com.badgermole.app.rbac.RbacService
-import java.sql.DriverManager
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -23,6 +22,7 @@ import org.testcontainers.containers.MySQLContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import java.sql.DriverManager
 
 @SpringBootTest(
     properties = [
@@ -30,7 +30,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
         "badgermole.auth.password-policy.min-length=8",
     ],
 )
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class QueryExecutionManagerContainerTests {
     @Autowired
     private lateinit var queryExecutionManager: QueryExecutionManager
@@ -114,42 +114,43 @@ class QueryExecutionManagerContainerTests {
         val actor = "tc-postgres-cancel-user"
         val advisoryLockKey = 424_242L
 
-        DriverManager.getConnection(
-            postgresContainer.jdbcUrl,
-            postgresContainer.username,
-            postgresContainer.password,
-        ).use { lockConnection ->
-            lockConnection.createStatement().use { lockStatement ->
-                lockStatement.execute("select pg_advisory_lock($advisoryLockKey)")
+        DriverManager
+            .getConnection(
+                postgresContainer.jdbcUrl,
+                postgresContainer.username,
+                postgresContainer.password,
+            ).use { lockConnection ->
+                lockConnection.createStatement().use { lockStatement ->
+                    lockStatement.execute("select pg_advisory_lock($advisoryLockKey)")
 
-                try {
-                    val submitted =
-                        queryExecutionManager.submitQuery(
-                            actor = actor,
-                            ipAddress = "127.0.0.1",
-                            request =
-                                QueryExecutionRequest(
-                                    datasourceId = datasourceId,
-                                    sql = "select pg_advisory_lock($advisoryLockKey)",
-                                ),
-                            policy = defaultPolicy(),
-                        )
+                    try {
+                        val submitted =
+                            queryExecutionManager.submitQuery(
+                                actor = actor,
+                                ipAddress = "127.0.0.1",
+                                request =
+                                    QueryExecutionRequest(
+                                        datasourceId = datasourceId,
+                                        sql = "select pg_advisory_lock($advisoryLockKey)",
+                                    ),
+                                policy = defaultPolicy(),
+                            )
 
-                    val cancelResponse =
-                        queryExecutionManager.cancelQuery(
-                            actor = actor,
-                            isSystemAdmin = false,
-                            executionId = submitted.executionId,
-                        )
-                    assertThat(cancelResponse.status).isIn("QUEUED", "RUNNING", "CANCELED")
+                        val cancelResponse =
+                            queryExecutionManager.cancelQuery(
+                                actor = actor,
+                                isSystemAdmin = false,
+                                executionId = submitted.executionId,
+                            )
+                        assertThat(cancelResponse.status).isIn("QUEUED", "RUNNING", "CANCELED")
 
-                    val terminal = waitForTerminalStatus(actor, submitted.executionId)
-                    assertThat(terminal.status).isEqualTo("CANCELED")
-                } finally {
-                    lockStatement.execute("select pg_advisory_unlock($advisoryLockKey)")
+                        val terminal = waitForTerminalStatus(actor, submitted.executionId)
+                        assertThat(terminal.status).isEqualTo("CANCELED")
+                    } finally {
+                        lockStatement.execute("select pg_advisory_unlock($advisoryLockKey)")
+                    }
                 }
             }
-        }
     }
 
     @Test

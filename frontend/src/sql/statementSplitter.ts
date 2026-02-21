@@ -4,7 +4,11 @@ export type SqlStatementSegment = {
     end: number;
 };
 
-const trimSegment = (sql: string, start: number, endExclusive: number): SqlStatementSegment | null => {
+const trimSegment = (
+    sql: string,
+    start: number,
+    endExclusive: number
+): SqlStatementSegment | null => {
     const raw = sql.slice(start, endExclusive);
     if (!raw.trim()) {
         return null;
@@ -55,11 +59,11 @@ export const splitSqlStatements = (sql: string): SqlStatementSegment[] => {
         }
 
         if (inSingleQuote) {
-            if (current === '\'' && next === '\'') {
+            if (current === "'" && next === "'") {
                 index += 2;
                 continue;
             }
-            if (current === '\'') {
+            if (current === "'") {
                 inSingleQuote = false;
             }
             index += 1;
@@ -90,7 +94,7 @@ export const splitSqlStatements = (sql: string): SqlStatementSegment[] => {
             continue;
         }
 
-        if (current === '\'') {
+        if (current === "'") {
             inSingleQuote = true;
             index += 1;
             continue;

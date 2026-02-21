@@ -1,8 +1,8 @@
 package com.badgermole.app.datasource
 
+import org.springframework.stereotype.Component
 import java.net.InetAddress
 import java.net.UnknownHostException
-import org.springframework.stereotype.Component
 
 class ForbiddenNetworkTargetException(
     override val message: String,

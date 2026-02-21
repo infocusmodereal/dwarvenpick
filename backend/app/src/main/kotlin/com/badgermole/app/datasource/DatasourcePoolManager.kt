@@ -4,9 +4,9 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
+import org.springframework.stereotype.Service
 import java.sql.Connection
 import java.util.concurrent.ConcurrentHashMap
-import org.springframework.stereotype.Service
 
 data class QueryConnectionHandle(
     val spec: ConnectionSpec,
@@ -176,6 +176,8 @@ class DatasourcePoolManager(
             .replace(Regex("password\\s*=\\s*[^;\\s]+", RegexOption.IGNORE_CASE), "password=***")
             .replace(Regex("passwd\\s*=\\s*[^;\\s]+", RegexOption.IGNORE_CASE), "passwd=***")
 
-    private fun poolKey(datasourceId: String, credentialProfile: String): String =
-        "$datasourceId::$credentialProfile"
+    private fun poolKey(
+        datasourceId: String,
+        credentialProfile: String,
+    ): String = "$datasourceId::$credentialProfile"
 }

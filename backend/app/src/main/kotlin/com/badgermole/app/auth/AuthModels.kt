@@ -28,7 +28,8 @@ data class AuthenticatedUserPrincipal(
     val provider: AuthProvider,
     val roles: Set<String>,
     val groups: Set<String>,
-) : Serializable, Principal {
+) : Serializable,
+    Principal {
     override fun getName(): String = username
 }
 

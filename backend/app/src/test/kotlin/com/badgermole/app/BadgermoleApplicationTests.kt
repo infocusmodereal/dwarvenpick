@@ -4,17 +4,18 @@ import com.badgermole.app.auth.AuthAuditEventStore
 import com.badgermole.app.auth.UserAccountService
 import com.badgermole.app.datasource.DatasourceRegistryService
 import com.badgermole.app.rbac.RbacService
+import com.jayway.jsonpath.JsonPath
 import org.assertj.core.api.Assertions.assertThat
-import org.hamcrest.Matchers.containsStringIgnoringCase
 import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.containsStringIgnoringCase
 import org.hamcrest.Matchers.hasItem
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.springframework.mock.web.MockHttpSession
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
+import org.springframework.mock.web.MockHttpSession
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
@@ -26,7 +27,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import com.jayway.jsonpath.JsonPath
 
 @SpringBootTest(
     properties = [
@@ -122,8 +122,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isUnauthorized)
+            ).andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("Invalid username or password."))
 
         val events = authAuditEventStore.snapshot()
@@ -150,8 +149,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isForbidden)
+            ).andExpect(status().isForbidden)
             .andExpect(jsonPath("$.error").value("User account is disabled."))
     }
 
@@ -172,8 +170,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("analyst"))
             .andExpect(jsonPath("$.message").value("Password reset completed."))
 
@@ -190,8 +187,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isUnauthorized)
+            ).andExpect(status().isUnauthorized)
 
         val updatedSession = loginLocalUser("analyst", "Updated123!")
         mockMvc
@@ -216,8 +212,7 @@ class BadgermoleApplicationTests {
                             }
                             """.trimIndent(),
                         ),
-                )
-                .andExpect(status().isOk)
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.provider").value("ldap"))
                 .andReturn()
                 .toSession()
@@ -252,8 +247,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isForbidden)
+            ).andExpect(status().isForbidden)
             .andExpect(jsonPath("$.error", containsString("CSRF")))
     }
 
@@ -266,8 +260,7 @@ class BadgermoleApplicationTests {
                 post("/api/auth/logout")
                     .with(csrf())
                     .session(adminSession),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("logged_out"))
 
         mockMvc
@@ -305,8 +298,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isCreated)
+            ).andExpect(status().isCreated)
             .andExpect(jsonPath("$.id").value("incident-responders"))
 
         mockMvc
@@ -322,8 +314,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.members", hasItem("analyst")))
 
         mockMvc
@@ -331,8 +322,7 @@ class BadgermoleApplicationTests {
                 delete("/api/admin/groups/incident-responders/members/analyst")
                     .with(csrf())
                     .session(adminSession),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
 
         val events = authAuditEventStore.snapshot()
         assertThat(events)
@@ -365,8 +355,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.groupId").value("analytics-users"))
             .andExpect(jsonPath("$.datasourceId").value("postgresql-core"))
             .andExpect(jsonPath("$.canQuery").value(true))
@@ -395,8 +384,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isForbidden)
+            ).andExpect(status().isForbidden)
             .andExpect(jsonPath("$.error").value("Datasource access denied for query execution."))
 
         val events = authAuditEventStore.snapshot()
@@ -426,8 +414,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("QUEUED"))
             .andExpect(jsonPath("$.datasourceId").value("trino-warehouse"))
             .andExpect(jsonPath("$.queryHash").isString)
@@ -451,8 +438,7 @@ class BadgermoleApplicationTests {
                             }
                             """.trimIndent(),
                         ),
-                )
-                .andExpect(status().isOk)
+                ).andExpect(status().isOk)
                 .andReturn()
         val executionId = jsonPathValue(submitResult, "$.executionId")
 
@@ -465,8 +451,7 @@ class BadgermoleApplicationTests {
                     get("/api/queries/$executionId/results")
                         .session(analystSession)
                         .queryParam("pageSize", "10"),
-                )
-                .andExpect(status().isOk)
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.rows.length()").value(10))
                 .andExpect(jsonPath("$.nextPageToken").isString)
                 .andReturn()
@@ -478,8 +463,7 @@ class BadgermoleApplicationTests {
                     .session(analystSession)
                     .queryParam("pageSize", "10")
                     .queryParam("pageToken", nextPageToken),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.rows.length()").value(10))
             .andExpect(jsonPath("$.rows[0][0]").value("11"))
     }
@@ -502,8 +486,7 @@ class BadgermoleApplicationTests {
                             }
                             """.trimIndent(),
                         ),
-                )
-                .andExpect(status().isOk)
+                ).andExpect(status().isOk)
                 .andReturn()
         val executionId = jsonPathValue(submitResult, "$.executionId")
 
@@ -512,8 +495,7 @@ class BadgermoleApplicationTests {
                 post("/api/queries/$executionId/cancel")
                     .with(csrf())
                     .session(analystSession),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("CANCELED"))
 
         val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
@@ -545,8 +527,7 @@ class BadgermoleApplicationTests {
                                 }
                                 """.trimIndent(),
                             ),
-                    )
-                    .andExpect(status().isOk)
+                    ).andExpect(status().isOk)
                     .andReturn(),
                 "$.executionId",
             )
@@ -566,8 +547,7 @@ class BadgermoleApplicationTests {
                                 }
                                 """.trimIndent(),
                             ),
-                    )
-                    .andExpect(status().isOk)
+                    ).andExpect(status().isOk)
                     .andReturn(),
                 "$.executionId",
             )
@@ -586,8 +566,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isTooManyRequests)
+            ).andExpect(status().isTooManyRequests)
             .andExpect(jsonPath("$.error", containsString("Concurrent query limit reached")))
 
         mockMvc
@@ -640,8 +619,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isCreated)
+            ).andExpect(status().isCreated)
             .andExpect(jsonPath("$.id").value("mysql-sandbox"))
 
         mockMvc
@@ -659,8 +637,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.profileId").value("admin-ro"))
             .andExpect(jsonPath("$.encryptionKeyId").value("v1"))
 
@@ -686,8 +663,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isForbidden)
+            ).andExpect(status().isForbidden)
 
         val adminSession = loginLocalUser("admin", "Admin1234!")
         mockMvc
@@ -704,8 +680,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isBadRequest)
+            ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error", containsString("Failed to initialize pool")))
     }
 
@@ -731,8 +706,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isBadRequest)
+            ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error", containsString("Driver")))
     }
 
@@ -752,8 +726,7 @@ class BadgermoleApplicationTests {
                 post("/api/admin/datasource-management/credentials/reencrypt")
                     .with(csrf())
                     .session(adminSession),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.updatedProfiles").isNumber)
             .andExpect(jsonPath("$.activeKeyId").value("v1"))
     }
@@ -780,8 +753,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isCreated)
+            ).andExpect(status().isCreated)
             .andExpect(jsonPath("$.id").value("mariadb-sales"))
 
         mockMvc
@@ -799,8 +771,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.host").value("mariadb.internal"))
             .andExpect(jsonPath("$.port").value(3307))
             .andExpect(jsonPath("$.database").value("sales_analytics"))
@@ -810,12 +781,14 @@ class BadgermoleApplicationTests {
                 delete("/api/admin/datasource-management/mariadb-sales")
                     .with(csrf())
                     .session(adminSession),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andExpect(jsonPath("$.deleted").value(true))
     }
 
-    private fun loginLocalUser(username: String, password: String): MockHttpSession =
+    private fun loginLocalUser(
+        username: String,
+        password: String,
+    ): MockHttpSession =
         mockMvc
             .perform(
                 post("/api/auth/login")
@@ -829,8 +802,7 @@ class BadgermoleApplicationTests {
                         }
                         """.trimIndent(),
                     ),
-            )
-            .andExpect(status().isOk)
+            ).andExpect(status().isOk)
             .andReturn()
             .toSession()
 
@@ -857,8 +829,10 @@ class BadgermoleApplicationTests {
         throw AssertionError("Timed out waiting for terminal query status for execution $executionId")
     }
 
-    private fun jsonPathValue(result: MvcResult, path: String): String =
-        JsonPath.parse(result.response.contentAsString).read(path)
+    private fun jsonPathValue(
+        result: MvcResult,
+        path: String,
+    ): String = JsonPath.parse(result.response.contentAsString).read(path)
 
     private fun MvcResult.toSession(): MockHttpSession =
         (request.getSession(false) as? MockHttpSession)

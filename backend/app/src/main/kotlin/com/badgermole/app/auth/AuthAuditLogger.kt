@@ -1,9 +1,9 @@
 package com.badgermole.app.auth
 
-import java.time.Instant
-import java.util.concurrent.CopyOnWriteArrayList
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.time.Instant
+import java.util.concurrent.CopyOnWriteArrayList
 
 data class AuthAuditEvent(
     val type: String,
@@ -45,20 +45,15 @@ class AuthAuditEventStore {
             .asSequence()
             .filter { event ->
                 normalizedType == null || event.type.lowercase().contains(normalizedType)
-            }
-            .filter { event ->
+            }.filter { event ->
                 normalizedActor == null || (event.actor?.lowercase() == normalizedActor)
-            }
-            .filter { event ->
+            }.filter { event ->
                 normalizedOutcome == null || event.outcome.lowercase() == normalizedOutcome
-            }
-            .filter { event ->
+            }.filter { event ->
                 from == null || !event.timestamp.isBefore(from)
-            }
-            .filter { event ->
+            }.filter { event ->
                 to == null || !event.timestamp.isAfter(to)
-            }
-            .sortedByDescending { event -> event.timestamp }
+            }.sortedByDescending { event -> event.timestamp }
             .take(resolvedLimit)
             .toList()
     }

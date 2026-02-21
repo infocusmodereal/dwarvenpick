@@ -62,7 +62,8 @@ class AuthController(
     ): ResponseEntity<Any> {
         if (!authProperties.local.enabled) {
             recordAuthAttempt(provider = "local", outcome = "unsupported")
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse("Local authentication is disabled."))
         }
 
@@ -114,7 +115,8 @@ class AuthController(
     ): ResponseEntity<Any> {
         if (!authProperties.ldap.enabled && !authProperties.ldap.mock.enabled) {
             recordAuthAttempt(provider = "ldap", outcome = "unsupported")
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse("LDAP authentication is disabled."))
         }
 
@@ -129,7 +131,8 @@ class AuthController(
                 details = mapOf("reason" to "invalid_credentials_or_configuration"),
             )
             recordAuthAttempt(provider = "ldap", outcome = "failed")
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse("LDAP authentication failed. Check your credentials and LDAP configuration."))
         }
 
@@ -220,8 +223,8 @@ class AuthController(
         @Valid @RequestBody request: PasswordResetRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> {
-        return try {
+    ): ResponseEntity<Any> =
+        try {
             val updatedUser = userAccountService.resetPassword(username, request.newPassword)
 
             audit(
@@ -248,7 +251,6 @@ class AuthController(
         } catch (ex: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
         }
-    }
 
     private fun establishSession(
         principal: AuthenticatedUserPrincipal,
@@ -317,12 +319,13 @@ class AuthController(
         provider: String,
         outcome: String,
     ) {
-        meterRegistry.counter(
-            "badgermole.auth.login.attempts",
-            "provider",
-            provider,
-            "outcome",
-            outcome,
-        ).increment()
+        meterRegistry
+            .counter(
+                "badgermole.auth.login.attempts",
+                "provider",
+                provider,
+                "outcome",
+                outcome,
+            ).increment()
     }
 }

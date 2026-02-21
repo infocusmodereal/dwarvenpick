@@ -3,6 +3,7 @@ package com.badgermole.app.rbac
 import com.badgermole.app.auth.AuthenticatedPrincipalResolver
 import com.badgermole.app.auth.ErrorResponse
 import com.badgermole.app.datasource.SchemaBrowserService
+import com.badgermole.app.datasource.SchemaBrowserUnavailableException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -46,11 +47,27 @@ class DatasourceController(
                 )
             ResponseEntity.ok(response)
         } catch (ex: DatasourceNotFoundException) {
-            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
+            ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse(ex.message ?: "Datasource not found."))
         } catch (ex: QueryAccessDeniedException) {
-            ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
+            ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse(ex.message ?: "Datasource access denied."))
+        } catch (ex: SchemaBrowserUnavailableException) {
+            ResponseEntity
+                .status(HttpStatus.BAD_GATEWAY)
+                .body(
+                    ErrorResponse(
+                        ex.message ?: "Unable to connect to datasource for schema browser.",
+                    ),
+                )
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
+        } catch (ex: Exception) {
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ErrorResponse("Unable to load schema browser data right now."))
         }
     }
 }

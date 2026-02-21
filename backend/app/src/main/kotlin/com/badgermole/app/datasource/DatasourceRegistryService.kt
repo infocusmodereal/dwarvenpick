@@ -1,10 +1,10 @@
 package com.badgermole.app.datasource
 
 import jakarta.annotation.PostConstruct
+import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import org.springframework.stereotype.Service
 
 class ManagedDatasourceNotFoundException(
     override val message: String,
@@ -231,7 +231,10 @@ class DatasourceRegistryService(
         return datasources.getValue(datasourceId).toResponse()
     }
 
-    fun updateDatasource(datasourceId: String, request: UpdateDatasourceRequest): ManagedDatasourceResponse {
+    fun updateDatasource(
+        datasourceId: String,
+        request: UpdateDatasourceRequest,
+    ): ManagedDatasourceResponse {
         val datasource =
             datasources[datasourceId]
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
@@ -363,7 +366,10 @@ class DatasourceRegistryService(
         )
     }
 
-    fun encryptedPasswordForProfile(datasourceId: String, profileId: String): String {
+    fun encryptedPasswordForProfile(
+        datasourceId: String,
+        profileId: String,
+    ): String {
         val datasource =
             datasources[datasourceId]
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")

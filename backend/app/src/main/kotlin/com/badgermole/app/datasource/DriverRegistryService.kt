@@ -1,5 +1,6 @@
 package com.badgermole.app.datasource
 
+import org.springframework.stereotype.Service
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -15,7 +16,6 @@ import kotlin.io.path.exists
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
-import org.springframework.stereotype.Service
 
 data class DriverDescriptor(
     val driverId: String,
@@ -125,7 +125,10 @@ class DriverRegistryService(
             .toList()
     }
 
-    fun resolveDriver(engine: DatasourceEngine, requestedDriverId: String?): DriverDescriptor {
+    fun resolveDriver(
+        engine: DatasourceEngine,
+        requestedDriverId: String?,
+    ): DriverDescriptor {
         val candidates = listDrivers(engine)
         if (candidates.isEmpty()) {
             throw DriverNotAvailableException("No registered drivers were found for engine '$engine'.")
@@ -169,7 +172,7 @@ class DriverRegistryService(
                     description = "Vertica JDBC driver loaded from mounted jars.",
                     available = false,
                     message =
-                        "External driver directory '${directoryPath}' is missing. Mount Vertica driver jars there.",
+                        "External driver directory '$directoryPath' is missing. Mount Vertica driver jars there.",
                 ),
             )
         }
@@ -183,7 +186,7 @@ class DriverRegistryService(
                     source = "external",
                     description = "Vertica JDBC driver loaded from mounted jars.",
                     available = false,
-                    message = "No driver jars found in '${directoryPath}'.",
+                    message = "No driver jars found in '$directoryPath'.",
                 ),
             )
         }
@@ -213,7 +216,10 @@ class DriverRegistryService(
             true
         }.getOrElse { false }
 
-    private fun classExistsInExternalJars(driverClass: String, jars: List<Path>): Boolean {
+    private fun classExistsInExternalJars(
+        driverClass: String,
+        jars: List<Path>,
+    ): Boolean {
         val urls = jars.map { jar -> jar.toUri().toURL() }.toTypedArray()
         return URLClassLoader(urls, javaClass.classLoader).use { classLoader ->
             runCatching {
@@ -228,7 +234,8 @@ class DriverRegistryService(
             return emptyList()
         }
 
-        return directoryPath.listDirectoryEntries()
+        return directoryPath
+            .listDirectoryEntries()
             .filter { entry ->
                 Files.isRegularFile(entry) && entry.extension.equals("jar", ignoreCase = true)
             }
@@ -243,7 +250,7 @@ class DriverRegistryService(
         val jarFiles = externalDriverJarFiles(externalDirPath)
         if (jarFiles.isEmpty()) {
             throw DriverNotAvailableException(
-                "No driver jars found in '${externalDirPath}'. Mount the required driver jar first.",
+                "No driver jars found in '$externalDirPath'. Mount the required driver jar first.",
             )
         }
 
@@ -259,7 +266,7 @@ class DriverRegistryService(
             }.getOrElse { ex ->
                 urlClassLoader.close()
                 throw DriverNotAvailableException(
-                    "Unable to initialize driver '${driverDescriptor.driverClass}' from '${externalDirPath}': ${ex.message}",
+                    "Unable to initialize driver '${driverDescriptor.driverClass}' from '$externalDirPath': ${ex.message}",
                 )
             }
 

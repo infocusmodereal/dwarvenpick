@@ -7,9 +7,9 @@ import com.badgermole.app.auth.UserNotFoundException
 import com.badgermole.app.datasource.CatalogDatasourceEntry
 import com.badgermole.app.datasource.DatasourceRegistryService
 import jakarta.annotation.PostConstruct
+import org.springframework.stereotype.Service
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import org.springframework.stereotype.Service
 
 class GroupNotFoundException(
     override val message: String,
@@ -94,7 +94,10 @@ class RbacService(
         return groups.getValue(groupId).toResponse()
     }
 
-    fun updateGroup(groupId: String, request: UpdateGroupRequest): GroupResponse {
+    fun updateGroup(
+        groupId: String,
+        request: UpdateGroupRequest,
+    ): GroupResponse {
         val group =
             groups[groupId]
                 ?: throw GroupNotFoundException("Group '$groupId' was not found.")
@@ -103,7 +106,10 @@ class RbacService(
         return group.toResponse()
     }
 
-    fun addMember(groupId: String, username: String): GroupResponse {
+    fun addMember(
+        groupId: String,
+        username: String,
+    ): GroupResponse {
         val group =
             groups[groupId]
                 ?: throw GroupNotFoundException("Group '$groupId' was not found.")
@@ -125,7 +131,10 @@ class RbacService(
         return group.toResponse()
     }
 
-    fun removeMember(groupId: String, username: String): GroupResponse {
+    fun removeMember(
+        groupId: String,
+        username: String,
+    ): GroupResponse {
         val group =
             groups[groupId]
                 ?: throw GroupNotFoundException("Group '$groupId' was not found.")
@@ -209,7 +218,10 @@ class RbacService(
         return record.toResponse()
     }
 
-    fun deleteDatasourceAccess(groupId: String, datasourceId: String): Boolean {
+    fun deleteDatasourceAccess(
+        groupId: String,
+        datasourceId: String,
+    ): Boolean {
         val key = accessKey(groupId, datasourceId)
         return datasourceAccess.remove(key) != null
     }
@@ -226,14 +238,18 @@ class RbacService(
                 .map { access -> access.datasourceId }
                 .toSet()
 
-        return datasourceRegistryService.listCatalogEntries()
+        return datasourceRegistryService
+            .listCatalogEntries()
             .asSequence()
             .filter { datasource -> datasource.id in allowedIds }
             .map { datasource -> datasource.toResponse() }
             .toList()
     }
 
-    fun canUserQuery(principal: AuthenticatedUserPrincipal, datasourceId: String): Boolean {
+    fun canUserQuery(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+    ): Boolean {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         }
@@ -249,7 +265,10 @@ class RbacService(
         }
     }
 
-    fun canUserExport(principal: AuthenticatedUserPrincipal, datasourceId: String): Boolean {
+    fun canUserExport(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+    ): Boolean {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         }
@@ -384,7 +403,10 @@ class RbacService(
         return slug
     }
 
-    private fun accessKey(groupId: String, datasourceId: String): String = "$groupId::$datasourceId"
+    private fun accessKey(
+        groupId: String,
+        datasourceId: String,
+    ): String = "$groupId::$datasourceId"
 
     private fun GroupRecord.toResponse(): GroupResponse =
         GroupResponse(

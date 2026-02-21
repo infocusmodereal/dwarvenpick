@@ -1,9 +1,9 @@
 package com.badgermole.app.query
 
-import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.nio.charset.StandardCharsets
 
 class QueryCsvWriterTests {
     @Test
