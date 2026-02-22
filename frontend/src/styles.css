@@ -532,12 +532,26 @@ textarea:focus {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.8rem;
     max-width: 460px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .history-actions {
-    display: flex;
-    gap: 0.4rem;
-    align-items: center;
+    white-space: nowrap;
+}
+
+.history-actions > button {
+    margin-right: 0.35rem;
+}
+
+.history-actions > button:last-child {
+    margin-right: 0;
+}
+
+.audit-details {
+    max-width: 760px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .admin-grid {
@@ -1989,6 +2003,106 @@ select {
     background-repeat: no-repeat;
 }
 
+.connection-list-view {
+    display: grid;
+    gap: 0.72rem;
+}
+
+.connection-list-toolbar {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.connection-list-toolbar .chip {
+    min-height: 2rem;
+}
+
+.connection-catalog-list-standalone {
+    max-height: calc(100vh - 280px);
+    overflow: auto;
+    padding-right: 0.2rem;
+}
+
+.connection-catalog-item-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: 0.55rem;
+}
+
+.connection-catalog-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+}
+
+.connection-catalog-actions .icon-button {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+}
+
+.connection-editor-header {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.connection-editor-header .connection-mode-pill {
+    margin-left: auto;
+}
+
+.editor-connection-picker {
+    grid-template-columns: auto auto minmax(0, 1fr);
+}
+
+.editor-connection-health {
+    width: 0.62rem;
+    height: 0.62rem;
+    border-radius: 999px;
+    border: 1px solid #9b8971;
+    background: #c4b8a6;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.editor-connection-health.tone-active {
+    border-color: #3b8d5d;
+    background: #46b970;
+}
+
+.editor-connection-health.tone-inactive,
+.editor-connection-health.tone-unknown {
+    border-color: #96836b;
+    background: #beb2a0;
+}
+
+.editor-cursor-legend {
+    display: grid;
+    justify-items: end;
+    gap: 0.08rem;
+    margin-left: 0.35rem;
+}
+
+.editor-cursor-legend span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.73rem;
+    color: #6f5a43;
+}
+
+.editor-cursor-legend span:last-child {
+    color: #5c462f;
+    font-weight: 620;
+}
+
+.admin-audit .history-table {
+    min-width: 1080px;
+}
+
+.admin-audit .history-query {
+    max-width: 760px;
+}
+
 @media (max-width: 1200px) {
     .workspace-shell {
         grid-template-columns: 1fr;
@@ -2054,5 +2168,10 @@ select {
 
     .editor-secondary-actions {
         justify-content: flex-start;
+    }
+
+    .editor-cursor-legend {
+        justify-items: start;
+        margin-left: 0;
     }
 }

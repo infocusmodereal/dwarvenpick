@@ -208,6 +208,6 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect((await screen.findAllByText(/^governance$/i)).length).toBeGreaterThan(0);
+        expect((await screen.findAllByText(/^admin$/i)).length).toBeGreaterThan(0);
     });
 });
