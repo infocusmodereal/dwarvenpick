@@ -775,12 +775,14 @@ button:disabled {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.72rem;
-    font-weight: 760;
-    letter-spacing: 0.04em;
     border: 1px solid rgba(255, 255, 255, 0.32);
     background: linear-gradient(180deg, #8f6a3f 0%, #6d4c2c 100%);
     color: #fef5e8;
+}
+
+.workspace-logo-icon svg {
+    width: 1.2rem;
+    height: 1.2rem;
 }
 
 .workspace-logo-label {
@@ -943,18 +945,23 @@ button:disabled {
     display: grid;
     gap: 1rem;
     min-width: 0;
+    min-height: calc(100vh - 2.3rem);
 }
 
 .workspace-grid {
     display: grid;
     grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
     gap: 1rem;
-    align-items: start;
+    align-items: stretch;
+    min-height: 100%;
 }
 
 .sidebar {
     min-width: 0;
-    align-content: start;
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 0.85rem;
 }
 
@@ -965,6 +972,26 @@ button:disabled {
     padding: 0.75rem;
     display: grid;
     gap: 0.55rem;
+}
+
+.tile-heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.tile-heading-icon {
+    width: 1rem;
+    height: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #735734;
+}
+
+.tile-heading-icon svg {
+    width: 0.95rem;
+    height: 0.95rem;
 }
 
 .datasource-tree label {
@@ -995,7 +1022,7 @@ button:disabled {
     padding: 0.75rem;
     display: grid;
     gap: 0.55rem;
-    min-height: 260px;
+    min-height: 0;
 }
 
 .schema-browser-header {
@@ -1011,6 +1038,7 @@ button:disabled {
 .explorer-body {
     display: grid;
     gap: 0.45rem;
+    min-height: 0;
 }
 
 .explorer-empty {
@@ -1026,14 +1054,15 @@ button:disabled {
 }
 
 .explorer-root {
-    max-height: 430px;
+    height: 100%;
+    max-height: none;
     overflow: auto;
     padding-right: 0.15rem;
 }
 
 .explorer-children {
-    margin-left: 0.6rem;
-    padding-left: 0.78rem;
+    margin-left: 0.9rem;
+    padding-left: 1rem;
     border-left: 1px solid #c8b296;
     display: grid;
     gap: 0.15rem;
@@ -1047,9 +1076,9 @@ button:disabled {
 .explorer-children > .explorer-node > .explorer-node-row::before {
     content: '';
     position: absolute;
-    left: -0.82rem;
+    left: -1.02rem;
     top: calc(50% - 1px);
-    width: 0.82rem;
+    width: 1.02rem;
     border-top: 1px solid #c8b296;
 }
 
@@ -1151,6 +1180,9 @@ button:disabled {
 .editor {
     align-content: start;
     min-width: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%;
 }
 
 .editor-toolbar {
@@ -1163,13 +1195,15 @@ button:disabled {
     align-items: flex-end;
     gap: 0.45rem;
     min-width: 0;
+    position: relative;
+    z-index: 2;
 }
 
 .editor-tabs {
     display: flex;
     gap: 0.2rem;
-    overflow-x: auto;
-    flex: 1;
+    overflow: visible;
+    flex: 0 1 auto;
     padding-bottom: 0.15rem;
     border-bottom: 1px solid var(--border);
 }
@@ -1268,6 +1302,11 @@ button:disabled {
     gap: 0.25rem;
 }
 
+.editor-tab-menu.is-floating {
+    position: fixed;
+    z-index: 80;
+}
+
 .editor-tab-menu-item {
     width: 100%;
     border: 0;
@@ -1307,11 +1346,12 @@ button:disabled {
     border-radius: 0.8rem;
     overflow: hidden;
     background: #f7f1e8;
-    min-height: 400px;
+    min-height: 0;
+    height: 100%;
 }
 
 .editor-loading {
-    min-height: 400px;
+    min-height: 100%;
     display: grid;
     place-items: center;
     color: var(--muted);
@@ -1359,6 +1399,22 @@ button:disabled {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: #6e5b45;
+}
+
+.toolbar-actions {
+    gap: 0.45rem;
+}
+
+.toolbar-actions .chip,
+.toolbar-actions button:not(.icon-button) {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+    font-weight: 620;
+    line-height: 1.2;
+}
+
+.admin-grid-connections {
+    grid-template-columns: 1fr;
 }
 
 .select-wrap {
