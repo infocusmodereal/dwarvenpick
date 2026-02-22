@@ -818,9 +818,9 @@ kbd {
     border: 1px solid var(--border);
     border-radius: 0.74rem;
     background: #efe4d4;
-    padding: 0.52rem 0.58rem;
+    padding: 0.72rem 0.78rem;
     display: grid;
-    gap: 0.45rem;
+    gap: 0.62rem;
 }
 
 .managed-advanced-block > summary {
@@ -831,7 +831,7 @@ kbd {
 }
 
 .managed-advanced-block[open] > summary {
-    margin-bottom: 0.24rem;
+    margin-bottom: 0.4rem;
 }
 
 .managed-advanced-block > :not(summary) {
@@ -1240,12 +1240,13 @@ button:disabled {
     justify-content: center;
 }
 
-.schema-browser.is-collapsed .chip {
-    width: 100%;
-    min-height: 2.1rem;
-    border-radius: 0.62rem;
-    padding: 0.34rem 0.25rem;
-    font-size: 0.74rem;
+.schema-browser-toggle {
+    width: 2rem;
+    height: 2rem;
+}
+
+.schema-browser.is-collapsed .schema-browser-toggle {
+    margin: 0 auto;
 }
 
 .schema-browser-header h3 {
@@ -1919,9 +1920,9 @@ button:disabled {
     border: 1px solid var(--border);
     border-radius: 0.75rem;
     background: #efe4d2;
-    padding: 0.6rem;
+    padding: 0.72rem;
     display: grid;
-    gap: 0.45rem;
+    gap: 0.62rem;
 }
 
 .driver-upload h4 {
@@ -2044,6 +2045,7 @@ select {
 .connection-editor-header {
     align-items: center;
     justify-content: space-between;
+    margin-bottom: 0.32rem;
 }
 
 .connection-editor-header .connection-mode-pill {

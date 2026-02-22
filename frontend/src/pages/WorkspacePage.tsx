@@ -4558,7 +4558,7 @@ export default function WorkspacePage() {
                                     {showSchemaBrowser ? <h3>Explorer</h3> : null}
                                     <button
                                         type="button"
-                                        className="chip"
+                                        className="icon-button schema-browser-toggle"
                                         onClick={() => setShowSchemaBrowser((current) => !current)}
                                         title={
                                             showSchemaBrowser
@@ -4571,7 +4571,11 @@ export default function WorkspacePage() {
                                                 : 'Expand explorer'
                                         }
                                     >
-                                        {showSchemaBrowser ? 'Collapse' : 'Expand'}
+                                        <span className="icon-button-glyph" aria-hidden>
+                                            <RailIcon
+                                                glyph={showSchemaBrowser ? 'collapse' : 'menu'}
+                                            />
+                                        </span>
                                     </button>
                                     {showSchemaBrowser ? (
                                         <IconButton
@@ -5779,8 +5783,6 @@ export default function WorkspacePage() {
                     </section>
 
                     <section className="panel snippets-panel" hidden={activeSection !== 'snippets'}>
-                        <h2>Saved Snippets</h2>
-
                         <div className="history-filters">
                             <div className="filter-field">
                                 <label htmlFor="snippet-scope">Scope</label>
