@@ -31,16 +31,36 @@ class SnippetService {
     fun listSnippets(
         principal: AuthenticatedUserPrincipal,
         scope: String?,
+        title: String?,
+        titleMatch: String?,
+        groupId: String?,
     ): List<SnippetResponse> {
         val normalizedScope = scope?.trim()?.lowercase()
         val includePersonal = normalizedScope == null || normalizedScope == "all" || normalizedScope == "personal"
         val includeGroup = normalizedScope == null || normalizedScope == "all" || normalizedScope == "group"
+        val normalizedGroupId = groupId?.trim()?.takeIf { it.isNotBlank() }
+        val titleFilter = title?.trim()?.takeIf { it.isNotBlank() }
+        val resolvedTitleMatch = titleMatch?.trim()?.lowercase() ?: "exact"
+        val titleRegex =
+            if (titleFilter != null && resolvedTitleMatch == "regex") {
+                compileTitleRegex(titleFilter)
+            } else {
+                null
+            }
 
         return snippets.values
             .asSequence()
             .filter { record ->
                 (includePersonal && record.owner == principal.username) ||
                     (includeGroup && canAccessGroupSnippet(principal, record))
+            }.filter { record ->
+                normalizedGroupId == null || record.groupId == normalizedGroupId
+            }.filter { record ->
+                when {
+                    titleFilter == null -> true
+                    titleRegex != null -> titleRegex.containsMatchIn(record.title)
+                    else -> record.title.equals(titleFilter, ignoreCase = true)
+                }
             }.sortedByDescending { record -> record.updatedAt }
             .map { record -> record.toResponse() }
             .toList()
@@ -135,6 +155,24 @@ class SnippetService {
             return true
         }
         return snippet.groupId != null && snippet.groupId in principal.groups
+    }
+
+    private fun compileTitleRegex(rawFilter: String): Regex {
+        val normalizedFilter =
+            if (rawFilter.length >= 2 && rawFilter.startsWith('/') && rawFilter.endsWith('/')) {
+                rawFilter.substring(1, rawFilter.length - 1)
+            } else {
+                rawFilter
+            }
+        if (normalizedFilter.isBlank()) {
+            throw IllegalArgumentException("Snippet title regex cannot be empty.")
+        }
+
+        return try {
+            Regex(normalizedFilter, setOf(RegexOption.IGNORE_CASE))
+        } catch (exception: IllegalArgumentException) {
+            throw IllegalArgumentException("Snippet title regex is invalid: ${exception.message}")
+        }
     }
 
     private fun SnippetRecord.toResponse(): SnippetResponse =

@@ -37,7 +37,9 @@ class AuthAuditEventStore {
         limit: Int,
     ): List<AuthAuditEvent> {
         val normalizedType = type?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-        val normalizedActor = actor?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val actorFilter = actor?.trim()?.takeIf { it.isNotBlank() }
+        val actorRegex = actorFilter?.let { filter -> parseRegexFilterOrNull(filter) }
+        val normalizedActor = actorFilter?.lowercase()
         val normalizedOutcome = outcome?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
         val resolvedLimit = limit.coerceIn(1, 1000)
 
@@ -46,7 +48,14 @@ class AuthAuditEventStore {
             .filter { event ->
                 normalizedType == null || event.type.lowercase().contains(normalizedType)
             }.filter { event ->
-                normalizedActor == null || (event.actor?.lowercase() == normalizedActor)
+                if (actorRegex != null) {
+                    event.actor?.let { actorValue ->
+                        actorRegex.containsMatchIn(actorValue)
+                    } ?: false
+                } else {
+                    normalizedActor == null ||
+                        (event.actor?.lowercase()?.contains(normalizedActor) == true)
+                }
             }.filter { event ->
                 normalizedOutcome == null || event.outcome.lowercase() == normalizedOutcome
             }.filter { event ->
@@ -56,6 +65,37 @@ class AuthAuditEventStore {
             }.sortedByDescending { event -> event.timestamp }
             .take(resolvedLimit)
             .toList()
+    }
+
+    private fun parseRegexFilterOrNull(rawFilter: String): Regex? {
+        if (rawFilter.length < 2 || !rawFilter.startsWith('/')) {
+            return null
+        }
+        val closingSlashIndex = rawFilter.lastIndexOf('/')
+        if (closingSlashIndex <= 0) {
+            return null
+        }
+
+        val pattern = rawFilter.substring(1, closingSlashIndex)
+        if (pattern.isBlank()) {
+            throw IllegalArgumentException("Actor regex filter cannot be empty.")
+        }
+        val flags = rawFilter.substring(closingSlashIndex + 1)
+        val options = mutableSetOf<RegexOption>()
+        flags.forEach { flag ->
+            when (flag) {
+                'i' -> options.add(RegexOption.IGNORE_CASE)
+                'm' -> options.add(RegexOption.MULTILINE)
+                's' -> options.add(RegexOption.DOT_MATCHES_ALL)
+                else -> throw IllegalArgumentException("Unsupported regex flag '$flag' for actor filter.")
+            }
+        }
+
+        return try {
+            Regex(pattern, options)
+        } catch (exception: IllegalArgumentException) {
+            throw IllegalArgumentException("Actor regex filter is invalid: ${exception.message}")
+        }
     }
 
     fun pruneOlderThan(cutoff: Instant): Int {

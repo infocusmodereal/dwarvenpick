@@ -25,6 +25,20 @@ services:
       - mysqldata:/var/lib/mysql
       - ./mysql-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
 
+  mariadb:
+    image: mariadb:11.8
+    container_name: dwarvenpick-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: dwarvenpick
+      MARIADB_DATABASE: warehouse
+      MARIADB_USER: readonly
+      MARIADB_PASSWORD: readonly
+    ports:
+      - "3307:3306"
+    volumes:
+      - mariadbdata:/var/lib/mysql
+      - ./mariadb-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
   backend:
     build:
       context: ../../
@@ -44,12 +58,18 @@ services:
       DWARVENPICK_SEED_MYSQL_DATABASE: orders
       DWARVENPICK_SEED_MYSQL_USERNAME: readonly
       DWARVENPICK_SEED_MYSQL_PASSWORD: readonly
+      DWARVENPICK_SEED_MARIADB_HOST: mariadb
+      DWARVENPICK_SEED_MARIADB_PORT: 3306
+      DWARVENPICK_SEED_MARIADB_DATABASE: warehouse
+      DWARVENPICK_SEED_MARIADB_USERNAME: readonly
+      DWARVENPICK_SEED_MARIADB_PASSWORD: readonly
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
     depends_on:
       - postgres
       - mysql
+      - mariadb
 
   frontend:
     build:
@@ -64,3 +84,4 @@ services:
 volumes:
   pgdata:
   mysqldata:
+  mariadbdata:

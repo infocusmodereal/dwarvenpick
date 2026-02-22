@@ -20,8 +20,20 @@ private data class UserAccount(
     var passwordHash: String?,
     var provider: AuthProvider,
     var enabled: Boolean,
+    var temporaryPassword: Boolean,
     val roles: MutableSet<String>,
     val groups: MutableSet<String>,
+)
+
+data class AdminUserAccount(
+    val username: String,
+    val displayName: String,
+    val email: String?,
+    val provider: AuthProvider,
+    val enabled: Boolean,
+    val roles: Set<String>,
+    val groups: Set<String>,
+    val temporaryPassword: Boolean,
 )
 
 @Service
@@ -52,10 +64,58 @@ class UserAccountService(
                     passwordHash = passwordEncoder.encode(seedUser.password),
                     provider = AuthProvider.LOCAL,
                     enabled = seedUser.enabled,
+                    temporaryPassword = false,
                     roles = seedUser.roles.map { it.uppercase() }.toMutableSet(),
                     groups = mutableSetOf(),
                 )
         }
+    }
+
+    fun listUsers(): List<AdminUserAccount> =
+        users.values
+            .sortedBy { account -> account.username.lowercase() }
+            .map { account -> account.toAdminSummary() }
+
+    fun createLocalUser(
+        username: String,
+        displayName: String?,
+        email: String?,
+        password: String,
+        temporaryPassword: Boolean,
+        systemAdmin: Boolean,
+    ): AuthenticatedUserPrincipal {
+        passwordPolicyValidator.validateOrThrow(password)
+        val normalizedUsername = normalizeUsername(username)
+        if (normalizedUsername.isBlank()) {
+            throw IllegalArgumentException("Username is required.")
+        }
+        if (users.containsKey(normalizedUsername)) {
+            throw IllegalArgumentException("User '$username' already exists.")
+        }
+
+        val resolvedDisplayName = displayName?.trim()?.ifBlank { null } ?: username.trim()
+        val resolvedEmail = email?.trim()?.ifBlank { null }
+        val roles =
+            if (systemAdmin) {
+                mutableSetOf("SYSTEM_ADMIN", "USER")
+            } else {
+                mutableSetOf("USER")
+            }
+
+        users[normalizedUsername] =
+            UserAccount(
+                username = username.trim(),
+                displayName = resolvedDisplayName,
+                email = resolvedEmail,
+                passwordHash = passwordEncoder.encode(password),
+                provider = AuthProvider.LOCAL,
+                enabled = true,
+                temporaryPassword = temporaryPassword,
+                roles = roles,
+                groups = mutableSetOf(),
+            )
+
+        return toPrincipal(users.getValue(normalizedUsername))
     }
 
     fun authenticateLocal(
@@ -84,6 +144,7 @@ class UserAccountService(
     fun resetPassword(
         username: String,
         newPassword: String,
+        temporaryPassword: Boolean = false,
     ): AuthenticatedUserPrincipal {
         passwordPolicyValidator.validateOrThrow(newPassword)
 
@@ -97,6 +158,7 @@ class UserAccountService(
 
         user.passwordHash = passwordEncoder.encode(newPassword)
         user.provider = AuthProvider.LOCAL
+        user.temporaryPassword = temporaryPassword
         return toPrincipal(user)
     }
 
@@ -116,6 +178,7 @@ class UserAccountService(
                     passwordHash = null,
                     provider = AuthProvider.LDAP,
                     enabled = true,
+                    temporaryPassword = false,
                     roles = mutableSetOf("USER"),
                     groups = internalGroups.toMutableSet(),
                 )
@@ -130,6 +193,7 @@ class UserAccountService(
         existingUser.provider = AuthProvider.LDAP
         existingUser.displayName = profile.displayName
         existingUser.email = profile.email
+        existingUser.temporaryPassword = false
         existingUser.groups.clear()
         existingUser.groups.addAll(internalGroups)
         if (existingUser.roles.isEmpty()) {
@@ -179,6 +243,18 @@ class UserAccountService(
             provider = userAccount.provider,
             roles = userAccount.roles.toSet(),
             groups = userAccount.groups.toSet(),
+        )
+
+    private fun UserAccount.toAdminSummary(): AdminUserAccount =
+        AdminUserAccount(
+            username = username,
+            displayName = displayName,
+            email = email,
+            provider = provider,
+            enabled = enabled,
+            roles = roles.toSet(),
+            groups = groups.toSet(),
+            temporaryPassword = temporaryPassword,
         )
 
     private fun normalizeUsername(username: String): String = username.trim().lowercase()

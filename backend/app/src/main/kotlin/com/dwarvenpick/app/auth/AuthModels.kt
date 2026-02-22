@@ -19,6 +19,18 @@ data class LoginRequest(
 data class PasswordResetRequest(
     @field:NotBlank(message = "New password is required.")
     val newPassword: String = "",
+    val temporary: Boolean = false,
+)
+
+data class CreateLocalUserRequest(
+    @field:NotBlank(message = "Username is required.")
+    val username: String = "",
+    val displayName: String? = null,
+    val email: String? = null,
+    @field:NotBlank(message = "Password is required.")
+    val password: String = "",
+    val temporaryPassword: Boolean = false,
+    val systemAdmin: Boolean = false,
 )
 
 data class AuthenticatedUserPrincipal(
@@ -52,6 +64,18 @@ data class CurrentUserResponse(
 data class PasswordResetResponse(
     val username: String,
     val message: String,
+    val temporaryPassword: Boolean = false,
+)
+
+data class AdminUserResponse(
+    val username: String,
+    val displayName: String,
+    val email: String?,
+    val provider: String,
+    val enabled: Boolean,
+    val roles: Set<String>,
+    val groups: Set<String>,
+    val temporaryPassword: Boolean,
 )
 
 data class CsrfTokenResponse(

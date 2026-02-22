@@ -52,6 +52,16 @@ Configure LDAP only when directory authentication is required:
 
 Login UX only supports `Local` and `LDAP` methods. The enabled set is exposed by `GET /api/auth/methods`.
 
+## Local user administration
+
+When local auth is enabled (`DWARVENPICK_AUTH_LOCAL_ENABLED=true`), `SYSTEM_ADMIN` users can manage local users in the Governance UI:
+
+- create users with temporary or permanent passwords
+- grant optional `SYSTEM_ADMIN` role during creation
+- reset existing local passwords with temporary/permanent behavior
+
+When local auth is disabled (LDAP-only), user creation/reset is blocked in UI and API (`/api/auth/admin/users*`).
+
 ## External JDBC drivers (Vertica)
 
 Vertica is intentionally not bundled. Driver jars must be mounted at runtime.

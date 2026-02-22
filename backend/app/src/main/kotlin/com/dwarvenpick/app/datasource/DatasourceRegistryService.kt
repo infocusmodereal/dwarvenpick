@@ -115,6 +115,31 @@ class DatasourceRegistryService(
             key = "DWARVENPICK_SEED_MYSQL_PASSWORD",
             fallback = "readonly",
         )
+    private val seedMariadbHost =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_MARIADB_HOST",
+            fallback = "localhost",
+        )
+    private val seedMariadbPort =
+        readIntEnv(
+            key = "DWARVENPICK_SEED_MARIADB_PORT",
+            fallback = 3306,
+        )
+    private val seedMariadbDatabase =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_MARIADB_DATABASE",
+            fallback = "warehouse",
+        )
+    private val seedMariadbUsername =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_MARIADB_USERNAME",
+            fallback = "readonly",
+        )
+    private val seedMariadbPassword =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_MARIADB_PASSWORD",
+            fallback = "readonly",
+        )
 
     @PostConstruct
     fun initialize() {
@@ -189,6 +214,41 @@ class DatasourceRegistryService(
                 username = seedMysqlUsername,
                 password = seedMysqlPassword,
                 description = "Ops readonly profile.",
+            ),
+        )
+
+        val mariadbId =
+            createDatasource(
+                CreateDatasourceRequest(
+                    name = "MariaDB Mart",
+                    engine = DatasourceEngine.MARIADB,
+                    host = seedMariadbHost,
+                    port = seedMariadbPort,
+                    database = seedMariadbDatabase,
+                    driverId = "mariadb-default",
+                    tls = TlsSettings(mode = TlsMode.DISABLE),
+                    options =
+                        mapOf(
+                            "sessionVariables" to "sql_mode=ANSI_QUOTES",
+                        ),
+                ),
+            ).id
+        upsertCredentialProfile(
+            mariadbId,
+            "admin-ro",
+            UpsertCredentialProfileRequest(
+                username = seedMariadbUsername,
+                password = seedMariadbPassword,
+                description = "Admin readonly profile.",
+            ),
+        )
+        upsertCredentialProfile(
+            mariadbId,
+            "analyst-ro",
+            UpsertCredentialProfileRequest(
+                username = seedMariadbUsername,
+                password = seedMariadbPassword,
+                description = "Analyst readonly profile.",
             ),
         )
 

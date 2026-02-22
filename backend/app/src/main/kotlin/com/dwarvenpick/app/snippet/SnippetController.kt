@@ -31,10 +31,19 @@ class SnippetController(
     @GetMapping
     fun listSnippets(
         @RequestParam(required = false) scope: String?,
+        @RequestParam(required = false) title: String?,
+        @RequestParam(required = false) titleMatch: String?,
+        @RequestParam(required = false) groupId: String?,
         authentication: Authentication,
     ): List<SnippetResponse> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
-        return snippetService.listSnippets(principal, scope)
+        return snippetService.listSnippets(
+            principal = principal,
+            scope = scope,
+            title = title,
+            titleMatch = titleMatch,
+            groupId = groupId,
+        )
     }
 
     @PostMapping

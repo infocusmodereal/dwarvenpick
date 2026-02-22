@@ -32,10 +32,13 @@ Health endpoint:
 Authentication endpoints:
 
 - `GET http://localhost:8080/api/auth/csrf`
+- `GET http://localhost:8080/api/auth/methods`
 - `POST http://localhost:8080/api/auth/login`
 - `POST http://localhost:8080/api/auth/ldap/login`
 - `GET http://localhost:8080/api/auth/me`
 - `POST http://localhost:8080/api/auth/logout`
+- `GET http://localhost:8080/api/auth/admin/users` (`SYSTEM_ADMIN` only)
+- `POST http://localhost:8080/api/auth/admin/users` (`SYSTEM_ADMIN` only, local auth enabled)
 - `POST http://localhost:8080/api/auth/admin/users/{username}/reset-password` (`SYSTEM_ADMIN` only)
 
 RBAC and datasource governance endpoints:
@@ -93,6 +96,24 @@ Default local UI URL:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml up --build
 ```
+
+Seeded databases in local compose:
+
+- PostgreSQL metadata + sample source: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
+- MySQL sample source: `localhost:3306`, db `orders`, user `readonly`, password `readonly`
+- MariaDB sample source: `localhost:3307`, db `warehouse`, user `readonly`, password `readonly`
+
+The MariaDB dataset includes transactional tables (`orders`, `order_items`, `inventory_snapshots`) and analytical structures (`fact_daily_sales`, `v_customer_ltv`) so you can test query/explain behavior with both OLTP and OLAP-style patterns.
+
+## Local user management (UI)
+
+- In `/workspace` open `Governance` and use the `Local Users` panel.
+- `Create Local User` supports:
+  - Temporary password (user must rotate on next login).
+  - Permanent password.
+  - Optional `SYSTEM_ADMIN` role assignment.
+- Existing local users can be password-reset from the same panel, with temporary/permanent choice during reset.
+- When local auth is disabled (LDAP-only mode), user creation/reset is intentionally unavailable in UI.
 
 ## License
 

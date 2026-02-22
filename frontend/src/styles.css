@@ -712,6 +712,7 @@ button:disabled {
     gap: 1rem;
     align-items: stretch;
     min-height: calc(100vh - 2.3rem);
+    height: calc(100vh - 2.3rem);
 }
 
 .workspace-left-rail.panel {
@@ -953,7 +954,7 @@ button:disabled {
 
 .workspace-grid {
     display: grid;
-    grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 1rem;
     align-items: stretch;
@@ -966,17 +967,8 @@ button:disabled {
     height: 100%;
     min-height: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     gap: 0.85rem;
-}
-
-.datasource-tree {
-    border: 1px solid var(--border);
-    background: #ece2d1;
-    border-radius: 0.85rem;
-    padding: 0.75rem;
-    display: grid;
-    gap: 0.55rem;
 }
 
 .tile-heading {
@@ -999,27 +991,6 @@ button:disabled {
     height: 0.95rem;
 }
 
-.datasource-tree label {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #6a5741;
-}
-
-.datasource-launch-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.45rem;
-}
-
-.datasource-launch-actions button {
-    min-width: 0;
-}
-
-.datasource-launch-actions button:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-}
-
 .schema-browser {
     border: 1px solid var(--border);
     background: #ece2d1;
@@ -1029,6 +1000,7 @@ button:disabled {
     grid-template-rows: auto minmax(0, 1fr);
     gap: 0.55rem;
     min-height: 0;
+    height: 100%;
 }
 
 .schema-browser-header {
@@ -1048,6 +1020,7 @@ button:disabled {
     min-height: 0;
     height: 100%;
     align-items: stretch;
+    overflow: hidden;
 }
 
 .explorer-empty {
@@ -1067,33 +1040,22 @@ button:disabled {
     min-height: 0;
     max-height: none;
     overflow: auto;
+    white-space: nowrap;
+    overscroll-behavior: contain;
     padding-right: 0.15rem;
+    width: 100%;
 }
 
 .explorer-children {
     margin-left: 0.74rem;
-    padding-left: 1.15rem;
-    border-left: 1px solid #c6ae8e;
+    padding-left: 0.42rem;
     display: grid;
     gap: 0.18rem;
-}
-
-.explorer-children .explorer-children {
-    border-left-color: #d6c2a7;
 }
 
 .explorer-node {
     display: grid;
     gap: 0.1rem;
-}
-
-.explorer-children > .explorer-node > .explorer-node-row::before {
-    content: '';
-    position: absolute;
-    left: -1.16rem;
-    top: calc(50% - 1px);
-    width: 0.86rem;
-    border-top: 1px solid #c6ae8e;
 }
 
 .explorer-node-row {
@@ -1151,7 +1113,7 @@ button:disabled {
     justify-content: flex-start;
     background: transparent;
     color: #49351f;
-    min-width: 0;
+    min-width: max-content;
 }
 
 .explorer-item-tail {
@@ -1183,9 +1145,7 @@ button:disabled {
 }
 
 .explorer-item-title {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    min-width: max-content;
     white-space: nowrap;
     font-size: 0.83rem;
     font-weight: 620;
@@ -1227,22 +1187,23 @@ button:disabled {
 .editor-tabs-row {
     display: flex;
     align-items: flex-end;
-    gap: 0.45rem;
+    gap: 0;
     min-width: 0;
     position: relative;
     z-index: 2;
+    border-bottom: 1px solid var(--border);
 }
 
 .editor-tabs {
     display: flex;
-    gap: 0.2rem;
+    gap: 0;
     overflow-x: auto;
     overflow-y: visible;
     flex: 1 1 auto;
     min-width: 0;
     align-items: flex-end;
-    padding-bottom: 0.15rem;
-    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+    border-bottom: 0;
 }
 
 .editor-tab {
@@ -1379,9 +1340,11 @@ button:disabled {
 }
 
 .editor-tab-add {
-    margin-bottom: 0.08rem;
-    margin-left: 0.14rem;
+    margin-bottom: 0;
+    margin-left: 0.24rem;
     border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 0.65rem 0.65rem 0 0;
     background: #ece2d1;
 }
 
@@ -1391,9 +1354,74 @@ button:disabled {
     gap: 0.5rem;
 }
 
+.editor-connection-control {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.42rem;
+    align-items: center;
+}
+
+.editor-connection-control label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.36rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    color: #6f5a43;
+    white-space: nowrap;
+}
+
 .editor-toolbar-fields input,
 .editor-toolbar-fields select {
     height: 2.35rem;
+}
+
+.editor-action-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.55rem;
+}
+
+.editor-primary-actions {
+    flex: 1 1 auto;
+}
+
+.editor-secondary-actions {
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.editor-shortcuts-wrapper {
+    position: relative;
+}
+
+.editor-shortcuts-popover {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.42rem);
+    z-index: 30;
+    min-width: 270px;
+    border: 1px solid #b2946f;
+    border-radius: 0.72rem;
+    background: #fff8ee;
+    box-shadow: 0 14px 26px rgba(43, 30, 16, 0.2);
+    padding: 0.62rem 0.72rem;
+    display: grid;
+    gap: 0.42rem;
+}
+
+.editor-shortcuts-popover h4 {
+    margin: 0;
+    font-size: 0.86rem;
+}
+
+.editor-shortcuts-popover ul {
+    margin: 0;
+    padding-left: 1rem;
+    display: grid;
+    gap: 0.26rem;
 }
 
 .monaco-host {
@@ -1431,9 +1459,31 @@ button:disabled {
     color: #46331e;
 }
 
-.result-meta {
+.result-stats-grid {
     display: grid;
-    gap: 0.35rem;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.5rem;
+}
+
+.result-stat {
+    border: 1px solid var(--border);
+    border-radius: 0.68rem;
+    background: #efe3d1;
+    padding: 0.45rem 0.58rem;
+    display: grid;
+    gap: 0.18rem;
+}
+
+.result-stat span {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6d5a44;
+}
+
+.result-stat strong {
+    font-size: 0.84rem;
+    color: #3d2b17;
 }
 
 .result-actions {
@@ -1516,6 +1566,7 @@ button:disabled {
     font-weight: 620;
     line-height: 1.2;
     align-self: center;
+    min-height: 2rem;
 }
 
 .admin-grid-connections {
@@ -1589,6 +1640,7 @@ select {
     .workspace-shell {
         grid-template-columns: 1fr;
         min-height: auto;
+        height: auto;
     }
 
     .workspace-left-rail.panel,
@@ -1619,6 +1671,11 @@ select {
         grid-template-columns: 1fr;
     }
 
+    .editor-connection-control {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
     .results {
         grid-column: 1;
     }
@@ -1637,8 +1694,12 @@ select {
         grid-template-columns: 1fr;
     }
 
-    .datasource-launch-actions {
-        display: grid;
-        grid-template-columns: 1fr;
+    .editor-action-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .editor-secondary-actions {
+        justify-content: flex-start;
     }
 }

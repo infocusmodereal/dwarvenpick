@@ -217,15 +217,105 @@ class AuthController(
     fun me(authentication: Authentication): CurrentUserResponse =
         authenticatedPrincipalResolver.resolve(authentication).toCurrentUserResponse()
 
+    @GetMapping("/admin/users")
+    fun listAdminUsers(): ResponseEntity<Any> {
+        if (!authProperties.local.enabled) {
+            return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse("Local authentication user management is disabled."))
+        }
+
+        return ResponseEntity.ok(
+            userAccountService.listUsers().map { user ->
+                AdminUserResponse(
+                    username = user.username,
+                    displayName = user.displayName,
+                    email = user.email,
+                    provider = user.provider.name.lowercase(),
+                    enabled = user.enabled,
+                    roles = user.roles,
+                    groups = user.groups,
+                    temporaryPassword = user.temporaryPassword,
+                )
+            },
+        )
+    }
+
+    @PostMapping("/admin/users")
+    fun createAdminUser(
+        @Valid @RequestBody request: CreateLocalUserRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<Any> {
+        if (!authProperties.local.enabled) {
+            return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse("Local authentication user management is disabled."))
+        }
+
+        return try {
+            val created =
+                userAccountService.createLocalUser(
+                    username = request.username,
+                    displayName = request.displayName,
+                    email = request.email,
+                    password = request.password,
+                    temporaryPassword = request.temporaryPassword,
+                    systemAdmin = request.systemAdmin,
+                )
+
+            audit(
+                type = "auth.local.user_create",
+                actor = authentication.name,
+                outcome = "success",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "targetUser" to created.username,
+                        "temporaryPassword" to request.temporaryPassword,
+                        "systemAdmin" to request.systemAdmin,
+                    ),
+            )
+
+            ResponseEntity.status(HttpStatus.CREATED).body(
+                AdminUserResponse(
+                    username = created.username,
+                    displayName = created.displayName,
+                    email = created.email,
+                    provider = created.provider.name.lowercase(),
+                    enabled = true,
+                    roles = created.roles,
+                    groups = created.groups,
+                    temporaryPassword = request.temporaryPassword,
+                ),
+            )
+        } catch (ex: PasswordPolicyException) {
+            ResponseEntity.badRequest().body(ErrorResponse(ex.message))
+        } catch (ex: IllegalArgumentException) {
+            ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
+        }
+    }
+
     @PostMapping("/admin/users/{username}/reset-password")
     fun adminResetPassword(
         @PathVariable username: String,
         @Valid @RequestBody request: PasswordResetRequest,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> =
-        try {
-            val updatedUser = userAccountService.resetPassword(username, request.newPassword)
+    ): ResponseEntity<Any> {
+        return try {
+            if (!authProperties.local.enabled) {
+                return ResponseEntity
+                    .status(HttpStatus.FORBIDDEN)
+                    .body(ErrorResponse("Local authentication user management is disabled."))
+            }
+
+            val updatedUser =
+                userAccountService.resetPassword(
+                    username = username,
+                    newPassword = request.newPassword,
+                    temporaryPassword = request.temporary,
+                )
 
             audit(
                 type = "auth.password_reset",
@@ -235,6 +325,7 @@ class AuthController(
                 details =
                     mapOf(
                         "targetUser" to updatedUser.username,
+                        "temporaryPassword" to request.temporary,
                     ),
             )
 
@@ -242,6 +333,7 @@ class AuthController(
                 PasswordResetResponse(
                     username = updatedUser.username,
                     message = "Password reset completed.",
+                    temporaryPassword = request.temporary,
                 ),
             )
         } catch (ex: PasswordPolicyException) {
@@ -251,6 +343,7 @@ class AuthController(
         } catch (ex: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
         }
+    }
 
     private fun establishSession(
         principal: AuthenticatedUserPrincipal,

@@ -35,8 +35,8 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import java.time.Instant
+import java.io.ByteArrayOutputStream
 
 @RestController
 @Validated
@@ -172,9 +172,9 @@ class QueryController(
         @RequestParam(name = "headers", required = false, defaultValue = "true") headers: Boolean,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<Any> {
+    ): ResponseEntity<ByteArray> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
-        return handleQueryErrors {
+        return try {
             val status =
                 queryExecutionManager.getExecutionStatus(
                     actor = principal.username,
@@ -198,9 +198,9 @@ class QueryController(
                             ),
                     ),
                 )
-                return@handleQueryErrors ResponseEntity
+                return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
-                    .body(ErrorResponse("Datasource export access denied for this query."))
+                    .body(toCsvError("Datasource export access denied for this query."))
             }
 
             val exportPayload =
@@ -229,21 +229,37 @@ class QueryController(
             )
             recordExportMetric(outcome = "success", datasourceId = exportPayload.datasourceId)
 
-            val body =
-                StreamingResponseBody { outputStream ->
-                    QueryCsvWriter.writeCsv(
-                        outputStream = outputStream,
-                        columns = exportPayload.columns,
-                        rows = exportPayload.rows,
-                        includeHeaders = headers,
-                    )
-                }
+            val outputStream = ByteArrayOutputStream()
+            QueryCsvWriter.writeCsv(
+                outputStream = outputStream,
+                columns = exportPayload.columns,
+                rows = exportPayload.rows,
+                includeHeaders = headers,
+            )
 
             ResponseEntity
                 .ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
-                .body(body as Any)
+                .body(outputStream.toByteArray())
+        } catch (ex: QueryExecutionNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(toCsvError(ex.message))
+        } catch (ex: QueryExecutionForbiddenException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(toCsvError(ex.message))
+        } catch (ex: QueryResultsNotReadyException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(toCsvError(ex.message))
+        } catch (ex: QueryResultsExpiredException) {
+            ResponseEntity.status(HttpStatus.GONE).body(toCsvError(ex.message))
+        } catch (ex: QueryInvalidPageTokenException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(toCsvError(ex.message))
+        } catch (ex: QueryExportLimitExceededException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(toCsvError(ex.message))
+        } catch (ex: QueryAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(toCsvError(ex.message))
+        } catch (ex: QueryReadOnlyViolationException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(toCsvError(ex.message))
+        } catch (ex: IllegalArgumentException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(toCsvError(ex.message ?: "Bad request."))
         }
     }
 
@@ -349,17 +365,6 @@ class QueryController(
         )
     }
 
-    private fun parseInstantParam(
-        name: String,
-        value: String?,
-    ): Instant? {
-        val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        return runCatching { Instant.parse(trimmed) }
-            .getOrElse {
-                throw IllegalArgumentException("$name must be an ISO-8601 timestamp.")
-            }
-    }
-
     private fun recordExportMetric(
         outcome: String,
         datasourceId: String,
@@ -372,5 +377,22 @@ class QueryController(
                 "datasourceId",
                 datasourceId,
             ).increment()
+    }
+
+    private fun parseInstantParam(
+        name: String,
+        value: String?,
+    ): Instant? {
+        val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { Instant.parse(trimmed) }
+            .getOrElse {
+                throw IllegalArgumentException("$name must be an ISO-8601 timestamp.")
+            }
+    }
+
+    private fun toCsvError(message: String?): ByteArray {
+        val safeMessage = message ?: "Bad request."
+        val escaped = safeMessage.replace("\"", "\"\"")
+        return "error\n\"$escaped\"\n".toByteArray(Charsets.UTF_8)
     }
 }

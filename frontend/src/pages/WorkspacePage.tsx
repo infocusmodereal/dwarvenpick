@@ -19,6 +19,10 @@ type CurrentUserResponse = {
     groups: string[];
 };
 
+type AuthMethodsResponse = {
+    methods?: string[];
+};
+
 type CatalogDatasourceResponse = {
     id: string;
     name: string;
@@ -177,6 +181,17 @@ type AuditEventResponse = {
     timestamp: string;
 };
 
+type AdminUserResponse = {
+    username: string;
+    displayName: string;
+    email?: string;
+    provider: string;
+    enabled: boolean;
+    roles: string[];
+    groups: string[];
+    temporaryPassword: boolean;
+};
+
 type DatasourceColumnEntryResponse = {
     name: string;
     jdbcType: string;
@@ -233,6 +248,14 @@ type WorkspaceTab = PersistentWorkspaceTab & {
     currentPageToken: string;
     previousPageTokens: string[];
     rowLimitReached: boolean;
+    submittedAt: string;
+    startedAt: string;
+    completedAt: string;
+    rowCount: number;
+    columnCount: number;
+    maxRowsPerQuery: number;
+    maxRuntimeSeconds: number;
+    credentialProfile: string;
 };
 
 type TestConnectionResponse = {
@@ -252,9 +275,10 @@ type ReencryptCredentialsResponse = {
 
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin' | 'connections';
-type IconGlyph = 'new' | 'rename' | 'duplicate' | 'close' | 'refresh' | 'copy';
+type IconGlyph = 'new' | 'rename' | 'duplicate' | 'close' | 'refresh' | 'copy' | 'info';
 type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
+type SnippetTitleMatchMode = 'exact' | 'regex';
 type RailGlyph =
     | 'workbench'
     | 'history'
@@ -326,9 +350,72 @@ const queryStatusPollingMaxAttempts = 600;
 const firstPageToken = '';
 const resultRowHeightPx = 34;
 const resultViewportHeightPx = 320;
+const builtInAuditActions = [
+    'auth.local.login',
+    'auth.ldap.login',
+    'auth.ldap.group_sync',
+    'auth.logout',
+    'auth.local.user_create',
+    'auth.password_reset',
+    'query.execute',
+    'query.cancel',
+    'query.export',
+    'snippet.create',
+    'snippet.update',
+    'snippet.delete'
+];
+const builtInAuditOutcomes = [
+    'success',
+    'failed',
+    'denied',
+    'limited',
+    'queued',
+    'running',
+    'succeeded',
+    'canceled',
+    'noop'
+];
 
 const isTerminalExecutionStatus = (status: string): boolean =>
     status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELED';
+
+const formatExecutionTimestamp = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return '-';
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+        return trimmed;
+    }
+    return parsed.toLocaleString();
+};
+
+const formatExecutionDuration = (start: string, end: string): string => {
+    const startedAt = new Date(start);
+    const completedAt = new Date(end);
+    if (Number.isNaN(startedAt.getTime()) || Number.isNaN(completedAt.getTime())) {
+        return '-';
+    }
+
+    const durationMs = completedAt.getTime() - startedAt.getTime();
+    if (!Number.isFinite(durationMs) || durationMs < 0) {
+        return '-';
+    }
+
+    if (durationMs < 1000) {
+        return `${durationMs} ms`;
+    }
+
+    if (durationMs < 60_000) {
+        return `${(durationMs / 1000).toFixed(2)} s`;
+    }
+
+    const minutes = Math.floor(durationMs / 60_000);
+    const seconds = ((durationMs % 60_000) / 1000).toFixed(1);
+    return `${minutes}m ${seconds}s`;
+};
 
 const formatCsvCell = (value: string | null): string => {
     if (value === null) {
@@ -544,7 +631,15 @@ const buildWorkspaceTab = (
     nextPageToken: '',
     currentPageToken: '',
     previousPageTokens: [],
-    rowLimitReached: false
+    rowLimitReached: false,
+    submittedAt: '',
+    startedAt: '',
+    completedAt: '',
+    rowCount: 0,
+    columnCount: 0,
+    maxRowsPerQuery: 0,
+    maxRuntimeSeconds: 0,
+    credentialProfile: ''
 });
 
 const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
@@ -597,6 +692,16 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <rect x="6.1" y="5.8" width="9.4" height="10.2" rx="1.4" />
                 <path d="M4.2 12.2V4.6A1.2 1.2 0 0 1 5.4 3.4h7.5" />
+            </svg>
+        );
+    }
+
+    if (icon === 'info') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="10" cy="10" r="7.1" />
+                <path d="M10 8.4v5.2" />
+                <circle cx="10" cy="6.1" r="0.7" fill="currentColor" stroke="none" />
             </svg>
         );
     }
@@ -759,6 +864,7 @@ export default function WorkspacePage() {
     const navigate = useNavigate();
 
     const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+    const [authMethods, setAuthMethods] = useState<string[]>([]);
     const [visibleDatasources, setVisibleDatasources] = useState<CatalogDatasourceResponse[]>([]);
     const [workspaceError, setWorkspaceError] = useState('');
     const [loadingWorkspace, setLoadingWorkspace] = useState(true);
@@ -785,8 +891,11 @@ export default function WorkspacePage() {
         ManagedDatasourceResponse[]
     >([]);
     const [adminDrivers, setAdminDrivers] = useState<DriverDescriptorResponse[]>([]);
+    const [adminUsers, setAdminUsers] = useState<AdminUserResponse[]>([]);
     const [adminError, setAdminError] = useState('');
     const [adminSuccess, setAdminSuccess] = useState('');
+    const [creatingLocalUser, setCreatingLocalUser] = useState(false);
+    const [resettingLocalUser, setResettingLocalUser] = useState<string | null>(null);
     const [uploadDriverIdInput, setUploadDriverIdInput] = useState('');
     const [uploadDriverClassInput, setUploadDriverClassInput] = useState('');
     const [uploadDriverDescriptionInput, setUploadDriverDescriptionInput] = useState('');
@@ -799,6 +908,12 @@ export default function WorkspacePage() {
         {}
     );
     const [memberDrafts, setMemberDrafts] = useState<Record<string, string>>({});
+    const [localUserUsernameInput, setLocalUserUsernameInput] = useState('');
+    const [localUserDisplayNameInput, setLocalUserDisplayNameInput] = useState('');
+    const [localUserEmailInput, setLocalUserEmailInput] = useState('');
+    const [localUserPasswordInput, setLocalUserPasswordInput] = useState('');
+    const [localUserTemporaryPassword, setLocalUserTemporaryPassword] = useState(true);
+    const [localUserSystemAdmin, setLocalUserSystemAdmin] = useState(false);
 
     const [selectedGroupId, setSelectedGroupId] = useState('');
     const [selectedDatasourceForAccess, setSelectedDatasourceForAccess] = useState('');
@@ -862,12 +977,13 @@ export default function WorkspacePage() {
     const [snippets, setSnippets] = useState<SnippetResponse[]>([]);
     const [loadingSnippets, setLoadingSnippets] = useState(false);
     const [snippetScope, setSnippetScope] = useState<'all' | 'personal' | 'group'>('all');
+    const [snippetTitleMatchMode, setSnippetTitleMatchMode] =
+        useState<SnippetTitleMatchMode>('exact');
     const [snippetTitleInput, setSnippetTitleInput] = useState('');
     const [snippetGroupInput, setSnippetGroupInput] = useState('');
     const [savingSnippet, setSavingSnippet] = useState(false);
     const [snippetError, setSnippetError] = useState('');
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
-    const [launcherDatasourceId, setLauncherDatasourceId] = useState('');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
     const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
     const [leftRailUserMenuOpen, setLeftRailUserMenuOpen] = useState(false);
@@ -879,6 +995,7 @@ export default function WorkspacePage() {
         top: number;
         left: number;
     } | null>(null);
+    const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
     const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
         Record<string, boolean>
     >({});
@@ -892,8 +1009,10 @@ export default function WorkspacePage() {
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
     const [editorRenderKey, setEditorRenderKey] = useState(0);
+    const [showEditorShortcuts, setShowEditorShortcuts] = useState(false);
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
+    const localAuthEnabled = authMethods.includes('local');
 
     useEffect(() => {
         if (
@@ -946,6 +1065,23 @@ export default function WorkspacePage() {
     }, [activeTabMenuOpen]);
 
     useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !editorShortcutsRef.current?.contains(target)) {
+                setShowEditorShortcuts(false);
+            }
+        };
+
+        if (showEditorShortcuts) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [showEditorShortcuts]);
+
+    useEffect(() => {
         setActiveTabMenuOpen(false);
         setActiveTabMenuPosition(null);
     }, [activeTabId]);
@@ -969,19 +1105,6 @@ export default function WorkspacePage() {
     }, [activeTabMenuOpen]);
 
     useEffect(() => {
-        if (visibleDatasources.length === 0) {
-            setLauncherDatasourceId('');
-            return;
-        }
-
-        setLauncherDatasourceId((current) =>
-            visibleDatasources.some((datasource) => datasource.id === current)
-                ? current
-                : visibleDatasources[0].id
-        );
-    }, [visibleDatasources]);
-
-    useEffect(() => {
         if (activeSection !== 'workbench' || monacoReady) {
             return;
         }
@@ -1000,17 +1123,6 @@ export default function WorkspacePage() {
         () => workspaceTabs.find((tab) => tab.id === activeTabId) ?? null,
         [activeTabId, workspaceTabs]
     );
-
-    useEffect(() => {
-        if (!activeTab?.datasourceId) {
-            return;
-        }
-        if (!visibleDatasources.some((datasource) => datasource.id === activeTab.datasourceId)) {
-            return;
-        }
-
-        setLauncherDatasourceId(activeTab.datasourceId);
-    }, [activeTab?.datasourceId, visibleDatasources]);
 
     useEffect(() => {
         workspaceTabsRef.current = workspaceTabs;
@@ -1070,6 +1182,13 @@ export default function WorkspacePage() {
             .join('\n');
     }, [activeTab]);
 
+    const executionDurationLabel = useMemo(() => {
+        if (!activeTab?.startedAt || !activeTab?.completedAt) {
+            return '-';
+        }
+        return formatExecutionDuration(activeTab.startedAt, activeTab.completedAt);
+    }, [activeTab?.completedAt, activeTab?.startedAt]);
+
     const selectedAdminDatasource = useMemo(
         () =>
             adminDatasourceCatalog.find(
@@ -1108,6 +1227,47 @@ export default function WorkspacePage() {
             ) ?? null,
         [driversForFormEngine, managedDatasourceForm.driverId]
     );
+
+    const snippetGroupOptions = useMemo(() => {
+        const options = new Set<string>();
+        (currentUser?.groups ?? []).forEach((groupId) => {
+            if (groupId.trim()) {
+                options.add(groupId.trim());
+            }
+        });
+        adminGroups.forEach((group) => {
+            if (group.id.trim()) {
+                options.add(group.id.trim());
+            }
+        });
+        snippets.forEach((snippet) => {
+            if (snippet.groupId?.trim()) {
+                options.add(snippet.groupId.trim());
+            }
+        });
+
+        return Array.from(options).sort((left, right) => left.localeCompare(right));
+    }, [adminGroups, currentUser?.groups, snippets]);
+
+    const auditActionOptions = useMemo(() => {
+        const options = new Set<string>(builtInAuditActions);
+        auditEvents.forEach((event) => {
+            if (event.type.trim()) {
+                options.add(event.type.trim());
+            }
+        });
+        return Array.from(options).sort((left, right) => left.localeCompare(right));
+    }, [auditEvents]);
+
+    const auditOutcomeOptions = useMemo(() => {
+        const options = new Set<string>(builtInAuditOutcomes);
+        auditEvents.forEach((event) => {
+            if (event.outcome.trim()) {
+                options.add(event.outcome.trim());
+            }
+        });
+        return Array.from(options).sort((left, right) => left.localeCompare(right));
+    }, [auditEvents]);
 
     const managedFormOptions = useMemo(
         () => parseOptionsInput(managedDatasourceForm.optionsInput),
@@ -1194,7 +1354,15 @@ export default function WorkspacePage() {
                         nextPageToken: '',
                         currentPageToken: '',
                         previousPageTokens: [],
-                        rowLimitReached: false
+                        rowLimitReached: false,
+                        submittedAt: '',
+                        startedAt: '',
+                        completedAt: '',
+                        rowCount: 0,
+                        columnCount: 0,
+                        maxRowsPerQuery: 0,
+                        maxRuntimeSeconds: 0,
+                        credentialProfile: ''
                     })) ?? [];
 
             const tabsToUse =
@@ -1271,74 +1439,90 @@ export default function WorkspacePage() {
         );
     }, [tabsHydrated, visibleDatasources]);
 
-    const loadAdminData = useCallback(async (active = true) => {
-        const [
-            groupsResponse,
-            catalogResponse,
-            accessResponse,
-            managedDatasourceResponse,
-            driversResponse
-        ] = await Promise.all([
-            fetch('/api/admin/groups', { method: 'GET', credentials: 'include' }),
-            fetch('/api/admin/datasources', { method: 'GET', credentials: 'include' }),
-            fetch('/api/admin/datasource-access', { method: 'GET', credentials: 'include' }),
-            fetch('/api/admin/datasource-management', {
-                method: 'GET',
-                credentials: 'include'
-            }),
-            fetch('/api/admin/drivers', {
-                method: 'GET',
-                credentials: 'include'
-            })
-        ]);
+    const loadAdminData = useCallback(
+        async (active = true, includeLocalUsers = localAuthEnabled) => {
+            const [
+                groupsResponse,
+                catalogResponse,
+                accessResponse,
+                managedDatasourceResponse,
+                driversResponse,
+                usersResponse
+            ] = await Promise.all([
+                fetch('/api/admin/groups', { method: 'GET', credentials: 'include' }),
+                fetch('/api/admin/datasources', { method: 'GET', credentials: 'include' }),
+                fetch('/api/admin/datasource-access', { method: 'GET', credentials: 'include' }),
+                fetch('/api/admin/datasource-management', {
+                    method: 'GET',
+                    credentials: 'include'
+                }),
+                fetch('/api/admin/drivers', {
+                    method: 'GET',
+                    credentials: 'include'
+                }),
+                includeLocalUsers
+                    ? fetch('/api/auth/admin/users', {
+                          method: 'GET',
+                          credentials: 'include'
+                      })
+                    : Promise.resolve(null)
+            ]);
 
-        if (
-            !groupsResponse.ok ||
-            !catalogResponse.ok ||
-            !accessResponse.ok ||
-            !managedDatasourceResponse.ok ||
-            !driversResponse.ok
-        ) {
-            throw new Error('Failed to load admin governance data.');
-        }
+            if (
+                !groupsResponse.ok ||
+                !catalogResponse.ok ||
+                !accessResponse.ok ||
+                !managedDatasourceResponse.ok ||
+                !driversResponse.ok ||
+                (usersResponse !== null && !usersResponse.ok)
+            ) {
+                throw new Error('Failed to load admin governance data.');
+            }
 
-        const groups = (await groupsResponse.json()) as GroupResponse[];
-        const datasourceCatalog = (await catalogResponse.json()) as CatalogDatasourceResponse[];
-        const datasourceAccess = (await accessResponse.json()) as DatasourceAccessResponse[];
-        const managedDatasources =
-            (await managedDatasourceResponse.json()) as ManagedDatasourceResponse[];
-        const drivers = (await driversResponse.json()) as DriverDescriptorResponse[];
+            const groups = (await groupsResponse.json()) as GroupResponse[];
+            const datasourceCatalog = (await catalogResponse.json()) as CatalogDatasourceResponse[];
+            const datasourceAccess = (await accessResponse.json()) as DatasourceAccessResponse[];
+            const managedDatasources =
+                (await managedDatasourceResponse.json()) as ManagedDatasourceResponse[];
+            const drivers = (await driversResponse.json()) as DriverDescriptorResponse[];
+            const users =
+                usersResponse === null
+                    ? []
+                    : ((await usersResponse.json()) as AdminUserResponse[]);
 
-        if (!active) {
-            return;
-        }
+            if (!active) {
+                return;
+            }
 
-        setAdminGroups(groups);
-        setAdminDatasourceCatalog(datasourceCatalog);
-        setAdminDatasourceAccess(datasourceAccess);
-        setAdminManagedDatasources(managedDatasources);
-        setAdminDrivers(drivers);
-        setGroupDescriptionDrafts(
-            groups.reduce<Record<string, string>>((drafts, group) => {
-                drafts[group.id] = group.description ?? '';
-                return drafts;
-            }, {})
-        );
+            setAdminGroups(groups);
+            setAdminDatasourceCatalog(datasourceCatalog);
+            setAdminDatasourceAccess(datasourceAccess);
+            setAdminManagedDatasources(managedDatasources);
+            setAdminDrivers(drivers);
+            setAdminUsers(users);
+            setGroupDescriptionDrafts(
+                groups.reduce<Record<string, string>>((drafts, group) => {
+                    drafts[group.id] = group.description ?? '';
+                    return drafts;
+                }, {})
+            );
 
-        setSelectedGroupId((current) =>
-            groups.some((group) => group.id === current) ? current : groups[0]?.id || ''
-        );
-        setSelectedDatasourceForAccess((current) =>
-            datasourceCatalog.some((datasource) => datasource.id === current)
-                ? current
-                : datasourceCatalog[0]?.id || ''
-        );
-        setSelectedManagedDatasourceId((current) =>
-            managedDatasources.some((datasource) => datasource.id === current)
-                ? current
-                : managedDatasources[0]?.id || ''
-        );
-    }, []);
+            setSelectedGroupId((current) =>
+                groups.some((group) => group.id === current) ? current : groups[0]?.id || ''
+            );
+            setSelectedDatasourceForAccess((current) =>
+                datasourceCatalog.some((datasource) => datasource.id === current)
+                    ? current
+                    : datasourceCatalog[0]?.id || ''
+            );
+            setSelectedManagedDatasourceId((current) =>
+                managedDatasources.some((datasource) => datasource.id === current)
+                    ? current
+                    : managedDatasources[0]?.id || ''
+            );
+        },
+        [localAuthEnabled]
+    );
 
     useEffect(() => {
         let active = true;
@@ -1347,6 +1531,17 @@ export default function WorkspacePage() {
             try {
                 setLoadingWorkspace(true);
                 setWorkspaceError('');
+
+                const methodsResponse = await fetch('/api/auth/methods', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!methodsResponse.ok) {
+                    throw new Error('Failed to load authentication methods.');
+                }
+                const methodsPayload = (await methodsResponse.json()) as AuthMethodsResponse;
+                const enabledMethods =
+                    methodsPayload.methods?.map((method) => method.toLowerCase()) ?? [];
 
                 const meResponse = await fetch('/api/auth/me', {
                     method: 'GET',
@@ -1379,11 +1574,12 @@ export default function WorkspacePage() {
                 }
 
                 setCurrentUser(me);
+                setAuthMethods(enabledMethods);
                 setVisibleDatasources(datasources);
                 hydrateWorkspaceTabs(datasources);
 
                 if (me.roles.includes('SYSTEM_ADMIN')) {
-                    await loadAdminData(active);
+                    await loadAdminData(active, enabledMethods.includes('local'));
                 }
             } catch (error) {
                 if (!active) {
@@ -1659,6 +1855,13 @@ export default function WorkspacePage() {
         try {
             const queryParams = new URLSearchParams();
             queryParams.set('scope', snippetScope);
+            if (snippetTitleInput.trim()) {
+                queryParams.set('title', snippetTitleInput.trim());
+                queryParams.set('titleMatch', snippetTitleMatchMode);
+            }
+            if (snippetGroupInput.trim()) {
+                queryParams.set('groupId', snippetGroupInput.trim());
+            }
             const response = await fetch(`/api/snippets?${queryParams.toString()}`, {
                 method: 'GET',
                 credentials: 'include'
@@ -1675,7 +1878,14 @@ export default function WorkspacePage() {
         } finally {
             setLoadingSnippets(false);
         }
-    }, [currentUser, readFriendlyError, snippetScope]);
+    }, [
+        currentUser,
+        readFriendlyError,
+        snippetGroupInput,
+        snippetScope,
+        snippetTitleInput,
+        snippetTitleMatchMode
+    ]);
 
     const loadQueryHistory = useCallback(async () => {
         if (!currentUser) {
@@ -1952,15 +2162,9 @@ export default function WorkspacePage() {
     );
 
     const handleOpenNewTab = useCallback(() => {
-        const preferredDatasourceId =
-            activeTab?.datasourceId || launcherDatasourceId || visibleDatasources[0]?.id || '';
+        const preferredDatasourceId = activeTab?.datasourceId || visibleDatasources[0]?.id || '';
         handleOpenNewTabForDatasource(preferredDatasourceId);
-    }, [
-        activeTab?.datasourceId,
-        handleOpenNewTabForDatasource,
-        launcherDatasourceId,
-        visibleDatasources
-    ]);
+    }, [activeTab?.datasourceId, handleOpenNewTabForDatasource, visibleDatasources]);
 
     const handleRenameTab = useCallback(
         (tabId: string) => {
@@ -2086,6 +2290,14 @@ export default function WorkspacePage() {
                             ? (payload.errorSummary ?? payload.message)
                             : '',
                     rowLimitReached: payload.rowLimitReached,
+                    submittedAt: payload.submittedAt ?? currentTab.submittedAt,
+                    startedAt: payload.startedAt ?? '',
+                    completedAt: payload.completedAt ?? '',
+                    rowCount: payload.rowCount,
+                    columnCount: payload.columnCount,
+                    maxRowsPerQuery: payload.maxRowsPerQuery,
+                    maxRuntimeSeconds: payload.maxRuntimeSeconds,
+                    credentialProfile: payload.credentialProfile,
                     isExecuting: !terminal
                 };
             });
@@ -2332,6 +2544,14 @@ export default function WorkspacePage() {
                 currentPageToken: firstPageToken,
                 previousPageTokens: [],
                 rowLimitReached: false,
+                submittedAt: '',
+                startedAt: '',
+                completedAt: '',
+                rowCount: 0,
+                columnCount: 0,
+                maxRowsPerQuery: 0,
+                maxRuntimeSeconds: 0,
+                credentialProfile: '',
                 statusMessage:
                     modeLabel === 'selection'
                         ? 'Running selected SQL...'
@@ -2368,7 +2588,7 @@ export default function WorkspacePage() {
                     executionId: payload.executionId,
                     executionStatus: payload.status,
                     queryHash: payload.queryHash,
-                    statusMessage: `Execution ${payload.executionId} queued on ${payload.datasourceId}.`,
+                    statusMessage: `Query queued on ${payload.datasourceId}.`,
                     errorMessage: ''
                 }));
                 startQueryStatusPolling(tabId, payload.executionId);
@@ -2700,14 +2920,54 @@ export default function WorkspacePage() {
         }
     }, [activeTab, updateWorkspaceTab]);
 
-    const handleSaveSnippet = useCallback(async () => {
-        if (!activeTab) {
-            return;
-        }
+    const persistSnippet = useCallback(
+        async (title: string, sqlText: string, groupId: string | null) => {
+            if (!title.trim()) {
+                setSnippetError('Snippet title is required.');
+                return false;
+            }
+            if (!sqlText.trim()) {
+                setSnippetError('Cannot save an empty snippet.');
+                return false;
+            }
 
-        const title = snippetTitleInput.trim();
-        if (!title) {
-            setSnippetError('Snippet title is required.');
+            setSavingSnippet(true);
+            setSnippetError('');
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch('/api/snippets', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({
+                        title: title.trim(),
+                        sql: sqlText,
+                        groupId
+                    })
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadSnippets();
+                setCopyFeedback('Snippet saved.');
+                return true;
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Failed to save snippet.';
+                setSnippetError(message);
+                return false;
+            } finally {
+                setSavingSnippet(false);
+            }
+        },
+        [fetchCsrfToken, loadSnippets, readFriendlyError]
+    );
+
+    const handleSaveSnippetFromEditor = useCallback(async () => {
+        if (!activeTab) {
             return;
         }
         if (!activeTab.queryText.trim()) {
@@ -2715,44 +2975,35 @@ export default function WorkspacePage() {
             return;
         }
 
-        setSavingSnippet(true);
-        setSnippetError('');
-        try {
-            const csrfToken = await fetchCsrfToken();
-            const response = await fetch('/api/snippets', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    [csrfToken.headerName]: csrfToken.token
-                },
-                body: JSON.stringify({
-                    title,
-                    sql: activeTab.queryText,
-                    groupId: snippetGroupInput.trim() ? snippetGroupInput.trim() : null
-                })
-            });
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
-            }
+        const proposedTitle = window.prompt('Snippet title', activeTab.title);
+        if (proposedTitle === null) {
+            return;
+        }
+        const title = proposedTitle.trim();
+        if (!title) {
+            setSnippetError('Snippet title is required.');
+            return;
+        }
 
-            setSnippetTitleInput('');
-            setSnippetGroupInput('');
-            await loadSnippets();
-            setCopyFeedback('Snippet saved.');
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to save snippet.';
-            setSnippetError(message);
-        } finally {
-            setSavingSnippet(false);
+        const defaultGroupId = snippetGroupInput.trim() || currentUser?.groups?.[0] || '';
+        const proposedGroupId = window.prompt(
+            'Group ID (optional, leave blank for personal snippet)',
+            defaultGroupId
+        );
+        if (proposedGroupId === null) {
+            return;
+        }
+
+        const normalizedGroupId = proposedGroupId.trim() ? proposedGroupId.trim() : null;
+        const saved = await persistSnippet(title, activeTab.queryText, normalizedGroupId);
+        if (saved) {
+            setSnippetGroupInput(normalizedGroupId ?? '');
         }
     }, [
         activeTab,
-        fetchCsrfToken,
-        loadSnippets,
-        readFriendlyError,
-        snippetGroupInput,
-        snippetTitleInput
+        currentUser?.groups,
+        persistSnippet,
+        snippetGroupInput
     ]);
 
     const handleOpenSnippet = useCallback(
@@ -2870,7 +3121,6 @@ export default function WorkspacePage() {
             statusMessage: `Connection context set to ${nextDatasourceId}.`,
             errorMessage: ''
         }));
-        setLauncherDatasourceId(nextDatasourceId);
     };
 
     const handleRetryEditorLoad = useCallback(() => {
@@ -2984,6 +3234,122 @@ export default function WorkspacePage() {
         },
         []
     );
+
+    const handleCreateLocalUser = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setAdminError('');
+        setAdminSuccess('');
+
+        if (!localAuthEnabled) {
+            setAdminError('Local authentication is disabled. User creation is unavailable.');
+            return;
+        }
+
+        const username = localUserUsernameInput.trim();
+        const password = localUserPasswordInput;
+        if (!username) {
+            setAdminError('Username is required.');
+            return;
+        }
+        if (!password.trim()) {
+            setAdminError('Password is required.');
+            return;
+        }
+
+        setCreatingLocalUser(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch('/api/auth/admin/users', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    [csrfToken.headerName]: csrfToken.token
+                },
+                body: JSON.stringify({
+                    username,
+                    displayName: localUserDisplayNameInput.trim() || null,
+                    email: localUserEmailInput.trim() || null,
+                    password,
+                    temporaryPassword: localUserTemporaryPassword,
+                    systemAdmin: localUserSystemAdmin
+                })
+            });
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            setLocalUserUsernameInput('');
+            setLocalUserDisplayNameInput('');
+            setLocalUserEmailInput('');
+            setLocalUserPasswordInput('');
+            setLocalUserTemporaryPassword(true);
+            setLocalUserSystemAdmin(false);
+            await loadAdminData(true, true);
+            setAdminSuccess(`User '${username}' created.`);
+        } catch (error) {
+            setAdminError(error instanceof Error ? error.message : 'Failed to create user.');
+        } finally {
+            setCreatingLocalUser(false);
+        }
+    };
+
+    const handleResetLocalPassword = async (username: string) => {
+        setAdminError('');
+        setAdminSuccess('');
+
+        if (!localAuthEnabled) {
+            setAdminError('Local authentication is disabled. Password reset is unavailable.');
+            return;
+        }
+
+        const newPassword = window.prompt(`Enter a new password for ${username}`);
+        if (newPassword === null) {
+            return;
+        }
+        if (!newPassword.trim()) {
+            setAdminError('Password reset canceled: password cannot be empty.');
+            return;
+        }
+
+        const temporary = window.confirm(
+            'Should this password be temporary and require a reset on next login?'
+        );
+
+        setResettingLocalUser(username);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch(
+                `/api/auth/admin/users/${encodeURIComponent(username)}/reset-password`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({
+                        newPassword,
+                        temporary
+                    })
+                }
+            );
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            await loadAdminData(true, true);
+            setAdminSuccess(
+                temporary
+                    ? `Temporary password reset for '${username}' completed.`
+                    : `Password reset for '${username}' completed.`
+            );
+        } catch (error) {
+            setAdminError(error instanceof Error ? error.message : 'Failed to reset password.');
+        } finally {
+            setResettingLocalUser(null);
+        }
+    };
 
     const handleCreateGroup = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -3736,8 +4102,14 @@ export default function WorkspacePage() {
                         <button
                             type="button"
                             className="workspace-logo"
-                            onClick={() => setActiveSection('workbench')}
-                            title="dwarvenpick"
+                            onClick={() =>
+                                window.open(
+                                    'https://en.wikipedia.org/wiki/Dwarves_in_Middle-earth',
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                )
+                            }
+                            title="Open dwarves in Middle-earth reference"
                         >
                             <span className="workspace-logo-icon" aria-hidden>
                                 <img src="/dwarvenpick-mark.svg" alt="" width={24} height={24} />
@@ -3911,73 +4283,6 @@ export default function WorkspacePage() {
                 <section className="workspace-main">
                     <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
                         <aside className="panel sidebar">
-                            <section className="datasource-tree">
-                                <div className="tile-heading">
-                                    <span className="tile-heading-icon" aria-hidden>
-                                        <RailIcon glyph="connections" />
-                                    </span>
-                                    <label htmlFor="launcher-datasource">Connections</label>
-                                </div>
-                                <div className="select-wrap">
-                                    <select
-                                        id="launcher-datasource"
-                                        value={launcherDatasourceId}
-                                        onChange={(event) =>
-                                            setLauncherDatasourceId(event.target.value)
-                                        }
-                                    >
-                                        {visibleDatasources.length === 0 ? (
-                                            <option value="">No connection access</option>
-                                        ) : null}
-                                        {visibleDatasources.map((datasource) => (
-                                            <option key={datasource.id} value={datasource.id}>
-                                                {datasource.name} ({datasource.engine})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="datasource-launch-actions">
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            handleOpenNewTabForDatasource(launcherDatasourceId)
-                                        }
-                                        disabled={!launcherDatasourceId}
-                                    >
-                                        Open Query Tab
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="chip"
-                                        onClick={() =>
-                                            launcherDatasourceId
-                                                ? handleDatasourceChangeForActiveTab(
-                                                      launcherDatasourceId
-                                                  )
-                                                : undefined
-                                        }
-                                        disabled={
-                                            !launcherDatasourceId ||
-                                            !activeTab ||
-                                            activeTab.isExecuting ||
-                                            activeTab.datasourceId === launcherDatasourceId
-                                        }
-                                    >
-                                        Use In Active Tab
-                                    </button>
-                                    {isSystemAdmin ? (
-                                        <button
-                                            type="button"
-                                            className="chip"
-                                            onClick={() => setActiveSection('connections')}
-                                        >
-                                            Add Connection
-                                        </button>
-                                    ) : null}
-                                </div>
-                            </section>
-
                             <section className="schema-browser">
                                 <div className="row schema-browser-header">
                                     <h3>Explorer</h3>
@@ -4535,26 +4840,35 @@ export default function WorkspacePage() {
                                 ) : null}
 
                                 <div className="editor-toolbar-fields">
-                                    <div className="select-wrap">
-                                        <select
-                                            aria-label="Active tab connection"
-                                            value={activeTab?.datasourceId ?? ''}
-                                            onChange={(event) =>
-                                                handleDatasourceChangeForActiveTab(
-                                                    event.target.value
-                                                )
-                                            }
-                                            disabled={!activeTab || activeTab.isExecuting}
-                                        >
-                                            {visibleDatasources.map((datasource) => (
-                                                <option
-                                                    key={`tab-ds-${datasource.id}`}
-                                                    value={datasource.id}
-                                                >
-                                                    {datasource.name}
-                                                </option>
-                                            ))}
-                                        </select>
+                                    <div className="editor-connection-control">
+                                        <label htmlFor="tab-datasource">
+                                            <span className="tile-heading-icon" aria-hidden>
+                                                <RailIcon glyph="connections" />
+                                            </span>
+                                            <span>Connection</span>
+                                        </label>
+                                        <div className="select-wrap">
+                                            <select
+                                                id="tab-datasource"
+                                                aria-label="Active tab connection"
+                                                value={activeTab?.datasourceId ?? ''}
+                                                onChange={(event) =>
+                                                    handleDatasourceChangeForActiveTab(
+                                                        event.target.value
+                                                    )
+                                                }
+                                                disabled={!activeTab || activeTab.isExecuting}
+                                            >
+                                                {visibleDatasources.map((datasource) => (
+                                                    <option
+                                                        key={`tab-ds-${datasource.id}`}
+                                                        value={datasource.id}
+                                                    >
+                                                        {datasource.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
                                     <input
                                         id="tab-schema"
@@ -4645,82 +4959,156 @@ export default function WorkspacePage() {
                                 )}
                             </div>
 
-                            <div className="row">
-                                <button
-                                    type="button"
-                                    disabled={
-                                        !activeTab || activeTab.isExecuting || !selectedDatasource
-                                    }
-                                    onClick={handleRunSelection}
-                                >
-                                    {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={
-                                        !activeTab || activeTab.isExecuting || !selectedDatasource
-                                    }
-                                    onClick={handleRunAll}
-                                >
-                                    Run All
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={
-                                        !activeTab || activeTab.isExecuting || !selectedDatasource
-                                    }
-                                    onClick={handleExplain}
-                                >
-                                    Explain
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!activeTab || activeTab.isExecuting}
-                                    onClick={handleFormatSql}
-                                >
-                                    Format SQL
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!activeTab || !activeTab.isExecuting}
-                                    onClick={() => {
-                                        if (!activeTab) {
-                                            return;
+                            <div className="editor-action-row">
+                                <div className="row editor-primary-actions">
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !selectedDatasource
                                         }
+                                        onClick={handleRunSelection}
+                                    >
+                                        {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !selectedDatasource
+                                        }
+                                        onClick={handleRunAll}
+                                    >
+                                        Run All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !selectedDatasource
+                                        }
+                                        onClick={handleExplain}
+                                    >
+                                        Explain
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!activeTab || activeTab.isExecuting}
+                                        onClick={handleFormatSql}
+                                    >
+                                        Format SQL
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!activeTab || !activeTab.isExecuting}
+                                        onClick={() => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
 
-                                        void handleCancelRun(activeTab.id);
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleExportCsv()}
-                                    disabled={!activeTab?.executionId || exportingCsv}
-                                >
-                                    {exportingCsv ? 'Exporting...' : 'Export CSV'}
-                                </button>
+                                            void handleCancelRun(activeTab.id);
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                                <div className="row editor-secondary-actions">
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        disabled={!activeTab || savingSnippet}
+                                        onClick={() => void handleSaveSnippetFromEditor()}
+                                    >
+                                        {savingSnippet ? 'Saving...' : 'Save Snippet'}
+                                    </button>
+                                    <div className="editor-shortcuts-wrapper" ref={editorShortcutsRef}>
+                                        <IconButton
+                                            icon="info"
+                                            title="Editor shortcuts"
+                                            onClick={() =>
+                                                setShowEditorShortcuts((current) => !current)
+                                            }
+                                        />
+                                        {showEditorShortcuts ? (
+                                            <div className="editor-shortcuts-popover" role="dialog">
+                                                <h4>Editor Shortcuts</h4>
+                                                <ul>
+                                                    <li>
+                                                        <kbd>Ctrl/Cmd + Enter</kbd>: Run selection
+                                                        (or full tab if no selection)
+                                                    </li>
+                                                    <li>
+                                                        <kbd>Esc</kbd>: Cancel currently running
+                                                        execution
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
                             </div>
                         </section>
 
                         <section className="panel results">
                             {activeTab?.executionId ? (
-                                <div className="result-meta">
-                                    <p>
-                                        <strong>Execution:</strong> {activeTab.executionId}
-                                    </p>
-                                    <p>
-                                        <strong>Status:</strong>{' '}
-                                        {activeTab.executionStatus || 'PENDING_SUBMISSION'}
-                                    </p>
-                                    {activeTab.queryHash ? (
-                                        <p>
-                                            <strong>Query Hash:</strong>{' '}
-                                            <code className="result-hash">
-                                                {activeTab.queryHash}
-                                            </code>
-                                        </p>
-                                    ) : null}
+                                <div className="result-stats-grid">
+                                    <div className="result-stat">
+                                        <span>Status</span>
+                                        <strong>
+                                            {activeTab.executionStatus || 'PENDING_SUBMISSION'}
+                                        </strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Connection</span>
+                                        <strong>{selectedDatasource?.name ?? '-'}</strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Rows</span>
+                                        <strong>{activeTab.rowCount.toLocaleString()}</strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Columns</span>
+                                        <strong>{activeTab.columnCount.toLocaleString()}</strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Duration</span>
+                                        <strong>{executionDurationLabel}</strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Submitted</span>
+                                        <strong>
+                                            {formatExecutionTimestamp(activeTab.submittedAt)}
+                                        </strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Completed</span>
+                                        <strong>
+                                            {formatExecutionTimestamp(activeTab.completedAt)}
+                                        </strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Credential Profile</span>
+                                        <strong>{activeTab.credentialProfile || '-'}</strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Row Limit</span>
+                                        <strong>
+                                            {activeTab.maxRowsPerQuery > 0
+                                                ? activeTab.maxRowsPerQuery.toLocaleString()
+                                                : '-'}
+                                        </strong>
+                                    </div>
+                                    <div className="result-stat">
+                                        <span>Runtime Limit</span>
+                                        <strong>
+                                            {activeTab.maxRuntimeSeconds > 0
+                                                ? `${activeTab.maxRuntimeSeconds}s`
+                                                : '-'}
+                                        </strong>
+                                    </div>
                                 </div>
                             ) : null}
                             {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
@@ -4889,18 +5277,6 @@ export default function WorkspacePage() {
                             !activeTab?.errorMessage ? (
                                 <p className="results-empty">Results</p>
                             ) : null}
-                            <details className="shortcut-help">
-                                <summary>Editor Shortcuts</summary>
-                                <ul>
-                                    <li>
-                                        <kbd>Ctrl/Cmd + Enter</kbd>: Run selection (or full tab if
-                                        no selection)
-                                    </li>
-                                    <li>
-                                        <kbd>Esc</kbd>: Cancel currently running execution
-                                    </li>
-                                </ul>
-                            </details>
                         </section>
                     </div>
 
@@ -5103,23 +5479,42 @@ export default function WorkspacePage() {
                             </div>
 
                             <div className="filter-field">
-                                <label htmlFor="snippet-group-id">Group ID (optional)</label>
-                                <input
-                                    id="snippet-group-id"
-                                    value={snippetGroupInput}
-                                    onChange={(event) => setSnippetGroupInput(event.target.value)}
-                                    placeholder={currentUser?.groups?.[0] ?? 'analytics-users'}
-                                />
+                                <label htmlFor="snippet-title-match">Title Match</label>
+                                <div className="select-wrap">
+                                    <select
+                                        id="snippet-title-match"
+                                        value={snippetTitleMatchMode}
+                                        onChange={(event) =>
+                                            setSnippetTitleMatchMode(
+                                                event.target.value as SnippetTitleMatchMode
+                                            )
+                                        }
+                                    >
+                                        <option value="exact">Exact</option>
+                                        <option value="regex">Regex</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="filter-field">
+                                <label htmlFor="snippet-group-id">Group</label>
+                                <div className="select-wrap">
+                                    <select
+                                        id="snippet-group-id"
+                                        value={snippetGroupInput}
+                                        onChange={(event) => setSnippetGroupInput(event.target.value)}
+                                    >
+                                        <option value="">All groups</option>
+                                        {snippetGroupOptions.map((groupId) => (
+                                            <option key={`snippet-group-${groupId}`} value={groupId}>
+                                                {groupId}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div className="row toolbar-actions">
-                            <button
-                                type="button"
-                                disabled={!activeTab || savingSnippet}
-                                onClick={() => void handleSaveSnippet()}
-                            >
-                                {savingSnippet ? 'Saving...' : 'Save Current Query'}
-                            </button>
                             <IconButton
                                 icon="refresh"
                                 title={
@@ -5213,14 +5608,22 @@ export default function WorkspacePage() {
                                 <div className="history-filters">
                                     <div className="filter-field">
                                         <label htmlFor="audit-type-filter">Action</label>
-                                        <input
-                                            id="audit-type-filter"
-                                            value={auditTypeFilter}
-                                            onChange={(event) =>
-                                                setAuditTypeFilter(event.target.value)
-                                            }
-                                            placeholder="query.execute"
-                                        />
+                                        <div className="select-wrap">
+                                            <select
+                                                id="audit-type-filter"
+                                                value={auditTypeFilter}
+                                                onChange={(event) =>
+                                                    setAuditTypeFilter(event.target.value)
+                                                }
+                                            >
+                                                <option value="">All actions</option>
+                                                {auditActionOptions.map((action) => (
+                                                    <option key={`audit-action-${action}`} value={action}>
+                                                        {action}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
 
                                     <div className="filter-field">
@@ -5231,20 +5634,31 @@ export default function WorkspacePage() {
                                             onChange={(event) =>
                                                 setAuditActorFilter(event.target.value)
                                             }
-                                            placeholder="admin"
+                                            placeholder="admin or /^adm/i"
                                         />
                                     </div>
 
                                     <div className="filter-field">
                                         <label htmlFor="audit-outcome-filter">Outcome</label>
-                                        <input
-                                            id="audit-outcome-filter"
-                                            value={auditOutcomeFilter}
-                                            onChange={(event) =>
-                                                setAuditOutcomeFilter(event.target.value)
-                                            }
-                                            placeholder="success"
-                                        />
+                                        <div className="select-wrap">
+                                            <select
+                                                id="audit-outcome-filter"
+                                                value={auditOutcomeFilter}
+                                                onChange={(event) =>
+                                                    setAuditOutcomeFilter(event.target.value)
+                                                }
+                                            >
+                                                <option value="">All outcomes</option>
+                                                {auditOutcomeOptions.map((outcome) => (
+                                                    <option
+                                                        key={`audit-outcome-${outcome}`}
+                                                        value={outcome}
+                                                    >
+                                                        {outcome}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
 
                                     <div className="filter-field">
@@ -5642,22 +6056,268 @@ export default function WorkspacePage() {
 
                                             <div className="mapping-list">
                                                 <h4>Current Access Rules</h4>
-                                                <ul>
-                                                    {adminDatasourceAccess.map((rule) => (
-                                                        <li
-                                                            key={`${rule.groupId}-${rule.datasourceId}`}
-                                                        >
-                                                            <strong>{rule.groupId}</strong> →{' '}
-                                                            <strong>{rule.datasourceId}</strong> |
-                                                            query: {rule.canQuery ? 'yes' : 'no'} |
-                                                            export: {rule.canExport ? 'yes' : 'no'}{' '}
-                                                            | readOnly:{' '}
-                                                            {rule.readOnly ? 'yes' : 'no'} |
-                                                            profile: {rule.credentialProfile}
-                                                        </li>
-                                                    ))}
-                                                </ul>
+                                                <div className="history-table-wrap">
+                                                    <table className="result-table history-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Group</th>
+                                                                <th>Connection</th>
+                                                                <th>Query</th>
+                                                                <th>Export</th>
+                                                                <th>Read Only</th>
+                                                                <th>Credential Profile</th>
+                                                                <th>Max Rows</th>
+                                                                <th>Max Runtime (s)</th>
+                                                                <th>Concurrency</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {adminDatasourceAccess.length === 0 ? (
+                                                                <tr>
+                                                                    <td colSpan={9}>
+                                                                        No access rules configured.
+                                                                    </td>
+                                                                </tr>
+                                                            ) : (
+                                                                adminDatasourceAccess.map((rule) => (
+                                                                    <tr
+                                                                        key={`${rule.groupId}-${rule.datasourceId}`}
+                                                                    >
+                                                                        <td>{rule.groupId}</td>
+                                                                        <td>{rule.datasourceId}</td>
+                                                                        <td>
+                                                                            {rule.canQuery
+                                                                                ? 'Yes'
+                                                                                : 'No'}
+                                                                        </td>
+                                                                        <td>
+                                                                            {rule.canExport
+                                                                                ? 'Yes'
+                                                                                : 'No'}
+                                                                        </td>
+                                                                        <td>
+                                                                            {rule.readOnly
+                                                                                ? 'Yes'
+                                                                                : 'No'}
+                                                                        </td>
+                                                                        <td>
+                                                                            {rule.credentialProfile}
+                                                                        </td>
+                                                                        <td>
+                                                                            {rule.maxRowsPerQuery ??
+                                                                                '-'}
+                                                                        </td>
+                                                                        <td>
+                                                                            {rule.maxRuntimeSeconds ??
+                                                                                '-'}
+                                                                        </td>
+                                                                        <td>
+                                                                            {rule.concurrencyLimit ??
+                                                                                '-'}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
+                                        </section>
+                                    ) : null}
+
+                                    {activeSection === 'admin' ? (
+                                        <section className="panel">
+                                            <h3>Local Users</h3>
+                                            {localAuthEnabled ? (
+                                                <>
+                                                    <form
+                                                        className="stack-form"
+                                                        onSubmit={handleCreateLocalUser}
+                                                    >
+                                                        <label htmlFor="local-user-username">
+                                                            Username
+                                                        </label>
+                                                        <input
+                                                            id="local-user-username"
+                                                            value={localUserUsernameInput}
+                                                            onChange={(event) =>
+                                                                setLocalUserUsernameInput(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            placeholder="new.analyst"
+                                                            required
+                                                        />
+
+                                                        <label htmlFor="local-user-display-name">
+                                                            Display Name
+                                                        </label>
+                                                        <input
+                                                            id="local-user-display-name"
+                                                            value={localUserDisplayNameInput}
+                                                            onChange={(event) =>
+                                                                setLocalUserDisplayNameInput(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            placeholder="New Analyst"
+                                                        />
+
+                                                        <label htmlFor="local-user-email">
+                                                            Email
+                                                        </label>
+                                                        <input
+                                                            id="local-user-email"
+                                                            type="email"
+                                                            value={localUserEmailInput}
+                                                            onChange={(event) =>
+                                                                setLocalUserEmailInput(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            placeholder="analyst@example.com"
+                                                        />
+
+                                                        <label htmlFor="local-user-password">
+                                                            Password
+                                                        </label>
+                                                        <input
+                                                            id="local-user-password"
+                                                            type="password"
+                                                            value={localUserPasswordInput}
+                                                            onChange={(event) =>
+                                                                setLocalUserPasswordInput(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            required
+                                                        />
+
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={localUserTemporaryPassword}
+                                                                onChange={(event) =>
+                                                                    setLocalUserTemporaryPassword(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Temporary password</span>
+                                                        </label>
+
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={localUserSystemAdmin}
+                                                                onChange={(event) =>
+                                                                    setLocalUserSystemAdmin(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Grant system admin role</span>
+                                                        </label>
+
+                                                        <button
+                                                            type="submit"
+                                                            disabled={creatingLocalUser}
+                                                        >
+                                                            {creatingLocalUser
+                                                                ? 'Creating...'
+                                                                : 'Create Local User'}
+                                                        </button>
+                                                    </form>
+
+                                                    <div className="history-table-wrap">
+                                                        <table className="result-table history-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Username</th>
+                                                                    <th>Display Name</th>
+                                                                    <th>Provider</th>
+                                                                    <th>Roles</th>
+                                                                    <th>Groups</th>
+                                                                    <th>Password Type</th>
+                                                                    <th>Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {adminUsers.length === 0 ? (
+                                                                    <tr>
+                                                                        <td colSpan={7}>
+                                                                            No users available.
+                                                                        </td>
+                                                                    </tr>
+                                                                ) : (
+                                                                    adminUsers.map((user) => (
+                                                                        <tr
+                                                                            key={`admin-user-${user.username}`}
+                                                                        >
+                                                                            <td>{user.username}</td>
+                                                                            <td>
+                                                                                {user.displayName}
+                                                                            </td>
+                                                                            <td>
+                                                                                {user.provider.toUpperCase()}
+                                                                            </td>
+                                                                            <td>
+                                                                                {user.roles.join(
+                                                                                    ', '
+                                                                                )}
+                                                                            </td>
+                                                                            <td>
+                                                                                {user.groups.length > 0
+                                                                                    ? user.groups.join(
+                                                                                          ', '
+                                                                                      )
+                                                                                    : '-'}
+                                                                            </td>
+                                                                            <td>
+                                                                                {user.temporaryPassword
+                                                                                    ? 'Temporary'
+                                                                                    : 'Permanent'}
+                                                                            </td>
+                                                                            <td className="history-actions">
+                                                                                {user.provider ===
+                                                                                'local' ? (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        disabled={
+                                                                                            resettingLocalUser ===
+                                                                                            user.username
+                                                                                        }
+                                                                                        onClick={() =>
+                                                                                            void handleResetLocalPassword(
+                                                                                                user.username
+                                                                                            )
+                                                                                        }
+                                                                                    >
+                                                                                        {resettingLocalUser ===
+                                                                                        user.username
+                                                                                            ? 'Resetting...'
+                                                                                            : 'Reset Password'}
+                                                                                    </button>
+                                                                                ) : (
+                                                                                    <span className="muted-id">
+                                                                                        LDAP managed
+                                                                                    </span>
+                                                                                )}
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <p className="muted-id">
+                                                    Local authentication is disabled. Users are
+                                                    managed by LDAP and cannot be created here.
+                                                </p>
+                                            )}
                                         </section>
                                     ) : null}
 

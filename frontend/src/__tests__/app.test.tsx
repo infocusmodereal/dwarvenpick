@@ -16,17 +16,34 @@ vi.mock('@monaco-editor/react', () => ({
     )
 }));
 
+const resolveRequestUrl = (input: RequestInfo | URL): string => {
+    if (typeof input === 'string') {
+        return input;
+    }
+
+    if (input instanceof URL) {
+        return input.toString();
+    }
+
+    if (input instanceof Request) {
+        return input.url;
+    }
+
+    return String(input);
+};
+
 describe('App shell', () => {
     beforeEach(() => {
         globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-            const url = typeof input === 'string' ? input : input.toString();
+            const url = resolveRequestUrl(input);
 
             if (url.endsWith('/api/auth/me')) {
                 return new Response(
                     JSON.stringify({
                         username: 'analyst',
                         displayName: 'Analyst User',
-                        roles: ['USER']
+                        roles: ['USER'],
+                        groups: []
                     }),
                     {
                         status: 200,
@@ -71,7 +88,7 @@ describe('App shell', () => {
         );
 
         expect(screen.getByText(/^dwarvenpick$/i)).toBeInTheDocument();
-        expect(await screen.findByText(/editor shortcuts/i)).toBeInTheDocument();
+        expect((await screen.findAllByText(/^sql workbench$/i)).length).toBeGreaterThan(0);
         expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });
 
@@ -91,14 +108,15 @@ describe('App shell', () => {
 
     it('renders datasource management panel for system admin users', async () => {
         globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-            const url = typeof input === 'string' ? input : input.toString();
+            const url = resolveRequestUrl(input);
 
             if (url.endsWith('/api/auth/me')) {
                 return new Response(
                     JSON.stringify({
                         username: 'admin',
                         displayName: 'Platform Admin',
-                        roles: ['SYSTEM_ADMIN', 'USER']
+                        roles: ['SYSTEM_ADMIN', 'USER'],
+                        groups: []
                     }),
                     {
                         status: 200,
@@ -111,6 +129,15 @@ describe('App shell', () => {
 
             if (url.endsWith('/api/datasources')) {
                 return new Response(JSON.stringify([]), {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
+
+            if (url.endsWith('/api/auth/methods')) {
+                return new Response(JSON.stringify({ methods: ['local', 'ldap'] }), {
                     status: 200,
                     headers: {
                         'Content-Type': 'application/json'
@@ -163,6 +190,15 @@ describe('App shell', () => {
                 });
             }
 
+            if (url.endsWith('/api/auth/admin/users')) {
+                return new Response(JSON.stringify([]), {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
+
             return new Response('{}', { status: 200 });
         }) as unknown as typeof fetch;
 
@@ -172,6 +208,6 @@ describe('App shell', () => {
             </MemoryRouter>
         );
 
-        expect(await screen.findByRole('tab', { name: /governance/i })).toBeInTheDocument();
+        expect((await screen.findAllByText(/^governance$/i)).length).toBeGreaterThan(0);
     });
 });
