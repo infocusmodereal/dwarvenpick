@@ -65,82 +65,89 @@ class SchemaBrowserService(
                 )
             }
 
-        handle.connection.use { connection ->
-            val metadata = connection.metaData
-            val catalog = connection.catalog
-            val schemaNames = mutableListOf<String>()
+        return try {
+            handle.connection.use { connection ->
+                val metadata = connection.metaData
+                val catalog = connection.catalog
+                val schemaNames = mutableListOf<String>()
 
-            metadata.schemas.use { schemas ->
-                while (schemas.next() && schemaNames.size < maxSchemas) {
-                    val schemaName =
-                        schemas.getString("TABLE_SCHEM")
-                            ?: schemas.getString(1)
-                            ?: continue
-                    if (schemaName.isNotBlank()) {
-                        schemaNames.add(schemaName)
+                metadata.schemas.use { schemas ->
+                    while (schemas.next() && schemaNames.size < maxSchemas) {
+                        val schemaName =
+                            schemas.getString("TABLE_SCHEM")
+                                ?: schemas.getString(1)
+                                ?: continue
+                        if (schemaName.isNotBlank()) {
+                            schemaNames.add(schemaName)
+                        }
                     }
                 }
-            }
 
-            if (schemaNames.isEmpty()) {
-                schemaNames.add("default")
-            }
+                if (schemaNames.isEmpty()) {
+                    schemaNames.add("default")
+                }
 
-            val schemaResponses =
-                schemaNames
-                    .distinctBy { schema -> schema.lowercase(Locale.getDefault()) }
-                    .sortedBy { schema -> schema.lowercase(Locale.getDefault()) }
-                    .map { schemaName ->
-                        val tables = mutableListOf<DatasourceTableEntryResponse>()
-                        metadata.getTables(catalog, schemaName, "%", arrayOf("TABLE", "VIEW")).use { tableRs ->
-                            while (tableRs.next() && tables.size < maxTablesPerSchema) {
-                                val tableName =
-                                    tableRs.getString("TABLE_NAME")
-                                        ?: tableRs.getString(3)
-                                        ?: continue
-                                val tableType = tableRs.getString("TABLE_TYPE") ?: "TABLE"
+                val schemaResponses =
+                    schemaNames
+                        .distinctBy { schema -> schema.lowercase(Locale.getDefault()) }
+                        .sortedBy { schema -> schema.lowercase(Locale.getDefault()) }
+                        .map { schemaName ->
+                            val tables = mutableListOf<DatasourceTableEntryResponse>()
+                            metadata.getTables(catalog, schemaName, "%", arrayOf("TABLE", "VIEW")).use { tableRs ->
+                                while (tableRs.next() && tables.size < maxTablesPerSchema) {
+                                    val tableName =
+                                        tableRs.getString("TABLE_NAME")
+                                            ?: tableRs.getString(3)
+                                            ?: continue
+                                    val tableType = tableRs.getString("TABLE_TYPE") ?: "TABLE"
 
-                                val columns = mutableListOf<DatasourceColumnEntryResponse>()
-                                metadata.getColumns(catalog, schemaName, tableName, "%").use { columnRs ->
-                                    while (columnRs.next() && columns.size < maxColumnsPerTable) {
-                                        val columnName =
-                                            columnRs.getString("COLUMN_NAME")
-                                                ?: columnRs.getString(4)
-                                                ?: continue
-                                        val jdbcType = columnRs.getString("TYPE_NAME") ?: "UNKNOWN"
-                                        val nullableCode =
-                                            columnRs.getInt("NULLABLE")
-                                        columns.add(
-                                            DatasourceColumnEntryResponse(
-                                                name = columnName,
-                                                jdbcType = jdbcType,
-                                                nullable = nullableCode != 0,
-                                            ),
-                                        )
+                                    val columns = mutableListOf<DatasourceColumnEntryResponse>()
+                                    metadata.getColumns(catalog, schemaName, tableName, "%").use { columnRs ->
+                                        while (columnRs.next() && columns.size < maxColumnsPerTable) {
+                                            val columnName =
+                                                columnRs.getString("COLUMN_NAME")
+                                                    ?: columnRs.getString(4)
+                                                    ?: continue
+                                            val jdbcType = columnRs.getString("TYPE_NAME") ?: "UNKNOWN"
+                                            val nullableCode =
+                                                columnRs.getInt("NULLABLE")
+                                            columns.add(
+                                                DatasourceColumnEntryResponse(
+                                                    name = columnName,
+                                                    jdbcType = jdbcType,
+                                                    nullable = nullableCode != 0,
+                                                ),
+                                            )
+                                        }
                                     }
-                                }
 
-                                tables.add(
-                                    DatasourceTableEntryResponse(
-                                        table = tableName,
-                                        type = tableType,
-                                        columns = columns,
-                                    ),
-                                )
+                                    tables.add(
+                                        DatasourceTableEntryResponse(
+                                            table = tableName,
+                                            type = tableType,
+                                            columns = columns,
+                                        ),
+                                    )
+                                }
                             }
+
+                            DatasourceSchemaEntryResponse(
+                                schema = schemaName,
+                                tables = tables.sortedBy { table -> table.table.lowercase(Locale.getDefault()) },
+                            )
                         }
 
-                        DatasourceSchemaEntryResponse(
-                            schema = schemaName,
-                            tables = tables.sortedBy { table -> table.table.lowercase(Locale.getDefault()) },
-                        )
-                    }
-
-            return DatasourceSchemaBrowserResponse(
-                datasourceId = datasourceId,
-                cached = false,
-                fetchedAt = fetchedAt.toString(),
-                schemas = schemaResponses,
+                DatasourceSchemaBrowserResponse(
+                    datasourceId = datasourceId,
+                    cached = false,
+                    fetchedAt = fetchedAt.toString(),
+                    schemas = schemaResponses,
+                )
+            }
+        } catch (exception: RuntimeException) {
+            throw SchemaBrowserUnavailableException(
+                message = "Unable to load schema metadata from datasource.",
+                cause = exception,
             )
         }
     }

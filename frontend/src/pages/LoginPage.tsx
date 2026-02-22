@@ -182,8 +182,18 @@ export default function LoginPage() {
     };
 
     return (
-        <AppShell title="dwarvenpick" showTitle={false}>
+        <AppShell title="dwarvenpick" showTitle={false} topNav={false}>
             <section className="panel login-card">
+                <div className="login-brand">
+                    <img
+                        src="/dwarvenpick-mark.svg"
+                        alt=""
+                        width={54}
+                        height={54}
+                        className="login-brand-mark"
+                    />
+                    <strong>dwarvenpick</strong>
+                </div>
                 <form className="login-form" onSubmit={handleSubmit}>
                     <label htmlFor="username">Username</label>
                     <input

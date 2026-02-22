@@ -38,6 +38,7 @@ type DriverDescriptorResponse = {
     available: boolean;
     description: string;
     message: string;
+    version?: string;
 };
 
 type PoolSettings = {
@@ -251,7 +252,9 @@ type ReencryptCredentialsResponse = {
 
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin' | 'connections';
-type IconGlyph = 'new' | 'rename' | 'close' | 'refresh';
+type IconGlyph = 'new' | 'rename' | 'duplicate' | 'close' | 'refresh' | 'copy';
+type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
+type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
 type RailGlyph =
     | 'workbench'
     | 'history'
@@ -274,9 +277,17 @@ type IconButtonProps = {
 type ManagedDatasourceFormState = {
     name: string;
     engine: DatasourceEngine;
+    connectionType: ConnectionType;
     host: string;
     port: string;
     database: string;
+    jdbcUrl: string;
+    optionsInput: string;
+    authentication: ConnectionAuthentication;
+    credentialProfileId: string;
+    credentialUsername: string;
+    credentialPassword: string;
+    credentialDescription: string;
     driverId: string;
     maximumPoolSize: string;
     minimumIdle: string;
@@ -311,7 +322,7 @@ const defaultTlsSettings: TlsSettings = {
 
 const workspaceTabsStorageKey = 'dwarvenpick.workspace.tabs.v1';
 const queryStatusPollingIntervalMs = 500;
-const queryStatusPollingMaxAttempts = 120;
+const queryStatusPollingMaxAttempts = 600;
 const firstPageToken = '';
 const resultRowHeightPx = 34;
 const resultViewportHeightPx = 320;
@@ -345,14 +356,128 @@ const defaultPortByEngine: Record<DatasourceEngine, number> = {
     VERTICA: 5433
 };
 
+const optionsToInput = (options: Record<string, string>): string =>
+    Object.entries(options)
+        .filter(([key]) => key !== 'jdbcUrl')
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+
+const parseOptionsInput = (value: string): Record<string, string> => {
+    const options: Record<string, string> = {};
+    value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .forEach((line) => {
+            const separatorIndex = line.indexOf('=');
+            if (separatorIndex <= 0) {
+                return;
+            }
+
+            const key = line.slice(0, separatorIndex).trim();
+            const optionValue = line.slice(separatorIndex + 1).trim();
+            if (!key) {
+                return;
+            }
+
+            options[key] = optionValue;
+        });
+    return options;
+};
+
+const formatQueryParams = (options: Record<string, string>): string => {
+    const entries = Object.entries(options).filter(([key]) => key !== 'jdbcUrl');
+    if (entries.length === 0) {
+        return '';
+    }
+
+    return (
+        '?' +
+        entries
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('&')
+    );
+};
+
+const buildJdbcUrlPreview = (
+    engine: DatasourceEngine,
+    host: string,
+    port: string,
+    database: string,
+    tlsMode: TlsMode,
+    verifyServerCertificate: boolean,
+    options: Record<string, string>
+): string => {
+    const jdbcUrlOverride = options.jdbcUrl?.trim();
+    if (jdbcUrlOverride) {
+        return jdbcUrlOverride;
+    }
+
+    const normalizedHost = host.trim() || 'localhost';
+    const resolvedPort = Number(port) || defaultPortByEngine[engine];
+    const databaseSegment = database.trim() ? `/${database.trim()}` : '';
+    const mergedOptions: Record<string, string> = { ...options };
+
+    if (engine === 'POSTGRESQL') {
+        mergedOptions.sslmode = tlsMode === 'REQUIRE' ? 'require' : 'disable';
+        if (tlsMode === 'REQUIRE' && !verifyServerCertificate) {
+            mergedOptions.ssfactory = 'org.postgresql.ssl.NonValidatingFactory';
+        } else {
+            delete mergedOptions.ssfactory;
+        }
+        return `jdbc:postgresql://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
+    }
+
+    if (engine === 'MYSQL' || engine === 'STARROCKS') {
+        mergedOptions.useSSL = String(tlsMode === 'REQUIRE');
+        mergedOptions.requireSSL = String(tlsMode === 'REQUIRE');
+        mergedOptions.verifyServerCertificate = String(verifyServerCertificate);
+        return `jdbc:mysql://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
+    }
+
+    if (engine === 'MARIADB') {
+        mergedOptions.useSsl = String(tlsMode === 'REQUIRE');
+        mergedOptions.trustServerCertificate = String(!verifyServerCertificate);
+        return `jdbc:mariadb://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
+    }
+
+    if (engine === 'TRINO') {
+        mergedOptions.SSL = String(tlsMode === 'REQUIRE');
+        if (tlsMode === 'REQUIRE' && !verifyServerCertificate) {
+            mergedOptions.SSLVerification = 'NONE';
+        } else {
+            delete mergedOptions.SSLVerification;
+        }
+        return `jdbc:trino://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
+    }
+
+    mergedOptions.TLSmode = tlsMode === 'REQUIRE' ? 'require' : 'disable';
+    if (tlsMode === 'REQUIRE') {
+        mergedOptions.tls_verify_host = String(verifyServerCertificate);
+    } else {
+        delete mergedOptions.tls_verify_host;
+    }
+    return `jdbc:vertica://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
+};
+
 const buildBlankDatasourceForm = (
     engine: DatasourceEngine = 'POSTGRESQL'
 ): ManagedDatasourceFormState => ({
     name: '',
     engine,
+    connectionType: 'HOST_PORT',
     host: 'localhost',
     port: defaultPortByEngine[engine].toString(),
     database: '',
+    jdbcUrl: '',
+    optionsInput: '',
+    authentication: 'USER_PASSWORD',
+    credentialProfileId: 'admin-ro',
+    credentialUsername: '',
+    credentialPassword: '',
+    credentialDescription: '',
     driverId: '',
     maximumPoolSize: defaultPoolSettings.maximumPoolSize.toString(),
     minimumIdle: defaultPoolSettings.minimumIdle.toString(),
@@ -368,9 +493,17 @@ const buildDatasourceFormFromManaged = (
 ): ManagedDatasourceFormState => ({
     name: datasource.name,
     engine: datasource.engine,
+    connectionType: datasource.options.jdbcUrl ? 'JDBC_URL' : 'HOST_PORT',
     host: datasource.host,
     port: datasource.port.toString(),
     database: datasource.database ?? '',
+    jdbcUrl: datasource.options.jdbcUrl ?? '',
+    optionsInput: optionsToInput(datasource.options),
+    authentication: datasource.credentialProfiles[0]?.username ? 'USER_PASSWORD' : 'NO_AUTH',
+    credentialProfileId: datasource.credentialProfiles[0]?.profileId ?? 'admin-ro',
+    credentialUsername: datasource.credentialProfiles[0]?.username ?? '',
+    credentialPassword: '',
+    credentialDescription: datasource.credentialProfiles[0]?.description ?? '',
     driverId: datasource.driverId,
     maximumPoolSize: datasource.pool.maximumPoolSize.toString(),
     minimumIdle: datasource.pool.minimumIdle.toString(),
@@ -441,11 +574,29 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
         );
     }
 
+    if (icon === 'duplicate') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <rect x="6.2" y="6.2" width="9.8" height="9.8" rx="1.4" />
+                <path d="M4 12.8V4.9A1.1 1.1 0 0 1 5.1 3.8H13" />
+            </svg>
+        );
+    }
+
     if (icon === 'refresh') {
         return (
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M16 10a6 6 0 1 1-2.1-4.6" />
                 <path d="M16 4.5v3.8h-3.8" />
+            </svg>
+        );
+    }
+
+    if (icon === 'copy') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <rect x="6.1" y="5.8" width="9.4" height="10.2" rx="1.4" />
+                <path d="M4.2 12.2V4.6A1.2 1.2 0 0 1 5.4 3.4h7.5" />
             </svg>
         );
     }
@@ -636,6 +787,11 @@ export default function WorkspacePage() {
     const [adminDrivers, setAdminDrivers] = useState<DriverDescriptorResponse[]>([]);
     const [adminError, setAdminError] = useState('');
     const [adminSuccess, setAdminSuccess] = useState('');
+    const [uploadDriverIdInput, setUploadDriverIdInput] = useState('');
+    const [uploadDriverClassInput, setUploadDriverClassInput] = useState('');
+    const [uploadDriverDescriptionInput, setUploadDriverDescriptionInput] = useState('');
+    const [uploadDriverJarFile, setUploadDriverJarFile] = useState<File | null>(null);
+    const [uploadingDriver, setUploadingDriver] = useState(false);
 
     const [groupNameInput, setGroupNameInput] = useState('');
     const [groupDescriptionInput, setGroupDescriptionInput] = useState('');
@@ -660,7 +816,7 @@ export default function WorkspacePage() {
     );
     const [savingDatasource, setSavingDatasource] = useState(false);
     const [deletingDatasource, setDeletingDatasource] = useState(false);
-    const [credentialProfileIdInput, setCredentialProfileIdInput] = useState('');
+    const [credentialProfileIdInput, setCredentialProfileIdInput] = useState('admin-ro');
     const [credentialUsernameInput, setCredentialUsernameInput] = useState('');
     const [credentialPasswordInput, setCredentialPasswordInput] = useState('');
     const [credentialDescriptionInput, setCredentialDescriptionInput] = useState('');
@@ -952,6 +1108,39 @@ export default function WorkspacePage() {
             ) ?? null,
         [driversForFormEngine, managedDatasourceForm.driverId]
     );
+
+    const managedFormOptions = useMemo(
+        () => parseOptionsInput(managedDatasourceForm.optionsInput),
+        [managedDatasourceForm.optionsInput]
+    );
+
+    const managedFormJdbcPreview = useMemo(() => {
+        const options =
+            managedDatasourceForm.connectionType === 'JDBC_URL' &&
+            managedDatasourceForm.jdbcUrl.trim()
+                ? { ...managedFormOptions, jdbcUrl: managedDatasourceForm.jdbcUrl.trim() }
+                : managedFormOptions;
+
+        return buildJdbcUrlPreview(
+            managedDatasourceForm.engine,
+            managedDatasourceForm.host,
+            managedDatasourceForm.port,
+            managedDatasourceForm.database,
+            managedDatasourceForm.tlsMode,
+            managedDatasourceForm.verifyServerCertificate,
+            options
+        );
+    }, [
+        managedDatasourceForm.connectionType,
+        managedDatasourceForm.database,
+        managedDatasourceForm.engine,
+        managedDatasourceForm.host,
+        managedDatasourceForm.jdbcUrl,
+        managedDatasourceForm.port,
+        managedDatasourceForm.tlsMode,
+        managedDatasourceForm.verifyServerCertificate,
+        managedFormOptions
+    ]);
 
     const hydrateWorkspaceTabs = useCallback(
         (datasources: CatalogDatasourceResponse[]) => {
@@ -1274,7 +1463,7 @@ export default function WorkspacePage() {
                 };
             });
             setSelectedCredentialProfileForTest('');
-            setCredentialProfileIdInput('');
+            setCredentialProfileIdInput('admin-ro');
             setCredentialUsernameInput('');
             setCredentialPasswordInput('');
             setCredentialDescriptionInput('');
@@ -1325,6 +1514,16 @@ export default function WorkspacePage() {
             };
         });
     }, [driversForFormEngine]);
+
+    useEffect(() => {
+        if (!selectedDriverForForm) {
+            return;
+        }
+
+        setUploadDriverClassInput((current) =>
+            current.trim() ? current : selectedDriverForForm.driverClass
+        );
+    }, [selectedDriverForForm]);
 
     useEffect(() => {
         if (!selectedManagedDatasource || !credentialProfileIdInput.trim()) {
@@ -1915,6 +2114,7 @@ export default function WorkspacePage() {
         (tabId: string, executionId: string) => {
             clearQueryStatusPolling(tabId);
             let attempts = 0;
+            let consecutiveFailures = 0;
 
             const poll = async () => {
                 const trackedTab = workspaceTabsRef.current.find((tab) => tab.id === tabId);
@@ -1925,17 +2125,55 @@ export default function WorkspacePage() {
 
                 try {
                     const status = await fetchExecutionStatus(tabId, executionId, true);
+                    consecutiveFailures = 0;
                     if (isTerminalExecutionStatus(status.status)) {
                         clearQueryStatusPolling(tabId);
                         return;
                     }
-                } catch {
-                    // Continue polling up to the max attempt count.
+                } catch (error) {
+                    consecutiveFailures += 1;
+                    if (consecutiveFailures >= 3) {
+                        const message =
+                            error instanceof Error
+                                ? error.message
+                                : 'Execution status polling failed.';
+                        updateWorkspaceTab(tabId, (currentTab) => {
+                            if (currentTab.executionId !== executionId) {
+                                return currentTab;
+                            }
+
+                            return {
+                                ...currentTab,
+                                isExecuting: false,
+                                executionStatus: 'FAILED',
+                                statusMessage: 'Execution status unavailable.',
+                                errorMessage: message
+                            };
+                        });
+                        clearQueryStatusPolling(tabId);
+                        void loadQueryHistory();
+                        return;
+                    }
                 }
 
                 attempts += 1;
                 if (attempts >= queryStatusPollingMaxAttempts) {
+                    updateWorkspaceTab(tabId, (currentTab) => {
+                        if (currentTab.executionId !== executionId) {
+                            return currentTab;
+                        }
+
+                        return {
+                            ...currentTab,
+                            isExecuting: false,
+                            executionStatus: 'FAILED',
+                            statusMessage: 'Execution polling timed out.',
+                            errorMessage:
+                                'Status polling timed out before the server returned a terminal state.'
+                        };
+                    });
                     clearQueryStatusPolling(tabId);
+                    void loadQueryHistory();
                     return;
                 }
 
@@ -1946,7 +2184,7 @@ export default function WorkspacePage() {
 
             void poll();
         },
-        [clearQueryStatusPolling, fetchExecutionStatus]
+        [clearQueryStatusPolling, fetchExecutionStatus, loadQueryHistory, updateWorkspaceTab]
     );
 
     const handleCancelRun = useCallback(
@@ -2951,6 +3189,70 @@ export default function WorkspacePage() {
         return parsed;
     };
 
+    const upsertPrimaryCredentialProfile = useCallback(
+        async (
+            datasourceId: string,
+            existingProfiles: ManagedCredentialProfileResponse[],
+            csrfToken: CsrfTokenResponse
+        ): Promise<string> => {
+            const profileId = managedDatasourceForm.credentialProfileId.trim() || 'admin-ro';
+            const noAuth = managedDatasourceForm.authentication === 'NO_AUTH';
+            const username = noAuth ? '' : managedDatasourceForm.credentialUsername.trim();
+            const password = noAuth ? '' : managedDatasourceForm.credentialPassword;
+            const description = managedDatasourceForm.credentialDescription.trim()
+                ? managedDatasourceForm.credentialDescription.trim()
+                : null;
+            const existingProfile = existingProfiles.find(
+                (profile) => profile.profileId === profileId
+            );
+
+            if (!noAuth && !username) {
+                throw new Error('Credential username is required.');
+            }
+
+            if (!noAuth && existingProfile && !password.trim()) {
+                const existingDescription = existingProfile.description ?? '';
+                if (
+                    existingProfile.username !== username ||
+                    existingDescription !== (description ?? '')
+                ) {
+                    throw new Error(
+                        'Enter the credential password to update username or description.'
+                    );
+                }
+                return profileId;
+            }
+
+            if (!noAuth && !existingProfile && !password.trim()) {
+                throw new Error('Credential password is required for a new connection profile.');
+            }
+
+            const response = await fetch(
+                `/api/admin/datasource-management/${datasourceId}/credentials/${profileId}`,
+                {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        description
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            return profileId;
+        },
+        [managedDatasourceForm, readFriendlyError]
+    );
+
     const handlePrepareNewDatasource = () => {
         const defaultEngine = managedDatasourceForm.engine;
         const empty = buildBlankDatasourceForm(defaultEngine);
@@ -2962,13 +3264,17 @@ export default function WorkspacePage() {
             ...empty,
             driverId: preferredDriver?.driverId ?? ''
         });
-        setCredentialProfileIdInput('');
+        setCredentialProfileIdInput('admin-ro');
         setCredentialUsernameInput('');
         setCredentialPasswordInput('');
         setCredentialDescriptionInput('');
         setSelectedCredentialProfileForTest('');
         setTestConnectionMessage('');
         setTestConnectionOutcome('');
+        setUploadDriverIdInput('');
+        setUploadDriverClassInput('');
+        setUploadDriverDescriptionInput('');
+        setUploadDriverJarFile(null);
         setAdminError('');
         setAdminSuccess('');
     };
@@ -2983,7 +3289,10 @@ export default function WorkspacePage() {
             return;
         }
 
-        if (!managedDatasourceForm.host.trim()) {
+        if (
+            managedDatasourceForm.connectionType === 'HOST_PORT' &&
+            !managedDatasourceForm.host.trim()
+        ) {
             setAdminError('Connection host is required.');
             return;
         }
@@ -2995,7 +3304,19 @@ export default function WorkspacePage() {
 
         setSavingDatasource(true);
         try {
-            const port = parsePositiveInteger(managedDatasourceForm.port, 'Port');
+            const parsedOptions = parseOptionsInput(managedDatasourceForm.optionsInput);
+            if (managedDatasourceForm.connectionType === 'JDBC_URL') {
+                if (!managedDatasourceForm.jdbcUrl.trim()) {
+                    throw new Error('JDBC URL is required for URL connection type.');
+                }
+                parsedOptions.jdbcUrl = managedDatasourceForm.jdbcUrl.trim();
+            } else {
+                delete parsedOptions.jdbcUrl;
+            }
+
+            const fallbackPort = defaultPortByEngine[managedDatasourceForm.engine].toString();
+            const portInput = managedDatasourceForm.port.trim() || fallbackPort;
+            const port = parsePositiveInteger(portInput, 'Port');
             if (port > 65_535) {
                 throw new Error('Port must be between 1 and 65535.');
             }
@@ -3019,14 +3340,24 @@ export default function WorkspacePage() {
                 )
             };
 
+            const host =
+                managedDatasourceForm.host.trim() ||
+                (() => {
+                    const hostMatch = managedDatasourceForm.jdbcUrl.match(
+                        /^jdbc:[^:]+:\/\/([^:/?#]+)/
+                    );
+                    return hostMatch?.[1] ?? 'localhost';
+                })();
+
             const commonPayload = {
                 name: managedDatasourceForm.name.trim(),
-                host: managedDatasourceForm.host.trim(),
+                host,
                 port,
                 database: managedDatasourceForm.database.trim()
                     ? managedDatasourceForm.database.trim()
                     : null,
                 driverId: managedDatasourceForm.driverId,
+                options: parsedOptions,
                 pool: poolPayload,
                 tls: {
                     mode: managedDatasourceForm.tlsMode,
@@ -3063,7 +3394,28 @@ export default function WorkspacePage() {
             }
 
             const savedDatasource = (await response.json()) as ManagedDatasourceResponse;
+            const selectedProfile = await upsertPrimaryCredentialProfile(
+                savedDatasource.id,
+                savedDatasource.credentialProfiles,
+                csrfToken
+            );
+
+            setManagedDatasourceForm((current) => ({
+                ...current,
+                credentialPassword: ''
+            }));
+            setCredentialProfileIdInput(
+                managedDatasourceForm.credentialProfileId.trim() || 'admin-ro'
+            );
+            setCredentialUsernameInput(
+                managedDatasourceForm.authentication === 'NO_AUTH'
+                    ? ''
+                    : managedDatasourceForm.credentialUsername
+            );
+            setCredentialDescriptionInput(managedDatasourceForm.credentialDescription);
+            setCredentialPasswordInput('');
             setSelectedManagedDatasourceId(savedDatasource.id);
+            setSelectedCredentialProfileForTest(selectedProfile);
             await loadAdminData();
             setAdminSuccess(
                 selectedManagedDatasource
@@ -3078,6 +3430,68 @@ export default function WorkspacePage() {
             }
         } finally {
             setSavingDatasource(false);
+        }
+    };
+
+    const handleUploadDriver = async () => {
+        if (!uploadDriverJarFile) {
+            setAdminError('Select a driver jar file to upload.');
+            return;
+        }
+
+        if (!uploadDriverClassInput.trim()) {
+            setAdminError('Driver class is required for upload.');
+            return;
+        }
+
+        setAdminError('');
+        setAdminSuccess('');
+        setUploadingDriver(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const formData = new FormData();
+            formData.append('engine', managedDatasourceForm.engine);
+            formData.append('driverClass', uploadDriverClassInput.trim());
+            formData.append('jarFile', uploadDriverJarFile);
+            if (uploadDriverIdInput.trim()) {
+                formData.append('driverId', uploadDriverIdInput.trim());
+            }
+            if (uploadDriverDescriptionInput.trim()) {
+                formData.append('description', uploadDriverDescriptionInput.trim());
+            }
+
+            const response = await fetch('/api/admin/drivers/upload', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    [csrfToken.headerName]: csrfToken.token
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const uploadedDriver = (await response.json()) as DriverDescriptorResponse;
+            await loadAdminData();
+            setManagedDatasourceForm((current) => ({
+                ...current,
+                driverId: uploadedDriver.driverId
+            }));
+            setUploadDriverJarFile(null);
+            setUploadDriverIdInput('');
+            setUploadDriverClassInput('');
+            setUploadDriverDescriptionInput('');
+            setAdminSuccess(`Driver ${uploadedDriver.driverId} uploaded.`);
+        } catch (error) {
+            if (error instanceof Error) {
+                setAdminError(error.message);
+            } else {
+                setAdminError('Failed to upload JDBC driver.');
+            }
+        } finally {
+            setUploadingDriver(false);
         }
     };
 
@@ -3326,28 +3740,7 @@ export default function WorkspacePage() {
                             title="dwarvenpick"
                         >
                             <span className="workspace-logo-icon" aria-hidden>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path
-                                        d="M4 6.8 12 4l8 2.8-8 2.8L4 6.8Z"
-                                        strokeWidth="1.8"
-                                        strokeLinejoin="round"
-                                    />
-                                    <path
-                                        d="m10 9.7-1 5.7m5-5.7 1 5.7"
-                                        strokeWidth="1.7"
-                                        strokeLinecap="round"
-                                    />
-                                    <path
-                                        d="M11.4 9.8v8.3l.6 1.8.6-1.8V9.8"
-                                        strokeWidth="1.8"
-                                        strokeLinejoin="round"
-                                    />
-                                    <path
-                                        d="M8.2 20.4c.6-.9 2-.9 3.8-.9s3.2 0 3.8.9"
-                                        strokeWidth="1.6"
-                                        strokeLinecap="round"
-                                    />
-                                </svg>
+                                <img src="/dwarvenpick-mark.svg" alt="" width={24} height={24} />
                             </span>
                             {!leftRailCollapsed ? (
                                 <span className="workspace-logo-label">dwarvenpick</span>
@@ -3689,13 +4082,24 @@ export default function WorkspacePage() {
                                                                         {activeDatasource?.name ??
                                                                             schemaBrowser.datasourceId}
                                                                     </span>
-                                                                    {activeDatasource ? (
-                                                                        <span className="explorer-item-meta">
+                                                                    <span className="explorer-item-tail">
+                                                                        {activeDatasource ? (
+                                                                            <span className="explorer-item-meta">
+                                                                                {
+                                                                                    activeDatasource.engine
+                                                                                }
+                                                                            </span>
+                                                                        ) : null}
+                                                                        <span
+                                                                            className="explorer-item-count"
+                                                                            title="Schema count"
+                                                                        >
                                                                             {
-                                                                                activeDatasource.engine
+                                                                                schemaBrowser
+                                                                                    .schemas.length
                                                                             }
                                                                         </span>
-                                                                    ) : null}
+                                                                    </span>
                                                                 </button>
                                                             </div>
                                                             {datasourceExpanded ? (
@@ -3773,6 +4177,18 @@ export default function WorkspacePage() {
                                                                                                     {
                                                                                                         schemaEntry.schema
                                                                                                     }
+                                                                                                </span>
+                                                                                                <span className="explorer-item-tail">
+                                                                                                    <span
+                                                                                                        className="explorer-item-count"
+                                                                                                        title="Table count"
+                                                                                                    >
+                                                                                                        {
+                                                                                                            schemaEntry
+                                                                                                                .tables
+                                                                                                                .length
+                                                                                                        }
+                                                                                                    </span>
                                                                                                 </span>
                                                                                             </button>
                                                                                         </div>
@@ -3855,6 +4271,18 @@ export default function WorkspacePage() {
                                                                                                                             {
                                                                                                                                 tableEntry.table
                                                                                                                             }
+                                                                                                                        </span>
+                                                                                                                        <span className="explorer-item-tail">
+                                                                                                                            <span
+                                                                                                                                className="explorer-item-count"
+                                                                                                                                title="Column count"
+                                                                                                                            >
+                                                                                                                                {
+                                                                                                                                    tableEntry
+                                                                                                                                        .columns
+                                                                                                                                        .length
+                                                                                                                                }
+                                                                                                                            </span>
                                                                                                                         </span>
                                                                                                                     </button>
                                                                                                                 </div>
@@ -4014,9 +4442,11 @@ export default function WorkspacePage() {
                                                                             top:
                                                                                 triggerRect.bottom +
                                                                                 6,
-                                                                            left:
+                                                                            left: Math.max(
+                                                                                12,
                                                                                 triggerRect.right -
-                                                                                152
+                                                                                    188
+                                                                            )
                                                                         });
                                                                     } else {
                                                                         setActiveTabMenuPosition(
@@ -4042,25 +4472,24 @@ export default function WorkspacePage() {
                                                 ) : null}
                                             </div>
                                         ))}
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        className="editor-tab-add"
-                                        onClick={handleOpenNewTab}
-                                        title="New tab"
-                                        aria-label="New tab"
-                                    >
-                                        <svg
-                                            viewBox="0 0 20 20"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="1.8"
+                                        <button
+                                            type="button"
+                                            className="editor-tab-add"
+                                            onClick={handleOpenNewTab}
+                                            title="New tab"
+                                            aria-label="New tab"
                                         >
-                                            <path d="M10 4v12" />
-                                            <path d="M4 10h12" />
-                                        </svg>
-                                    </button>
+                                            <svg
+                                                viewBox="0 0 20 20"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.8"
+                                            >
+                                                <path d="M10 4v12" />
+                                                <path d="M4 10h12" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                                 {activeTabMenuOpen && activeTab && activeTabMenuPosition ? (
                                     <div
@@ -4082,7 +4511,10 @@ export default function WorkspacePage() {
                                                 handleRenameTab(activeTab.id);
                                             }}
                                         >
-                                            Rename
+                                            <span className="editor-tab-menu-item-icon" aria-hidden>
+                                                <IconGlyph icon="rename" />
+                                            </span>
+                                            <span>Rename</span>
                                         </button>
                                         <button
                                             type="button"
@@ -4094,7 +4526,10 @@ export default function WorkspacePage() {
                                                 handleDuplicateTab(activeTab.id);
                                             }}
                                         >
-                                            Duplicate
+                                            <span className="editor-tab-menu-item-icon" aria-hidden>
+                                                <IconGlyph icon="duplicate" />
+                                            </span>
+                                            <span>Duplicate</span>
                                         </button>
                                     </div>
                                 ) : null}
@@ -4175,7 +4610,7 @@ export default function WorkspacePage() {
                                 ) : (
                                     <Editor
                                         key={`monaco-${editorRenderKey}`}
-                                        height="360px"
+                                        height="100%"
                                         language="sql"
                                         beforeMount={handleEditorWillMount}
                                         theme="dwarvenpick-sql"
@@ -4351,8 +4786,8 @@ export default function WorkspacePage() {
                                         <table className="result-table">
                                             <thead>
                                                 <tr>
-                                                    <th>Row</th>
-                                                    <th>Actions</th>
+                                                    <th className="result-meta-heading">Row</th>
+                                                    <th className="result-meta-heading">Actions</th>
                                                     {activeTab.resultColumns.map((column) => (
                                                         <th
                                                             key={`${column.name}-${column.jdbcType}`}
@@ -4383,11 +4818,13 @@ export default function WorkspacePage() {
                                                             visibleResultRows.start + relativeIndex;
                                                         return (
                                                             <tr key={`row-${absoluteIndex}`}>
-                                                                <td>{absoluteIndex + 1}</td>
+                                                                <td className="result-row-index">
+                                                                    {absoluteIndex + 1}
+                                                                </td>
                                                                 <td className="result-cell-actions">
                                                                     <button
                                                                         type="button"
-                                                                        className="chip"
+                                                                        className="chip copy-row-button"
                                                                         onClick={() =>
                                                                             void handleCopyRow(row)
                                                                         }
@@ -4405,14 +4842,16 @@ export default function WorkspacePage() {
                                                                             </span>
                                                                             <button
                                                                                 type="button"
-                                                                                className="chip"
+                                                                                className="result-copy-icon"
                                                                                 onClick={() =>
                                                                                     void handleCopyCell(
                                                                                         value
                                                                                     )
                                                                                 }
+                                                                                title="Copy cell value"
+                                                                                aria-label="Copy cell value"
                                                                             >
-                                                                                Copy
+                                                                                <IconGlyph icon="copy" />
                                                                             </button>
                                                                         </div>
                                                                     </td>
@@ -5314,29 +5753,57 @@ export default function WorkspacePage() {
                                                 />
 
                                                 <label htmlFor="managed-engine">Engine</label>
-                                                <select
-                                                    id="managed-engine"
-                                                    value={managedDatasourceForm.engine}
-                                                    disabled={Boolean(selectedManagedDatasource)}
-                                                    onChange={(event) => {
-                                                        const nextEngine = event.target
-                                                            .value as DatasourceEngine;
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            engine: nextEngine,
-                                                            port: defaultPortByEngine[
-                                                                nextEngine
-                                                            ].toString()
-                                                        }));
-                                                    }}
-                                                >
-                                                    <option value="POSTGRESQL">PostgreSQL</option>
-                                                    <option value="MYSQL">MySQL</option>
-                                                    <option value="MARIADB">MariaDB</option>
-                                                    <option value="TRINO">Trino</option>
-                                                    <option value="STARROCKS">StarRocks</option>
-                                                    <option value="VERTICA">Vertica</option>
-                                                </select>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="managed-engine"
+                                                        value={managedDatasourceForm.engine}
+                                                        disabled={Boolean(
+                                                            selectedManagedDatasource
+                                                        )}
+                                                        onChange={(event) => {
+                                                            const nextEngine = event.target
+                                                                .value as DatasourceEngine;
+                                                            setManagedDatasourceForm((current) => ({
+                                                                ...current,
+                                                                engine: nextEngine,
+                                                                port: defaultPortByEngine[
+                                                                    nextEngine
+                                                                ].toString()
+                                                            }));
+                                                        }}
+                                                    >
+                                                        <option value="POSTGRESQL">
+                                                            PostgreSQL
+                                                        </option>
+                                                        <option value="MYSQL">MySQL</option>
+                                                        <option value="MARIADB">MariaDB</option>
+                                                        <option value="TRINO">Trino</option>
+                                                        <option value="STARROCKS">StarRocks</option>
+                                                        <option value="VERTICA">Vertica</option>
+                                                    </select>
+                                                </div>
+
+                                                <label htmlFor="managed-connection-type">
+                                                    Connection Type
+                                                </label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="managed-connection-type"
+                                                        value={managedDatasourceForm.connectionType}
+                                                        onChange={(event) =>
+                                                            setManagedDatasourceForm((current) => ({
+                                                                ...current,
+                                                                connectionType: event.target
+                                                                    .value as ConnectionType
+                                                            }))
+                                                        }
+                                                    >
+                                                        <option value="HOST_PORT">
+                                                            Default (Host + Port)
+                                                        </option>
+                                                        <option value="JDBC_URL">JDBC URL</option>
+                                                    </select>
+                                                </div>
 
                                                 <label htmlFor="managed-host">Host</label>
                                                 <input
@@ -5348,7 +5815,11 @@ export default function WorkspacePage() {
                                                             host: event.target.value
                                                         }))
                                                     }
-                                                    required
+                                                    required={
+                                                        managedDatasourceForm.connectionType ===
+                                                        'HOST_PORT'
+                                                    }
+                                                    placeholder="localhost"
                                                 />
 
                                                 <label htmlFor="managed-port">Port</label>
@@ -5382,30 +5853,160 @@ export default function WorkspacePage() {
                                                     placeholder="schema or database"
                                                 />
 
-                                                <label htmlFor="managed-driver">Driver</label>
-                                                <select
-                                                    id="managed-driver"
-                                                    value={managedDatasourceForm.driverId}
+                                                {managedDatasourceForm.connectionType ===
+                                                'JDBC_URL' ? (
+                                                    <>
+                                                        <label htmlFor="managed-jdbc-url">
+                                                            JDBC URL
+                                                        </label>
+                                                        <input
+                                                            id="managed-jdbc-url"
+                                                            value={managedDatasourceForm.jdbcUrl}
+                                                            onChange={(event) =>
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        jdbcUrl: event.target.value
+                                                                    })
+                                                                )
+                                                            }
+                                                            placeholder={`jdbc:${managedDatasourceForm.engine.toLowerCase()}://host:port/database`}
+                                                            required
+                                                        />
+                                                    </>
+                                                ) : null}
+
+                                                <label htmlFor="managed-authentication">
+                                                    Authentication
+                                                </label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="managed-authentication"
+                                                        value={managedDatasourceForm.authentication}
+                                                        onChange={(event) =>
+                                                            setManagedDatasourceForm((current) => ({
+                                                                ...current,
+                                                                authentication: event.target
+                                                                    .value as ConnectionAuthentication
+                                                            }))
+                                                        }
+                                                    >
+                                                        <option value="USER_PASSWORD">
+                                                            User &amp; Password
+                                                        </option>
+                                                        <option value="NO_AUTH">No Auth</option>
+                                                    </select>
+                                                </div>
+
+                                                <label htmlFor="managed-profile-id">
+                                                    Credential Profile
+                                                </label>
+                                                <input
+                                                    id="managed-profile-id"
+                                                    value={
+                                                        managedDatasourceForm.credentialProfileId
+                                                    }
                                                     onChange={(event) =>
                                                         setManagedDatasourceForm((current) => ({
                                                             ...current,
-                                                            driverId: event.target.value
+                                                            credentialProfileId: event.target.value
                                                         }))
                                                     }
-                                                >
-                                                    <option value="">Select driver</option>
-                                                    {driversForFormEngine.map((driver) => (
-                                                        <option
-                                                            key={driver.driverId}
-                                                            value={driver.driverId}
-                                                        >
-                                                            {driver.driverId} ({driver.source}){' '}
-                                                            {driver.available
-                                                                ? ''
-                                                                : '[unavailable]'}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                    placeholder="admin-ro"
+                                                    required
+                                                />
+
+                                                <label htmlFor="managed-credential-username">
+                                                    User
+                                                </label>
+                                                <input
+                                                    id="managed-credential-username"
+                                                    value={managedDatasourceForm.credentialUsername}
+                                                    onChange={(event) =>
+                                                        setManagedDatasourceForm((current) => ({
+                                                            ...current,
+                                                            credentialUsername: event.target.value
+                                                        }))
+                                                    }
+                                                    required={
+                                                        managedDatasourceForm.authentication ===
+                                                        'USER_PASSWORD'
+                                                    }
+                                                />
+
+                                                <label htmlFor="managed-credential-password">
+                                                    Password
+                                                </label>
+                                                <input
+                                                    id="managed-credential-password"
+                                                    type="password"
+                                                    value={managedDatasourceForm.credentialPassword}
+                                                    onChange={(event) =>
+                                                        setManagedDatasourceForm((current) => ({
+                                                            ...current,
+                                                            credentialPassword: event.target.value
+                                                        }))
+                                                    }
+                                                    placeholder={
+                                                        selectedManagedDatasource
+                                                            ? 'Leave blank to keep existing password'
+                                                            : ''
+                                                    }
+                                                    required={
+                                                        !selectedManagedDatasource &&
+                                                        managedDatasourceForm.authentication ===
+                                                            'USER_PASSWORD'
+                                                    }
+                                                />
+
+                                                <label htmlFor="managed-credential-description">
+                                                    Credential Description (optional)
+                                                </label>
+                                                <input
+                                                    id="managed-credential-description"
+                                                    value={
+                                                        managedDatasourceForm.credentialDescription
+                                                    }
+                                                    onChange={(event) =>
+                                                        setManagedDatasourceForm((current) => ({
+                                                            ...current,
+                                                            credentialDescription:
+                                                                event.target.value
+                                                        }))
+                                                    }
+                                                    placeholder="Readonly profile for analysts"
+                                                />
+
+                                                <label htmlFor="managed-driver">Driver</label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="managed-driver"
+                                                        value={managedDatasourceForm.driverId}
+                                                        onChange={(event) =>
+                                                            setManagedDatasourceForm((current) => ({
+                                                                ...current,
+                                                                driverId: event.target.value
+                                                            }))
+                                                        }
+                                                    >
+                                                        <option value="">Select driver</option>
+                                                        {driversForFormEngine.map((driver) => (
+                                                            <option
+                                                                key={driver.driverId}
+                                                                value={driver.driverId}
+                                                            >
+                                                                {driver.driverId}
+                                                                {driver.version
+                                                                    ? ` v${driver.version}`
+                                                                    : ''}{' '}
+                                                                ({driver.source})
+                                                                {driver.available
+                                                                    ? ''
+                                                                    : ' [unavailable]'}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                                 {selectedDriverForForm ? (
                                                     <p
                                                         className={
@@ -5415,9 +6016,109 @@ export default function WorkspacePage() {
                                                         }
                                                     >
                                                         {selectedDriverForForm.description}.{' '}
+                                                        {selectedDriverForForm.version
+                                                            ? `Version ${selectedDriverForForm.version}. `
+                                                            : ''}
                                                         {selectedDriverForForm.message}
                                                     </p>
                                                 ) : null}
+
+                                                <div className="driver-upload">
+                                                    <h4>Upload Driver</h4>
+                                                    <p className="muted-id">
+                                                        Upload a JDBC driver jar when built-in
+                                                        versions are unavailable.
+                                                    </p>
+                                                    <label htmlFor="upload-driver-id">
+                                                        Driver ID (optional)
+                                                    </label>
+                                                    <input
+                                                        id="upload-driver-id"
+                                                        value={uploadDriverIdInput}
+                                                        onChange={(event) =>
+                                                            setUploadDriverIdInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="mysql-custom-9"
+                                                    />
+                                                    <label htmlFor="upload-driver-class">
+                                                        Driver Class
+                                                    </label>
+                                                    <input
+                                                        id="upload-driver-class"
+                                                        value={uploadDriverClassInput}
+                                                        onChange={(event) =>
+                                                            setUploadDriverClassInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="com.mysql.cj.jdbc.Driver"
+                                                    />
+                                                    <label htmlFor="upload-driver-description">
+                                                        Description (optional)
+                                                    </label>
+                                                    <input
+                                                        id="upload-driver-description"
+                                                        value={uploadDriverDescriptionInput}
+                                                        onChange={(event) =>
+                                                            setUploadDriverDescriptionInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="MySQL 9 Connector/J"
+                                                    />
+                                                    <label htmlFor="upload-driver-jar">
+                                                        Driver Jar
+                                                    </label>
+                                                    <input
+                                                        id="upload-driver-jar"
+                                                        type="file"
+                                                        accept=".jar,application/java-archive"
+                                                        onChange={(event) =>
+                                                            setUploadDriverJarFile(
+                                                                event.target.files?.[0] ?? null
+                                                            )
+                                                        }
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        onClick={() => void handleUploadDriver()}
+                                                        disabled={uploadingDriver}
+                                                    >
+                                                        {uploadingDriver
+                                                            ? 'Uploading...'
+                                                            : 'Upload Driver Jar'}
+                                                    </button>
+                                                </div>
+
+                                                <label htmlFor="managed-options">
+                                                    JDBC Options (key=value per line)
+                                                </label>
+                                                <textarea
+                                                    id="managed-options"
+                                                    rows={4}
+                                                    value={managedDatasourceForm.optionsInput}
+                                                    onChange={(event) =>
+                                                        setManagedDatasourceForm((current) => ({
+                                                            ...current,
+                                                            optionsInput: event.target.value
+                                                        }))
+                                                    }
+                                                    placeholder={
+                                                        'allowPublicKeyRetrieval=true\\nserverTimezone=UTC'
+                                                    }
+                                                />
+
+                                                <label htmlFor="managed-jdbc-preview">
+                                                    JDBC URL Preview
+                                                </label>
+                                                <input
+                                                    id="managed-jdbc-preview"
+                                                    value={managedFormJdbcPreview}
+                                                    readOnly
+                                                />
 
                                                 <h4>Pool Settings</h4>
                                                 <label htmlFor="managed-pool-max">

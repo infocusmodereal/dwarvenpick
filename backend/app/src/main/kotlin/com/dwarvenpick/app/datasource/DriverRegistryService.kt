@@ -13,9 +13,23 @@ import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Logger
 import kotlin.io.path.exists
-import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
-import kotlin.io.path.listDirectoryEntries
+
+private data class BuiltInDriverSpec(
+    val driverId: String,
+    val engine: DatasourceEngine,
+    val driverClass: String,
+    val description: String,
+    val unavailableMessage: String,
+)
+
+private data class UploadedDriverRegistration(
+    val driverId: String,
+    val engine: DatasourceEngine,
+    val driverClass: String,
+    val description: String,
+    val jarPath: Path,
+)
 
 data class DriverDescriptor(
     val driverId: String,
@@ -25,6 +39,7 @@ data class DriverDescriptor(
     val description: String,
     val available: Boolean,
     val message: String,
+    val version: String?,
 )
 
 class DriverNotAvailableException(
@@ -39,71 +54,62 @@ class DriverRegistryService(
     private val verticaDriverId = "vertica-external"
     private val registeredExternalDrivers = ConcurrentHashMap.newKeySet<String>()
     private val externalDriverClassLoaders = ConcurrentHashMap<String, URLClassLoader>()
+    private val uploadedDrivers = ConcurrentHashMap<String, UploadedDriverRegistration>()
 
-    private val builtInDrivers =
+    private val builtInDriverSpecs =
         listOf(
-            DriverDescriptor(
+            BuiltInDriverSpec(
                 driverId = "postgres-default",
                 engine = DatasourceEngine.POSTGRESQL,
                 driverClass = "org.postgresql.Driver",
-                source = "built-in",
                 description = "PostgreSQL JDBC driver",
-                available = classExistsOnClasspath("org.postgresql.Driver"),
-                message = "PostgreSQL driver availability checked from classpath.",
+                unavailableMessage =
+                    "PostgreSQL driver class is unavailable. Upload a compatible driver jar.",
             ),
-            DriverDescriptor(
+            BuiltInDriverSpec(
                 driverId = "mysql-default",
                 engine = DatasourceEngine.MYSQL,
                 driverClass = "com.mysql.cj.jdbc.Driver",
-                source = "built-in",
                 description = "MySQL Connector/J",
-                available = classExistsOnClasspath("com.mysql.cj.jdbc.Driver"),
-                message = "MySQL driver availability checked from classpath.",
+                unavailableMessage =
+                    "MySQL Connector/J class is unavailable. Upload mysql-connector-j jar.",
             ),
-            DriverDescriptor(
+            BuiltInDriverSpec(
                 driverId = "mariadb-default",
                 engine = DatasourceEngine.MARIADB,
                 driverClass = "org.mariadb.jdbc.Driver",
-                source = "built-in",
                 description = "MariaDB JDBC driver",
-                available = classExistsOnClasspath("org.mariadb.jdbc.Driver"),
-                message = "MariaDB driver availability checked from classpath.",
+                unavailableMessage =
+                    "MariaDB JDBC class is unavailable. Upload mariadb-java-client jar.",
             ),
-            DriverDescriptor(
+            BuiltInDriverSpec(
                 driverId = "trino-default",
                 engine = DatasourceEngine.TRINO,
                 driverClass = "io.trino.jdbc.TrinoDriver",
-                source = "built-in",
                 description = "Trino JDBC driver",
-                available = classExistsOnClasspath("io.trino.jdbc.TrinoDriver"),
-                message = "Trino driver availability checked from classpath.",
+                unavailableMessage =
+                    "Trino JDBC class is unavailable. Upload the trino-jdbc jar.",
             ),
-            DriverDescriptor(
+            BuiltInDriverSpec(
                 driverId = "starrocks-mysql",
                 engine = DatasourceEngine.STARROCKS,
                 driverClass = "com.mysql.cj.jdbc.Driver",
-                source = "built-in",
                 description = "StarRocks via MySQL protocol (MySQL Connector/J)",
-                available = classExistsOnClasspath("com.mysql.cj.jdbc.Driver"),
-                message = "Recommended default for StarRocks in this scaffold.",
+                unavailableMessage =
+                    "MySQL Connector/J is unavailable. Upload mysql-connector-j jar for StarRocks.",
             ),
-            DriverDescriptor(
+            BuiltInDriverSpec(
                 driverId = "starrocks-mariadb",
                 engine = DatasourceEngine.STARROCKS,
                 driverClass = "org.mariadb.jdbc.Driver",
-                source = "built-in",
                 description = "StarRocks via MySQL protocol (MariaDB JDBC driver)",
-                available = classExistsOnClasspath("org.mariadb.jdbc.Driver"),
-                message = "Alternative strategy for MySQL-protocol compatibility.",
+                unavailableMessage =
+                    "MariaDB JDBC class is unavailable. Upload mariadb-java-client jar for StarRocks.",
             ),
         )
 
     @Synchronized
     fun ensureDriverReady(driverDescriptor: DriverDescriptor) {
-        if (driverDescriptor.source != "external") {
-            return
-        }
-
         if (!driverDescriptor.available) {
             throw DriverNotAvailableException(
                 buildString {
@@ -113,11 +119,15 @@ class DriverRegistryService(
             )
         }
 
+        if (classExistsOnClasspath(driverDescriptor.driverClass)) {
+            return
+        }
+
         registerExternalDriver(driverDescriptor)
     }
 
     fun listDrivers(engine: DatasourceEngine? = null): List<DriverDescriptor> {
-        val allDescriptors = builtInDrivers + verticaExternalDescriptors()
+        val allDescriptors = builtInDriverDescriptors() + uploadedDriverDescriptors() + verticaExternalDescriptors()
         return allDescriptors
             .asSequence()
             .filter { descriptor -> engine == null || descriptor.engine == engine }
@@ -156,7 +166,129 @@ class DriverRegistryService(
         return selected
     }
 
+    @Synchronized
+    fun uploadDriver(
+        engine: DatasourceEngine,
+        driverClass: String,
+        jarFileName: String,
+        jarBytes: ByteArray,
+        requestedDriverId: String?,
+        requestedDescription: String?,
+    ): DriverDescriptor {
+        if (!jarFileName.endsWith(".jar", ignoreCase = true)) {
+            throw IllegalArgumentException("Only .jar files are accepted for JDBC driver uploads.")
+        }
+        if (jarBytes.isEmpty()) {
+            throw IllegalArgumentException("Uploaded driver jar is empty.")
+        }
+        val normalizedDriverClass = driverClass.trim()
+        if (normalizedDriverClass.isBlank()) {
+            throw IllegalArgumentException("Driver class is required.")
+        }
+
+        val driverId =
+            normalizeDriverId(
+                requestedDriverId
+                    ?.takeIf { value -> value.isNotBlank() }
+                    ?: "${engine.name.lowercase()}-${normalizedDriverClass.substringAfterLast('.').lowercase()}",
+            )
+
+        if (builtInDriverSpecs.any { spec -> spec.driverId == driverId } || driverId == verticaDriverId) {
+            throw IllegalArgumentException(
+                "Driver id '$driverId' is reserved by a built-in driver. Choose a different id.",
+            )
+        }
+
+        val externalDirPath = Path.of(externalDriverDirectory())
+        val targetDir = externalDirPath.resolve("uploads").resolve(driverId)
+        Files.createDirectories(targetDir)
+
+        val sanitizedFileName = sanitizeFileName(jarFileName)
+        val targetJarPath = targetDir.resolve(sanitizedFileName)
+        Files.write(targetJarPath, jarBytes)
+
+        uploadedDrivers[driverId] =
+            UploadedDriverRegistration(
+                driverId = driverId,
+                engine = engine,
+                driverClass = normalizedDriverClass,
+                description = requestedDescription?.trim()?.ifBlank { null } ?: "Uploaded JDBC driver",
+                jarPath = targetJarPath,
+            )
+
+        registeredExternalDrivers.remove(driverId)
+        externalDriverClassLoaders.remove(driverId)?.close()
+
+        val descriptor = uploadedDriverDescriptor(uploadedDrivers.getValue(driverId))
+        if (!descriptor.available) {
+            throw DriverNotAvailableException(
+                "Uploaded jar does not provide class '$normalizedDriverClass'. Verify the class name and jar.",
+            )
+        }
+
+        return descriptor
+    }
+
     fun externalDriverDirectory(): String = driverRegistryProperties.externalDir
+
+    private fun builtInDriverDescriptors(): List<DriverDescriptor> {
+        val externalJars = externalDriverJarFiles(Path.of(externalDriverDirectory()))
+
+        return builtInDriverSpecs.map { spec ->
+            val classpathAvailable = classExistsOnClasspath(spec.driverClass)
+            val externalAvailable =
+                !classpathAvailable &&
+                    externalJars.isNotEmpty() &&
+                    classExistsInExternalJars(spec.driverClass, externalJars)
+            val version =
+                if (classpathAvailable) {
+                    resolveDriverVersion(spec.driverClass)
+                } else if (externalAvailable) {
+                    resolveDriverVersion(spec.driverClass, externalJars)
+                } else {
+                    null
+                }
+
+            DriverDescriptor(
+                driverId = spec.driverId,
+                engine = spec.engine,
+                driverClass = spec.driverClass,
+                source = "built-in",
+                description = spec.description,
+                available = classpathAvailable || externalAvailable,
+                message =
+                    when {
+                        classpathAvailable -> "Driver resolved from the application classpath."
+                        externalAvailable -> "Driver resolved from uploaded/external jars."
+                        else -> spec.unavailableMessage
+                    },
+                version = version,
+            )
+        }
+    }
+
+    private fun uploadedDriverDescriptors(): List<DriverDescriptor> =
+        uploadedDrivers.values.map { registration -> uploadedDriverDescriptor(registration) }
+
+    private fun uploadedDriverDescriptor(registration: UploadedDriverRegistration): DriverDescriptor {
+        val jarFiles = listOf(registration.jarPath)
+        val available = classExistsInExternalJars(registration.driverClass, jarFiles)
+        return DriverDescriptor(
+            driverId = registration.driverId,
+            engine = registration.engine,
+            driverClass = registration.driverClass,
+            source = "uploaded",
+            description = registration.description,
+            available = available,
+            message =
+                if (available) {
+                    "Driver class resolved from ${registration.jarPath.fileName}."
+                } else {
+                    "Driver class '${registration.driverClass}' not found in ${registration.jarPath.fileName}."
+                },
+            version = resolveDriverVersion(registration.driverClass, jarFiles),
+        )
+    }
 
     private fun verticaExternalDescriptors(): List<DriverDescriptor> {
         val directoryPath = Path.of(externalDriverDirectory())
@@ -173,6 +305,7 @@ class DriverRegistryService(
                     available = false,
                     message =
                         "External driver directory '$directoryPath' is missing. Mount Vertica driver jars there.",
+                    version = null,
                 ),
             )
         }
@@ -187,6 +320,7 @@ class DriverRegistryService(
                     description = "Vertica JDBC driver loaded from mounted jars.",
                     available = false,
                     message = "No driver jars found in '$directoryPath'.",
+                    version = null,
                 ),
             )
         }
@@ -206,6 +340,7 @@ class DriverRegistryService(
                     } else {
                         "Vertica driver class not found in configured external jars."
                     },
+                version = resolveDriverVersion(verticaDriverClass, jarFiles),
             ),
         )
     }
@@ -220,6 +355,10 @@ class DriverRegistryService(
         driverClass: String,
         jars: List<Path>,
     ): Boolean {
+        if (jars.isEmpty()) {
+            return false
+        }
+
         val urls = jars.map { jar -> jar.toUri().toURL() }.toTypedArray()
         return URLClassLoader(urls, javaClass.classLoader).use { classLoader ->
             runCatching {
@@ -229,15 +368,55 @@ class DriverRegistryService(
         }
     }
 
+    private fun resolveDriverVersion(
+        driverClass: String,
+        jars: List<Path>? = null,
+    ): String? {
+        if (jars != null) {
+            if (jars.isEmpty()) {
+                return null
+            }
+            val urls = jars.map { jar -> jar.toUri().toURL() }.toTypedArray()
+            return URLClassLoader(urls, javaClass.classLoader).use { classLoader ->
+                resolveDriverVersionWithClassLoader(driverClass, classLoader)
+            }
+        }
+
+        return resolveDriverVersionWithClassLoader(driverClass, javaClass.classLoader)
+    }
+
+    private fun resolveDriverVersionWithClassLoader(
+        driverClass: String,
+        classLoader: ClassLoader,
+    ): String? =
+        runCatching {
+            val loadedClass = Class.forName(driverClass, false, classLoader)
+            val packageVersion = loadedClass.`package`?.implementationVersion?.trim()
+            if (!packageVersion.isNullOrBlank()) {
+                return@runCatching packageVersion
+            }
+
+            val rawDriver = loadedClass.getDeclaredConstructor().newInstance()
+            if (rawDriver is Driver) {
+                return@runCatching "${rawDriver.majorVersion}.${rawDriver.minorVersion}"
+            }
+
+            null
+        }.getOrNull()
+
     private fun externalDriverJarFiles(directoryPath: Path): List<Path> {
         if (!directoryPath.exists() || !directoryPath.isDirectory()) {
             return emptyList()
         }
 
-        return directoryPath
-            .listDirectoryEntries()
-            .filter { entry ->
-                Files.isRegularFile(entry) && entry.extension.equals("jar", ignoreCase = true)
+        return Files
+            .walk(directoryPath)
+            .use { stream ->
+                stream
+                    .filter { entry ->
+                        Files.isRegularFile(entry) &&
+                            entry.fileName.toString().endsWith(".jar", ignoreCase = true)
+                    }.toList()
             }
     }
 
@@ -246,11 +425,10 @@ class DriverRegistryService(
             return
         }
 
-        val externalDirPath = Path.of(externalDriverDirectory())
-        val jarFiles = externalDriverJarFiles(externalDirPath)
+        val jarFiles = resolveJarFilesForDriver(driverDescriptor)
         if (jarFiles.isEmpty()) {
             throw DriverNotAvailableException(
-                "No driver jars found in '$externalDirPath'. Mount the required driver jar first.",
+                "No driver jars found for '${driverDescriptor.driverId}'. Upload the required driver jar first.",
             )
         }
 
@@ -266,7 +444,7 @@ class DriverRegistryService(
             }.getOrElse { ex ->
                 urlClassLoader.close()
                 throw DriverNotAvailableException(
-                    "Unable to initialize driver '${driverDescriptor.driverClass}' from '$externalDirPath': ${ex.message}",
+                    "Unable to initialize driver '${driverDescriptor.driverClass}': ${ex.message}",
                 )
             }
 
@@ -282,7 +460,7 @@ class DriverRegistryService(
         }.getOrElse { ex ->
             urlClassLoader.close()
             throw DriverNotAvailableException(
-                "Failed to register external driver '${driverDescriptor.driverId}': ${ex.message}",
+                "Failed to register driver '${driverDescriptor.driverId}': ${ex.message}",
             )
         }
 
@@ -290,6 +468,37 @@ class DriverRegistryService(
         externalDriverClassLoaders[driverDescriptor.driverId] = urlClassLoader
         registeredExternalDrivers.add(driverDescriptor.driverId)
     }
+
+    private fun resolveJarFilesForDriver(driverDescriptor: DriverDescriptor): List<Path> {
+        if (driverDescriptor.source == "uploaded") {
+            return uploadedDrivers[driverDescriptor.driverId]?.let { registration ->
+                listOf(registration.jarPath)
+            } ?: emptyList()
+        }
+
+        return externalDriverJarFiles(Path.of(externalDriverDirectory()))
+    }
+
+    private fun normalizeDriverId(value: String): String {
+        val normalized =
+            value
+                .trim()
+                .lowercase()
+                .replace(Regex("[^a-z0-9]+"), "-")
+                .trim('-')
+
+        if (normalized.isBlank()) {
+            throw IllegalArgumentException("Driver id must contain alphanumeric characters.")
+        }
+
+        return normalized
+    }
+
+    private fun sanitizeFileName(value: String): String =
+        value
+            .trim()
+            .ifBlank { "driver.jar" }
+            .replace(Regex("[^A-Za-z0-9._-]"), "-")
 
     private class DriverShim(
         private val delegate: Driver,

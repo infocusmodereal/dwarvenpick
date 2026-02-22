@@ -6,6 +6,7 @@ import com.dwarvenpick.app.auth.ErrorResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
@@ -16,9 +17,11 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.multipart.MultipartFile
 
 @RestController
 @Validated
@@ -26,12 +29,79 @@ import org.springframework.web.bind.annotation.RestController
 class DatasourceAdminController(
     private val datasourceRegistryService: DatasourceRegistryService,
     private val datasourcePoolManager: DatasourcePoolManager,
+    private val driverRegistryService: DriverRegistryService,
     private val authAuditLogger: AuthAuditLogger,
 ) {
     @GetMapping("/drivers")
     fun listDrivers(
         @RequestParam(required = false) engine: DatasourceEngine?,
     ): List<DriverDescriptorResponse> = datasourceRegistryService.listDrivers(engine)
+
+    @PostMapping(
+        "/drivers/upload",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE],
+    )
+    fun uploadDriver(
+        @RequestParam engine: DatasourceEngine,
+        @RequestParam driverClass: String,
+        @RequestParam(required = false) driverId: String?,
+        @RequestParam(required = false) description: String?,
+        @RequestPart("jarFile") jarFile: MultipartFile,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<*> =
+        runCatching {
+            val descriptor =
+                driverRegistryService.uploadDriver(
+                    engine = engine,
+                    driverClass = driverClass,
+                    jarFileName = jarFile.originalFilename ?: "driver.jar",
+                    jarBytes = jarFile.bytes,
+                    requestedDriverId = driverId,
+                    requestedDescription = description,
+                )
+
+            val response =
+                DriverDescriptorResponse(
+                    driverId = descriptor.driverId,
+                    engine = descriptor.engine.name,
+                    driverClass = descriptor.driverClass,
+                    source = descriptor.source,
+                    available = descriptor.available,
+                    description = descriptor.description,
+                    message = descriptor.message,
+                    version = descriptor.version,
+                )
+
+            audit(
+                type = "driver.upload",
+                actor = authentication.name,
+                outcome = "success",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "engine" to engine.name,
+                        "driverId" to response.driverId,
+                        "driverClass" to response.driverClass,
+                        "fileName" to (jarFile.originalFilename ?: "driver.jar"),
+                    ),
+            )
+            ResponseEntity.status(HttpStatus.CREATED).body(response)
+        }.getOrElse { ex ->
+            audit(
+                type = "driver.upload",
+                actor = authentication.name,
+                outcome = "failed",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "engine" to engine.name,
+                        "driverClass" to driverClass,
+                        "reason" to (ex.message ?: "upload_failed"),
+                    ),
+            )
+            handleDatasourceErrors(ex)
+        }
 
     @GetMapping("/datasource-management")
     fun listManagedDatasources(): List<ManagedDatasourceResponse> = datasourceRegistryService.listManagedDatasources()

@@ -251,6 +251,7 @@ class DatasourceRegistryService(
                 available = descriptor.available,
                 description = descriptor.description,
                 message = descriptor.message,
+                version = descriptor.version,
             )
         }
 
@@ -334,23 +335,33 @@ class DatasourceRegistryService(
             throw IllegalArgumentException("Credential profile id is required.")
         }
 
-        val encrypted = datasourceCredentialCryptoService.encryptPassword(request.password)
+        val encrypted = request.password?.let { password ->
+            datasourceCredentialCryptoService.encryptPassword(password)
+        }
         val now = Instant.now()
 
+        val existingRecord = datasource.credentialProfiles[normalizedProfileId]
+        if (existingRecord == null && encrypted == null) {
+            throw IllegalArgumentException("Credential password is required for a new profile.")
+        }
+
         val record =
-            datasource.credentialProfiles.computeIfAbsent(normalizedProfileId) {
-                CredentialProfileRecord(
+            existingRecord
+                ?: CredentialProfileRecord(
                     profileId = normalizedProfileId,
                     username = request.username.trim(),
                     description = request.description?.trim()?.ifBlank { null },
-                    encryptedCredential = encrypted,
+                    encryptedCredential = encrypted ?: datasourceCredentialCryptoService.encryptPassword(""),
                     updatedAt = now,
-                )
-            }
+                ).also { created ->
+                    datasource.credentialProfiles[normalizedProfileId] = created
+                }
 
         record.username = request.username.trim()
         record.description = request.description?.trim()?.ifBlank { null }
-        record.encryptedCredential = encrypted
+        if (encrypted != null) {
+            record.encryptedCredential = encrypted
+        }
         record.updatedAt = now
 
         return record.toResponse()
@@ -449,6 +460,11 @@ class DatasourceRegistryService(
         datasource: ManagedDatasourceRecord,
         tls: TlsSettings,
     ): String {
+        val jdbcUrlOverride = datasource.options["jdbcUrl"]?.trim()
+        if (!jdbcUrlOverride.isNullOrBlank()) {
+            return jdbcUrlOverride
+        }
+
         val databaseSegment = datasource.database?.let { "/$it" } ?: ""
         val parameters = mutableMapOf<String, String>()
         parameters.putAll(datasource.options)

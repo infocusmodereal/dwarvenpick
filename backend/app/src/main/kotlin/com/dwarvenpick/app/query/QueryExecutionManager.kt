@@ -709,16 +709,7 @@ class QueryExecutionManager(
             executeSqlInSimulation(record)
             return
         }
-
-        runCatching {
-            executeSqlAgainstDatasource(record)
-        }.getOrElse { exception ->
-            if (canFallbackToSimulation(record.sql)) {
-                executeSqlInSimulation(record)
-            } else {
-                throw exception
-            }
-        }
+        executeSqlAgainstDatasource(record)
     }
 
     private fun executeSqlAgainstDatasource(record: QueryExecutionRecord) {
@@ -975,11 +966,6 @@ class QueryExecutionManager(
         return normalizedSql.contains("pg_sleep(") ||
             normalizedSql.contains("generate_series(") ||
             Regex("^select\\s+1(?:\\s+as\\s+[a-zA-Z_][a-zA-Z0-9_]*)?\\s*;?$").matches(normalizedSql)
-    }
-
-    private fun canFallbackToSimulation(sql: String): Boolean {
-        val normalizedSql = sql.trim().lowercase(Locale.getDefault())
-        return normalizedSql.startsWith("select")
     }
 
     private fun enforceRuntimeLimit(record: QueryExecutionRecord) {

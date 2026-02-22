@@ -45,6 +45,7 @@ data class DriverDescriptorResponse(
     val available: Boolean,
     val description: String,
     val message: String,
+    val version: String?,
 )
 
 data class ManagedDatasourceResponse(
@@ -100,10 +101,8 @@ data class UpdateDatasourceRequest(
 )
 
 data class UpsertCredentialProfileRequest(
-    @field:NotBlank(message = "Username is required.")
     val username: String = "",
-    @field:NotBlank(message = "Password is required.")
-    val password: String = "",
+    val password: String? = null,
     val description: String? = null,
 )
 
