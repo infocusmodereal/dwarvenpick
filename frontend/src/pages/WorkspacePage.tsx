@@ -3147,11 +3147,11 @@ export default function WorkspacePage() {
                 { token: 'delimiter', foreground: '2a3b4c' }
             ],
             colors: {
-                'editor.background': '#fbfeff',
+                'editor.background': '#f7f0e2',
                 'editorLineNumber.foreground': '#8ea2b1',
                 'editorLineNumber.activeForeground': '#304759',
                 'editorCursor.foreground': '#0b5cad',
-                'editor.selectionBackground': '#d4e9fb'
+                'editor.selectionBackground': '#e3d2b3'
             }
         });
     };
@@ -4358,35 +4358,62 @@ export default function WorkspacePage() {
                 </aside>
 
                 <section className="workspace-main">
-                    <div className="workspace-grid" hidden={activeSection !== 'workbench'}>
-                        <aside className="panel sidebar">
-                            <section className="schema-browser">
+                    <div
+                        className={
+                            showSchemaBrowser
+                                ? 'workspace-grid'
+                                : 'workspace-grid is-explorer-collapsed'
+                        }
+                        hidden={activeSection !== 'workbench'}
+                    >
+                        <aside
+                            className={showSchemaBrowser ? 'panel sidebar' : 'panel sidebar is-collapsed'}
+                        >
+                            <section
+                                className={
+                                    showSchemaBrowser
+                                        ? 'schema-browser'
+                                        : 'schema-browser is-collapsed'
+                                }
+                            >
                                 <div className="row schema-browser-header">
-                                    <h3>Explorer</h3>
+                                    {showSchemaBrowser ? <h3>Explorer</h3> : null}
                                     <button
                                         type="button"
                                         className="chip"
                                         onClick={() => setShowSchemaBrowser((current) => !current)}
-                                    >
-                                        {showSchemaBrowser ? 'Hide' : 'Show'}
-                                    </button>
-                                    <IconButton
-                                        icon="refresh"
                                         title={
-                                            loadingSchemaBrowser
-                                                ? 'Refreshing explorer metadata...'
-                                                : 'Refresh explorer metadata'
+                                            showSchemaBrowser
+                                                ? 'Collapse explorer'
+                                                : 'Expand explorer'
                                         }
-                                        disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
-                                        onClick={() =>
-                                            activeTab?.datasourceId
-                                                ? void loadSchemaBrowser(
-                                                      activeTab.datasourceId,
-                                                      true
-                                                  )
-                                                : undefined
+                                        aria-label={
+                                            showSchemaBrowser
+                                                ? 'Collapse explorer'
+                                                : 'Expand explorer'
                                         }
-                                    />
+                                    >
+                                        {showSchemaBrowser ? 'Collapse' : 'Expand'}
+                                    </button>
+                                    {showSchemaBrowser ? (
+                                        <IconButton
+                                            icon="refresh"
+                                            title={
+                                                loadingSchemaBrowser
+                                                    ? 'Refreshing explorer metadata...'
+                                                    : 'Refresh explorer metadata'
+                                            }
+                                            disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
+                                            onClick={() =>
+                                                activeTab?.datasourceId
+                                                    ? void loadSchemaBrowser(
+                                                          activeTab.datasourceId,
+                                                          true
+                                                      )
+                                                    : undefined
+                                            }
+                                        />
+                                    ) : null}
                                 </div>
                                 {showSchemaBrowser ? (
                                     <div className="explorer-body">
@@ -6466,32 +6493,6 @@ export default function WorkspacePage() {
                                                 >
                                                     Edit Existing
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    className="danger-button"
-                                                    disabled={
-                                                        deletingDatasource ||
-                                                        !selectedManagedDatasource
-                                                    }
-                                                    onClick={() =>
-                                                        void handleDeleteManagedDatasource()
-                                                    }
-                                                >
-                                                    {deletingDatasource
-                                                        ? 'Deleting...'
-                                                        : 'Delete Connection'}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={reencryptingCredentials}
-                                                    onClick={() =>
-                                                        void handleReencryptCredentials()
-                                                    }
-                                                >
-                                                    {reencryptingCredentials
-                                                        ? 'Re-encrypting...'
-                                                        : 'Re-encrypt Credentials'}
-                                                </button>
                                                 <span className="connection-mode-pill">
                                                     {selectedManagedDatasource
                                                         ? `Editing ${selectedManagedDatasource.id}`
@@ -6499,7 +6500,45 @@ export default function WorkspacePage() {
                                                 </span>
                                             </div>
 
-                                            {adminManagedDatasources.length > 0 ? (
+                                            {selectedManagedDatasource ? (
+                                                <div className="row connection-maintenance-row">
+                                                    <button
+                                                        type="button"
+                                                        className="danger-button"
+                                                        disabled={
+                                                            deletingDatasource ||
+                                                            !selectedManagedDatasource
+                                                        }
+                                                        onClick={() =>
+                                                            void handleDeleteManagedDatasource()
+                                                        }
+                                                    >
+                                                        {deletingDatasource
+                                                            ? 'Deleting...'
+                                                            : 'Delete Connection'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={reencryptingCredentials}
+                                                        onClick={() =>
+                                                            void handleReencryptCredentials()
+                                                        }
+                                                    >
+                                                        {reencryptingCredentials
+                                                            ? 'Re-encrypting...'
+                                                            : 'Re-encrypt Credentials'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <p className="muted-id connection-flow-note">
+                                                    Start with required fields. Open advanced
+                                                    sections only if you need custom driver, pooling,
+                                                    or TLS options.
+                                                </p>
+                                            )}
+
+                                            {selectedManagedDatasource &&
+                                            adminManagedDatasources.length > 0 ? (
                                                 <section className="connection-catalog">
                                                     <h4>Existing Connections</h4>
                                                     <div className="connection-catalog-list">
@@ -6556,228 +6595,290 @@ export default function WorkspacePage() {
                                                 className="stack-form connection-form"
                                                 onSubmit={handleSaveManagedDatasource}
                                             >
-                                                <h4>Basics</h4>
+                                                <h4>Quick Setup</h4>
+                                                <p className="muted-id connection-form-note">
+                                                    Use this section for a standard connection.
+                                                    Advanced settings stay collapsed by default.
+                                                </p>
 
-                                                <label htmlFor="managed-name">Name</label>
-                                                <input
-                                                    id="managed-name"
-                                                    value={managedDatasourceForm.name}
-                                                    onChange={(event) =>
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            name: event.target.value
-                                                        }))
-                                                    }
-                                                    required
-                                                />
-
-                                                <label htmlFor="managed-engine">Engine</label>
-                                                <div className="managed-engine-field">
-                                                    <span className="managed-engine-icon" aria-hidden>
-                                                        <img
-                                                            src={resolveDatasourceIcon(
-                                                                managedDatasourceForm.engine
-                                                            )}
-                                                            alt=""
-                                                            width={16}
-                                                            height={16}
-                                                        />
-                                                    </span>
-                                                    <div className="select-wrap">
-                                                        <select
-                                                            id="managed-engine"
-                                                            value={managedDatasourceForm.engine}
-                                                            disabled={Boolean(
-                                                                selectedManagedDatasource
-                                                            )}
-                                                            onChange={(event) => {
-                                                                const nextEngine = event.target
-                                                                    .value as DatasourceEngine;
-                                                                setManagedDatasourceForm((current) => ({
-                                                                    ...current,
-                                                                    engine: nextEngine,
-                                                                    port: defaultPortByEngine[
-                                                                        nextEngine
-                                                                    ].toString()
-                                                                }));
-                                                            }}
-                                                        >
-                                                            <option value="POSTGRESQL">
-                                                                PostgreSQL
-                                                            </option>
-                                                            <option value="MYSQL">MySQL</option>
-                                                            <option value="MARIADB">MariaDB</option>
-                                                            <option value="TRINO">Trino</option>
-                                                            <option value="STARROCKS">StarRocks</option>
-                                                            <option value="VERTICA">Vertica</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-
-                                                <label htmlFor="managed-host">Host</label>
-                                                <input
-                                                    id="managed-host"
-                                                    value={managedDatasourceForm.host}
-                                                    onChange={(event) =>
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            host: event.target.value
-                                                        }))
-                                                    }
-                                                    required={
-                                                        managedDatasourceForm.connectionType ===
-                                                        'HOST_PORT'
-                                                    }
-                                                    placeholder="localhost"
-                                                />
-
-                                                <label htmlFor="managed-port">Port</label>
-                                                <input
-                                                    id="managed-port"
-                                                    type="number"
-                                                    min={1}
-                                                    max={65535}
-                                                    value={managedDatasourceForm.port}
-                                                    onChange={(event) =>
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            port: event.target.value
-                                                        }))
-                                                    }
-                                                    required
-                                                />
-
-                                                <label htmlFor="managed-database">
-                                                    Database (optional)
-                                                </label>
-                                                <input
-                                                    id="managed-database"
-                                                    value={managedDatasourceForm.database}
-                                                    onChange={(event) =>
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            database: event.target.value
-                                                        }))
-                                                    }
-                                                    placeholder="schema or database"
-                                                />
-
-                                                <label htmlFor="managed-authentication">
-                                                    Authentication
-                                                </label>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="managed-authentication"
-                                                        value={managedDatasourceForm.authentication}
-                                                        onChange={(event) =>
-                                                            setManagedDatasourceForm((current) => ({
-                                                                ...current,
-                                                                authentication: event.target
-                                                                    .value as ConnectionAuthentication
-                                                            }))
-                                                        }
-                                                    >
-                                                        <option value="USER_PASSWORD">
-                                                            User &amp; Password
-                                                        </option>
-                                                        <option value="NO_AUTH">No Auth</option>
-                                                    </select>
-                                                </div>
-
-                                                <label htmlFor="managed-profile-id">
-                                                    Credential Profile
-                                                </label>
-                                                <input
-                                                    id="managed-profile-id"
-                                                    value={
-                                                        managedDatasourceForm.credentialProfileId
-                                                    }
-                                                    onChange={(event) =>
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            credentialProfileId: event.target.value
-                                                        }))
-                                                    }
-                                                    placeholder="admin-ro"
-                                                    required
-                                                />
-
-                                                {managedDatasourceForm.authentication ===
-                                                'USER_PASSWORD' ? (
-                                                    <>
-                                                        <label htmlFor="managed-credential-username">
-                                                            User
-                                                        </label>
+                                                <div className="connection-form-grid">
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-name">Name</label>
                                                         <input
-                                                            id="managed-credential-username"
-                                                            value={
-                                                                managedDatasourceForm.credentialUsername
-                                                            }
+                                                            id="managed-name"
+                                                            value={managedDatasourceForm.name}
                                                             onChange={(event) =>
-                                                                setManagedDatasourceForm((current) => ({
-                                                                    ...current,
-                                                                    credentialUsername:
-                                                                        event.target.value
-                                                                }))
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        name: event.target.value
+                                                                    })
+                                                                )
                                                             }
                                                             required
                                                         />
+                                                    </div>
 
-                                                        <label htmlFor="managed-credential-password">
-                                                            Password
-                                                        </label>
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-engine">Engine</label>
+                                                        <div className="managed-engine-field">
+                                                            <span
+                                                                className="managed-engine-icon"
+                                                                aria-hidden
+                                                            >
+                                                                <img
+                                                                    src={resolveDatasourceIcon(
+                                                                        managedDatasourceForm.engine
+                                                                    )}
+                                                                    alt=""
+                                                                    width={16}
+                                                                    height={16}
+                                                                />
+                                                            </span>
+                                                            <div className="select-wrap">
+                                                                <select
+                                                                    id="managed-engine"
+                                                                    value={managedDatasourceForm.engine}
+                                                                    disabled={Boolean(
+                                                                        selectedManagedDatasource
+                                                                    )}
+                                                                    onChange={(event) => {
+                                                                        const nextEngine = event.target
+                                                                            .value as DatasourceEngine;
+                                                                        setManagedDatasourceForm(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                engine: nextEngine,
+                                                                                port: defaultPortByEngine[
+                                                                                    nextEngine
+                                                                                ].toString()
+                                                                            })
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    <option value="POSTGRESQL">
+                                                                        PostgreSQL
+                                                                    </option>
+                                                                    <option value="MYSQL">
+                                                                        MySQL
+                                                                    </option>
+                                                                    <option value="MARIADB">
+                                                                        MariaDB
+                                                                    </option>
+                                                                    <option value="TRINO">
+                                                                        Trino
+                                                                    </option>
+                                                                    <option value="STARROCKS">
+                                                                        StarRocks
+                                                                    </option>
+                                                                    <option value="VERTICA">
+                                                                        Vertica
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-host">Host</label>
                                                         <input
-                                                            id="managed-credential-password"
-                                                            type="password"
-                                                            value={
-                                                                managedDatasourceForm.credentialPassword
-                                                            }
+                                                            id="managed-host"
+                                                            value={managedDatasourceForm.host}
                                                             onChange={(event) =>
-                                                                setManagedDatasourceForm((current) => ({
-                                                                    ...current,
-                                                                    credentialPassword:
-                                                                        event.target.value
-                                                                }))
-                                                            }
-                                                            placeholder={
-                                                                selectedManagedDatasource
-                                                                    ? 'Leave blank to keep existing password'
-                                                                    : ''
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        host: event.target.value
+                                                                    })
+                                                                )
                                                             }
                                                             required={
-                                                                !selectedManagedDatasource
+                                                                managedDatasourceForm.connectionType ===
+                                                                'HOST_PORT'
                                                             }
+                                                            placeholder="localhost"
                                                         />
-                                                    </>
-                                                ) : (
-                                                    <p className="muted-id">
-                                                        No credential username/password will be
-                                                        stored for this connection.
-                                                    </p>
-                                                )}
+                                                    </div>
 
-                                                <label htmlFor="managed-credential-description">
-                                                    Credential Description (optional)
-                                                </label>
-                                                <input
-                                                    id="managed-credential-description"
-                                                    value={
-                                                        managedDatasourceForm.credentialDescription
-                                                    }
-                                                    onChange={(event) =>
-                                                        setManagedDatasourceForm((current) => ({
-                                                            ...current,
-                                                            credentialDescription:
-                                                                event.target.value
-                                                        }))
-                                                    }
-                                                    placeholder="Readonly profile for analysts"
-                                                />
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-port">Port</label>
+                                                        <input
+                                                            id="managed-port"
+                                                            type="number"
+                                                            min={1}
+                                                            max={65535}
+                                                            value={managedDatasourceForm.port}
+                                                            onChange={(event) =>
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        port: event.target.value
+                                                                    })
+                                                                )
+                                                            }
+                                                            required
+                                                        />
+                                                    </div>
 
-                                                <details
-                                                    className="managed-advanced-block"
-                                                    open={Boolean(selectedManagedDatasource)}
-                                                >
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-database">
+                                                            Database (optional)
+                                                        </label>
+                                                        <input
+                                                            id="managed-database"
+                                                            value={managedDatasourceForm.database}
+                                                            onChange={(event) =>
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        database: event.target.value
+                                                                    })
+                                                                )
+                                                            }
+                                                            placeholder="schema or database"
+                                                        />
+                                                    </div>
+
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-authentication">
+                                                            Authentication
+                                                        </label>
+                                                        <div className="select-wrap">
+                                                            <select
+                                                                id="managed-authentication"
+                                                                value={
+                                                                    managedDatasourceForm.authentication
+                                                                }
+                                                                onChange={(event) =>
+                                                                    setManagedDatasourceForm(
+                                                                        (current) => ({
+                                                                            ...current,
+                                                                            authentication:
+                                                                                event.target
+                                                                                    .value as ConnectionAuthentication
+                                                                        })
+                                                                    )
+                                                                }
+                                                            >
+                                                                <option value="USER_PASSWORD">
+                                                                    User &amp; Password
+                                                                </option>
+                                                                <option value="NO_AUTH">
+                                                                    No Auth
+                                                                </option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="form-field">
+                                                        <label htmlFor="managed-profile-id">
+                                                            Credential Profile
+                                                        </label>
+                                                        <input
+                                                            id="managed-profile-id"
+                                                            value={
+                                                                managedDatasourceForm.credentialProfileId
+                                                            }
+                                                            onChange={(event) =>
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        credentialProfileId:
+                                                                            event.target.value
+                                                                    })
+                                                                )
+                                                            }
+                                                            placeholder="admin-ro"
+                                                            required
+                                                        />
+                                                    </div>
+
+                                                    {managedDatasourceForm.authentication ===
+                                                    'USER_PASSWORD' ? (
+                                                        <>
+                                                            <div className="form-field">
+                                                                <label htmlFor="managed-credential-username">
+                                                                    User
+                                                                </label>
+                                                                <input
+                                                                    id="managed-credential-username"
+                                                                    value={
+                                                                        managedDatasourceForm.credentialUsername
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setManagedDatasourceForm(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                credentialUsername:
+                                                                                    event.target.value
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    required
+                                                                />
+                                                            </div>
+
+                                                            <div className="form-field">
+                                                                <label htmlFor="managed-credential-password">
+                                                                    Password
+                                                                </label>
+                                                                <input
+                                                                    id="managed-credential-password"
+                                                                    type="password"
+                                                                    value={
+                                                                        managedDatasourceForm.credentialPassword
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setManagedDatasourceForm(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                credentialPassword:
+                                                                                    event.target.value
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    placeholder={
+                                                                        selectedManagedDatasource
+                                                                            ? 'Leave blank to keep existing password'
+                                                                            : ''
+                                                                    }
+                                                                    required={
+                                                                        !selectedManagedDatasource
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <p className="muted-id connection-form-note connection-form-full">
+                                                            No credential username/password will be
+                                                            stored for this connection.
+                                                        </p>
+                                                    )}
+
+                                                    <div className="form-field connection-form-full">
+                                                        <label htmlFor="managed-credential-description">
+                                                            Credential Description (optional)
+                                                        </label>
+                                                        <input
+                                                            id="managed-credential-description"
+                                                            value={
+                                                                managedDatasourceForm.credentialDescription
+                                                            }
+                                                            onChange={(event) =>
+                                                                setManagedDatasourceForm(
+                                                                    (current) => ({
+                                                                        ...current,
+                                                                        credentialDescription:
+                                                                            event.target.value
+                                                                    })
+                                                                )
+                                                            }
+                                                            placeholder="Readonly profile for analysts"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <details className="managed-advanced-block">
                                                     <summary>Connection</summary>
 
                                                     <label htmlFor="managed-connection-type">
@@ -7120,9 +7221,13 @@ export default function WorkspacePage() {
                                             </form>
 
                                             {selectedManagedDatasource ? (
-                                                <div className="managed-datasource-actions">
-                                                    <h4>Credential Profiles</h4>
-                                                    <ul className="credentials-list">
+                                                <details className="managed-advanced-block managed-connection-tools">
+                                                    <summary>
+                                                        Credential Profiles and Connection Test
+                                                    </summary>
+                                                    <div className="managed-datasource-actions">
+                                                        <h4>Credential Profiles</h4>
+                                                        <ul className="credentials-list">
                                                         {selectedManagedDatasource.credentialProfiles.map(
                                                             (profile) => (
                                                                 <li
@@ -7136,12 +7241,12 @@ export default function WorkspacePage() {
                                                                 </li>
                                                             )
                                                         )}
-                                                    </ul>
+                                                        </ul>
 
-                                                    <form
-                                                        className="stack-form"
-                                                        onSubmit={handleSaveCredentialProfile}
-                                                    >
+                                                        <form
+                                                            className="stack-form"
+                                                            onSubmit={handleSaveCredentialProfile}
+                                                        >
                                                         <label htmlFor="credential-existing">
                                                             Existing Profile
                                                         </label>
@@ -7244,21 +7349,21 @@ export default function WorkspacePage() {
                                                             placeholder="Readonly profile for analysts"
                                                         />
 
-                                                        <button
-                                                            type="submit"
-                                                            disabled={savingCredentialProfile}
-                                                        >
-                                                            {savingCredentialProfile
-                                                                ? 'Saving...'
-                                                                : 'Save Credential Profile'}
-                                                        </button>
-                                                    </form>
+                                                            <button
+                                                                type="submit"
+                                                                disabled={savingCredentialProfile}
+                                                            >
+                                                                {savingCredentialProfile
+                                                                    ? 'Saving...'
+                                                                    : 'Save Credential Profile'}
+                                                            </button>
+                                                        </form>
 
-                                                    <h4>Test Connection</h4>
-                                                    <form
-                                                        className="stack-form"
-                                                        onSubmit={handleTestConnection}
-                                                    >
+                                                        <h4>Test Connection</h4>
+                                                        <form
+                                                            className="stack-form"
+                                                            onSubmit={handleTestConnection}
+                                                        >
                                                         <label htmlFor="test-credential-profile">
                                                             Credential Profile
                                                         </label>
@@ -7376,29 +7481,31 @@ export default function WorkspacePage() {
                                                             </>
                                                         ) : null}
 
-                                                        <button
-                                                            type="submit"
-                                                            disabled={testingConnection}
-                                                        >
-                                                            {testingConnection
-                                                                ? 'Testing...'
-                                                                : 'Run Test Connection'}
-                                                        </button>
-                                                    </form>
+                                                            <button
+                                                                type="submit"
+                                                                disabled={testingConnection}
+                                                            >
+                                                                {testingConnection
+                                                                    ? 'Testing...'
+                                                                    : 'Run Test Connection'}
+                                                            </button>
+                                                        </form>
 
-                                                    {testConnectionMessage ? (
-                                                        <p
-                                                            className={
-                                                                testConnectionOutcome === 'success'
-                                                                    ? 'form-success'
-                                                                    : 'form-error'
-                                                            }
-                                                            role="alert"
-                                                        >
-                                                            {testConnectionMessage}
-                                                        </p>
-                                                    ) : null}
-                                                </div>
+                                                        {testConnectionMessage ? (
+                                                            <p
+                                                                className={
+                                                                    testConnectionOutcome ===
+                                                                    'success'
+                                                                        ? 'form-success'
+                                                                        : 'form-error'
+                                                                }
+                                                                role="alert"
+                                                            >
+                                                                {testConnectionMessage}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                </details>
                                             ) : (
                                                 <p className="muted-id">
                                                     Save a connection first to manage credential
