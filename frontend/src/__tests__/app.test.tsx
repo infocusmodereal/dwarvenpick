@@ -88,7 +88,7 @@ describe('App shell', () => {
         );
 
         expect(screen.getByText(/^dwarvenpick$/i)).toBeInTheDocument();
-        expect((await screen.findAllByText(/^sql workbench$/i)).length).toBeGreaterThan(0);
+        expect((await screen.findAllByText(/^workbench$/i)).length).toBeGreaterThan(0);
         expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });
 

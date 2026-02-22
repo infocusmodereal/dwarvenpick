@@ -40,12 +40,12 @@ class SnippetService {
         val includeGroup = normalizedScope == null || normalizedScope == "all" || normalizedScope == "group"
         val normalizedGroupId = groupId?.trim()?.takeIf { it.isNotBlank() }
         val titleFilter = title?.trim()?.takeIf { it.isNotBlank() }
-        val resolvedTitleMatch = titleMatch?.trim()?.lowercase() ?: "exact"
+        val resolvedTitleMatch = titleMatch?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
         val titleRegex =
-            if (titleFilter != null && resolvedTitleMatch == "regex") {
-                compileTitleRegex(titleFilter)
-            } else {
-                null
+            when {
+                titleFilter == null -> null
+                resolvedTitleMatch == "regex" -> compileTitleRegex(titleFilter, fallbackIgnoreCase = true)
+                else -> parseRegexFilterOrNull(titleFilter)
             }
 
         return snippets.values
@@ -157,19 +157,55 @@ class SnippetService {
         return snippet.groupId != null && snippet.groupId in principal.groups
     }
 
-    private fun compileTitleRegex(rawFilter: String): Regex {
-        val normalizedFilter =
-            if (rawFilter.length >= 2 && rawFilter.startsWith('/') && rawFilter.endsWith('/')) {
-                rawFilter.substring(1, rawFilter.length - 1)
+    private fun parseRegexFilterOrNull(rawFilter: String): Regex? {
+        if (rawFilter.length < 2 || !rawFilter.startsWith('/')) {
+            return null
+        }
+        val closingSlashIndex = rawFilter.lastIndexOf('/')
+        if (closingSlashIndex <= 0) {
+            return null
+        }
+
+        return compileTitleRegex(rawFilter, fallbackIgnoreCase = false)
+    }
+
+    private fun compileTitleRegex(
+        rawFilter: String,
+        fallbackIgnoreCase: Boolean,
+    ): Regex {
+        val startsAsSlashRegex = rawFilter.length >= 2 && rawFilter.startsWith('/')
+        val closingSlashIndex = rawFilter.lastIndexOf('/')
+        val hasSlashDelimitedPattern = startsAsSlashRegex && closingSlashIndex > 0
+        val pattern =
+            if (hasSlashDelimitedPattern) {
+                rawFilter.substring(1, closingSlashIndex)
             } else {
                 rawFilter
             }
-        if (normalizedFilter.isBlank()) {
+        if (pattern.isBlank()) {
             throw IllegalArgumentException("Snippet title regex cannot be empty.")
+        }
+        val options = mutableSetOf<RegexOption>()
+        if (fallbackIgnoreCase) {
+            options.add(RegexOption.IGNORE_CASE)
+        }
+        val flags =
+            if (hasSlashDelimitedPattern) {
+                rawFilter.substring(closingSlashIndex + 1)
+            } else {
+                ""
+            }
+        flags.forEach { flag ->
+            when (flag) {
+                'i' -> options.add(RegexOption.IGNORE_CASE)
+                'm' -> options.add(RegexOption.MULTILINE)
+                's' -> options.add(RegexOption.DOT_MATCHES_ALL)
+                else -> throw IllegalArgumentException("Unsupported regex flag '$flag' for snippet title filter.")
+            }
         }
 
         return try {
-            Regex(normalizedFilter, setOf(RegexOption.IGNORE_CASE))
+            Regex(pattern, options)
         } catch (exception: IllegalArgumentException) {
             throw IllegalArgumentException("Snippet title regex is invalid: ${exception.message}")
         }

@@ -278,7 +278,6 @@ type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin'
 type IconGlyph = 'new' | 'rename' | 'duplicate' | 'close' | 'refresh' | 'copy' | 'info';
 type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
-type SnippetTitleMatchMode = 'exact' | 'regex';
 type RailGlyph =
     | 'workbench'
     | 'history'
@@ -375,6 +374,52 @@ const builtInAuditOutcomes = [
     'canceled',
     'noop'
 ];
+
+const datasourceIconByEngine: Record<DatasourceEngine, string> = {
+    POSTGRESQL: '/db-icons/postgresql.svg',
+    MYSQL: '/db-icons/mysql.svg',
+    MARIADB: '/db-icons/mariadb.svg',
+    TRINO: '/db-icons/trino.svg',
+    STARROCKS: '/db-icons/starrocks.svg',
+    VERTICA: '/db-icons/vertica.svg'
+};
+
+const resolveDatasourceIcon = (engine?: string): string => {
+    if (!engine) {
+        return '/db-icons/database.svg';
+    }
+
+    const normalized = engine.toUpperCase();
+    if (normalized in datasourceIconByEngine) {
+        return datasourceIconByEngine[normalized as DatasourceEngine];
+    }
+
+    return '/db-icons/database.svg';
+};
+
+const toStatusToneClass = (rawValue: string): string => {
+    const value = rawValue.trim().toUpperCase();
+    if (value === 'SUCCEEDED' || value === 'SUCCESS') {
+        return 'status-pill tone-success';
+    }
+    if (value === 'FAILED' || value === 'DENIED') {
+        return 'status-pill tone-failed';
+    }
+    if (value === 'RUNNING') {
+        return 'status-pill tone-running';
+    }
+    if (value === 'QUEUED') {
+        return 'status-pill tone-queued';
+    }
+    if (value === 'CANCELED') {
+        return 'status-pill tone-canceled';
+    }
+    if (value === 'LIMITED') {
+        return 'status-pill tone-limited';
+    }
+
+    return 'status-pill tone-neutral';
+};
 
 const isTerminalExecutionStatus = (status: string): boolean =>
     status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELED';
@@ -959,6 +1004,7 @@ export default function WorkspacePage() {
     const [historyStatusFilter, setHistoryStatusFilter] = useState('');
     const [historyFromFilter, setHistoryFromFilter] = useState('');
     const [historyToFilter, setHistoryToFilter] = useState('');
+    const [historySortOrder, setHistorySortOrder] = useState<'newest' | 'oldest'>('newest');
 
     const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
     const [loadingAuditEvents, setLoadingAuditEvents] = useState(false);
@@ -967,6 +1013,7 @@ export default function WorkspacePage() {
     const [auditOutcomeFilter, setAuditOutcomeFilter] = useState('');
     const [auditFromFilter, setAuditFromFilter] = useState('');
     const [auditToFilter, setAuditToFilter] = useState('');
+    const [auditSortOrder, setAuditSortOrder] = useState<'newest' | 'oldest'>('newest');
 
     const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(
         null
@@ -977,8 +1024,6 @@ export default function WorkspacePage() {
     const [snippets, setSnippets] = useState<SnippetResponse[]>([]);
     const [loadingSnippets, setLoadingSnippets] = useState(false);
     const [snippetScope, setSnippetScope] = useState<'all' | 'personal' | 'group'>('all');
-    const [snippetTitleMatchMode, setSnippetTitleMatchMode] =
-        useState<SnippetTitleMatchMode>('exact');
     const [snippetTitleInput, setSnippetTitleInput] = useState('');
     const [snippetGroupInput, setSnippetGroupInput] = useState('');
     const [savingSnippet, setSavingSnippet] = useState(false);
@@ -1189,6 +1234,11 @@ export default function WorkspacePage() {
         return formatExecutionDuration(activeTab.startedAt, activeTab.completedAt);
     }, [activeTab?.completedAt, activeTab?.startedAt]);
 
+    const selectedDatasourceIcon = useMemo(
+        () => resolveDatasourceIcon(selectedDatasource?.engine),
+        [selectedDatasource?.engine]
+    );
+
     const selectedAdminDatasource = useMemo(
         () =>
             adminDatasourceCatalog.find(
@@ -1268,6 +1318,32 @@ export default function WorkspacePage() {
         });
         return Array.from(options).sort((left, right) => left.localeCompare(right));
     }, [auditEvents]);
+
+    const sortedQueryHistoryEntries = useMemo(() => {
+        const rows = [...queryHistoryEntries];
+        rows.sort((left, right) => {
+            const leftTimestamp = new Date(left.submittedAt).getTime();
+            const rightTimestamp = new Date(right.submittedAt).getTime();
+            const safeLeft = Number.isFinite(leftTimestamp) ? leftTimestamp : 0;
+            const safeRight = Number.isFinite(rightTimestamp) ? rightTimestamp : 0;
+            return historySortOrder === 'newest'
+                ? safeRight - safeLeft
+                : safeLeft - safeRight;
+        });
+        return rows;
+    }, [historySortOrder, queryHistoryEntries]);
+
+    const sortedAuditEvents = useMemo(() => {
+        const rows = [...auditEvents];
+        rows.sort((left, right) => {
+            const leftTimestamp = new Date(left.timestamp).getTime();
+            const rightTimestamp = new Date(right.timestamp).getTime();
+            const safeLeft = Number.isFinite(leftTimestamp) ? leftTimestamp : 0;
+            const safeRight = Number.isFinite(rightTimestamp) ? rightTimestamp : 0;
+            return auditSortOrder === 'newest' ? safeRight - safeLeft : safeLeft - safeRight;
+        });
+        return rows;
+    }, [auditEvents, auditSortOrder]);
 
     const managedFormOptions = useMemo(
         () => parseOptionsInput(managedDatasourceForm.optionsInput),
@@ -1857,7 +1933,6 @@ export default function WorkspacePage() {
             queryParams.set('scope', snippetScope);
             if (snippetTitleInput.trim()) {
                 queryParams.set('title', snippetTitleInput.trim());
-                queryParams.set('titleMatch', snippetTitleMatchMode);
             }
             if (snippetGroupInput.trim()) {
                 queryParams.set('groupId', snippetGroupInput.trim());
@@ -1883,8 +1958,7 @@ export default function WorkspacePage() {
         readFriendlyError,
         snippetGroupInput,
         snippetScope,
-        snippetTitleInput,
-        snippetTitleMatchMode
+        snippetTitleInput
     ]);
 
     const loadQueryHistory = useCallback(async () => {
@@ -4146,12 +4220,12 @@ export default function WorkspacePage() {
                             }
                             aria-selected={activeSection === 'workbench'}
                             onClick={() => setActiveSection('workbench')}
-                            title={leftRailCollapsed ? 'SQL Workbench' : undefined}
+                            title={leftRailCollapsed ? 'Workbench' : undefined}
                         >
                             <span className="workspace-mode-icon">
                                 <RailIcon glyph="workbench" />
                             </span>
-                            {!leftRailCollapsed ? <span>SQL Workbench</span> : null}
+                            {!leftRailCollapsed ? <span>Workbench</span> : null}
                         </button>
                         <button
                             type="button"
@@ -4641,6 +4715,15 @@ export default function WorkspacePage() {
                                                                                                                                                         columnEntry.name
                                                                                                                                                     }
                                                                                                                                                 </span>
+                                                                                                                                                <span className="explorer-item-tail">
+                                                                                                                                                    <span className="explorer-item-type">
+                                                                                                                                                        (
+                                                                                                                                                        {
+                                                                                                                                                            columnEntry.jdbcType
+                                                                                                                                                        }
+                                                                                                                                                        )
+                                                                                                                                                    </span>
+                                                                                                                                                </span>
                                                                                                                                             </button>
                                                                                                                                         </div>
                                                                                                                                     </li>
@@ -4850,27 +4933,37 @@ export default function WorkspacePage() {
                                             </span>
                                             <span>Connection</span>
                                         </label>
-                                        <div className="select-wrap">
-                                            <select
-                                                id="tab-datasource"
-                                                aria-label="Active tab connection"
-                                                value={activeTab?.datasourceId ?? ''}
-                                                onChange={(event) =>
-                                                    handleDatasourceChangeForActiveTab(
-                                                        event.target.value
-                                                    )
-                                                }
-                                                disabled={!activeTab || activeTab.isExecuting}
-                                            >
-                                                {visibleDatasources.map((datasource) => (
-                                                    <option
-                                                        key={`tab-ds-${datasource.id}`}
-                                                        value={datasource.id}
-                                                    >
-                                                        {datasource.name}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                        <div className="editor-connection-picker">
+                                            <span className="editor-connection-icon" aria-hidden>
+                                                <img
+                                                    src={selectedDatasourceIcon}
+                                                    alt=""
+                                                    width={16}
+                                                    height={16}
+                                                />
+                                            </span>
+                                            <div className="select-wrap">
+                                                <select
+                                                    id="tab-datasource"
+                                                    aria-label="Active tab connection"
+                                                    value={activeTab?.datasourceId ?? ''}
+                                                    onChange={(event) =>
+                                                        handleDatasourceChangeForActiveTab(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    disabled={!activeTab || activeTab.isExecuting}
+                                                >
+                                                    {visibleDatasources.map((datasource) => (
+                                                        <option
+                                                            key={`tab-ds-${datasource.id}`}
+                                                            value={datasource.id}
+                                                        >
+                                                            {datasource.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                     <input
@@ -5065,10 +5158,6 @@ export default function WorkspacePage() {
                                         </strong>
                                     </div>
                                     <div className="result-stat">
-                                        <span>Connection</span>
-                                        <strong>{selectedDatasource?.name ?? '-'}</strong>
-                                    </div>
-                                    <div className="result-stat">
                                         <span>Rows</span>
                                         <strong>{activeTab.rowCount.toLocaleString()}</strong>
                                     </div>
@@ -5091,10 +5180,6 @@ export default function WorkspacePage() {
                                         <strong>
                                             {formatExecutionTimestamp(activeTab.completedAt)}
                                         </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Credential Profile</span>
-                                        <strong>{activeTab.credentialProfile || '-'}</strong>
                                     </div>
                                     <div className="result-stat">
                                         <span>Row Limit</span>
@@ -5363,6 +5448,17 @@ export default function WorkspacePage() {
                             <button
                                 type="button"
                                 className="chip"
+                                onClick={() =>
+                                    setHistorySortOrder((current) =>
+                                        current === 'newest' ? 'oldest' : 'newest'
+                                    )
+                                }
+                            >
+                                {historySortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
+                            </button>
+                            <button
+                                type="button"
+                                className="chip"
                                 onClick={() => {
                                     setHistoryDatasourceFilter('');
                                     setHistoryStatusFilter('');
@@ -5389,19 +5485,23 @@ export default function WorkspacePage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {queryHistoryEntries.length === 0 ? (
+                                    {sortedQueryHistoryEntries.length === 0 ? (
                                         <tr>
                                             <td colSpan={6}>
                                                 No history entries found for current filters.
                                             </td>
                                         </tr>
                                     ) : (
-                                        queryHistoryEntries.map((entry) => (
+                                        sortedQueryHistoryEntries.map((entry) => (
                                             <tr key={`history-${entry.executionId}`}>
                                                 <td>
                                                     {new Date(entry.submittedAt).toLocaleString()}
                                                 </td>
-                                                <td>{entry.status}</td>
+                                                <td>
+                                                    <span className={toStatusToneClass(entry.status)}>
+                                                        {entry.status}
+                                                    </span>
+                                                </td>
                                                 <td>{entry.datasourceId}</td>
                                                 <td>
                                                     {typeof entry.durationMs === 'number'
@@ -5472,31 +5572,13 @@ export default function WorkspacePage() {
                             </div>
 
                             <div className="filter-field">
-                                <label htmlFor="snippet-title">Snippet Title</label>
+                                <label htmlFor="snippet-title">Title / Regex</label>
                                 <input
                                     id="snippet-title"
                                     value={snippetTitleInput}
                                     onChange={(event) => setSnippetTitleInput(event.target.value)}
-                                    placeholder="Daily health query"
+                                    placeholder="Daily health query or /^daily/i"
                                 />
-                            </div>
-
-                            <div className="filter-field">
-                                <label htmlFor="snippet-title-match">Title Match</label>
-                                <div className="select-wrap">
-                                    <select
-                                        id="snippet-title-match"
-                                        value={snippetTitleMatchMode}
-                                        onChange={(event) =>
-                                            setSnippetTitleMatchMode(
-                                                event.target.value as SnippetTitleMatchMode
-                                            )
-                                        }
-                                    >
-                                        <option value="exact">Exact</option>
-                                        <option value="regex">Regex</option>
-                                    </select>
-                                </div>
                             </div>
 
                             <div className="filter-field">
@@ -5702,6 +5784,17 @@ export default function WorkspacePage() {
                                     <button
                                         type="button"
                                         className="chip"
+                                        onClick={() =>
+                                            setAuditSortOrder((current) =>
+                                                current === 'newest' ? 'oldest' : 'newest'
+                                            )
+                                        }
+                                    >
+                                        {auditSortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="chip"
                                         onClick={() => {
                                             setAuditTypeFilter('');
                                             setAuditActorFilter('');
@@ -5728,14 +5821,14 @@ export default function WorkspacePage() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {auditEvents.length === 0 ? (
+                                            {sortedAuditEvents.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={5}>
                                                         No audit events found for current filters.
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                auditEvents.map((event, index) => (
+                                                sortedAuditEvents.map((event, index) => (
                                                     <tr key={`audit-${event.timestamp}-${index}`}>
                                                         <td>
                                                             {new Date(
@@ -5744,7 +5837,15 @@ export default function WorkspacePage() {
                                                         </td>
                                                         <td>{event.type}</td>
                                                         <td>{event.actor ?? 'anonymous'}</td>
-                                                        <td>{event.outcome}</td>
+                                                        <td>
+                                                            <span
+                                                                className={toStatusToneClass(
+                                                                    event.outcome
+                                                                )}
+                                                            >
+                                                                {event.outcome}
+                                                            </span>
+                                                        </td>
                                                         <td className="history-query">
                                                             {JSON.stringify(event.details)}
                                                         </td>
