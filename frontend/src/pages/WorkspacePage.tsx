@@ -2240,7 +2240,7 @@ export default function WorkspacePage() {
 
             const payload = (await response.json()) as QueryResultsResponse;
             updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId !== executionId) {
+                if (currentTab.executionId && currentTab.executionId !== executionId) {
                     return currentTab;
                 }
 
@@ -2276,7 +2276,7 @@ export default function WorkspacePage() {
             const payload = (await response.json()) as QueryExecutionStatusResponse;
             const terminal = isTerminalExecutionStatus(payload.status);
             updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId !== executionId) {
+                if (currentTab.executionId && currentTab.executionId !== executionId) {
                     return currentTab;
                 }
 
@@ -2330,7 +2330,10 @@ export default function WorkspacePage() {
 
             const poll = async () => {
                 const trackedTab = workspaceTabsRef.current.find((tab) => tab.id === tabId);
-                if (!trackedTab || trackedTab.executionId !== executionId) {
+                if (
+                    !trackedTab ||
+                    (trackedTab.executionId && trackedTab.executionId !== executionId)
+                ) {
                     clearQueryStatusPolling(tabId);
                     return;
                 }
@@ -2350,7 +2353,7 @@ export default function WorkspacePage() {
                                 ? error.message
                                 : 'Execution status polling failed.';
                         updateWorkspaceTab(tabId, (currentTab) => {
-                            if (currentTab.executionId !== executionId) {
+                            if (currentTab.executionId && currentTab.executionId !== executionId) {
                                 return currentTab;
                             }
 
@@ -2371,7 +2374,7 @@ export default function WorkspacePage() {
                 attempts += 1;
                 if (attempts >= queryStatusPollingMaxAttempts) {
                     updateWorkspaceTab(tabId, (currentTab) => {
-                        if (currentTab.executionId !== executionId) {
+                        if (currentTab.executionId && currentTab.executionId !== executionId) {
                             return currentTab;
                         }
 
