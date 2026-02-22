@@ -184,10 +184,6 @@ export default function LoginPage() {
     return (
         <AppShell title="dwarvenpick" showTitle={false}>
             <section className="panel login-card">
-                <div className="login-intro">
-                    <h2>Welcome Back</h2>
-                </div>
-
                 <form className="login-form" onSubmit={handleSubmit}>
                     <label htmlFor="username">Username</label>
                     <input

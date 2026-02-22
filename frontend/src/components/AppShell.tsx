@@ -11,9 +11,16 @@ type AppShellProps = PropsWithChildren<{
     title: string;
     showTitle?: boolean;
     user?: AppShellUser | null;
+    topNav?: boolean;
 }>;
 
-export default function AppShell({ title, showTitle = true, user, children }: AppShellProps) {
+export default function AppShell({
+    title,
+    showTitle = true,
+    user,
+    topNav = true,
+    children
+}: AppShellProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -36,41 +43,43 @@ export default function AppShell({ title, showTitle = true, user, children }: Ap
 
     return (
         <div className="app-shell">
-            <header className="top-nav">
-                <span className="top-nav-brand">{title}</span>
-                {user ? (
-                    <div className="top-nav-user" ref={menuRef}>
-                        <button
-                            type="button"
-                            className="top-nav-user-trigger"
-                            onClick={() => setMenuOpen((open) => !open)}
-                            aria-expanded={menuOpen}
-                            aria-haspopup="menu"
-                        >
-                            <span className="top-nav-user-name">{user.displayName}</span>
-                            <span className="top-nav-user-handle">@{user.username}</span>
-                        </button>
-                        {menuOpen ? (
-                            <div className="top-nav-user-menu" role="menu">
-                                {user.email ? (
-                                    <p className="top-nav-user-email">{user.email}</p>
-                                ) : null}
-                                <button
-                                    type="button"
-                                    className="top-nav-logout"
-                                    role="menuitem"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        user.onLogout();
-                                    }}
-                                >
-                                    Logout
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
-                ) : null}
-            </header>
+            {topNav ? (
+                <header className="top-nav">
+                    <span className="top-nav-brand">{title}</span>
+                    {user ? (
+                        <div className="top-nav-user" ref={menuRef}>
+                            <button
+                                type="button"
+                                className="top-nav-user-trigger"
+                                onClick={() => setMenuOpen((open) => !open)}
+                                aria-expanded={menuOpen}
+                                aria-haspopup="menu"
+                            >
+                                <span className="top-nav-user-name">{user.displayName}</span>
+                                <span className="top-nav-user-handle">@{user.username}</span>
+                            </button>
+                            {menuOpen ? (
+                                <div className="top-nav-user-menu" role="menu">
+                                    {user.email ? (
+                                        <p className="top-nav-user-email">{user.email}</p>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        className="top-nav-logout"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setMenuOpen(false);
+                                            user.onLogout();
+                                        }}
+                                    >
+                                        Logout
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
+                </header>
+            ) : null}
             {showTitle ? <header className="app-header">{title}</header> : null}
             <main className="app-main">{children}</main>
         </div>

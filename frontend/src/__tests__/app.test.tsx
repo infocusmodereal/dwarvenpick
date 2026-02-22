@@ -83,7 +83,8 @@ describe('App shell', () => {
         );
 
         expect(screen.queryByText(/dwarvenpick login/i)).not.toBeInTheDocument();
-        expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: /welcome back/i })).not.toBeInTheDocument();
+        expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
         expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /local/i })).not.toBeInTheDocument();
     });

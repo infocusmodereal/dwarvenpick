@@ -252,6 +252,8 @@ type ReencryptCredentialsResponse = {
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin';
 type IconGlyph = 'new' | 'rename' | 'close' | 'refresh';
+type RailGlyph = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin' | 'collapse' | 'menu';
+type ExplorerGlyph = 'database' | 'schema' | 'table' | 'column';
 
 type IconButtonProps = {
     icon: IconGlyph;
@@ -469,6 +471,120 @@ const IconButton = ({
     </button>
 );
 
+const RailIcon = ({ glyph }: { glyph: RailGlyph }) => {
+    if (glyph === 'workbench') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="3.5" y="4" width="13" height="12" rx="1.8" />
+                <path d="M3.5 8h13" />
+                <path d="M8 8v8" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'history') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M10 4.2a5.8 5.8 0 1 1-5.2 3.2" />
+                <path d="M3.8 5.2v3.2H7" />
+                <path d="M10 6.6v3.7l2.5 1.5" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'snippets') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M5 3.8h10a1.2 1.2 0 0 1 1.2 1.2v10a1.2 1.2 0 0 1-1.2 1.2H5A1.2 1.2 0 0 1 3.8 15V5A1.2 1.2 0 0 1 5 3.8Z" />
+                <path d="M6.6 7h6.8" />
+                <path d="M6.6 10h6.8" />
+                <path d="M6.6 13h4.3" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'audit') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M10 3.6 4.2 5.8v4.7c0 3.7 2.4 5.8 5.8 6.9 3.4-1.1 5.8-3.2 5.8-6.9V5.8L10 3.6Z" />
+                <path d="m7.4 10.1 1.6 1.8 3.7-3.8" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'admin') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="10" cy="10" r="2.4" />
+                <path d="m16.2 10-.9.5.1 1.1-.8.8-1.1-.1-.5.9h-1.1l-.5-.9-1.1.1-.8-.8.1-1.1-.9-.5v-1.1l.9-.5-.1-1.1.8-.8 1.1.1.5-.9h1.1l.5.9 1.1-.1.8.8-.1 1.1.9.5V10Z" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'menu') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 6h12" />
+                <path d="M4 10h12" />
+                <path d="M4 14h12" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12.8 4 8.2 8.6 12.8 13.2" />
+            <path d="M16 4v9.2" />
+            <path d="M4.4 8.6h7.8" />
+        </svg>
+    );
+};
+
+const ExplorerIcon = ({ glyph }: { glyph: ExplorerGlyph }) => {
+    if (glyph === 'database') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <ellipse cx="10" cy="5.6" rx="5.8" ry="2.2" />
+                <path d="M4.2 5.6v7.2c0 1.2 2.6 2.2 5.8 2.2s5.8-1 5.8-2.2V5.6" />
+                <path d="M4.2 9.2c0 1.2 2.6 2.2 5.8 2.2s5.8-1 5.8-2.2" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'schema') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M3.8 5.5h12.4v9H3.8z" />
+                <path d="M3.8 8.4h12.4" />
+                <path d="M8.2 8.4v6.1" />
+            </svg>
+        );
+    }
+
+    if (glyph === 'table') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="3.8" y="4.6" width="12.4" height="10.8" rx="1.1" />
+                <path d="M3.8 8h12.4" />
+                <path d="M3.8 11.5h12.4" />
+                <path d="M8.3 4.6v10.8" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <circle cx="10" cy="10" r="2.1" />
+        </svg>
+    );
+};
+
+const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+        {expanded ? <path d="m5 12 5-5 5 5" /> : <path d="m8 5 5 5-5 5" />}
+    </svg>
+);
+
 export default function WorkspacePage() {
     const navigate = useNavigate();
 
@@ -578,6 +694,21 @@ export default function WorkspacePage() {
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
     const [launcherDatasourceId, setLauncherDatasourceId] = useState('');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
+    const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+    const [leftRailUserMenuOpen, setLeftRailUserMenuOpen] = useState(false);
+    const leftRailUserMenuRef = useRef<HTMLDivElement | null>(null);
+    const [activeTabMenuOpen, setActiveTabMenuOpen] = useState(false);
+    const activeTabMenuRef = useRef<HTMLDivElement | null>(null);
+    const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
+        Record<string, boolean>
+    >({});
+    const [expandedExplorerSchemas, setExpandedExplorerSchemas] = useState<Record<string, boolean>>(
+        {}
+    );
+    const [expandedExplorerTables, setExpandedExplorerTables] = useState<Record<string, boolean>>(
+        {}
+    );
+    const [selectedExplorerNode, setSelectedExplorerNode] = useState('');
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
     const [editorRenderKey, setEditorRenderKey] = useState(0);
@@ -589,6 +720,44 @@ export default function WorkspacePage() {
             setActiveSection('workbench');
         }
     }, [activeSection, isSystemAdmin]);
+
+    useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !leftRailUserMenuRef.current?.contains(target)) {
+                setLeftRailUserMenuOpen(false);
+            }
+        };
+
+        if (leftRailUserMenuOpen) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [leftRailUserMenuOpen]);
+
+    useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !activeTabMenuRef.current?.contains(target)) {
+                setActiveTabMenuOpen(false);
+            }
+        };
+
+        if (activeTabMenuOpen) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [activeTabMenuOpen]);
+
+    useEffect(() => {
+        setActiveTabMenuOpen(false);
+    }, [activeTabId]);
 
     useEffect(() => {
         if (visibleDatasources.length === 0) {
@@ -1397,6 +1566,51 @@ export default function WorkspacePage() {
     }, [activeTab?.datasourceId, loadSchemaBrowser]);
 
     useEffect(() => {
+        if (!schemaBrowser) {
+            return;
+        }
+
+        const datasourceKey = `datasource:${schemaBrowser.datasourceId}`;
+        setExpandedExplorerDatasources((current) =>
+            current[datasourceKey] === undefined
+                ? {
+                      ...current,
+                      [datasourceKey]: true
+                  }
+                : current
+        );
+
+        setExpandedExplorerSchemas((current) => {
+            const next = { ...current };
+            schemaBrowser.schemas.forEach((schemaEntry, index) => {
+                const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
+                if (next[schemaKey] === undefined) {
+                    next[schemaKey] = index === 0;
+                }
+            });
+            return next;
+        });
+
+        setExpandedExplorerTables((current) => {
+            const next = { ...current };
+            schemaBrowser.schemas.forEach((schemaEntry) => {
+                const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
+                schemaEntry.tables.forEach((tableEntry) => {
+                    const tableKey = `${schemaKey}:table:${tableEntry.table}`;
+                    if (next[tableKey] === undefined) {
+                        next[tableKey] = false;
+                    }
+                });
+            });
+            return next;
+        });
+
+        setSelectedExplorerNode((current) =>
+            current ? current : `datasource:${schemaBrowser.datasourceId}`
+        );
+    }, [schemaBrowser]);
+
+    useEffect(() => {
         if (!currentUser) {
             return;
         }
@@ -1520,6 +1734,21 @@ export default function WorkspacePage() {
         },
         [updateWorkspaceTab, workspaceTabs]
     );
+
+    const handleDuplicateTab = useCallback((tabId: string) => {
+        const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+        if (!tab) {
+            return;
+        }
+
+        const duplicateTab: WorkspaceTab = {
+            ...buildWorkspaceTab(tab.datasourceId, `${tab.title} Copy`, tab.queryText),
+            schema: tab.schema
+        };
+
+        setWorkspaceTabs((currentTabs) => [...currentTabs, duplicateTab]);
+        setActiveTabId(duplicateTab.id);
+    }, []);
 
     const clearQueryStatusPolling = useCallback((tabId: string) => {
         const timer = queryStatusPollingTimersRef.current[tabId];
@@ -3021,22 +3250,7 @@ export default function WorkspacePage() {
     }
 
     return (
-        <AppShell
-            title="dwarvenpick"
-            showTitle={false}
-            user={
-                currentUser
-                    ? {
-                          displayName: currentUser.displayName,
-                          username: currentUser.username,
-                          email: currentUser.email,
-                          onLogout: () => {
-                              void handleLogout();
-                          }
-                      }
-                    : null
-            }
-        >
+        <AppShell title="dwarvenpick" showTitle={false} topNav={false}>
             {workspaceError ? (
                 <section className="panel">
                     <p className="form-error">{workspaceError}</p>
@@ -3044,7 +3258,35 @@ export default function WorkspacePage() {
             ) : null}
 
             <div className="workspace-shell">
-                <aside className="panel workspace-left-rail">
+                <aside
+                    className={
+                        leftRailCollapsed
+                            ? 'panel workspace-left-rail is-collapsed'
+                            : 'panel workspace-left-rail'
+                    }
+                >
+                    <div className="workspace-left-rail-head">
+                        <button
+                            type="button"
+                            className="workspace-logo"
+                            onClick={() => setActiveSection('workbench')}
+                            title="dwarvenpick"
+                        >
+                            <span className="workspace-logo-icon">DP</span>
+                            {!leftRailCollapsed ? (
+                                <span className="workspace-logo-label">dwarvenpick</span>
+                            ) : null}
+                        </button>
+                        <button
+                            type="button"
+                            className="workspace-rail-toggle"
+                            onClick={() => setLeftRailCollapsed((current) => !current)}
+                            title={leftRailCollapsed ? 'Expand menu' : 'Collapse menu'}
+                            aria-label={leftRailCollapsed ? 'Expand menu' : 'Collapse menu'}
+                        >
+                            <RailIcon glyph={leftRailCollapsed ? 'menu' : 'collapse'} />
+                        </button>
+                    </div>
                     <nav
                         className="workspace-mode-tabs"
                         role="tablist"
@@ -3060,8 +3302,12 @@ export default function WorkspacePage() {
                             }
                             aria-selected={activeSection === 'workbench'}
                             onClick={() => setActiveSection('workbench')}
+                            title={leftRailCollapsed ? 'SQL Workbench' : undefined}
                         >
-                            SQL Workbench
+                            <span className="workspace-mode-icon">
+                                <RailIcon glyph="workbench" />
+                            </span>
+                            {!leftRailCollapsed ? <span>SQL Workbench</span> : null}
                         </button>
                         <button
                             type="button"
@@ -3073,8 +3319,12 @@ export default function WorkspacePage() {
                             }
                             aria-selected={activeSection === 'history'}
                             onClick={() => setActiveSection('history')}
+                            title={leftRailCollapsed ? 'History' : undefined}
                         >
-                            History
+                            <span className="workspace-mode-icon">
+                                <RailIcon glyph="history" />
+                            </span>
+                            {!leftRailCollapsed ? <span>History</span> : null}
                         </button>
                         <button
                             type="button"
@@ -3086,8 +3336,12 @@ export default function WorkspacePage() {
                             }
                             aria-selected={activeSection === 'snippets'}
                             onClick={() => setActiveSection('snippets')}
+                            title={leftRailCollapsed ? 'Snippets' : undefined}
                         >
-                            Snippets
+                            <span className="workspace-mode-icon">
+                                <RailIcon glyph="snippets" />
+                            </span>
+                            {!leftRailCollapsed ? <span>Snippets</span> : null}
                         </button>
                         {isSystemAdmin ? (
                             <button
@@ -3100,8 +3354,12 @@ export default function WorkspacePage() {
                                 }
                                 aria-selected={activeSection === 'audit'}
                                 onClick={() => setActiveSection('audit')}
+                                title={leftRailCollapsed ? 'Audit' : undefined}
                             >
-                                Audit
+                                <span className="workspace-mode-icon">
+                                    <RailIcon glyph="audit" />
+                                </span>
+                                {!leftRailCollapsed ? <span>Audit</span> : null}
                             </button>
                         ) : null}
                         {isSystemAdmin ? (
@@ -3115,11 +3373,51 @@ export default function WorkspacePage() {
                                 }
                                 aria-selected={activeSection === 'admin'}
                                 onClick={() => setActiveSection('admin')}
+                                title={leftRailCollapsed ? 'Governance' : undefined}
                             >
-                                Governance
+                                <span className="workspace-mode-icon">
+                                    <RailIcon glyph="admin" />
+                                </span>
+                                {!leftRailCollapsed ? <span>Governance</span> : null}
                             </button>
                         ) : null}
                     </nav>
+
+                    {currentUser ? (
+                        <div className="workspace-left-user" ref={leftRailUserMenuRef}>
+                            <button
+                                type="button"
+                                className="workspace-left-user-trigger"
+                                onClick={() => setLeftRailUserMenuOpen((current) => !current)}
+                                title={leftRailCollapsed ? currentUser.displayName : undefined}
+                            >
+                                <span className="workspace-left-user-avatar">
+                                    {currentUser.displayName.charAt(0).toUpperCase()}
+                                </span>
+                                {!leftRailCollapsed ? (
+                                    <span className="workspace-left-user-meta">
+                                        <strong>{currentUser.displayName}</strong>
+                                        <small>@{currentUser.username}</small>
+                                    </span>
+                                ) : null}
+                            </button>
+                            {leftRailUserMenuOpen ? (
+                                <div className="workspace-left-user-menu" role="menu">
+                                    {currentUser.email ? <p>{currentUser.email}</p> : null}
+                                    <button
+                                        type="button"
+                                        className="danger-button"
+                                        onClick={() => {
+                                            setLeftRailUserMenuOpen(false);
+                                            void handleLogout();
+                                        }}
+                                    >
+                                        Logout
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </aside>
 
                 <section className="workspace-main">
@@ -3187,7 +3485,7 @@ export default function WorkspacePage() {
 
                             <section className="schema-browser">
                                 <div className="row schema-browser-header">
-                                    <h3>Schema</h3>
+                                    <h3>Explorer</h3>
                                     <button
                                         type="button"
                                         className="chip"
@@ -3195,180 +3493,508 @@ export default function WorkspacePage() {
                                     >
                                         {showSchemaBrowser ? 'Hide' : 'Show'}
                                     </button>
-                                    {showSchemaBrowser ? (
-                                        <IconButton
-                                            icon="refresh"
-                                            title="Refresh schema metadata"
-                                            disabled={
-                                                !activeTab?.datasourceId || loadingSchemaBrowser
-                                            }
-                                            onClick={() =>
-                                                activeTab?.datasourceId
-                                                    ? void loadSchemaBrowser(
-                                                          activeTab.datasourceId,
-                                                          true
-                                                      )
-                                                    : undefined
-                                            }
-                                        />
-                                    ) : null}
+                                    <IconButton
+                                        icon="refresh"
+                                        title={
+                                            loadingSchemaBrowser
+                                                ? 'Refreshing explorer metadata...'
+                                                : 'Refresh explorer metadata'
+                                        }
+                                        disabled={!activeTab?.datasourceId || loadingSchemaBrowser}
+                                        onClick={() =>
+                                            activeTab?.datasourceId
+                                                ? void loadSchemaBrowser(
+                                                      activeTab.datasourceId,
+                                                      true
+                                                  )
+                                                : undefined
+                                        }
+                                    />
                                 </div>
                                 {showSchemaBrowser ? (
-                                    <>
+                                    <div className="explorer-body">
                                         {schemaBrowserError ? (
                                             <p className="form-error">{schemaBrowserError}</p>
                                         ) : null}
+                                        {loadingSchemaBrowser && !schemaBrowser ? (
+                                            <p className="explorer-empty">Loading explorer...</p>
+                                        ) : null}
                                         {schemaBrowser ? (
-                                            <ul className="schema-tree" role="tree">
-                                                {schemaBrowser.schemas.map((schemaEntry) => (
-                                                    <li
-                                                        key={`schema-${schemaEntry.schema}`}
-                                                        className="schema-tree-schema"
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            className="tree-link tree-link-schema"
-                                                            onClick={() =>
-                                                                handleInsertTextIntoActiveQuery(
-                                                                    schemaEntry.schema
-                                                                )
-                                                            }
-                                                        >
-                                                            {schemaEntry.schema}
-                                                        </button>
-                                                        <ul>
-                                                            {schemaEntry.tables.map(
-                                                                (tableEntry) => (
-                                                                    <li
-                                                                        key={`${schemaEntry.schema}-${tableEntry.table}`}
-                                                                        className="schema-tree-table"
-                                                                    >
-                                                                        <button
-                                                                            type="button"
-                                                                            className="tree-link tree-link-table"
-                                                                            onClick={() =>
-                                                                                handleInsertTextIntoActiveQuery(
-                                                                                    `${schemaEntry.schema}.${tableEntry.table}`
-                                                                                )
+                                            <ul className="explorer-tree explorer-root" role="tree">
+                                                {(() => {
+                                                    const datasourceKey = `datasource:${schemaBrowser.datasourceId}`;
+                                                    const datasourceExpanded =
+                                                        expandedExplorerDatasources[
+                                                            datasourceKey
+                                                        ] ?? true;
+                                                    const activeDatasource =
+                                                        visibleDatasources.find(
+                                                            (datasource) =>
+                                                                datasource.id ===
+                                                                schemaBrowser.datasourceId
+                                                        ) ?? null;
+                                                    return (
+                                                        <li className="explorer-node explorer-depth-0">
+                                                            <div
+                                                                className={
+                                                                    selectedExplorerNode ===
+                                                                    datasourceKey
+                                                                        ? 'explorer-node-row selected'
+                                                                        : 'explorer-node-row'
+                                                                }
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    className="explorer-toggle"
+                                                                    onClick={() =>
+                                                                        setExpandedExplorerDatasources(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                [datasourceKey]:
+                                                                                    !datasourceExpanded
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    title={
+                                                                        datasourceExpanded
+                                                                            ? 'Collapse datasource'
+                                                                            : 'Expand datasource'
+                                                                    }
+                                                                >
+                                                                    <ChevronIcon
+                                                                        expanded={
+                                                                            datasourceExpanded
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="explorer-item"
+                                                                    onClick={() =>
+                                                                        setSelectedExplorerNode(
+                                                                            datasourceKey
+                                                                        )
+                                                                    }
+                                                                    title={
+                                                                        activeDatasource?.name ??
+                                                                        schemaBrowser.datasourceId
+                                                                    }
+                                                                >
+                                                                    <span className="explorer-item-icon">
+                                                                        <ExplorerIcon glyph="database" />
+                                                                    </span>
+                                                                    <span className="explorer-item-title">
+                                                                        {activeDatasource?.name ??
+                                                                            schemaBrowser.datasourceId}
+                                                                    </span>
+                                                                    {activeDatasource ? (
+                                                                        <span className="explorer-item-meta">
+                                                                            {
+                                                                                activeDatasource.engine
                                                                             }
-                                                                        >
-                                                                            {tableEntry.table}
-                                                                        </button>
-                                                                        <ul>
-                                                                            {tableEntry.columns.map(
-                                                                                (columnEntry) => (
+                                                                        </span>
+                                                                    ) : null}
+                                                                </button>
+                                                            </div>
+                                                            {datasourceExpanded ? (
+                                                                <ul className="explorer-children">
+                                                                    {schemaBrowser.schemas
+                                                                        .length === 0 ? (
+                                                                        <li className="explorer-empty">
+                                                                            No schemas discovered.
+                                                                        </li>
+                                                                    ) : (
+                                                                        schemaBrowser.schemas.map(
+                                                                            (schemaEntry) => {
+                                                                                const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
+                                                                                const schemaExpanded =
+                                                                                    expandedExplorerSchemas[
+                                                                                        schemaKey
+                                                                                    ] ?? false;
+                                                                                return (
                                                                                     <li
-                                                                                        key={`${schemaEntry.schema}-${tableEntry.table}-${columnEntry.name}`}
-                                                                                        className="schema-tree-column"
+                                                                                        key={
+                                                                                            schemaKey
+                                                                                        }
+                                                                                        className="explorer-node explorer-depth-1"
                                                                                     >
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            className="tree-link tree-link-column"
-                                                                                            onClick={() =>
-                                                                                                handleInsertTextIntoActiveQuery(
-                                                                                                    columnEntry.name
-                                                                                                )
+                                                                                        <div
+                                                                                            className={
+                                                                                                selectedExplorerNode ===
+                                                                                                schemaKey
+                                                                                                    ? 'explorer-node-row selected'
+                                                                                                    : 'explorer-node-row'
                                                                                             }
                                                                                         >
-                                                                                            {
-                                                                                                columnEntry.name
-                                                                                            }
-                                                                                        </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                className="explorer-toggle"
+                                                                                                onClick={() =>
+                                                                                                    setExpandedExplorerSchemas(
+                                                                                                        (
+                                                                                                            current
+                                                                                                        ) => ({
+                                                                                                            ...current,
+                                                                                                            [schemaKey]:
+                                                                                                                !schemaExpanded
+                                                                                                        })
+                                                                                                    )
+                                                                                                }
+                                                                                                title={
+                                                                                                    schemaExpanded
+                                                                                                        ? 'Collapse schema'
+                                                                                                        : 'Expand schema'
+                                                                                                }
+                                                                                            >
+                                                                                                <ChevronIcon
+                                                                                                    expanded={
+                                                                                                        schemaExpanded
+                                                                                                    }
+                                                                                                />
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                className="explorer-item"
+                                                                                                onClick={() => {
+                                                                                                    setSelectedExplorerNode(
+                                                                                                        schemaKey
+                                                                                                    );
+                                                                                                    handleInsertTextIntoActiveQuery(
+                                                                                                        schemaEntry.schema
+                                                                                                    );
+                                                                                                }}
+                                                                                            >
+                                                                                                <span className="explorer-item-icon">
+                                                                                                    <ExplorerIcon glyph="schema" />
+                                                                                                </span>
+                                                                                                <span className="explorer-item-title">
+                                                                                                    {
+                                                                                                        schemaEntry.schema
+                                                                                                    }
+                                                                                                </span>
+                                                                                            </button>
+                                                                                        </div>
+                                                                                        {schemaExpanded ? (
+                                                                                            <ul className="explorer-children">
+                                                                                                {schemaEntry.tables.map(
+                                                                                                    (
+                                                                                                        tableEntry
+                                                                                                    ) => {
+                                                                                                        const tableKey = `${schemaKey}:table:${tableEntry.table}`;
+                                                                                                        const tableExpanded =
+                                                                                                            expandedExplorerTables[
+                                                                                                                tableKey
+                                                                                                            ] ??
+                                                                                                            false;
+                                                                                                        return (
+                                                                                                            <li
+                                                                                                                key={
+                                                                                                                    tableKey
+                                                                                                                }
+                                                                                                                className="explorer-node explorer-depth-2"
+                                                                                                            >
+                                                                                                                <div
+                                                                                                                    className={
+                                                                                                                        selectedExplorerNode ===
+                                                                                                                        tableKey
+                                                                                                                            ? 'explorer-node-row selected'
+                                                                                                                            : 'explorer-node-row'
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    {tableEntry
+                                                                                                                        .columns
+                                                                                                                        .length >
+                                                                                                                    0 ? (
+                                                                                                                        <button
+                                                                                                                            type="button"
+                                                                                                                            className="explorer-toggle"
+                                                                                                                            onClick={() =>
+                                                                                                                                setExpandedExplorerTables(
+                                                                                                                                    (
+                                                                                                                                        current
+                                                                                                                                    ) => ({
+                                                                                                                                        ...current,
+                                                                                                                                        [tableKey]:
+                                                                                                                                            !tableExpanded
+                                                                                                                                    })
+                                                                                                                                )
+                                                                                                                            }
+                                                                                                                            title={
+                                                                                                                                tableExpanded
+                                                                                                                                    ? 'Collapse table columns'
+                                                                                                                                    : 'Expand table columns'
+                                                                                                                            }
+                                                                                                                        >
+                                                                                                                            <ChevronIcon
+                                                                                                                                expanded={
+                                                                                                                                    tableExpanded
+                                                                                                                                }
+                                                                                                                            />
+                                                                                                                        </button>
+                                                                                                                    ) : (
+                                                                                                                        <span className="explorer-toggle-spacer" />
+                                                                                                                    )}
+                                                                                                                    <button
+                                                                                                                        type="button"
+                                                                                                                        className="explorer-item"
+                                                                                                                        onClick={() => {
+                                                                                                                            setSelectedExplorerNode(
+                                                                                                                                tableKey
+                                                                                                                            );
+                                                                                                                            handleInsertTextIntoActiveQuery(
+                                                                                                                                `${schemaEntry.schema}.${tableEntry.table}`
+                                                                                                                            );
+                                                                                                                        }}
+                                                                                                                    >
+                                                                                                                        <span className="explorer-item-icon">
+                                                                                                                            <ExplorerIcon glyph="table" />
+                                                                                                                        </span>
+                                                                                                                        <span className="explorer-item-title">
+                                                                                                                            {
+                                                                                                                                tableEntry.table
+                                                                                                                            }
+                                                                                                                        </span>
+                                                                                                                    </button>
+                                                                                                                </div>
+                                                                                                                {tableExpanded &&
+                                                                                                                tableEntry
+                                                                                                                    .columns
+                                                                                                                    .length >
+                                                                                                                    0 ? (
+                                                                                                                    <ul className="explorer-children">
+                                                                                                                        {tableEntry.columns.map(
+                                                                                                                            (
+                                                                                                                                columnEntry
+                                                                                                                            ) => {
+                                                                                                                                const columnKey = `${tableKey}:column:${columnEntry.name}`;
+                                                                                                                                return (
+                                                                                                                                    <li
+                                                                                                                                        key={
+                                                                                                                                            columnKey
+                                                                                                                                        }
+                                                                                                                                        className="explorer-node explorer-depth-3"
+                                                                                                                                    >
+                                                                                                                                        <div
+                                                                                                                                            className={
+                                                                                                                                                selectedExplorerNode ===
+                                                                                                                                                columnKey
+                                                                                                                                                    ? 'explorer-node-row selected'
+                                                                                                                                                    : 'explorer-node-row'
+                                                                                                                                            }
+                                                                                                                                        >
+                                                                                                                                            <span className="explorer-toggle-spacer" />
+                                                                                                                                            <button
+                                                                                                                                                type="button"
+                                                                                                                                                className="explorer-item"
+                                                                                                                                                onClick={() => {
+                                                                                                                                                    setSelectedExplorerNode(
+                                                                                                                                                        columnKey
+                                                                                                                                                    );
+                                                                                                                                                    handleInsertTextIntoActiveQuery(
+                                                                                                                                                        columnEntry.name
+                                                                                                                                                    );
+                                                                                                                                                }}
+                                                                                                                                            >
+                                                                                                                                                <span className="explorer-item-icon">
+                                                                                                                                                    <ExplorerIcon glyph="column" />
+                                                                                                                                                </span>
+                                                                                                                                                <span className="explorer-item-title">
+                                                                                                                                                    {
+                                                                                                                                                        columnEntry.name
+                                                                                                                                                    }
+                                                                                                                                                </span>
+                                                                                                                                            </button>
+                                                                                                                                        </div>
+                                                                                                                                    </li>
+                                                                                                                                );
+                                                                                                                            }
+                                                                                                                        )}
+                                                                                                                    </ul>
+                                                                                                                ) : null}
+                                                                                                            </li>
+                                                                                                        );
+                                                                                                    }
+                                                                                                )}
+                                                                                            </ul>
+                                                                                        ) : null}
                                                                                     </li>
-                                                                                )
-                                                                            )}
-                                                                        </ul>
-                                                                    </li>
-                                                                )
-                                                            )}
-                                                        </ul>
-                                                    </li>
-                                                ))}
+                                                                                );
+                                                                            }
+                                                                        )
+                                                                    )}
+                                                                </ul>
+                                                            ) : null}
+                                                        </li>
+                                                    );
+                                                })()}
                                             </ul>
                                         ) : (
-                                            <p>
-                                                Schema metadata appears after a datasource is
-                                                selected.
+                                            <p className="explorer-empty">
+                                                Select a datasource to browse schemas and tables.
                                             </p>
                                         )}
-                                    </>
+                                    </div>
                                 ) : null}
                             </section>
                         </aside>
 
                         <section className="panel editor">
                             <div className="editor-toolbar">
-                                <div className="editor-tabs" role="tablist" aria-label="SQL tabs">
-                                    {workspaceTabs.map((tab) => (
-                                        <button
-                                            key={tab.id}
-                                            type="button"
-                                            role="tab"
-                                            className={
-                                                tab.id === activeTabId
-                                                    ? 'editor-tab active'
-                                                    : 'editor-tab'
-                                            }
-                                            aria-selected={tab.id === activeTabId}
-                                            onClick={() => setActiveTabId(tab.id)}
-                                        >
-                                            {tab.title}
-                                            {tab.isExecuting ? ' (Running)' : ''}
-                                        </button>
-                                    ))}
-                                </div>
+                                <div className="editor-tabs-row">
+                                    <div
+                                        className="editor-tabs"
+                                        role="tablist"
+                                        aria-label="SQL tabs"
+                                    >
+                                        {workspaceTabs.map((tab) => (
+                                            <div
+                                                key={tab.id}
+                                                role="presentation"
+                                                className={
+                                                    tab.id === activeTabId
+                                                        ? 'editor-tab active'
+                                                        : 'editor-tab'
+                                                }
+                                            >
+                                                <button
+                                                    type="button"
+                                                    role="tab"
+                                                    className="editor-tab-trigger"
+                                                    aria-selected={tab.id === activeTabId}
+                                                    onClick={() => setActiveTabId(tab.id)}
+                                                    title={tab.title}
+                                                >
+                                                    <span>{tab.title}</span>
+                                                    {tab.isExecuting ? (
+                                                        <span className="editor-tab-running">
+                                                            Running
+                                                        </span>
+                                                    ) : null}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="editor-tab-close"
+                                                    title="Close tab"
+                                                    aria-label={`Close ${tab.title}`}
+                                                    disabled={workspaceTabs.length <= 1}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleCloseTab(tab.id);
+                                                    }}
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 20 20"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.8"
+                                                    >
+                                                        <path d="m5 5 10 10" />
+                                                        <path d="m15 5-10 10" />
+                                                    </svg>
+                                                </button>
+                                                {tab.id === activeTabId ? (
+                                                    <div
+                                                        className="editor-tab-menu-anchor"
+                                                        ref={activeTabMenuRef}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className="editor-tab-menu-trigger"
+                                                            title="Tab actions"
+                                                            aria-label="Tab actions"
+                                                            onClick={() =>
+                                                                setActiveTabMenuOpen(
+                                                                    (current) => !current
+                                                                )
+                                                            }
+                                                        >
+                                                            <svg
+                                                                viewBox="0 0 20 20"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                strokeWidth="1.8"
+                                                            >
+                                                                <circle cx="5" cy="10" r="1.4" />
+                                                                <circle cx="10" cy="10" r="1.4" />
+                                                                <circle cx="15" cy="10" r="1.4" />
+                                                            </svg>
+                                                        </button>
+                                                        {activeTabMenuOpen ? (
+                                                            <div
+                                                                className="editor-tab-menu"
+                                                                role="menu"
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    role="menuitem"
+                                                                    className="editor-tab-menu-item"
+                                                                    onClick={() => {
+                                                                        setActiveTabMenuOpen(false);
+                                                                        handleRenameTab(tab.id);
+                                                                    }}
+                                                                >
+                                                                    Rename
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    role="menuitem"
+                                                                    className="editor-tab-menu-item"
+                                                                    onClick={() => {
+                                                                        setActiveTabMenuOpen(false);
+                                                                        handleDuplicateTab(tab.id);
+                                                                    }}
+                                                                >
+                                                                    Duplicate
+                                                                </button>
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ))}
+                                    </div>
 
-                                <div className="row editor-tab-actions">
-                                    <IconButton
-                                        icon="new"
-                                        title="Open new SQL tab"
+                                    <button
+                                        type="button"
+                                        className="editor-tab-add"
                                         onClick={handleOpenNewTab}
-                                    />
-                                    <IconButton
-                                        icon="rename"
-                                        title="Rename active SQL tab"
-                                        disabled={!activeTab}
-                                        onClick={() => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            handleRenameTab(activeTab.id);
-                                        }}
-                                    />
-                                    <IconButton
-                                        icon="close"
-                                        title="Close active SQL tab"
-                                        variant="danger"
-                                        disabled={!activeTab || workspaceTabs.length <= 1}
-                                        onClick={() => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            handleCloseTab(activeTab.id);
-                                        }}
-                                    />
+                                        title="New tab"
+                                        aria-label="New tab"
+                                    >
+                                        <svg
+                                            viewBox="0 0 20 20"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="1.8"
+                                        >
+                                            <path d="M10 4v12" />
+                                            <path d="M4 10h12" />
+                                        </svg>
+                                    </button>
                                 </div>
 
                                 <div className="editor-toolbar-fields">
-                                    <select
-                                        aria-label="Active tab datasource"
-                                        value={activeTab?.datasourceId ?? ''}
-                                        onChange={(event) =>
-                                            handleDatasourceChangeForActiveTab(event.target.value)
-                                        }
-                                        disabled={!activeTab || activeTab.isExecuting}
-                                    >
-                                        {visibleDatasources.map((datasource) => (
-                                            <option
-                                                key={`tab-ds-${datasource.id}`}
-                                                value={datasource.id}
-                                            >
-                                                {datasource.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="select-wrap">
+                                        <select
+                                            aria-label="Active tab datasource"
+                                            value={activeTab?.datasourceId ?? ''}
+                                            onChange={(event) =>
+                                                handleDatasourceChangeForActiveTab(
+                                                    event.target.value
+                                                )
+                                            }
+                                            disabled={!activeTab || activeTab.isExecuting}
+                                        >
+                                            {visibleDatasources.map((datasource) => (
+                                                <option
+                                                    key={`tab-ds-${datasource.id}`}
+                                                    value={datasource.id}
+                                                >
+                                                    {datasource.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                     <input
                                         id="tab-schema"
                                         value={activeTab?.schema ?? ''}
@@ -3517,7 +4143,6 @@ export default function WorkspacePage() {
                         </section>
 
                         <section className="panel results">
-                            <h2>Results Grid</h2>
                             {activeTab?.executionId ? (
                                 <div className="result-meta">
                                     <p>
@@ -3536,9 +4161,7 @@ export default function WorkspacePage() {
                                         </p>
                                     ) : null}
                                 </div>
-                            ) : (
-                                <p>Run a query to view execution status and results.</p>
-                            )}
+                            ) : null}
                             {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
                             {activeTab?.errorMessage ? (
                                 <p className="form-error" role="alert">
@@ -3699,10 +4322,7 @@ export default function WorkspacePage() {
                             {!activeTab?.executionId &&
                             !activeTab?.statusMessage &&
                             !activeTab?.errorMessage ? (
-                                <p>
-                                    Results populate after query submission. Use next/previous once
-                                    paging tokens are available.
-                                </p>
+                                <p className="results-empty">Results</p>
                             ) : null}
                             <details className="shortcut-help">
                                 <summary>Editor Shortcuts</summary>
@@ -3722,49 +4342,68 @@ export default function WorkspacePage() {
                     <section className="panel history-panel" hidden={activeSection !== 'history'}>
                         <h2>Query History</h2>
                         <div className="history-filters">
-                            <label htmlFor="history-datasource-filter">Datasource</label>
-                            <select
-                                id="history-datasource-filter"
-                                value={historyDatasourceFilter}
-                                onChange={(event) => setHistoryDatasourceFilter(event.target.value)}
-                            >
-                                <option value="">All datasources</option>
-                                {visibleDatasources.map((datasource) => (
-                                    <option key={`history-${datasource.id}`} value={datasource.id}>
-                                        {datasource.name}
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="filter-field">
+                                <label htmlFor="history-datasource-filter">Datasource</label>
+                                <div className="select-wrap">
+                                    <select
+                                        id="history-datasource-filter"
+                                        value={historyDatasourceFilter}
+                                        onChange={(event) =>
+                                            setHistoryDatasourceFilter(event.target.value)
+                                        }
+                                    >
+                                        <option value="">All datasources</option>
+                                        {visibleDatasources.map((datasource) => (
+                                            <option
+                                                key={`history-${datasource.id}`}
+                                                value={datasource.id}
+                                            >
+                                                {datasource.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
 
-                            <label htmlFor="history-status-filter">Status</label>
-                            <select
-                                id="history-status-filter"
-                                value={historyStatusFilter}
-                                onChange={(event) => setHistoryStatusFilter(event.target.value)}
-                            >
-                                <option value="">All statuses</option>
-                                <option value="QUEUED">QUEUED</option>
-                                <option value="RUNNING">RUNNING</option>
-                                <option value="SUCCEEDED">SUCCEEDED</option>
-                                <option value="FAILED">FAILED</option>
-                                <option value="CANCELED">CANCELED</option>
-                            </select>
+                            <div className="filter-field">
+                                <label htmlFor="history-status-filter">Status</label>
+                                <div className="select-wrap">
+                                    <select
+                                        id="history-status-filter"
+                                        value={historyStatusFilter}
+                                        onChange={(event) =>
+                                            setHistoryStatusFilter(event.target.value)
+                                        }
+                                    >
+                                        <option value="">All statuses</option>
+                                        <option value="QUEUED">QUEUED</option>
+                                        <option value="RUNNING">RUNNING</option>
+                                        <option value="SUCCEEDED">SUCCEEDED</option>
+                                        <option value="FAILED">FAILED</option>
+                                        <option value="CANCELED">CANCELED</option>
+                                    </select>
+                                </div>
+                            </div>
 
-                            <label htmlFor="history-from-filter">From</label>
-                            <input
-                                id="history-from-filter"
-                                type="datetime-local"
-                                value={historyFromFilter}
-                                onChange={(event) => setHistoryFromFilter(event.target.value)}
-                            />
+                            <div className="filter-field">
+                                <label htmlFor="history-from-filter">From</label>
+                                <input
+                                    id="history-from-filter"
+                                    type="datetime-local"
+                                    value={historyFromFilter}
+                                    onChange={(event) => setHistoryFromFilter(event.target.value)}
+                                />
+                            </div>
 
-                            <label htmlFor="history-to-filter">To</label>
-                            <input
-                                id="history-to-filter"
-                                type="datetime-local"
-                                value={historyToFilter}
-                                onChange={(event) => setHistoryToFilter(event.target.value)}
-                            />
+                            <div className="filter-field">
+                                <label htmlFor="history-to-filter">To</label>
+                                <input
+                                    id="history-to-filter"
+                                    type="datetime-local"
+                                    value={historyToFilter}
+                                    onChange={(event) => setHistoryToFilter(event.target.value)}
+                                />
+                            </div>
                         </div>
                         <div className="row">
                             <IconButton
@@ -3869,36 +4508,44 @@ export default function WorkspacePage() {
                         <h2>Saved Snippets</h2>
 
                         <div className="history-filters">
-                            <label htmlFor="snippet-scope">Scope</label>
-                            <select
-                                id="snippet-scope"
-                                value={snippetScope}
-                                onChange={(event) =>
-                                    setSnippetScope(
-                                        event.target.value as 'all' | 'personal' | 'group'
-                                    )
-                                }
-                            >
-                                <option value="all">All visible</option>
-                                <option value="personal">Personal</option>
-                                <option value="group">Group shared</option>
-                            </select>
+                            <div className="filter-field">
+                                <label htmlFor="snippet-scope">Scope</label>
+                                <div className="select-wrap">
+                                    <select
+                                        id="snippet-scope"
+                                        value={snippetScope}
+                                        onChange={(event) =>
+                                            setSnippetScope(
+                                                event.target.value as 'all' | 'personal' | 'group'
+                                            )
+                                        }
+                                    >
+                                        <option value="all">All visible</option>
+                                        <option value="personal">Personal</option>
+                                        <option value="group">Group shared</option>
+                                    </select>
+                                </div>
+                            </div>
 
-                            <label htmlFor="snippet-title">Snippet Title</label>
-                            <input
-                                id="snippet-title"
-                                value={snippetTitleInput}
-                                onChange={(event) => setSnippetTitleInput(event.target.value)}
-                                placeholder="Daily health query"
-                            />
+                            <div className="filter-field">
+                                <label htmlFor="snippet-title">Snippet Title</label>
+                                <input
+                                    id="snippet-title"
+                                    value={snippetTitleInput}
+                                    onChange={(event) => setSnippetTitleInput(event.target.value)}
+                                    placeholder="Daily health query"
+                                />
+                            </div>
 
-                            <label htmlFor="snippet-group-id">Group ID (optional)</label>
-                            <input
-                                id="snippet-group-id"
-                                value={snippetGroupInput}
-                                onChange={(event) => setSnippetGroupInput(event.target.value)}
-                                placeholder={currentUser?.groups?.[0] ?? 'analytics-users'}
-                            />
+                            <div className="filter-field">
+                                <label htmlFor="snippet-group-id">Group ID (optional)</label>
+                                <input
+                                    id="snippet-group-id"
+                                    value={snippetGroupInput}
+                                    onChange={(event) => setSnippetGroupInput(event.target.value)}
+                                    placeholder={currentUser?.groups?.[0] ?? 'analytics-users'}
+                                />
+                            </div>
                         </div>
                         <div className="row">
                             <button
@@ -3999,49 +4646,65 @@ export default function WorkspacePage() {
                             >
                                 <h2>Admin Audit Events</h2>
                                 <div className="history-filters">
-                                    <label htmlFor="audit-type-filter">Action</label>
-                                    <input
-                                        id="audit-type-filter"
-                                        value={auditTypeFilter}
-                                        onChange={(event) => setAuditTypeFilter(event.target.value)}
-                                        placeholder="query.execute"
-                                    />
+                                    <div className="filter-field">
+                                        <label htmlFor="audit-type-filter">Action</label>
+                                        <input
+                                            id="audit-type-filter"
+                                            value={auditTypeFilter}
+                                            onChange={(event) =>
+                                                setAuditTypeFilter(event.target.value)
+                                            }
+                                            placeholder="query.execute"
+                                        />
+                                    </div>
 
-                                    <label htmlFor="audit-actor-filter">Actor</label>
-                                    <input
-                                        id="audit-actor-filter"
-                                        value={auditActorFilter}
-                                        onChange={(event) =>
-                                            setAuditActorFilter(event.target.value)
-                                        }
-                                        placeholder="admin"
-                                    />
+                                    <div className="filter-field">
+                                        <label htmlFor="audit-actor-filter">Actor</label>
+                                        <input
+                                            id="audit-actor-filter"
+                                            value={auditActorFilter}
+                                            onChange={(event) =>
+                                                setAuditActorFilter(event.target.value)
+                                            }
+                                            placeholder="admin"
+                                        />
+                                    </div>
 
-                                    <label htmlFor="audit-outcome-filter">Outcome</label>
-                                    <input
-                                        id="audit-outcome-filter"
-                                        value={auditOutcomeFilter}
-                                        onChange={(event) =>
-                                            setAuditOutcomeFilter(event.target.value)
-                                        }
-                                        placeholder="success"
-                                    />
+                                    <div className="filter-field">
+                                        <label htmlFor="audit-outcome-filter">Outcome</label>
+                                        <input
+                                            id="audit-outcome-filter"
+                                            value={auditOutcomeFilter}
+                                            onChange={(event) =>
+                                                setAuditOutcomeFilter(event.target.value)
+                                            }
+                                            placeholder="success"
+                                        />
+                                    </div>
 
-                                    <label htmlFor="audit-from-filter">From</label>
-                                    <input
-                                        id="audit-from-filter"
-                                        type="datetime-local"
-                                        value={auditFromFilter}
-                                        onChange={(event) => setAuditFromFilter(event.target.value)}
-                                    />
+                                    <div className="filter-field">
+                                        <label htmlFor="audit-from-filter">From</label>
+                                        <input
+                                            id="audit-from-filter"
+                                            type="datetime-local"
+                                            value={auditFromFilter}
+                                            onChange={(event) =>
+                                                setAuditFromFilter(event.target.value)
+                                            }
+                                        />
+                                    </div>
 
-                                    <label htmlFor="audit-to-filter">To</label>
-                                    <input
-                                        id="audit-to-filter"
-                                        type="datetime-local"
-                                        value={auditToFilter}
-                                        onChange={(event) => setAuditToFilter(event.target.value)}
-                                    />
+                                    <div className="filter-field">
+                                        <label htmlFor="audit-to-filter">To</label>
+                                        <input
+                                            id="audit-to-filter"
+                                            type="datetime-local"
+                                            value={auditToFilter}
+                                            onChange={(event) =>
+                                                setAuditToFilter(event.target.value)
+                                            }
+                                        />
+                                    </div>
                                 </div>
                                 <div className="row">
                                     <IconButton
