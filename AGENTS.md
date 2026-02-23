@@ -15,7 +15,7 @@ Contributor playbook for `dwarvenpick`.
 - Optional local k8s validation: Helm + Minikube.
 
 ## 3) Branch, commit, and push workflow
-- Branch naming: `<type>/<short-slug>` (example: `fix/query-history-overflow`).
+- Branch naming: `<type>/<short-slug>` (example: `fix/query-history-overflow`). No other prefixes allowed.
 - Commit style: Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, etc.).
 - Commit only relevant files; do not bundle unrelated edits.
 - Push after each completed task or task slice so progress is visible.
