@@ -24,6 +24,11 @@ import explorerInsertIcon from '../assets/lucide/arrow-up-right.svg?raw';
 import chevronRightIcon from '../assets/lucide/chevron-right.svg?raw';
 import chevronDownIcon from '../assets/lucide/chevron-down.svg?raw';
 import refreshCwIcon from '../assets/lucide/refresh-cw.svg?raw';
+import tabCloseIcon from '../assets/lucide/x.svg?raw';
+import tabMenuIcon from '../assets/lucide/ellipsis.svg?raw';
+import sortUpIcon from '../assets/lucide/arrow-up.svg?raw';
+import sortDownIcon from '../assets/lucide/arrow-down.svg?raw';
+import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
 
 loader.config({ monaco: MonacoModule });
 
@@ -400,7 +405,7 @@ const workspaceTabsStorageKey = 'dwarvenpick.workspace.tabs.v1';
 const queryStatusPollingIntervalMs = 500;
 const queryStatusPollingMaxAttempts = 600;
 const firstPageToken = '';
-const resultRowHeightPx = 22;
+const resultRowHeightPx = 31;
 const resultViewportHeightPx = 320;
 const builtInAuditActions = [
     'auth.local.login',
@@ -588,23 +593,6 @@ const formatExecutionDuration = (start: string, end: string): string => {
     const seconds = ((durationMs % 60_000) / 1000).toFixed(1);
     return `${minutes}m ${seconds}s`;
 };
-
-const formatCsvCell = (value: string | null): string => {
-    if (value === null) {
-        return '';
-    }
-
-    const requiresQuotes =
-        value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r');
-    if (!requiresQuotes) {
-        return value;
-    }
-
-    return `"${value.replaceAll('"', '""')}"`;
-};
-
-const formatCsvRow = (row: Array<string | null>): string =>
-    row.map((value) => formatCsvCell(value)).join(',');
 
 const compareResultValues = (
     left: string | null,
@@ -915,11 +903,13 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
 
     if (icon === 'info') {
         return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="10" cy="10" r="7.1" />
-                <path d="M10 8.4v5.2" />
-                <circle cx="10" cy="6.1" r="0.7" fill="currentColor" stroke="none" />
-            </svg>
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: railInfoIcon
+                }}
+            />
         );
     }
 
@@ -998,6 +988,41 @@ const ExplorerRefreshIcon = () => (
         aria-hidden
         dangerouslySetInnerHTML={{
             __html: refreshCwIcon
+        }}
+    />
+);
+
+const EditorTabCloseIcon = () => (
+    <span
+        className="editor-tab-icon-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: tabCloseIcon
+        }}
+    />
+);
+
+const EditorTabMenuIcon = () => (
+    <span
+        className="editor-tab-icon-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: tabMenuIcon
+        }}
+    />
+);
+
+const ResultSortIcon = ({ direction }: { direction: ResultSortDirection | null }) => (
+    <span
+        className={`result-sort-icon ${direction ? `is-${direction}` : 'is-none'}`}
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html:
+                direction === 'asc'
+                    ? sortUpIcon
+                    : direction === 'desc'
+                      ? sortDownIcon
+                      : sortNeutralIcon
         }}
     />
 );
@@ -3265,18 +3290,6 @@ export default function WorkspacePage() {
                 setCopyFeedback('Copied cell value to clipboard.');
             } catch {
                 setCopyFeedback('Unable to copy cell value.');
-            }
-        },
-        [writeTextToClipboard]
-    );
-
-    const handleCopyRow = useCallback(
-        async (row: Array<string | null>) => {
-            try {
-                await writeTextToClipboard(formatCsvRow(row));
-                setCopyFeedback('Copied CSV row to clipboard.');
-            } catch {
-                setCopyFeedback('Unable to copy CSV row.');
             }
         },
         [writeTextToClipboard]
@@ -5776,15 +5789,7 @@ export default function WorkspacePage() {
                                                         handleCloseTab(tab.id);
                                                     }}
                                                 >
-                                                    <svg
-                                                        viewBox="0 0 20 20"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.8"
-                                                    >
-                                                        <path d="m5 5 10 10" />
-                                                        <path d="m15 5-10 10" />
-                                                    </svg>
+                                                    <EditorTabCloseIcon />
                                                 </button>
                                                 {tab.id === activeTabId ? (
                                                     <div
@@ -5821,16 +5826,7 @@ export default function WorkspacePage() {
                                                                 });
                                                             }}
                                                         >
-                                                            <svg
-                                                                viewBox="0 0 20 20"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                strokeWidth="1.8"
-                                                            >
-                                                                <circle cx="5" cy="10" r="1.4" />
-                                                                <circle cx="10" cy="10" r="1.4" />
-                                                                <circle cx="15" cy="10" r="1.4" />
-                                                            </svg>
+                                                            <EditorTabMenuIcon />
                                                         </button>
                                                     </div>
                                                 ) : null}
@@ -6185,57 +6181,83 @@ export default function WorkspacePage() {
                             {activeTab?.resultColumns.length ? (
                                 <div className="results-body">
                                     <div className="result-actions row">
-                                        <button
-                                            type="button"
-                                            onClick={handleLoadPreviousResults}
-                                            disabled={activeTab.previousPageTokens.length === 0}
-                                        >
-                                            Previous Page
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleLoadNextResults}
-                                            disabled={!activeTab.nextPageToken}
-                                        >
-                                            Next Page
-                                        </button>
-                                        <div className="result-export-wrapper" ref={exportMenuRef}>
-                                            <IconButton
-                                                icon="download"
-                                                title="Export CSV"
-                                                onClick={() =>
-                                                    setShowExportMenu((current) => !current)
-                                                }
-                                                disabled={exportingCsv}
-                                            />
-                                            {showExportMenu ? (
-                                                <div
-                                                    className="result-export-popover"
-                                                    role="dialog"
-                                                >
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={exportIncludeHeaders}
-                                                            onChange={(event) =>
-                                                                setExportIncludeHeaders(
-                                                                    event.target.checked
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>Include headers</span>
-                                                    </label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => void handleExportCsv()}
-                                                        disabled={exportingCsv}
+                                        <div className="result-pagination-controls row">
+                                            <button
+                                                type="button"
+                                                onClick={handleLoadPreviousResults}
+                                                disabled={activeTab.previousPageTokens.length === 0}
+                                            >
+                                                Previous Page
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleLoadNextResults}
+                                                disabled={!activeTab.nextPageToken}
+                                            >
+                                                Next Page
+                                            </button>
+                                            <div
+                                                className="result-export-wrapper"
+                                                ref={exportMenuRef}
+                                            >
+                                                <IconButton
+                                                    icon="download"
+                                                    title="Export CSV"
+                                                    onClick={() =>
+                                                        setShowExportMenu((current) => !current)
+                                                    }
+                                                    disabled={exportingCsv}
+                                                />
+                                                {showExportMenu ? (
+                                                    <div
+                                                        className="result-export-popover"
+                                                        role="dialog"
                                                     >
-                                                        {exportingCsv
-                                                            ? 'Exporting...'
-                                                            : 'Download CSV'}
-                                                    </button>
-                                                </div>
-                                            ) : null}
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={exportIncludeHeaders}
+                                                                onChange={(event) =>
+                                                                    setExportIncludeHeaders(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Include headers</span>
+                                                        </label>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void handleExportCsv()}
+                                                            disabled={exportingCsv}
+                                                        >
+                                                            {exportingCsv
+                                                                ? 'Exporting...'
+                                                                : 'Download CSV'}
+                                                        </button>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        <div className="result-page-size-inline">
+                                            <label htmlFor="result-page-size">Rows per page</label>
+                                            <div className="select-wrap">
+                                                <select
+                                                    id="result-page-size"
+                                                    value={resultsPageSize}
+                                                    onChange={(event) => {
+                                                        setResultsPageSize(
+                                                            Number(event.target.value)
+                                                        );
+                                                        setResultGridScrollTop(0);
+                                                    }}
+                                                >
+                                                    <option value={10}>10</option>
+                                                    <option value={100}>100</option>
+                                                    <option value={250}>250</option>
+                                                    <option value={500}>500</option>
+                                                    <option value={1000}>1000</option>
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                     <div
@@ -6248,7 +6270,6 @@ export default function WorkspacePage() {
                                             <thead>
                                                 <tr>
                                                     <th className="result-meta-heading">Row</th>
-                                                    <th className="result-meta-heading">Actions</th>
                                                     {activeTab.resultColumns.map(
                                                         (column, columnIndex) => {
                                                             const direction =
@@ -6256,12 +6277,6 @@ export default function WorkspacePage() {
                                                                 columnIndex
                                                                     ? resultSortState.direction
                                                                     : null;
-                                                            const sortStateClass =
-                                                                direction === 'asc'
-                                                                    ? 'is-asc'
-                                                                    : direction === 'desc'
-                                                                      ? 'is-desc'
-                                                                      : 'is-none';
 
                                                             return (
                                                                 <th
@@ -6279,24 +6294,9 @@ export default function WorkspacePage() {
                                                                         aria-label={`Sort by ${column.name}`}
                                                                     >
                                                                         <span>{column.name}</span>
-                                                                        <span
-                                                                            className={`result-sort-icon ${sortStateClass}`}
-                                                                            aria-hidden
-                                                                        >
-                                                                            {direction ? (
-                                                                                direction ===
-                                                                                'asc' ? (
-                                                                                    <span>↑</span>
-                                                                                ) : (
-                                                                                    <span>↓</span>
-                                                                                )
-                                                                            ) : (
-                                                                                <>
-                                                                                    <span>↑</span>
-                                                                                    <span>↓</span>
-                                                                                </>
-                                                                            )}
-                                                                        </span>
+                                                                        <ResultSortIcon
+                                                                            direction={direction}
+                                                                        />
                                                                     </button>
                                                                 </th>
                                                             );
@@ -6309,7 +6309,7 @@ export default function WorkspacePage() {
                                                     <tr>
                                                         <td
                                                             colSpan={
-                                                                activeTab.resultColumns.length + 2
+                                                                activeTab.resultColumns.length + 1
                                                             }
                                                             style={{
                                                                 height: `${visibleResultRows.topSpacerPx}px`,
@@ -6327,17 +6327,6 @@ export default function WorkspacePage() {
                                                             <tr key={`row-${absoluteIndex}`}>
                                                                 <td className="result-row-index">
                                                                     {absoluteIndex + 1}
-                                                                </td>
-                                                                <td className="result-cell-actions">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="chip copy-row-button"
-                                                                        onClick={() =>
-                                                                            void handleCopyRow(row)
-                                                                        }
-                                                                    >
-                                                                        Copy Row
-                                                                    </button>
                                                                 </td>
                                                                 {row.map((value, columnIndex) => (
                                                                     <td
@@ -6371,7 +6360,7 @@ export default function WorkspacePage() {
                                                     <tr>
                                                         <td
                                                             colSpan={
-                                                                activeTab.resultColumns.length + 2
+                                                                activeTab.resultColumns.length + 1
                                                             }
                                                             style={{
                                                                 height: `${visibleResultRows.bottomSpacerPx}px`,
@@ -6383,25 +6372,6 @@ export default function WorkspacePage() {
                                                 ) : null}
                                             </tbody>
                                         </table>
-                                    </div>
-                                    <div className="result-table-footer">
-                                        <label htmlFor="result-page-size">Rows per page</label>
-                                        <div className="select-wrap">
-                                            <select
-                                                id="result-page-size"
-                                                value={resultsPageSize}
-                                                onChange={(event) => {
-                                                    setResultsPageSize(Number(event.target.value));
-                                                    setResultGridScrollTop(0);
-                                                }}
-                                            >
-                                                <option value={10}>10</option>
-                                                <option value={100}>100</option>
-                                                <option value={250}>250</option>
-                                                <option value={500}>500</option>
-                                                <option value={1000}>1000</option>
-                                            </select>
-                                        </div>
                                     </div>
                                 </div>
                             ) : null}
