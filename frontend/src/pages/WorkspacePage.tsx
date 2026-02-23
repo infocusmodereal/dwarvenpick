@@ -1501,6 +1501,32 @@ export default function WorkspacePage() {
         return formatExecutionDuration(activeTab.startedAt, activeTab.completedAt);
     }, [activeTab?.completedAt, activeTab?.startedAt]);
 
+    const executionSubmittedAtLabel = useMemo(
+        () => formatExecutionTimestamp(activeTab?.submittedAt ?? ''),
+        [activeTab?.submittedAt]
+    );
+
+    const executionCompletedAtLabel = useMemo(
+        () => formatExecutionTimestamp(activeTab?.completedAt ?? ''),
+        [activeTab?.completedAt]
+    );
+
+    const hideRedundantResultStatusMessage = useMemo(() => {
+        if (!activeTab?.executionId || !activeTab.statusMessage) {
+            return false;
+        }
+
+        const normalized = activeTab.statusMessage.trim().toLowerCase();
+        if (activeTab.executionStatus === 'SUCCEEDED' && normalized === 'query succeeded.') {
+            return true;
+        }
+        if (activeTab.executionStatus === 'SUCCEEDED' && normalized === 'query succeeded') {
+            return true;
+        }
+
+        return false;
+    }, [activeTab?.executionId, activeTab?.executionStatus, activeTab?.statusMessage]);
+
     const selectedDatasourceIcon = useMemo(
         () => resolveDatasourceIcon(selectedDatasource?.engine),
         [selectedDatasource?.engine]
@@ -4219,9 +4245,7 @@ export default function WorkspacePage() {
 
     const handleDeleteDatasourceAccess = useCallback(
         async (groupId: string, datasourceId: string) => {
-            const confirmed = window.confirm(
-                `Delete access rule '${groupId} -> ${datasourceId}'?`
-            );
+            const confirmed = window.confirm(`Delete access rule '${groupId} -> ${datasourceId}'?`);
             if (!confirmed) {
                 return;
             }
@@ -5038,7 +5062,9 @@ export default function WorkspacePage() {
                                     aria-label={`Running version ${appVersionLabel}`}
                                 >
                                     <span className="workspace-version-label">Version</span>
-                                    <span className="workspace-version-value">{appVersionLabel}</span>
+                                    <span className="workspace-version-value">
+                                        {appVersionLabel}
+                                    </span>
                                 </div>
                             ) : (
                                 <button
@@ -5054,7 +5080,9 @@ export default function WorkspacePage() {
                             {leftRailCollapsed && showVersionInfo ? (
                                 <div className="workspace-version-popover">
                                     <span className="workspace-version-label">Version</span>
-                                    <span className="workspace-version-value">{appVersionLabel}</span>
+                                    <span className="workspace-version-value">
+                                        {appVersionLabel}
+                                    </span>
                                 </div>
                             ) : null}
                         </div>
@@ -5165,6 +5193,82 @@ export default function WorkspacePage() {
                                 </div>
                                 {showSchemaBrowser ? (
                                     <div className="explorer-body">
+                                        <div className="explorer-toolbar-fields">
+                                            <div className="editor-connection-control">
+                                                <label htmlFor="tab-datasource">
+                                                    <span className="tile-heading-icon" aria-hidden>
+                                                        <RailIcon glyph="connections" />
+                                                    </span>
+                                                    <span>Connection</span>
+                                                </label>
+                                                <div className="editor-connection-picker">
+                                                    <span
+                                                        className="editor-connection-icon"
+                                                        aria-hidden
+                                                    >
+                                                        <img
+                                                            src={selectedDatasourceIcon}
+                                                            alt=""
+                                                            width={16}
+                                                            height={16}
+                                                        />
+                                                    </span>
+                                                    <span
+                                                        className={`editor-connection-health tone-${selectedDatasourceHealth}`}
+                                                        title={`Connection status: ${selectedDatasourceHealthLabel}`}
+                                                        aria-label={`Connection status ${selectedDatasourceHealthLabel}`}
+                                                    />
+                                                    <div className="select-wrap">
+                                                        <select
+                                                            id="tab-datasource"
+                                                            aria-label="Active tab connection"
+                                                            value={activeTab?.datasourceId ?? ''}
+                                                            onChange={(event) =>
+                                                                handleDatasourceChangeForActiveTab(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                !activeTab || activeTab.isExecuting
+                                                            }
+                                                        >
+                                                            {visibleDatasources.map(
+                                                                (datasource) => (
+                                                                    <option
+                                                                        key={`tab-ds-${datasource.id}`}
+                                                                        value={datasource.id}
+                                                                    >
+                                                                        {datasource.name}
+                                                                    </option>
+                                                                )
+                                                            )}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="editor-connection-control">
+                                                <label htmlFor="tab-schema">Schema</label>
+                                                <input
+                                                    id="tab-schema"
+                                                    value={activeTab?.schema ?? ''}
+                                                    onChange={(event) => {
+                                                        if (!activeTab) {
+                                                            return;
+                                                        }
+
+                                                        updateWorkspaceTab(
+                                                            activeTab.id,
+                                                            (currentTab) => ({
+                                                                ...currentTab,
+                                                                schema: event.target.value
+                                                            })
+                                                        );
+                                                    }}
+                                                    placeholder="Schema (optional)"
+                                                    disabled={!activeTab}
+                                                />
+                                            </div>
+                                        </div>
                                         {schemaBrowserError ? (
                                             <p className="form-error">{schemaBrowserError}</p>
                                         ) : null}
@@ -5700,70 +5804,6 @@ export default function WorkspacePage() {
                                         </button>
                                     </div>
                                 ) : null}
-
-                                <div className="editor-toolbar-fields">
-                                    <div className="editor-connection-control">
-                                        <label htmlFor="tab-datasource">
-                                            <span className="tile-heading-icon" aria-hidden>
-                                                <RailIcon glyph="connections" />
-                                            </span>
-                                            <span>Connection</span>
-                                        </label>
-                                        <div className="editor-connection-picker">
-                                            <span className="editor-connection-icon" aria-hidden>
-                                                <img
-                                                    src={selectedDatasourceIcon}
-                                                    alt=""
-                                                    width={16}
-                                                    height={16}
-                                                />
-                                            </span>
-                                            <span
-                                                className={`editor-connection-health tone-${selectedDatasourceHealth}`}
-                                                title={`Connection status: ${selectedDatasourceHealthLabel}`}
-                                                aria-label={`Connection status ${selectedDatasourceHealthLabel}`}
-                                            />
-                                            <div className="select-wrap">
-                                                <select
-                                                    id="tab-datasource"
-                                                    aria-label="Active tab connection"
-                                                    value={activeTab?.datasourceId ?? ''}
-                                                    onChange={(event) =>
-                                                        handleDatasourceChangeForActiveTab(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    disabled={!activeTab || activeTab.isExecuting}
-                                                >
-                                                    {visibleDatasources.map((datasource) => (
-                                                        <option
-                                                            key={`tab-ds-${datasource.id}`}
-                                                            value={datasource.id}
-                                                        >
-                                                            {datasource.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <input
-                                        id="tab-schema"
-                                        value={activeTab?.schema ?? ''}
-                                        onChange={(event) => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                                ...currentTab,
-                                                schema: event.target.value
-                                            }));
-                                        }}
-                                        placeholder="Schema (optional)"
-                                        disabled={!activeTab}
-                                    />
-                                </div>
                             </div>
 
                             <div className="monaco-host">
@@ -5960,77 +6000,95 @@ export default function WorkspacePage() {
                         </section>
 
                         <section className="panel results">
-                            {activeTab?.executionId ? (
-                                <div className="result-stats-grid">
-                                    <div className="result-stat">
-                                        <span>Status</span>
-                                        <strong>
-                                            {activeTab.executionStatus || 'PENDING_SUBMISSION'}
-                                        </strong>
+                            <div className="results-head">
+                                {activeTab?.executionId ? (
+                                    <div className="result-stats-grid">
+                                        <div className="result-stat">
+                                            <span>Status</span>
+                                            <strong>
+                                                {activeTab.executionStatus || 'PENDING_SUBMISSION'}
+                                            </strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Rows</span>
+                                            <strong>{activeTab.rowCount.toLocaleString()}</strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Columns</span>
+                                            <strong>
+                                                {activeTab.columnCount.toLocaleString()}
+                                            </strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Duration</span>
+                                            <strong>{executionDurationLabel}</strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Submitted</span>
+                                            <strong title={executionSubmittedAtLabel}>
+                                                {executionSubmittedAtLabel}
+                                            </strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Completed</span>
+                                            <strong title={executionCompletedAtLabel}>
+                                                {executionCompletedAtLabel}
+                                            </strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Row Limit</span>
+                                            <strong>
+                                                {activeTab.maxRowsPerQuery > 0
+                                                    ? activeTab.maxRowsPerQuery.toLocaleString()
+                                                    : '-'}
+                                            </strong>
+                                        </div>
+                                        <div className="result-stat">
+                                            <span>Runtime Limit</span>
+                                            <strong>
+                                                {activeTab.maxRuntimeSeconds > 0
+                                                    ? `${activeTab.maxRuntimeSeconds}s`
+                                                    : '-'}
+                                            </strong>
+                                        </div>
                                     </div>
-                                    <div className="result-stat">
-                                        <span>Rows</span>
-                                        <strong>{activeTab.rowCount.toLocaleString()}</strong>
+                                ) : null}
+                                {activeTab?.statusMessage && !hideRedundantResultStatusMessage ? (
+                                    <p>{activeTab.statusMessage}</p>
+                                ) : null}
+                                {activeTab?.errorMessage ? (
+                                    <p className="form-error" role="alert">
+                                        {activeTab.errorMessage}
+                                    </p>
+                                ) : null}
+                                {activeTab?.rowLimitReached ? (
+                                    <p className="form-error" role="alert">
+                                        Result row limit reached for this execution.
+                                    </p>
+                                ) : null}
+                                {copyFeedback ? (
+                                    <p className="form-success">{copyFeedback}</p>
+                                ) : null}
+                                {explainPlanText ? (
+                                    <div className="explain-plan">
+                                        <h3>Explain Plan</h3>
+                                        <pre>{explainPlanText}</pre>
                                     </div>
-                                    <div className="result-stat">
-                                        <span>Columns</span>
-                                        <strong>{activeTab.columnCount.toLocaleString()}</strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Duration</span>
-                                        <strong>{executionDurationLabel}</strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Submitted</span>
-                                        <strong>
-                                            {formatExecutionTimestamp(activeTab.submittedAt)}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Completed</span>
-                                        <strong>
-                                            {formatExecutionTimestamp(activeTab.completedAt)}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Row Limit</span>
-                                        <strong>
-                                            {activeTab.maxRowsPerQuery > 0
-                                                ? activeTab.maxRowsPerQuery.toLocaleString()
-                                                : '-'}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Runtime Limit</span>
-                                        <strong>
-                                            {activeTab.maxRuntimeSeconds > 0
-                                                ? `${activeTab.maxRuntimeSeconds}s`
-                                                : '-'}
-                                        </strong>
-                                    </div>
-                                </div>
-                            ) : null}
-                            {activeTab?.statusMessage ? <p>{activeTab.statusMessage}</p> : null}
-                            {activeTab?.errorMessage ? (
-                                <p className="form-error" role="alert">
-                                    {activeTab.errorMessage}
-                                </p>
-                            ) : null}
-                            {activeTab?.rowLimitReached ? (
-                                <p className="form-error" role="alert">
-                                    Result row limit reached for this execution.
-                                </p>
-                            ) : null}
-                            {copyFeedback ? <p className="form-success">{copyFeedback}</p> : null}
-                            {explainPlanText ? (
-                                <div className="explain-plan">
-                                    <h3>Explain Plan</h3>
-                                    <pre>{explainPlanText}</pre>
-                                </div>
-                            ) : null}
+                                ) : null}
+                                {activeTab?.executionStatus === 'SUCCEEDED' &&
+                                activeTab.resultColumns.length === 0 &&
+                                !activeTab.errorMessage ? (
+                                    <p>Query completed successfully and returned no rows.</p>
+                                ) : null}
+                                {!activeTab?.executionId &&
+                                !activeTab?.statusMessage &&
+                                !activeTab?.errorMessage ? (
+                                    <p className="results-empty">Results</p>
+                                ) : null}
+                            </div>
 
                             {activeTab?.resultColumns.length ? (
-                                <>
+                                <div className="results-body">
                                     <div className="result-actions row">
                                         <label className="checkbox-row">
                                             <input
@@ -6229,17 +6287,7 @@ export default function WorkspacePage() {
                                             </select>
                                         </div>
                                     </div>
-                                </>
-                            ) : null}
-                            {activeTab?.executionStatus === 'SUCCEEDED' &&
-                            activeTab.resultColumns.length === 0 &&
-                            !activeTab.errorMessage ? (
-                                <p>Query completed successfully and returned no rows.</p>
-                            ) : null}
-                            {!activeTab?.executionId &&
-                            !activeTab?.statusMessage &&
-                            !activeTab?.errorMessage ? (
-                                <p className="results-empty">Results</p>
+                                </div>
                             ) : null}
                         </section>
                     </div>
@@ -6741,13 +6789,18 @@ export default function WorkspacePage() {
                                 </div>
                             </section>
 
-                            <section className="panel admin-console" hidden={activeSection !== 'admin'}>
+                            <section
+                                className="panel admin-console"
+                                hidden={activeSection !== 'admin'}
+                            >
                                 {adminError ? (
                                     <p className="form-error" role="alert">
                                         {adminError}
                                     </p>
                                 ) : null}
-                                {adminSuccess ? <p className="form-success">{adminSuccess}</p> : null}
+                                {adminSuccess ? (
+                                    <p className="form-success">{adminSuccess}</p>
+                                ) : null}
 
                                 {activeAdminSubsection === 'groups' ? (
                                     <>
@@ -6790,7 +6843,9 @@ export default function WorkspacePage() {
                                                                             {group.description ||
                                                                                 '-'}
                                                                         </td>
-                                                                        <td>{group.members.length}</td>
+                                                                        <td>
+                                                                            {group.members.length}
+                                                                        </td>
                                                                         <td className="history-actions">
                                                                             <IconButton
                                                                                 icon="rename"
@@ -6912,9 +6967,7 @@ export default function WorkspacePage() {
                                                             }))
                                                         }
                                                     />
-                                                    <button type="submit">
-                                                        Save Description
-                                                    </button>
+                                                    <button type="submit">Save Description</button>
                                                 </form>
 
                                                 <div className="stack-form">
@@ -6960,11 +7013,10 @@ export default function WorkspacePage() {
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            {selectedGroupRecord.members.length === 0 ? (
+                                                            {selectedGroupRecord.members.length ===
+                                                            0 ? (
                                                                 <tr>
-                                                                    <td colSpan={2}>
-                                                                        No members
-                                                                    </td>
+                                                                    <td colSpan={2}>No members</td>
                                                                 </tr>
                                                             ) : (
                                                                 selectedGroupRecord.members.map(
@@ -7117,7 +7169,10 @@ export default function WorkspacePage() {
                                                 onSubmit={handleCreateLocalUser}
                                             >
                                                 <div className="row toolbar-actions admin-toolbar-actions">
-                                                    <button type="submit" disabled={creatingLocalUser}>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={creatingLocalUser}
+                                                    >
                                                         {creatingLocalUser
                                                             ? 'Creating...'
                                                             : 'Create User'}
@@ -7170,7 +7225,9 @@ export default function WorkspacePage() {
                                                     placeholder="analyst@example.com"
                                                 />
 
-                                                <label htmlFor="local-user-password">Password</label>
+                                                <label htmlFor="local-user-password">
+                                                    Password
+                                                </label>
                                                 <input
                                                     id="local-user-password"
                                                     type="password"
@@ -7254,7 +7311,9 @@ export default function WorkspacePage() {
                                                                         <tr
                                                                             key={`admin-access-row-${access.groupId}-${access.datasourceId}`}
                                                                         >
-                                                                            <td>{access.groupId}</td>
+                                                                            <td>
+                                                                                {access.groupId}
+                                                                            </td>
                                                                             <td>
                                                                                 {
                                                                                     access.datasourceId
@@ -7324,8 +7383,8 @@ export default function WorkspacePage() {
                                             </>
                                         ) : null}
 
-                                        {(accessAdminMode === 'create' ||
-                                            accessAdminMode === 'edit') ? (
+                                        {accessAdminMode === 'create' ||
+                                        accessAdminMode === 'edit' ? (
                                             <form
                                                 className="stack-form admin-mode-form"
                                                 onSubmit={handleSaveDatasourceAccess}
@@ -7350,17 +7409,12 @@ export default function WorkspacePage() {
                                                         id="access-group"
                                                         value={selectedGroupId}
                                                         onChange={(event) =>
-                                                            setSelectedGroupId(
-                                                                event.target.value
-                                                            )
+                                                            setSelectedGroupId(event.target.value)
                                                         }
                                                     >
                                                         <option value="">Select group</option>
                                                         {adminGroups.map((group) => (
-                                                            <option
-                                                                key={group.id}
-                                                                value={group.id}
-                                                            >
+                                                            <option key={group.id} value={group.id}>
                                                                 {group.name} ({group.id})
                                                             </option>
                                                         ))}
@@ -7380,9 +7434,7 @@ export default function WorkspacePage() {
                                                             )
                                                         }
                                                     >
-                                                        <option value="">
-                                                            Select connection
-                                                        </option>
+                                                        <option value="">Select connection</option>
                                                         {adminDatasourceCatalog.map(
                                                             (datasource) => (
                                                                 <option
@@ -7396,307 +7448,6 @@ export default function WorkspacePage() {
                                                         )}
                                                     </select>
                                                 </div>
-
-                                                <div className="row">
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={canQuery}
-                                                            onChange={(event) =>
-                                                                setCanQuery(
-                                                                    event.target.checked
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>Can Query</span>
-                                                    </label>
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={canExport}
-                                                            onChange={(event) =>
-                                                                setCanExport(
-                                                                    event.target.checked
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>Can Export</span>
-                                                    </label>
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={readOnly}
-                                                            onChange={(event) =>
-                                                                setReadOnly(
-                                                                    event.target.checked
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>Read Only</span>
-                                                    </label>
-                                                </div>
-
-                                                <label htmlFor="credential-profile">
-                                                    Credential Profile
-                                                </label>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="credential-profile"
-                                                        value={credentialProfile}
-                                                        onChange={(event) =>
-                                                            setCredentialProfile(
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                    >
-                                                        <option value="">
-                                                            Select credential profile
-                                                        </option>
-                                                        {(
-                                                            selectedAdminDatasource?.credentialProfiles ??
-                                                            []
-                                                        ).map((profile) => (
-                                                            <option
-                                                                key={profile}
-                                                                value={profile}
-                                                            >
-                                                                {profile}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-
-                                                <label htmlFor="max-rows">
-                                                    Max Rows Per Query
-                                                </label>
-                                                <input
-                                                    id="max-rows"
-                                                    type="number"
-                                                    min={1}
-                                                    value={maxRowsPerQuery}
-                                                    onChange={(event) =>
-                                                        setMaxRowsPerQuery(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                />
-
-                                                <label htmlFor="max-runtime">
-                                                    Max Runtime Seconds
-                                                </label>
-                                                <input
-                                                    id="max-runtime"
-                                                    type="number"
-                                                    min={1}
-                                                    value={maxRuntimeSeconds}
-                                                    onChange={(event) =>
-                                                        setMaxRuntimeSeconds(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                />
-
-                                                <label htmlFor="concurrency-limit">
-                                                    Concurrency Limit
-                                                </label>
-                                                <input
-                                                    id="concurrency-limit"
-                                                    type="number"
-                                                    min={1}
-                                                    value={concurrencyLimit}
-                                                    onChange={(event) =>
-                                                        setConcurrencyLimit(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                />
-                                            </form>
-                                        ) : null}
-                                    </>
-                                ) : null}
-                            </section>
-
-                            <section
-                                className="panel admin-governance"
-                                hidden={activeSection !== 'connections'}
-                            >
-                                {adminError ? (
-                                    <p className="form-error" role="alert">
-                                        {adminError}
-                                    </p>
-                                ) : null}
-                                {adminSuccess ? (
-                                    <p className="form-success">{adminSuccess}</p>
-                                ) : null}
-
-                                {activeSection === 'connections' ? (
-                                    <div className="admin-grid admin-grid-connections">
-                                    {isAdminSection ? (
-                                        <section className="panel">
-                                            <h3>Groups</h3>
-                                            <form
-                                                onSubmit={handleCreateGroup}
-                                                className="stack-form"
-                                            >
-                                                <label htmlFor="new-group-name">New Group</label>
-                                                <input
-                                                    id="new-group-name"
-                                                    value={groupNameInput}
-                                                    onChange={(event) =>
-                                                        setGroupNameInput(event.target.value)
-                                                    }
-                                                    placeholder="Incident Responders"
-                                                    required
-                                                />
-                                                <label htmlFor="new-group-description">
-                                                    Description
-                                                </label>
-                                                <input
-                                                    id="new-group-description"
-                                                    value={groupDescriptionInput}
-                                                    onChange={(event) =>
-                                                        setGroupDescriptionInput(event.target.value)
-                                                    }
-                                                    placeholder="Optional description"
-                                                />
-                                                <button type="submit">Create Group</button>
-                                            </form>
-
-                                            <div className="group-list">
-                                                {adminGroups.map((group) => (
-                                                    <article key={group.id} className="group-card">
-                                                        <h4>{group.name}</h4>
-                                                        <p className="muted-id">{group.id}</p>
-                                                        <label
-                                                            htmlFor={`group-description-${group.id}`}
-                                                        >
-                                                            Description
-                                                        </label>
-                                                        <input
-                                                            id={`group-description-${group.id}`}
-                                                            value={
-                                                                groupDescriptionDrafts[group.id] ??
-                                                                ''
-                                                            }
-                                                            onChange={(event) =>
-                                                                setGroupDescriptionDrafts(
-                                                                    (drafts) => ({
-                                                                        ...drafts,
-                                                                        [group.id]:
-                                                                            event.target.value
-                                                                    })
-                                                                )
-                                                            }
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                void handleUpdateGroupDescription(
-                                                                    group.id
-                                                                )
-                                                            }
-                                                        >
-                                                            Save Description
-                                                        </button>
-
-                                                        <div className="member-row">
-                                                            <input
-                                                                value={memberDrafts[group.id] ?? ''}
-                                                                onChange={(event) =>
-                                                                    setMemberDrafts((drafts) => ({
-                                                                        ...drafts,
-                                                                        [group.id]:
-                                                                            event.target.value
-                                                                    }))
-                                                                }
-                                                                placeholder="username"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    void handleAddMember(group.id)
-                                                                }
-                                                            >
-                                                                Add Member
-                                                            </button>
-                                                        </div>
-
-                                                        <ul className="members-list">
-                                                            {group.members.length === 0 ? (
-                                                                <li>No members</li>
-                                                            ) : (
-                                                                group.members.map((member) => (
-                                                                    <li
-                                                                        key={`${group.id}-${member}`}
-                                                                    >
-                                                                        <span>{member}</span>
-                                                                        <button
-                                                                            type="button"
-                                                                            className="danger-button"
-                                                                            onClick={() =>
-                                                                                void handleRemoveMember(
-                                                                                    group.id,
-                                                                                    member
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            Remove
-                                                                        </button>
-                                                                    </li>
-                                                                ))
-                                                            )}
-                                                        </ul>
-                                                    </article>
-                                                ))}
-                                            </div>
-                                        </section>
-                                    ) : null}
-
-                                    {isAdminSection ? (
-                                        <section className="panel">
-                                            <h3>Connection Access Mapping</h3>
-                                            <form
-                                                className="stack-form"
-                                                onSubmit={handleSaveDatasourceAccess}
-                                            >
-                                                <label htmlFor="access-group">Group</label>
-                                                <select
-                                                    id="access-group"
-                                                    value={selectedGroupId}
-                                                    onChange={(event) =>
-                                                        setSelectedGroupId(event.target.value)
-                                                    }
-                                                >
-                                                    <option value="">Select group</option>
-                                                    {adminGroups.map((group) => (
-                                                        <option key={group.id} value={group.id}>
-                                                            {group.name} ({group.id})
-                                                        </option>
-                                                    ))}
-                                                </select>
-
-                                                <label htmlFor="access-datasource">
-                                                    Connection
-                                                </label>
-                                                <select
-                                                    id="access-datasource"
-                                                    value={selectedDatasourceForAccess}
-                                                    onChange={(event) =>
-                                                        setSelectedDatasourceForAccess(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                >
-                                                    <option value="">Select connection</option>
-                                                    {adminDatasourceCatalog.map((datasource) => (
-                                                        <option
-                                                            key={datasource.id}
-                                                            value={datasource.id}
-                                                        >
-                                                            {datasource.name} ({datasource.engine})
-                                                        </option>
-                                                    ))}
-                                                </select>
 
                                                 <div className="row">
                                                     <label className="checkbox-row">
@@ -7734,25 +7485,27 @@ export default function WorkspacePage() {
                                                 <label htmlFor="credential-profile">
                                                     Credential Profile
                                                 </label>
-                                                <select
-                                                    id="credential-profile"
-                                                    value={credentialProfile}
-                                                    onChange={(event) =>
-                                                        setCredentialProfile(event.target.value)
-                                                    }
-                                                >
-                                                    <option value="">
-                                                        Select credential profile
-                                                    </option>
-                                                    {(
-                                                        selectedAdminDatasource?.credentialProfiles ??
-                                                        []
-                                                    ).map((profile) => (
-                                                        <option key={profile} value={profile}>
-                                                            {profile}
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="credential-profile"
+                                                        value={credentialProfile}
+                                                        onChange={(event) =>
+                                                            setCredentialProfile(event.target.value)
+                                                        }
+                                                    >
+                                                        <option value="">
+                                                            Select credential profile
                                                         </option>
-                                                    ))}
-                                                </select>
+                                                        {(
+                                                            selectedAdminDatasource?.credentialProfiles ??
+                                                            []
+                                                        ).map((profile) => (
+                                                            <option key={profile} value={profile}>
+                                                                {profile}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
 
                                                 <label htmlFor="max-rows">Max Rows Per Query</label>
                                                 <input
@@ -7790,1481 +7543,1908 @@ export default function WorkspacePage() {
                                                         setConcurrencyLimit(event.target.value)
                                                     }
                                                 />
-
-                                                <button
-                                                    type="submit"
-                                                    disabled={
-                                                        savingAccess ||
-                                                        !selectedGroupId ||
-                                                        !selectedDatasourceForAccess ||
-                                                        !credentialProfile.trim()
-                                                    }
-                                                >
-                                                    {savingAccess ? 'Saving...' : 'Save Access'}
-                                                </button>
                                             </form>
+                                        ) : null}
+                                    </>
+                                ) : null}
+                            </section>
 
-                                            <div className="mapping-list">
-                                                <h4>Current Access Rules</h4>
-                                                <div className="history-table-wrap">
-                                                    <table className="result-table history-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Group</th>
-                                                                <th>Connection</th>
-                                                                <th>Query</th>
-                                                                <th>Export</th>
-                                                                <th>Read Only</th>
-                                                                <th>Credential Profile</th>
-                                                                <th>Max Rows</th>
-                                                                <th>Max Runtime (s)</th>
-                                                                <th>Concurrency</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {adminDatasourceAccess.length === 0 ? (
-                                                                <tr>
-                                                                    <td colSpan={9}>
-                                                                        No access rules configured.
-                                                                    </td>
-                                                                </tr>
-                                                            ) : (
-                                                                adminDatasourceAccess.map(
-                                                                    (rule) => (
-                                                                        <tr
-                                                                            key={`${rule.groupId}-${rule.datasourceId}`}
-                                                                        >
-                                                                            <td>{rule.groupId}</td>
-                                                                            <td>
-                                                                                {rule.datasourceId}
-                                                                            </td>
-                                                                            <td>
-                                                                                {rule.canQuery
-                                                                                    ? 'Yes'
-                                                                                    : 'No'}
-                                                                            </td>
-                                                                            <td>
-                                                                                {rule.canExport
-                                                                                    ? 'Yes'
-                                                                                    : 'No'}
-                                                                            </td>
-                                                                            <td>
-                                                                                {rule.readOnly
-                                                                                    ? 'Yes'
-                                                                                    : 'No'}
-                                                                            </td>
-                                                                            <td>
-                                                                                {
-                                                                                    rule.credentialProfile
-                                                                                }
-                                                                            </td>
-                                                                            <td>
-                                                                                {rule.maxRowsPerQuery ??
-                                                                                    '-'}
-                                                                            </td>
-                                                                            <td>
-                                                                                {rule.maxRuntimeSeconds ??
-                                                                                    '-'}
-                                                                            </td>
-                                                                            <td>
-                                                                                {rule.concurrencyLimit ??
-                                                                                    '-'}
-                                                                            </td>
-                                                                        </tr>
-                                                                    )
-                                                                )
-                                                            )}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </section>
-                                    ) : null}
+                            <section
+                                className="panel admin-governance"
+                                hidden={activeSection !== 'connections'}
+                            >
+                                {adminError ? (
+                                    <p className="form-error" role="alert">
+                                        {adminError}
+                                    </p>
+                                ) : null}
+                                {adminSuccess ? (
+                                    <p className="form-success">{adminSuccess}</p>
+                                ) : null}
 
-                                    {isAdminSection ? (
-                                        <section className="panel">
-                                            <h3>Local Users</h3>
-                                            {localAuthEnabled ? (
-                                                <>
-                                                    <form
-                                                        className="stack-form"
-                                                        onSubmit={handleCreateLocalUser}
-                                                    >
-                                                        <label htmlFor="local-user-username">
-                                                            Username
-                                                        </label>
-                                                        <input
-                                                            id="local-user-username"
-                                                            value={localUserUsernameInput}
-                                                            onChange={(event) =>
-                                                                setLocalUserUsernameInput(
-                                                                    event.target.value
-                                                                )
-                                                            }
-                                                            placeholder="new.analyst"
-                                                            required
-                                                        />
+                                {activeSection === 'connections' ? (
+                                    <div className="admin-grid admin-grid-connections">
+                                        {isAdminSection ? (
+                                            <section className="panel">
+                                                <h3>Groups</h3>
+                                                <form
+                                                    onSubmit={handleCreateGroup}
+                                                    className="stack-form"
+                                                >
+                                                    <label htmlFor="new-group-name">
+                                                        New Group
+                                                    </label>
+                                                    <input
+                                                        id="new-group-name"
+                                                        value={groupNameInput}
+                                                        onChange={(event) =>
+                                                            setGroupNameInput(event.target.value)
+                                                        }
+                                                        placeholder="Incident Responders"
+                                                        required
+                                                    />
+                                                    <label htmlFor="new-group-description">
+                                                        Description
+                                                    </label>
+                                                    <input
+                                                        id="new-group-description"
+                                                        value={groupDescriptionInput}
+                                                        onChange={(event) =>
+                                                            setGroupDescriptionInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="Optional description"
+                                                    />
+                                                    <button type="submit">Create Group</button>
+                                                </form>
 
-                                                        <label htmlFor="local-user-display-name">
-                                                            Display Name
-                                                        </label>
-                                                        <input
-                                                            id="local-user-display-name"
-                                                            value={localUserDisplayNameInput}
-                                                            onChange={(event) =>
-                                                                setLocalUserDisplayNameInput(
-                                                                    event.target.value
-                                                                )
-                                                            }
-                                                            placeholder="New Analyst"
-                                                        />
-
-                                                        <label htmlFor="local-user-email">
-                                                            Email
-                                                        </label>
-                                                        <input
-                                                            id="local-user-email"
-                                                            type="email"
-                                                            value={localUserEmailInput}
-                                                            onChange={(event) =>
-                                                                setLocalUserEmailInput(
-                                                                    event.target.value
-                                                                )
-                                                            }
-                                                            placeholder="analyst@example.com"
-                                                        />
-
-                                                        <label htmlFor="local-user-password">
-                                                            Password
-                                                        </label>
-                                                        <input
-                                                            id="local-user-password"
-                                                            type="password"
-                                                            value={localUserPasswordInput}
-                                                            onChange={(event) =>
-                                                                setLocalUserPasswordInput(
-                                                                    event.target.value
-                                                                )
-                                                            }
-                                                            required
-                                                        />
-
-                                                        <label className="checkbox-row">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={localUserTemporaryPassword}
-                                                                onChange={(event) =>
-                                                                    setLocalUserTemporaryPassword(
-                                                                        event.target.checked
-                                                                    )
-                                                                }
-                                                            />
-                                                            <span>Temporary password</span>
-                                                        </label>
-
-                                                        <label className="checkbox-row">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={localUserSystemAdmin}
-                                                                onChange={(event) =>
-                                                                    setLocalUserSystemAdmin(
-                                                                        event.target.checked
-                                                                    )
-                                                                }
-                                                            />
-                                                            <span>Grant system admin role</span>
-                                                        </label>
-
-                                                        <button
-                                                            type="submit"
-                                                            disabled={creatingLocalUser}
+                                                <div className="group-list">
+                                                    {adminGroups.map((group) => (
+                                                        <article
+                                                            key={group.id}
+                                                            className="group-card"
                                                         >
-                                                            {creatingLocalUser
-                                                                ? 'Creating...'
-                                                                : 'Create Local User'}
-                                                        </button>
-                                                    </form>
+                                                            <h4>{group.name}</h4>
+                                                            <p className="muted-id">{group.id}</p>
+                                                            <label
+                                                                htmlFor={`group-description-${group.id}`}
+                                                            >
+                                                                Description
+                                                            </label>
+                                                            <input
+                                                                id={`group-description-${group.id}`}
+                                                                value={
+                                                                    groupDescriptionDrafts[
+                                                                        group.id
+                                                                    ] ?? ''
+                                                                }
+                                                                onChange={(event) =>
+                                                                    setGroupDescriptionDrafts(
+                                                                        (drafts) => ({
+                                                                            ...drafts,
+                                                                            [group.id]:
+                                                                                event.target.value
+                                                                        })
+                                                                    )
+                                                                }
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    void handleUpdateGroupDescription(
+                                                                        group.id
+                                                                    )
+                                                                }
+                                                            >
+                                                                Save Description
+                                                            </button>
 
+                                                            <div className="member-row">
+                                                                <input
+                                                                    value={
+                                                                        memberDrafts[group.id] ?? ''
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setMemberDrafts(
+                                                                            (drafts) => ({
+                                                                                ...drafts,
+                                                                                [group.id]:
+                                                                                    event.target
+                                                                                        .value
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    placeholder="username"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        void handleAddMember(
+                                                                            group.id
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Add Member
+                                                                </button>
+                                                            </div>
+
+                                                            <ul className="members-list">
+                                                                {group.members.length === 0 ? (
+                                                                    <li>No members</li>
+                                                                ) : (
+                                                                    group.members.map((member) => (
+                                                                        <li
+                                                                            key={`${group.id}-${member}`}
+                                                                        >
+                                                                            <span>{member}</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="danger-button"
+                                                                                onClick={() =>
+                                                                                    void handleRemoveMember(
+                                                                                        group.id,
+                                                                                        member
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Remove
+                                                                            </button>
+                                                                        </li>
+                                                                    ))
+                                                                )}
+                                                            </ul>
+                                                        </article>
+                                                    ))}
+                                                </div>
+                                            </section>
+                                        ) : null}
+
+                                        {isAdminSection ? (
+                                            <section className="panel">
+                                                <h3>Connection Access Mapping</h3>
+                                                <form
+                                                    className="stack-form"
+                                                    onSubmit={handleSaveDatasourceAccess}
+                                                >
+                                                    <label htmlFor="access-group">Group</label>
+                                                    <select
+                                                        id="access-group"
+                                                        value={selectedGroupId}
+                                                        onChange={(event) =>
+                                                            setSelectedGroupId(event.target.value)
+                                                        }
+                                                    >
+                                                        <option value="">Select group</option>
+                                                        {adminGroups.map((group) => (
+                                                            <option key={group.id} value={group.id}>
+                                                                {group.name} ({group.id})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+
+                                                    <label htmlFor="access-datasource">
+                                                        Connection
+                                                    </label>
+                                                    <select
+                                                        id="access-datasource"
+                                                        value={selectedDatasourceForAccess}
+                                                        onChange={(event) =>
+                                                            setSelectedDatasourceForAccess(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    >
+                                                        <option value="">Select connection</option>
+                                                        {adminDatasourceCatalog.map(
+                                                            (datasource) => (
+                                                                <option
+                                                                    key={datasource.id}
+                                                                    value={datasource.id}
+                                                                >
+                                                                    {datasource.name} (
+                                                                    {datasource.engine})
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+
+                                                    <div className="row">
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={canQuery}
+                                                                onChange={(event) =>
+                                                                    setCanQuery(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Can Query</span>
+                                                        </label>
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={canExport}
+                                                                onChange={(event) =>
+                                                                    setCanExport(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Can Export</span>
+                                                        </label>
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={readOnly}
+                                                                onChange={(event) =>
+                                                                    setReadOnly(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Read Only</span>
+                                                        </label>
+                                                    </div>
+
+                                                    <label htmlFor="credential-profile">
+                                                        Credential Profile
+                                                    </label>
+                                                    <select
+                                                        id="credential-profile"
+                                                        value={credentialProfile}
+                                                        onChange={(event) =>
+                                                            setCredentialProfile(event.target.value)
+                                                        }
+                                                    >
+                                                        <option value="">
+                                                            Select credential profile
+                                                        </option>
+                                                        {(
+                                                            selectedAdminDatasource?.credentialProfiles ??
+                                                            []
+                                                        ).map((profile) => (
+                                                            <option key={profile} value={profile}>
+                                                                {profile}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+
+                                                    <label htmlFor="max-rows">
+                                                        Max Rows Per Query
+                                                    </label>
+                                                    <input
+                                                        id="max-rows"
+                                                        type="number"
+                                                        min={1}
+                                                        value={maxRowsPerQuery}
+                                                        onChange={(event) =>
+                                                            setMaxRowsPerQuery(event.target.value)
+                                                        }
+                                                    />
+
+                                                    <label htmlFor="max-runtime">
+                                                        Max Runtime Seconds
+                                                    </label>
+                                                    <input
+                                                        id="max-runtime"
+                                                        type="number"
+                                                        min={1}
+                                                        value={maxRuntimeSeconds}
+                                                        onChange={(event) =>
+                                                            setMaxRuntimeSeconds(event.target.value)
+                                                        }
+                                                    />
+
+                                                    <label htmlFor="concurrency-limit">
+                                                        Concurrency Limit
+                                                    </label>
+                                                    <input
+                                                        id="concurrency-limit"
+                                                        type="number"
+                                                        min={1}
+                                                        value={concurrencyLimit}
+                                                        onChange={(event) =>
+                                                            setConcurrencyLimit(event.target.value)
+                                                        }
+                                                    />
+
+                                                    <button
+                                                        type="submit"
+                                                        disabled={
+                                                            savingAccess ||
+                                                            !selectedGroupId ||
+                                                            !selectedDatasourceForAccess ||
+                                                            !credentialProfile.trim()
+                                                        }
+                                                    >
+                                                        {savingAccess ? 'Saving...' : 'Save Access'}
+                                                    </button>
+                                                </form>
+
+                                                <div className="mapping-list">
+                                                    <h4>Current Access Rules</h4>
                                                     <div className="history-table-wrap">
                                                         <table className="result-table history-table">
                                                             <thead>
                                                                 <tr>
-                                                                    <th>Username</th>
-                                                                    <th>Display Name</th>
-                                                                    <th>Provider</th>
-                                                                    <th>Roles</th>
-                                                                    <th>Groups</th>
-                                                                    <th>Password Type</th>
-                                                                    <th>Actions</th>
+                                                                    <th>Group</th>
+                                                                    <th>Connection</th>
+                                                                    <th>Query</th>
+                                                                    <th>Export</th>
+                                                                    <th>Read Only</th>
+                                                                    <th>Credential Profile</th>
+                                                                    <th>Max Rows</th>
+                                                                    <th>Max Runtime (s)</th>
+                                                                    <th>Concurrency</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {adminUsers.length === 0 ? (
+                                                                {adminDatasourceAccess.length ===
+                                                                0 ? (
                                                                     <tr>
-                                                                        <td colSpan={7}>
-                                                                            No users available.
+                                                                        <td colSpan={9}>
+                                                                            No access rules
+                                                                            configured.
                                                                         </td>
                                                                     </tr>
                                                                 ) : (
-                                                                    adminUsers.map((user) => (
-                                                                        <tr
-                                                                            key={`admin-user-${user.username}`}
-                                                                        >
-                                                                            <td>{user.username}</td>
-                                                                            <td>
-                                                                                {user.displayName}
-                                                                            </td>
-                                                                            <td>
-                                                                                {user.provider.toUpperCase()}
-                                                                            </td>
-                                                                            <td>
-                                                                                {user.roles.join(
-                                                                                    ', '
-                                                                                )}
-                                                                            </td>
-                                                                            <td>
-                                                                                {user.groups
-                                                                                    .length > 0
-                                                                                    ? user.groups.join(
-                                                                                          ', '
-                                                                                      )
-                                                                                    : '-'}
-                                                                            </td>
-                                                                            <td>
-                                                                                {user.temporaryPassword
-                                                                                    ? 'Temporary'
-                                                                                    : 'Permanent'}
-                                                                            </td>
-                                                                            <td className="history-actions">
-                                                                                {user.provider ===
-                                                                                'local' ? (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        className="chip"
-                                                                                        disabled={
-                                                                                            resettingLocalUser ===
-                                                                                            user.username
-                                                                                        }
-                                                                                        onClick={() =>
-                                                                                            void handleResetLocalPassword(
-                                                                                                user.username
-                                                                                            )
-                                                                                        }
-                                                                                    >
-                                                                                        {resettingLocalUser ===
-                                                                                        user.username
-                                                                                            ? 'Resetting...'
-                                                                                            : 'Reset Password'}
-                                                                                    </button>
-                                                                                ) : (
-                                                                                    <span className="muted-id">
-                                                                                        LDAP managed
-                                                                                    </span>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))
+                                                                    adminDatasourceAccess.map(
+                                                                        (rule) => (
+                                                                            <tr
+                                                                                key={`${rule.groupId}-${rule.datasourceId}`}
+                                                                            >
+                                                                                <td>
+                                                                                    {rule.groupId}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {
+                                                                                        rule.datasourceId
+                                                                                    }
+                                                                                </td>
+                                                                                <td>
+                                                                                    {rule.canQuery
+                                                                                        ? 'Yes'
+                                                                                        : 'No'}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {rule.canExport
+                                                                                        ? 'Yes'
+                                                                                        : 'No'}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {rule.readOnly
+                                                                                        ? 'Yes'
+                                                                                        : 'No'}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {
+                                                                                        rule.credentialProfile
+                                                                                    }
+                                                                                </td>
+                                                                                <td>
+                                                                                    {rule.maxRowsPerQuery ??
+                                                                                        '-'}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {rule.maxRuntimeSeconds ??
+                                                                                        '-'}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {rule.concurrencyLimit ??
+                                                                                        '-'}
+                                                                                </td>
+                                                                            </tr>
+                                                                        )
+                                                                    )
                                                                 )}
                                                             </tbody>
                                                         </table>
                                                     </div>
-                                                </>
-                                            ) : (
-                                                <p className="muted-id">
-                                                    Local authentication is disabled. Users are
-                                                    managed by LDAP and cannot be created here.
-                                                </p>
-                                            )}
-                                        </section>
-                                    ) : null}
+                                                </div>
+                                            </section>
+                                        ) : null}
 
-                                    {activeSection === 'connections' ? (
-                                        <section className="datasource-admin">
-                                            {connectionEditorMode === 'list' ? (
-                                                <section className="connection-list-view">
-                                                    <div className="row connection-list-toolbar">
-                                                        <button
-                                                            type="button"
-                                                            onClick={
-                                                                handleStartCreateManagedDatasource
-                                                            }
+                                        {isAdminSection ? (
+                                            <section className="panel">
+                                                <h3>Local Users</h3>
+                                                {localAuthEnabled ? (
+                                                    <>
+                                                        <form
+                                                            className="stack-form"
+                                                            onSubmit={handleCreateLocalUser}
                                                         >
-                                                            Create Connection
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="chip"
-                                                            disabled={reencryptingCredentials}
-                                                            onClick={() =>
-                                                                void handleReencryptCredentials()
-                                                            }
+                                                            <label htmlFor="local-user-username">
+                                                                Username
+                                                            </label>
+                                                            <input
+                                                                id="local-user-username"
+                                                                value={localUserUsernameInput}
+                                                                onChange={(event) =>
+                                                                    setLocalUserUsernameInput(
+                                                                        event.target.value
+                                                                    )
+                                                                }
+                                                                placeholder="new.analyst"
+                                                                required
+                                                            />
+
+                                                            <label htmlFor="local-user-display-name">
+                                                                Display Name
+                                                            </label>
+                                                            <input
+                                                                id="local-user-display-name"
+                                                                value={localUserDisplayNameInput}
+                                                                onChange={(event) =>
+                                                                    setLocalUserDisplayNameInput(
+                                                                        event.target.value
+                                                                    )
+                                                                }
+                                                                placeholder="New Analyst"
+                                                            />
+
+                                                            <label htmlFor="local-user-email">
+                                                                Email
+                                                            </label>
+                                                            <input
+                                                                id="local-user-email"
+                                                                type="email"
+                                                                value={localUserEmailInput}
+                                                                onChange={(event) =>
+                                                                    setLocalUserEmailInput(
+                                                                        event.target.value
+                                                                    )
+                                                                }
+                                                                placeholder="analyst@example.com"
+                                                            />
+
+                                                            <label htmlFor="local-user-password">
+                                                                Password
+                                                            </label>
+                                                            <input
+                                                                id="local-user-password"
+                                                                type="password"
+                                                                value={localUserPasswordInput}
+                                                                onChange={(event) =>
+                                                                    setLocalUserPasswordInput(
+                                                                        event.target.value
+                                                                    )
+                                                                }
+                                                                required
+                                                            />
+
+                                                            <label className="checkbox-row">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={
+                                                                        localUserTemporaryPassword
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setLocalUserTemporaryPassword(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                />
+                                                                <span>Temporary password</span>
+                                                            </label>
+
+                                                            <label className="checkbox-row">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={localUserSystemAdmin}
+                                                                    onChange={(event) =>
+                                                                        setLocalUserSystemAdmin(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                />
+                                                                <span>Grant system admin role</span>
+                                                            </label>
+
+                                                            <button
+                                                                type="submit"
+                                                                disabled={creatingLocalUser}
+                                                            >
+                                                                {creatingLocalUser
+                                                                    ? 'Creating...'
+                                                                    : 'Create Local User'}
+                                                            </button>
+                                                        </form>
+
+                                                        <div className="history-table-wrap">
+                                                            <table className="result-table history-table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>Username</th>
+                                                                        <th>Display Name</th>
+                                                                        <th>Provider</th>
+                                                                        <th>Roles</th>
+                                                                        <th>Groups</th>
+                                                                        <th>Password Type</th>
+                                                                        <th>Actions</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {adminUsers.length === 0 ? (
+                                                                        <tr>
+                                                                            <td colSpan={7}>
+                                                                                No users available.
+                                                                            </td>
+                                                                        </tr>
+                                                                    ) : (
+                                                                        adminUsers.map((user) => (
+                                                                            <tr
+                                                                                key={`admin-user-${user.username}`}
+                                                                            >
+                                                                                <td>
+                                                                                    {user.username}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {
+                                                                                        user.displayName
+                                                                                    }
+                                                                                </td>
+                                                                                <td>
+                                                                                    {user.provider.toUpperCase()}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {user.roles.join(
+                                                                                        ', '
+                                                                                    )}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {user.groups
+                                                                                        .length > 0
+                                                                                        ? user.groups.join(
+                                                                                              ', '
+                                                                                          )
+                                                                                        : '-'}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {user.temporaryPassword
+                                                                                        ? 'Temporary'
+                                                                                        : 'Permanent'}
+                                                                                </td>
+                                                                                <td className="history-actions">
+                                                                                    {user.provider ===
+                                                                                    'local' ? (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            className="chip"
+                                                                                            disabled={
+                                                                                                resettingLocalUser ===
+                                                                                                user.username
+                                                                                            }
+                                                                                            onClick={() =>
+                                                                                                void handleResetLocalPassword(
+                                                                                                    user.username
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            {resettingLocalUser ===
+                                                                                            user.username
+                                                                                                ? 'Resetting...'
+                                                                                                : 'Reset Password'}
+                                                                                        </button>
+                                                                                    ) : (
+                                                                                        <span className="muted-id">
+                                                                                            LDAP
+                                                                                            managed
+                                                                                        </span>
+                                                                                    )}
+                                                                                </td>
+                                                                            </tr>
+                                                                        ))
+                                                                    )}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <p className="muted-id">
+                                                        Local authentication is disabled. Users are
+                                                        managed by LDAP and cannot be created here.
+                                                    </p>
+                                                )}
+                                            </section>
+                                        ) : null}
+
+                                        {activeSection === 'connections' ? (
+                                            <section className="datasource-admin">
+                                                {connectionEditorMode === 'list' ? (
+                                                    <section className="connection-list-view">
+                                                        <div className="row connection-list-toolbar">
+                                                            <button
+                                                                type="button"
+                                                                onClick={
+                                                                    handleStartCreateManagedDatasource
+                                                                }
+                                                            >
+                                                                Create Connection
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="chip"
+                                                                disabled={reencryptingCredentials}
+                                                                onClick={() =>
+                                                                    void handleReencryptCredentials()
+                                                                }
+                                                            >
+                                                                {reencryptingCredentials
+                                                                    ? 'Re-encrypting...'
+                                                                    : 'Re-encrypt Credentials'}
+                                                            </button>
+                                                        </div>
+                                                        {adminManagedDatasources.length === 0 ? (
+                                                            <p className="muted-id">
+                                                                No connections configured yet.
+                                                            </p>
+                                                        ) : (
+                                                            <div className="connection-catalog-list connection-catalog-list-standalone">
+                                                                {adminManagedDatasources.map(
+                                                                    (datasource) => (
+                                                                        <article
+                                                                            key={datasource.id}
+                                                                            className="connection-catalog-item connection-catalog-item-row"
+                                                                        >
+                                                                            <span
+                                                                                className="connection-catalog-icon"
+                                                                                aria-hidden
+                                                                            >
+                                                                                <img
+                                                                                    src={resolveDatasourceIcon(
+                                                                                        datasource.engine
+                                                                                    )}
+                                                                                    alt=""
+                                                                                    width={16}
+                                                                                    height={16}
+                                                                                />
+                                                                            </span>
+                                                                            <span className="connection-catalog-main">
+                                                                                <span className="connection-catalog-name">
+                                                                                    {
+                                                                                        datasource.name
+                                                                                    }
+                                                                                </span>
+                                                                                <span className="connection-catalog-id">
+                                                                                    {datasource.id}
+                                                                                </span>
+                                                                            </span>
+                                                                            <span className="connection-catalog-engine">
+                                                                                {datasource.engine}
+                                                                            </span>
+                                                                            <span className="connection-catalog-actions">
+                                                                                <IconButton
+                                                                                    icon="rename"
+                                                                                    title={`Edit ${datasource.name}`}
+                                                                                    onClick={() =>
+                                                                                        handleStartEditManagedDatasource(
+                                                                                            datasource.id
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                                <IconButton
+                                                                                    icon="delete"
+                                                                                    title={`Delete ${datasource.name}`}
+                                                                                    variant="danger"
+                                                                                    disabled={
+                                                                                        deletingDatasource
+                                                                                    }
+                                                                                    onClick={() =>
+                                                                                        void handleDeleteManagedDatasource(
+                                                                                            datasource
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </span>
+                                                                        </article>
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </section>
+                                                ) : (
+                                                    <>
+                                                        <div className="row connection-editor-header">
+                                                            <button
+                                                                type="button"
+                                                                className="chip"
+                                                                onClick={
+                                                                    handleCancelConnectionEditor
+                                                                }
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <span className="connection-mode-pill">
+                                                                {connectionEditorMode === 'edit' &&
+                                                                selectedManagedDatasource
+                                                                    ? `Editing ${selectedManagedDatasource.name}`
+                                                                    : 'Creating a new connection'}
+                                                            </span>
+                                                        </div>
+
+                                                        <form
+                                                            className="stack-form connection-form"
+                                                            onSubmit={handleSaveManagedDatasource}
                                                         >
-                                                            {reencryptingCredentials
-                                                                ? 'Re-encrypting...'
-                                                                : 'Re-encrypt Credentials'}
-                                                        </button>
-                                                    </div>
-                                                    {adminManagedDatasources.length === 0 ? (
-                                                        <p className="muted-id">
-                                                            No connections configured yet.
-                                                        </p>
-                                                    ) : (
-                                                        <div className="connection-catalog-list connection-catalog-list-standalone">
-                                                            {adminManagedDatasources.map(
-                                                                (datasource) => (
-                                                                    <article
-                                                                        key={datasource.id}
-                                                                        className="connection-catalog-item connection-catalog-item-row"
-                                                                    >
+                                                            <h4>Quick Setup</h4>
+                                                            <p className="muted-id connection-form-note">
+                                                                Use this section for a standard
+                                                                connection. Advanced settings stay
+                                                                collapsed by default.
+                                                            </p>
+
+                                                            <div className="connection-form-grid">
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-name">
+                                                                        Name
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-name"
+                                                                        value={
+                                                                            managedDatasourceForm.name
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    name: event
+                                                                                        .target
+                                                                                        .value
+                                                                                })
+                                                                            )
+                                                                        }
+                                                                        required
+                                                                    />
+                                                                </div>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-engine">
+                                                                        Engine
+                                                                    </label>
+                                                                    <div className="managed-engine-field">
                                                                         <span
-                                                                            className="connection-catalog-icon"
+                                                                            className="managed-engine-icon"
                                                                             aria-hidden
                                                                         >
                                                                             <img
                                                                                 src={resolveDatasourceIcon(
-                                                                                    datasource.engine
+                                                                                    managedDatasourceForm.engine
                                                                                 )}
                                                                                 alt=""
                                                                                 width={16}
                                                                                 height={16}
                                                                             />
                                                                         </span>
-                                                                        <span className="connection-catalog-main">
-                                                                            <span className="connection-catalog-name">
-                                                                                {datasource.name}
-                                                                            </span>
-                                                                            <span className="connection-catalog-id">
-                                                                                {datasource.id}
-                                                                            </span>
-                                                                        </span>
-                                                                        <span className="connection-catalog-engine">
-                                                                            {datasource.engine}
-                                                                        </span>
-                                                                        <span className="connection-catalog-actions">
-                                                                            <IconButton
-                                                                                icon="rename"
-                                                                                title={`Edit ${datasource.name}`}
-                                                                                onClick={() =>
-                                                                                    handleStartEditManagedDatasource(
-                                                                                        datasource.id
-                                                                                    )
+                                                                        <div className="select-wrap">
+                                                                            <select
+                                                                                id="managed-engine"
+                                                                                value={
+                                                                                    managedDatasourceForm.engine
                                                                                 }
-                                                                            />
-                                                                            <IconButton
-                                                                                icon="delete"
-                                                                                title={`Delete ${datasource.name}`}
-                                                                                variant="danger"
-                                                                                disabled={
-                                                                                    deletingDatasource
-                                                                                }
-                                                                                onClick={() =>
-                                                                                    void handleDeleteManagedDatasource(
-                                                                                        datasource
-                                                                                    )
-                                                                                }
-                                                                            />
-                                                                        </span>
-                                                                    </article>
-                                                                )
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </section>
-                                            ) : (
-                                                <>
-                                                    <div className="row connection-editor-header">
-                                                        <button
-                                                            type="button"
-                                                            className="chip"
-                                                            onClick={handleCancelConnectionEditor}
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                        <span className="connection-mode-pill">
-                                                            {connectionEditorMode === 'edit' &&
-                                                            selectedManagedDatasource
-                                                                ? `Editing ${selectedManagedDatasource.name}`
-                                                                : 'Creating a new connection'}
-                                                        </span>
-                                                    </div>
-
-                                                    <form
-                                                        className="stack-form connection-form"
-                                                        onSubmit={handleSaveManagedDatasource}
-                                                    >
-                                                        <h4>Quick Setup</h4>
-                                                        <p className="muted-id connection-form-note">
-                                                            Use this section for a standard
-                                                            connection. Advanced settings stay
-                                                            collapsed by default.
-                                                        </p>
-
-                                                        <div className="connection-form-grid">
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-name">
-                                                                    Name
-                                                                </label>
-                                                                <input
-                                                                    id="managed-name"
-                                                                    value={
-                                                                        managedDatasourceForm.name
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                name: event.target
-                                                                                    .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    required
-                                                                />
-                                                            </div>
-
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-engine">
-                                                                    Engine
-                                                                </label>
-                                                                <div className="managed-engine-field">
-                                                                    <span
-                                                                        className="managed-engine-icon"
-                                                                        aria-hidden
-                                                                    >
-                                                                        <img
-                                                                            src={resolveDatasourceIcon(
-                                                                                managedDatasourceForm.engine
-                                                                            )}
-                                                                            alt=""
-                                                                            width={16}
-                                                                            height={16}
-                                                                        />
-                                                                    </span>
-                                                                    <div className="select-wrap">
-                                                                        <select
-                                                                            id="managed-engine"
-                                                                            value={
-                                                                                managedDatasourceForm.engine
-                                                                            }
-                                                                            disabled={Boolean(
-                                                                                selectedManagedDatasource
-                                                                            )}
-                                                                            onChange={(event) => {
-                                                                                const nextEngine =
-                                                                                    event.target
-                                                                                        .value as DatasourceEngine;
-                                                                                setManagedDatasourceForm(
-                                                                                    (current) => ({
-                                                                                        ...current,
-                                                                                        engine: nextEngine,
-                                                                                        port: defaultPortByEngine[
-                                                                                            nextEngine
-                                                                                        ].toString()
-                                                                                    })
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            <option value="POSTGRESQL">
-                                                                                PostgreSQL
-                                                                            </option>
-                                                                            <option value="MYSQL">
-                                                                                MySQL
-                                                                            </option>
-                                                                            <option value="MARIADB">
-                                                                                MariaDB
-                                                                            </option>
-                                                                            <option value="TRINO">
-                                                                                Trino
-                                                                            </option>
-                                                                            <option value="STARROCKS">
-                                                                                StarRocks
-                                                                            </option>
-                                                                            <option value="VERTICA">
-                                                                                Vertica
-                                                                            </option>
-                                                                        </select>
+                                                                                disabled={Boolean(
+                                                                                    selectedManagedDatasource
+                                                                                )}
+                                                                                onChange={(
+                                                                                    event
+                                                                                ) => {
+                                                                                    const nextEngine =
+                                                                                        event.target
+                                                                                            .value as DatasourceEngine;
+                                                                                    setManagedDatasourceForm(
+                                                                                        (
+                                                                                            current
+                                                                                        ) => ({
+                                                                                            ...current,
+                                                                                            engine: nextEngine,
+                                                                                            port: defaultPortByEngine[
+                                                                                                nextEngine
+                                                                                            ].toString()
+                                                                                        })
+                                                                                    );
+                                                                                }}
+                                                                            >
+                                                                                <option value="POSTGRESQL">
+                                                                                    PostgreSQL
+                                                                                </option>
+                                                                                <option value="MYSQL">
+                                                                                    MySQL
+                                                                                </option>
+                                                                                <option value="MARIADB">
+                                                                                    MariaDB
+                                                                                </option>
+                                                                                <option value="TRINO">
+                                                                                    Trino
+                                                                                </option>
+                                                                                <option value="STARROCKS">
+                                                                                    StarRocks
+                                                                                </option>
+                                                                                <option value="VERTICA">
+                                                                                    Vertica
+                                                                                </option>
+                                                                            </select>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
 
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-host">
-                                                                    Host
-                                                                </label>
-                                                                <input
-                                                                    id="managed-host"
-                                                                    value={
-                                                                        managedDatasourceForm.host
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                host: event.target
-                                                                                    .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    required={
-                                                                        managedDatasourceForm.connectionType ===
-                                                                        'HOST_PORT'
-                                                                    }
-                                                                    placeholder="localhost"
-                                                                />
-                                                            </div>
-
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-port">
-                                                                    Port
-                                                                </label>
-                                                                <input
-                                                                    id="managed-port"
-                                                                    type="number"
-                                                                    min={1}
-                                                                    max={65535}
-                                                                    value={
-                                                                        managedDatasourceForm.port
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                port: event.target
-                                                                                    .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    required
-                                                                />
-                                                            </div>
-
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-database">
-                                                                    Database (optional)
-                                                                </label>
-                                                                <input
-                                                                    id="managed-database"
-                                                                    value={
-                                                                        managedDatasourceForm.database
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                database:
-                                                                                    event.target
-                                                                                        .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    placeholder="schema or database"
-                                                                />
-                                                            </div>
-
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-authentication">
-                                                                    Authentication
-                                                                </label>
-                                                                <div className="select-wrap">
-                                                                    <select
-                                                                        id="managed-authentication"
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-host">
+                                                                        Host
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-host"
                                                                         value={
-                                                                            managedDatasourceForm.authentication
+                                                                            managedDatasourceForm.host
                                                                         }
                                                                         onChange={(event) =>
                                                                             setManagedDatasourceForm(
                                                                                 (current) => ({
                                                                                     ...current,
-                                                                                    authentication:
-                                                                                        event.target
-                                                                                            .value as ConnectionAuthentication
+                                                                                    host: event
+                                                                                        .target
+                                                                                        .value
                                                                                 })
                                                                             )
                                                                         }
-                                                                    >
-                                                                        <option value="USER_PASSWORD">
-                                                                            User &amp; Password
-                                                                        </option>
-                                                                        <option value="NO_AUTH">
-                                                                            No Auth
-                                                                        </option>
-                                                                    </select>
+                                                                        required={
+                                                                            managedDatasourceForm.connectionType ===
+                                                                            'HOST_PORT'
+                                                                        }
+                                                                        placeholder="localhost"
+                                                                    />
                                                                 </div>
-                                                            </div>
 
-                                                            <div className="form-field">
-                                                                <label htmlFor="managed-profile-id">
-                                                                    Credential Profile
-                                                                </label>
-                                                                <input
-                                                                    id="managed-profile-id"
-                                                                    value={
-                                                                        managedDatasourceForm.credentialProfileId
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                credentialProfileId:
-                                                                                    event.target
-                                                                                        .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    placeholder="admin-ro"
-                                                                    required
-                                                                />
-                                                            </div>
-
-                                                            {managedDatasourceForm.authentication ===
-                                                            'USER_PASSWORD' ? (
-                                                                <>
-                                                                    <div className="form-field">
-                                                                        <label htmlFor="managed-credential-username">
-                                                                            User
-                                                                        </label>
-                                                                        <input
-                                                                            id="managed-credential-username"
-                                                                            value={
-                                                                                managedDatasourceForm.credentialUsername
-                                                                            }
-                                                                            onChange={(event) =>
-                                                                                setManagedDatasourceForm(
-                                                                                    (current) => ({
-                                                                                        ...current,
-                                                                                        credentialUsername:
-                                                                                            event
-                                                                                                .target
-                                                                                                .value
-                                                                                    })
-                                                                                )
-                                                                            }
-                                                                            required
-                                                                        />
-                                                                    </div>
-
-                                                                    <div className="form-field">
-                                                                        <label htmlFor="managed-credential-password">
-                                                                            Password
-                                                                        </label>
-                                                                        <input
-                                                                            id="managed-credential-password"
-                                                                            type="password"
-                                                                            value={
-                                                                                managedDatasourceForm.credentialPassword
-                                                                            }
-                                                                            onChange={(event) =>
-                                                                                setManagedDatasourceForm(
-                                                                                    (current) => ({
-                                                                                        ...current,
-                                                                                        credentialPassword:
-                                                                                            event
-                                                                                                .target
-                                                                                                .value
-                                                                                    })
-                                                                                )
-                                                                            }
-                                                                            placeholder={
-                                                                                selectedManagedDatasource
-                                                                                    ? 'Leave blank to keep existing password'
-                                                                                    : ''
-                                                                            }
-                                                                            required={
-                                                                                !selectedManagedDatasource
-                                                                            }
-                                                                        />
-                                                                    </div>
-                                                                </>
-                                                            ) : (
-                                                                <p className="muted-id connection-form-note connection-form-full">
-                                                                    No credential username/password
-                                                                    will be stored for this
-                                                                    connection.
-                                                                </p>
-                                                            )}
-
-                                                            <div className="form-field connection-form-full">
-                                                                <label htmlFor="managed-credential-description">
-                                                                    Credential Description
-                                                                    (optional)
-                                                                </label>
-                                                                <input
-                                                                    id="managed-credential-description"
-                                                                    value={
-                                                                        managedDatasourceForm.credentialDescription
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                credentialDescription:
-                                                                                    event.target
-                                                                                        .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    placeholder="Readonly profile for analysts"
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        <details className="managed-advanced-block">
-                                                            <summary>Connection</summary>
-
-                                                            <label htmlFor="managed-connection-type">
-                                                                Connection Type
-                                                            </label>
-                                                            <div className="select-wrap">
-                                                                <select
-                                                                    id="managed-connection-type"
-                                                                    value={
-                                                                        managedDatasourceForm.connectionType
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                connectionType:
-                                                                                    event.target
-                                                                                        .value as ConnectionType
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <option value="HOST_PORT">
-                                                                        Default (Host + Port)
-                                                                    </option>
-                                                                    <option value="JDBC_URL">
-                                                                        JDBC URL
-                                                                    </option>
-                                                                </select>
-                                                            </div>
-
-                                                            {managedDatasourceForm.connectionType ===
-                                                            'JDBC_URL' ? (
-                                                                <>
-                                                                    <label htmlFor="managed-jdbc-url">
-                                                                        JDBC URL
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-port">
+                                                                        Port
                                                                     </label>
                                                                     <input
-                                                                        id="managed-jdbc-url"
+                                                                        id="managed-port"
+                                                                        type="number"
+                                                                        min={1}
+                                                                        max={65535}
                                                                         value={
-                                                                            managedDatasourceForm.jdbcUrl
+                                                                            managedDatasourceForm.port
                                                                         }
                                                                         onChange={(event) =>
                                                                             setManagedDatasourceForm(
                                                                                 (current) => ({
                                                                                     ...current,
-                                                                                    jdbcUrl:
+                                                                                    port: event
+                                                                                        .target
+                                                                                        .value
+                                                                                })
+                                                                            )
+                                                                        }
+                                                                        required
+                                                                    />
+                                                                </div>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-database">
+                                                                        Database (optional)
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-database"
+                                                                        value={
+                                                                            managedDatasourceForm.database
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    database:
                                                                                         event.target
                                                                                             .value
                                                                                 })
                                                                             )
                                                                         }
-                                                                        placeholder={`jdbc:${managedDatasourceForm.engine.toLowerCase()}://host:port/database`}
-                                                                        required
+                                                                        placeholder="schema or database"
                                                                     />
-                                                                </>
-                                                            ) : null}
+                                                                </div>
 
-                                                            <label htmlFor="managed-options">
-                                                                JDBC Options (key=value per line)
-                                                            </label>
-                                                            <textarea
-                                                                id="managed-options"
-                                                                rows={4}
-                                                                value={
-                                                                    managedDatasourceForm.optionsInput
-                                                                }
-                                                                onChange={(event) =>
-                                                                    setManagedDatasourceForm(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            optionsInput:
-                                                                                event.target.value
-                                                                        })
-                                                                    )
-                                                                }
-                                                                placeholder={
-                                                                    'allowPublicKeyRetrieval=true\\nserverTimezone=UTC'
-                                                                }
-                                                            />
-
-                                                            <label htmlFor="managed-jdbc-preview">
-                                                                JDBC URL Preview
-                                                            </label>
-                                                            <input
-                                                                id="managed-jdbc-preview"
-                                                                value={managedFormJdbcPreview}
-                                                                readOnly
-                                                            />
-                                                        </details>
-
-                                                        <details className="managed-advanced-block">
-                                                            <summary>Driver</summary>
-
-                                                            <label htmlFor="managed-driver">
-                                                                Driver
-                                                            </label>
-                                                            <div className="select-wrap">
-                                                                <select
-                                                                    id="managed-driver"
-                                                                    value={
-                                                                        managedDatasourceForm.driverId
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                driverId:
-                                                                                    event.target
-                                                                                        .value
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <option value="">
-                                                                        Select driver
-                                                                    </option>
-                                                                    {driversForFormEngine.map(
-                                                                        (driver) => (
-                                                                            <option
-                                                                                key={
-                                                                                    driver.driverId
-                                                                                }
-                                                                                value={
-                                                                                    driver.driverId
-                                                                                }
-                                                                            >
-                                                                                {driver.driverId}
-                                                                                {driver.version
-                                                                                    ? ` v${driver.version}`
-                                                                                    : ''}{' '}
-                                                                                ({driver.source})
-                                                                                {driver.available
-                                                                                    ? ''
-                                                                                    : ' [unavailable]'}
-                                                                            </option>
-                                                                        )
-                                                                    )}
-                                                                </select>
-                                                            </div>
-                                                            {selectedDriverForForm ? (
-                                                                <p
-                                                                    className={
-                                                                        selectedDriverForForm.available
-                                                                            ? 'form-success'
-                                                                            : 'form-error'
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        selectedDriverForForm.description
-                                                                    }
-                                                                    .{' '}
-                                                                    {selectedDriverForForm.version
-                                                                        ? `Version ${selectedDriverForForm.version}. `
-                                                                        : ''}
-                                                                    {selectedDriverForForm.message}
-                                                                </p>
-                                                            ) : null}
-
-                                                            <div className="driver-upload">
-                                                                <h4>Upload Driver</h4>
-                                                                <p className="muted-id">
-                                                                    Upload a JDBC driver jar when
-                                                                    built-in versions are
-                                                                    unavailable.
-                                                                </p>
-                                                                <label htmlFor="upload-driver-id">
-                                                                    Driver ID (optional)
-                                                                </label>
-                                                                <input
-                                                                    id="upload-driver-id"
-                                                                    value={uploadDriverIdInput}
-                                                                    onChange={(event) =>
-                                                                        setUploadDriverIdInput(
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                    placeholder="mysql-custom-9"
-                                                                />
-                                                                <label htmlFor="upload-driver-class">
-                                                                    Driver Class
-                                                                </label>
-                                                                <input
-                                                                    id="upload-driver-class"
-                                                                    value={uploadDriverClassInput}
-                                                                    onChange={(event) =>
-                                                                        setUploadDriverClassInput(
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                    placeholder="com.mysql.cj.jdbc.Driver"
-                                                                />
-                                                                <label htmlFor="upload-driver-description">
-                                                                    Description (optional)
-                                                                </label>
-                                                                <input
-                                                                    id="upload-driver-description"
-                                                                    value={
-                                                                        uploadDriverDescriptionInput
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setUploadDriverDescriptionInput(
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                    placeholder="MySQL 9 Connector/J"
-                                                                />
-                                                                <label htmlFor="upload-driver-jar">
-                                                                    Driver Jar
-                                                                </label>
-                                                                <input
-                                                                    id="upload-driver-jar"
-                                                                    type="file"
-                                                                    accept=".jar,application/java-archive"
-                                                                    onChange={(event) =>
-                                                                        setUploadDriverJarFile(
-                                                                            event.target
-                                                                                .files?.[0] ?? null
-                                                                        )
-                                                                    }
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    className="chip"
-                                                                    onClick={() =>
-                                                                        void handleUploadDriver()
-                                                                    }
-                                                                    disabled={uploadingDriver}
-                                                                >
-                                                                    {uploadingDriver
-                                                                        ? 'Uploading...'
-                                                                        : 'Upload Driver Jar'}
-                                                                </button>
-                                                            </div>
-                                                        </details>
-
-                                                        <details className="managed-advanced-block">
-                                                            <summary>Pooling</summary>
-
-                                                            <label htmlFor="managed-pool-max">
-                                                                Maximum Pool Size
-                                                            </label>
-                                                            <input
-                                                                id="managed-pool-max"
-                                                                type="number"
-                                                                min={1}
-                                                                value={
-                                                                    managedDatasourceForm.maximumPoolSize
-                                                                }
-                                                                onChange={(event) =>
-                                                                    setManagedDatasourceForm(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            maximumPoolSize:
-                                                                                event.target.value
-                                                                        })
-                                                                    )
-                                                                }
-                                                                required
-                                                            />
-
-                                                            <label htmlFor="managed-pool-min">
-                                                                Minimum Idle
-                                                            </label>
-                                                            <input
-                                                                id="managed-pool-min"
-                                                                type="number"
-                                                                min={1}
-                                                                value={
-                                                                    managedDatasourceForm.minimumIdle
-                                                                }
-                                                                onChange={(event) =>
-                                                                    setManagedDatasourceForm(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            minimumIdle:
-                                                                                event.target.value
-                                                                        })
-                                                                    )
-                                                                }
-                                                                required
-                                                            />
-
-                                                            <label htmlFor="managed-pool-connection-timeout">
-                                                                Connection Timeout (ms)
-                                                            </label>
-                                                            <input
-                                                                id="managed-pool-connection-timeout"
-                                                                type="number"
-                                                                min={1}
-                                                                value={
-                                                                    managedDatasourceForm.connectionTimeoutMs
-                                                                }
-                                                                onChange={(event) =>
-                                                                    setManagedDatasourceForm(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            connectionTimeoutMs:
-                                                                                event.target.value
-                                                                        })
-                                                                    )
-                                                                }
-                                                                required
-                                                            />
-
-                                                            <label htmlFor="managed-pool-idle-timeout">
-                                                                Idle Timeout (ms)
-                                                            </label>
-                                                            <input
-                                                                id="managed-pool-idle-timeout"
-                                                                type="number"
-                                                                min={1}
-                                                                value={
-                                                                    managedDatasourceForm.idleTimeoutMs
-                                                                }
-                                                                onChange={(event) =>
-                                                                    setManagedDatasourceForm(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            idleTimeoutMs:
-                                                                                event.target.value
-                                                                        })
-                                                                    )
-                                                                }
-                                                                required
-                                                            />
-                                                        </details>
-
-                                                        <details className="managed-advanced-block">
-                                                            <summary>TLS</summary>
-
-                                                            <label htmlFor="managed-tls-mode">
-                                                                TLS Mode
-                                                            </label>
-                                                            <select
-                                                                id="managed-tls-mode"
-                                                                value={
-                                                                    managedDatasourceForm.tlsMode
-                                                                }
-                                                                onChange={(event) =>
-                                                                    setManagedDatasourceForm(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            tlsMode: event.target
-                                                                                .value as TlsMode
-                                                                        })
-                                                                    )
-                                                                }
-                                                            >
-                                                                <option value="DISABLE">
-                                                                    Disable
-                                                                </option>
-                                                                <option value="REQUIRE">
-                                                                    Require
-                                                                </option>
-                                                            </select>
-                                                            <label className="checkbox-row">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={
-                                                                        managedDatasourceForm.verifyServerCertificate
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                verifyServerCertificate:
-                                                                                    event.target
-                                                                                        .checked
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                />
-                                                                <span>
-                                                                    Verify server certificate
-                                                                </span>
-                                                            </label>
-                                                            <label className="checkbox-row">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={
-                                                                        managedDatasourceForm.allowSelfSigned
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        setManagedDatasourceForm(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                allowSelfSigned:
-                                                                                    event.target
-                                                                                        .checked
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                />
-                                                                <span>
-                                                                    Allow self-signed certificates
-                                                                </span>
-                                                            </label>
-                                                        </details>
-
-                                                        <button
-                                                            type="submit"
-                                                            disabled={savingDatasource}
-                                                        >
-                                                            {savingDatasource
-                                                                ? 'Saving...'
-                                                                : selectedManagedDatasource
-                                                                  ? 'Update Connection'
-                                                                  : 'Create Connection'}
-                                                        </button>
-                                                    </form>
-
-                                                    {selectedManagedDatasource ? (
-                                                        <details className="managed-advanced-block managed-connection-tools">
-                                                            <summary>
-                                                                Credential Profiles and Connection
-                                                                Test
-                                                            </summary>
-                                                            <div className="managed-datasource-actions">
-                                                                <h4>Credential Profiles</h4>
-                                                                <ul className="credentials-list">
-                                                                    {selectedManagedDatasource.credentialProfiles.map(
-                                                                        (profile) => (
-                                                                            <li
-                                                                                key={`${selectedManagedDatasource.id}-${profile.profileId}`}
-                                                                            >
-                                                                                <strong>
-                                                                                    {
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                </strong>{' '}
-                                                                                ({profile.username})
-                                                                                key:{' '}
-                                                                                {
-                                                                                    profile.encryptionKeyId
-                                                                                }
-                                                                            </li>
-                                                                        )
-                                                                    )}
-                                                                </ul>
-
-                                                                <form
-                                                                    className="stack-form"
-                                                                    onSubmit={
-                                                                        handleSaveCredentialProfile
-                                                                    }
-                                                                >
-                                                                    <label htmlFor="credential-existing">
-                                                                        Existing Profile
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-authentication">
+                                                                        Authentication
                                                                     </label>
-                                                                    <select
-                                                                        id="credential-existing"
-                                                                        value={
-                                                                            selectedManagedDatasource.credentialProfiles.some(
-                                                                                (profile) =>
-                                                                                    profile.profileId ===
-                                                                                    credentialProfileIdInput.trim()
-                                                                            )
-                                                                                ? credentialProfileIdInput
-                                                                                : ''
-                                                                        }
-                                                                        onChange={(event) => {
-                                                                            const selectedProfileId =
-                                                                                event.target.value;
-                                                                            if (
-                                                                                !selectedProfileId
-                                                                            ) {
-                                                                                return;
+                                                                    <div className="select-wrap">
+                                                                        <select
+                                                                            id="managed-authentication"
+                                                                            value={
+                                                                                managedDatasourceForm.authentication
                                                                             }
+                                                                            onChange={(event) =>
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        authentication:
+                                                                                            event
+                                                                                                .target
+                                                                                                .value as ConnectionAuthentication
+                                                                                    })
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <option value="USER_PASSWORD">
+                                                                                User &amp; Password
+                                                                            </option>
+                                                                            <option value="NO_AUTH">
+                                                                                No Auth
+                                                                            </option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
 
-                                                                            setCredentialProfileIdInput(
-                                                                                selectedProfileId
-                                                                            );
-                                                                            setSelectedCredentialProfileForTest(
-                                                                                selectedProfileId
-                                                                            );
-                                                                        }}
-                                                                    >
-                                                                        <option value="">
-                                                                            Select existing profile
-                                                                        </option>
-                                                                        {selectedManagedDatasource.credentialProfiles.map(
-                                                                            (profile) => (
-                                                                                <option
-                                                                                    key={
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                    value={
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                >
-                                                                                    {
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                </option>
-                                                                            )
-                                                                        )}
-                                                                    </select>
-
-                                                                    <label htmlFor="credential-profile-id">
-                                                                        Profile ID
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-profile-id">
+                                                                        Credential Profile
                                                                     </label>
                                                                     <input
-                                                                        id="credential-profile-id"
+                                                                        id="managed-profile-id"
                                                                         value={
-                                                                            credentialProfileIdInput
+                                                                            managedDatasourceForm.credentialProfileId
                                                                         }
                                                                         onChange={(event) =>
-                                                                            setCredentialProfileIdInput(
-                                                                                event.target.value
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    credentialProfileId:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
                                                                             )
                                                                         }
                                                                         placeholder="admin-ro"
                                                                         required
                                                                     />
+                                                                </div>
 
-                                                                    <label htmlFor="credential-username">
-                                                                        Username
+                                                                {managedDatasourceForm.authentication ===
+                                                                'USER_PASSWORD' ? (
+                                                                    <>
+                                                                        <div className="form-field">
+                                                                            <label htmlFor="managed-credential-username">
+                                                                                User
+                                                                            </label>
+                                                                            <input
+                                                                                id="managed-credential-username"
+                                                                                value={
+                                                                                    managedDatasourceForm.credentialUsername
+                                                                                }
+                                                                                onChange={(event) =>
+                                                                                    setManagedDatasourceForm(
+                                                                                        (
+                                                                                            current
+                                                                                        ) => ({
+                                                                                            ...current,
+                                                                                            credentialUsername:
+                                                                                                event
+                                                                                                    .target
+                                                                                                    .value
+                                                                                        })
+                                                                                    )
+                                                                                }
+                                                                                required
+                                                                            />
+                                                                        </div>
+
+                                                                        <div className="form-field">
+                                                                            <label htmlFor="managed-credential-password">
+                                                                                Password
+                                                                            </label>
+                                                                            <input
+                                                                                id="managed-credential-password"
+                                                                                type="password"
+                                                                                value={
+                                                                                    managedDatasourceForm.credentialPassword
+                                                                                }
+                                                                                onChange={(event) =>
+                                                                                    setManagedDatasourceForm(
+                                                                                        (
+                                                                                            current
+                                                                                        ) => ({
+                                                                                            ...current,
+                                                                                            credentialPassword:
+                                                                                                event
+                                                                                                    .target
+                                                                                                    .value
+                                                                                        })
+                                                                                    )
+                                                                                }
+                                                                                placeholder={
+                                                                                    selectedManagedDatasource
+                                                                                        ? 'Leave blank to keep existing password'
+                                                                                        : ''
+                                                                                }
+                                                                                required={
+                                                                                    !selectedManagedDatasource
+                                                                                }
+                                                                            />
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <p className="muted-id connection-form-note connection-form-full">
+                                                                        No credential
+                                                                        username/password will be
+                                                                        stored for this connection.
+                                                                    </p>
+                                                                )}
+
+                                                                <div className="form-field connection-form-full">
+                                                                    <label htmlFor="managed-credential-description">
+                                                                        Credential Description
+                                                                        (optional)
                                                                     </label>
                                                                     <input
-                                                                        id="credential-username"
+                                                                        id="managed-credential-description"
                                                                         value={
-                                                                            credentialUsernameInput
+                                                                            managedDatasourceForm.credentialDescription
                                                                         }
                                                                         onChange={(event) =>
-                                                                            setCredentialUsernameInput(
-                                                                                event.target.value
-                                                                            )
-                                                                        }
-                                                                        required
-                                                                    />
-
-                                                                    <label htmlFor="credential-password">
-                                                                        Password
-                                                                    </label>
-                                                                    <input
-                                                                        id="credential-password"
-                                                                        type="password"
-                                                                        value={
-                                                                            credentialPasswordInput
-                                                                        }
-                                                                        onChange={(event) =>
-                                                                            setCredentialPasswordInput(
-                                                                                event.target.value
-                                                                            )
-                                                                        }
-                                                                        required
-                                                                    />
-
-                                                                    <label htmlFor="credential-description">
-                                                                        Description
-                                                                    </label>
-                                                                    <input
-                                                                        id="credential-description"
-                                                                        value={
-                                                                            credentialDescriptionInput
-                                                                        }
-                                                                        onChange={(event) =>
-                                                                            setCredentialDescriptionInput(
-                                                                                event.target.value
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    credentialDescription:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
                                                                             )
                                                                         }
                                                                         placeholder="Readonly profile for analysts"
                                                                     />
+                                                                </div>
+                                                            </div>
 
-                                                                    <button
-                                                                        type="submit"
-                                                                        disabled={
-                                                                            savingCredentialProfile
-                                                                        }
-                                                                    >
-                                                                        {savingCredentialProfile
-                                                                            ? 'Saving...'
-                                                                            : 'Save Credential Profile'}
-                                                                    </button>
-                                                                </form>
+                                                            <details className="managed-advanced-block">
+                                                                <summary>Connection</summary>
 
-                                                                <h4>Test Connection</h4>
-                                                                <form
-                                                                    className="stack-form"
-                                                                    onSubmit={handleTestConnection}
-                                                                >
-                                                                    <label htmlFor="test-credential-profile">
-                                                                        Credential Profile
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-connection-type">
+                                                                        Connection Type
                                                                     </label>
-                                                                    <select
-                                                                        id="test-credential-profile"
+                                                                    <div className="select-wrap">
+                                                                        <select
+                                                                            id="managed-connection-type"
+                                                                            value={
+                                                                                managedDatasourceForm.connectionType
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        connectionType:
+                                                                                            event
+                                                                                                .target
+                                                                                                .value as ConnectionType
+                                                                                    })
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <option value="HOST_PORT">
+                                                                                Default (Host +
+                                                                                Port)
+                                                                            </option>
+                                                                            <option value="JDBC_URL">
+                                                                                JDBC URL
+                                                                            </option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+
+                                                                {managedDatasourceForm.connectionType ===
+                                                                'JDBC_URL' ? (
+                                                                    <div className="form-field">
+                                                                        <label htmlFor="managed-jdbc-url">
+                                                                            JDBC URL
+                                                                        </label>
+                                                                        <input
+                                                                            id="managed-jdbc-url"
+                                                                            value={
+                                                                                managedDatasourceForm.jdbcUrl
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        jdbcUrl:
+                                                                                            event
+                                                                                                .target
+                                                                                                .value
+                                                                                    })
+                                                                                )
+                                                                            }
+                                                                            placeholder={`jdbc:${managedDatasourceForm.engine.toLowerCase()}://host:port/database`}
+                                                                            required
+                                                                        />
+                                                                    </div>
+                                                                ) : null}
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-options">
+                                                                        JDBC Options (key=value per
+                                                                        line)
+                                                                    </label>
+                                                                    <textarea
+                                                                        id="managed-options"
+                                                                        rows={4}
                                                                         value={
-                                                                            selectedCredentialProfileForTest
+                                                                            managedDatasourceForm.optionsInput
                                                                         }
                                                                         onChange={(event) =>
-                                                                            setSelectedCredentialProfileForTest(
-                                                                                event.target.value
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    optionsInput:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
                                                                             )
                                                                         }
-                                                                    >
-                                                                        <option value="">
-                                                                            Select credential
-                                                                            profile
-                                                                        </option>
-                                                                        {selectedManagedDatasource.credentialProfiles.map(
-                                                                            (profile) => (
-                                                                                <option
-                                                                                    key={
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                    value={
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                >
-                                                                                    {
-                                                                                        profile.profileId
-                                                                                    }
-                                                                                </option>
-                                                                            )
-                                                                        )}
-                                                                    </select>
+                                                                        placeholder={
+                                                                            'allowPublicKeyRetrieval=true\\nserverTimezone=UTC'
+                                                                        }
+                                                                    />
+                                                                </div>
 
-                                                                    <label htmlFor="test-validation-query">
-                                                                        Validation Query
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-jdbc-preview">
+                                                                        JDBC URL Preview
                                                                     </label>
                                                                     <input
-                                                                        id="test-validation-query"
-                                                                        value={validationQueryInput}
+                                                                        id="managed-jdbc-preview"
+                                                                        value={
+                                                                            managedFormJdbcPreview
+                                                                        }
+                                                                        readOnly
+                                                                    />
+                                                                </div>
+                                                            </details>
+
+                                                            <details className="managed-advanced-block">
+                                                                <summary>Driver</summary>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-driver">
+                                                                        Driver
+                                                                    </label>
+                                                                    <div className="select-wrap">
+                                                                        <select
+                                                                            id="managed-driver"
+                                                                            value={
+                                                                                managedDatasourceForm.driverId
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        driverId:
+                                                                                            event
+                                                                                                .target
+                                                                                                .value
+                                                                                    })
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <option value="">
+                                                                                Select driver
+                                                                            </option>
+                                                                            {driversForFormEngine.map(
+                                                                                (driver) => (
+                                                                                    <option
+                                                                                        key={
+                                                                                            driver.driverId
+                                                                                        }
+                                                                                        value={
+                                                                                            driver.driverId
+                                                                                        }
+                                                                                    >
+                                                                                        {
+                                                                                            driver.driverId
+                                                                                        }
+                                                                                        {driver.version
+                                                                                            ? ` v${driver.version}`
+                                                                                            : ''}{' '}
+                                                                                        (
+                                                                                        {
+                                                                                            driver.source
+                                                                                        }
+                                                                                        )
+                                                                                        {driver.available
+                                                                                            ? ''
+                                                                                            : ' [unavailable]'}
+                                                                                    </option>
+                                                                                )
+                                                                            )}
+                                                                        </select>
+                                                                    </div>
+                                                                    {selectedDriverForForm ? (
+                                                                        <p
+                                                                            className={
+                                                                                selectedDriverForForm.available
+                                                                                    ? 'form-success'
+                                                                                    : 'form-error'
+                                                                            }
+                                                                        >
+                                                                            {
+                                                                                selectedDriverForForm.description
+                                                                            }
+                                                                            .{' '}
+                                                                            {selectedDriverForForm.version
+                                                                                ? `Version ${selectedDriverForForm.version}. `
+                                                                                : ''}
+                                                                            {
+                                                                                selectedDriverForForm.message
+                                                                            }
+                                                                        </p>
+                                                                    ) : null}
+                                                                </div>
+
+                                                                <div className="driver-upload">
+                                                                    <h4>Upload Driver</h4>
+                                                                    <p className="muted-id">
+                                                                        Upload a JDBC driver jar
+                                                                        when built-in versions are
+                                                                        unavailable.
+                                                                    </p>
+                                                                    <div className="form-field">
+                                                                        <label htmlFor="upload-driver-id">
+                                                                            Driver ID (optional)
+                                                                        </label>
+                                                                        <input
+                                                                            id="upload-driver-id"
+                                                                            value={
+                                                                                uploadDriverIdInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setUploadDriverIdInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            placeholder="mysql-custom-9"
+                                                                        />
+                                                                    </div>
+
+                                                                    <div className="form-field">
+                                                                        <label htmlFor="upload-driver-class">
+                                                                            Driver Class
+                                                                        </label>
+                                                                        <input
+                                                                            id="upload-driver-class"
+                                                                            value={
+                                                                                uploadDriverClassInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setUploadDriverClassInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            placeholder="com.mysql.cj.jdbc.Driver"
+                                                                        />
+                                                                    </div>
+
+                                                                    <div className="form-field">
+                                                                        <label htmlFor="upload-driver-description">
+                                                                            Description (optional)
+                                                                        </label>
+                                                                        <input
+                                                                            id="upload-driver-description"
+                                                                            value={
+                                                                                uploadDriverDescriptionInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setUploadDriverDescriptionInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            placeholder="MySQL 9 Connector/J"
+                                                                        />
+                                                                    </div>
+
+                                                                    <div className="form-field">
+                                                                        <label htmlFor="upload-driver-jar">
+                                                                            Driver Jar
+                                                                        </label>
+                                                                        <input
+                                                                            id="upload-driver-jar"
+                                                                            type="file"
+                                                                            accept=".jar,application/java-archive"
+                                                                            onChange={(event) =>
+                                                                                setUploadDriverJarFile(
+                                                                                    event.target
+                                                                                        .files?.[0] ??
+                                                                                        null
+                                                                                )
+                                                                            }
+                                                                        />
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="chip"
+                                                                        onClick={() =>
+                                                                            void handleUploadDriver()
+                                                                        }
+                                                                        disabled={uploadingDriver}
+                                                                    >
+                                                                        {uploadingDriver
+                                                                            ? 'Uploading...'
+                                                                            : 'Upload Driver Jar'}
+                                                                    </button>
+                                                                </div>
+                                                            </details>
+
+                                                            <details className="managed-advanced-block">
+                                                                <summary>Pooling</summary>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-pool-max">
+                                                                        Maximum Pool Size
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-pool-max"
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={
+                                                                            managedDatasourceForm.maximumPoolSize
+                                                                        }
                                                                         onChange={(event) =>
-                                                                            setValidationQueryInput(
-                                                                                event.target.value
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    maximumPoolSize:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
                                                                             )
                                                                         }
-                                                                        placeholder="SELECT 1"
+                                                                        required
                                                                     />
+                                                                </div>
 
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-pool-min">
+                                                                        Minimum Idle
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-pool-min"
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={
+                                                                            managedDatasourceForm.minimumIdle
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    minimumIdle:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
+                                                                            )
+                                                                        }
+                                                                        required
+                                                                    />
+                                                                </div>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-pool-connection-timeout">
+                                                                        Connection Timeout (ms)
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-pool-connection-timeout"
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={
+                                                                            managedDatasourceForm.connectionTimeoutMs
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    connectionTimeoutMs:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
+                                                                            )
+                                                                        }
+                                                                        required
+                                                                    />
+                                                                </div>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-pool-idle-timeout">
+                                                                        Idle Timeout (ms)
+                                                                    </label>
+                                                                    <input
+                                                                        id="managed-pool-idle-timeout"
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={
+                                                                            managedDatasourceForm.idleTimeoutMs
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            setManagedDatasourceForm(
+                                                                                (current) => ({
+                                                                                    ...current,
+                                                                                    idleTimeoutMs:
+                                                                                        event.target
+                                                                                            .value
+                                                                                })
+                                                                            )
+                                                                        }
+                                                                        required
+                                                                    />
+                                                                </div>
+                                                            </details>
+
+                                                            <details className="managed-advanced-block">
+                                                                <summary>TLS</summary>
+
+                                                                <div className="form-field">
+                                                                    <label htmlFor="managed-tls-mode">
+                                                                        TLS Mode
+                                                                    </label>
+                                                                    <div className="select-wrap">
+                                                                        <select
+                                                                            id="managed-tls-mode"
+                                                                            value={
+                                                                                managedDatasourceForm.tlsMode
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        tlsMode:
+                                                                                            event
+                                                                                                .target
+                                                                                                .value as TlsMode
+                                                                                    })
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <option value="DISABLE">
+                                                                                Disable
+                                                                            </option>
+                                                                            <option value="REQUIRE">
+                                                                                Require
+                                                                            </option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="checkbox-stack">
                                                                     <label className="checkbox-row">
                                                                         <input
                                                                             type="checkbox"
                                                                             checked={
-                                                                                overrideTlsForTest
+                                                                                managedDatasourceForm.verifyServerCertificate
                                                                             }
                                                                             onChange={(event) =>
-                                                                                setOverrideTlsForTest(
-                                                                                    event.target
-                                                                                        .checked
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        verifyServerCertificate:
+                                                                                            event
+                                                                                                .target
+                                                                                                .checked
+                                                                                    })
                                                                                 )
                                                                             }
                                                                         />
                                                                         <span>
-                                                                            Override connection TLS
-                                                                            settings for this test
+                                                                            Verify server
+                                                                            certificate
                                                                         </span>
                                                                     </label>
+                                                                    <label className="checkbox-row">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={
+                                                                                managedDatasourceForm.allowSelfSigned
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setManagedDatasourceForm(
+                                                                                    (current) => ({
+                                                                                        ...current,
+                                                                                        allowSelfSigned:
+                                                                                            event
+                                                                                                .target
+                                                                                                .checked
+                                                                                    })
+                                                                                )
+                                                                            }
+                                                                        />
+                                                                        <span>
+                                                                            Allow self-signed
+                                                                            certificates
+                                                                        </span>
+                                                                    </label>
+                                                                </div>
+                                                            </details>
 
-                                                                    {overrideTlsForTest ? (
-                                                                        <>
-                                                                            <label htmlFor="test-tls-mode">
-                                                                                TLS Mode
-                                                                            </label>
-                                                                            <select
-                                                                                id="test-tls-mode"
-                                                                                value={testTlsMode}
+                                                            <button
+                                                                type="submit"
+                                                                disabled={savingDatasource}
+                                                            >
+                                                                {savingDatasource
+                                                                    ? 'Saving...'
+                                                                    : selectedManagedDatasource
+                                                                      ? 'Update Connection'
+                                                                      : 'Create Connection'}
+                                                            </button>
+                                                        </form>
+
+                                                        {selectedManagedDatasource ? (
+                                                            <details className="managed-advanced-block managed-connection-tools">
+                                                                <summary>
+                                                                    Credential Profiles and
+                                                                    Connection Test
+                                                                </summary>
+                                                                <div className="managed-datasource-actions">
+                                                                    <h4>Credential Profiles</h4>
+                                                                    <ul className="credentials-list">
+                                                                        {selectedManagedDatasource.credentialProfiles.map(
+                                                                            (profile) => (
+                                                                                <li
+                                                                                    key={`${selectedManagedDatasource.id}-${profile.profileId}`}
+                                                                                >
+                                                                                    <strong>
+                                                                                        {
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                    </strong>{' '}
+                                                                                    (
+                                                                                    {
+                                                                                        profile.username
+                                                                                    }
+                                                                                    ) key:{' '}
+                                                                                    {
+                                                                                        profile.encryptionKeyId
+                                                                                    }
+                                                                                </li>
+                                                                            )
+                                                                        )}
+                                                                    </ul>
+
+                                                                    <form
+                                                                        className="stack-form"
+                                                                        onSubmit={
+                                                                            handleSaveCredentialProfile
+                                                                        }
+                                                                    >
+                                                                        <label htmlFor="credential-existing">
+                                                                            Existing Profile
+                                                                        </label>
+                                                                        <select
+                                                                            id="credential-existing"
+                                                                            value={
+                                                                                selectedManagedDatasource.credentialProfiles.some(
+                                                                                    (profile) =>
+                                                                                        profile.profileId ===
+                                                                                        credentialProfileIdInput.trim()
+                                                                                )
+                                                                                    ? credentialProfileIdInput
+                                                                                    : ''
+                                                                            }
+                                                                            onChange={(event) => {
+                                                                                const selectedProfileId =
+                                                                                    event.target
+                                                                                        .value;
+                                                                                if (
+                                                                                    !selectedProfileId
+                                                                                ) {
+                                                                                    return;
+                                                                                }
+
+                                                                                setCredentialProfileIdInput(
+                                                                                    selectedProfileId
+                                                                                );
+                                                                                setSelectedCredentialProfileForTest(
+                                                                                    selectedProfileId
+                                                                                );
+                                                                            }}
+                                                                        >
+                                                                            <option value="">
+                                                                                Select existing
+                                                                                profile
+                                                                            </option>
+                                                                            {selectedManagedDatasource.credentialProfiles.map(
+                                                                                (profile) => (
+                                                                                    <option
+                                                                                        key={
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                        value={
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                    >
+                                                                                        {
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                    </option>
+                                                                                )
+                                                                            )}
+                                                                        </select>
+
+                                                                        <label htmlFor="credential-profile-id">
+                                                                            Profile ID
+                                                                        </label>
+                                                                        <input
+                                                                            id="credential-profile-id"
+                                                                            value={
+                                                                                credentialProfileIdInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setCredentialProfileIdInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            placeholder="admin-ro"
+                                                                            required
+                                                                        />
+
+                                                                        <label htmlFor="credential-username">
+                                                                            Username
+                                                                        </label>
+                                                                        <input
+                                                                            id="credential-username"
+                                                                            value={
+                                                                                credentialUsernameInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setCredentialUsernameInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            required
+                                                                        />
+
+                                                                        <label htmlFor="credential-password">
+                                                                            Password
+                                                                        </label>
+                                                                        <input
+                                                                            id="credential-password"
+                                                                            type="password"
+                                                                            value={
+                                                                                credentialPasswordInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setCredentialPasswordInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            required
+                                                                        />
+
+                                                                        <label htmlFor="credential-description">
+                                                                            Description
+                                                                        </label>
+                                                                        <input
+                                                                            id="credential-description"
+                                                                            value={
+                                                                                credentialDescriptionInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setCredentialDescriptionInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            placeholder="Readonly profile for analysts"
+                                                                        />
+
+                                                                        <button
+                                                                            type="submit"
+                                                                            disabled={
+                                                                                savingCredentialProfile
+                                                                            }
+                                                                        >
+                                                                            {savingCredentialProfile
+                                                                                ? 'Saving...'
+                                                                                : 'Save Credential Profile'}
+                                                                        </button>
+                                                                    </form>
+
+                                                                    <h4>Test Connection</h4>
+                                                                    <form
+                                                                        className="stack-form"
+                                                                        onSubmit={
+                                                                            handleTestConnection
+                                                                        }
+                                                                    >
+                                                                        <label htmlFor="test-credential-profile">
+                                                                            Credential Profile
+                                                                        </label>
+                                                                        <select
+                                                                            id="test-credential-profile"
+                                                                            value={
+                                                                                selectedCredentialProfileForTest
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setSelectedCredentialProfileForTest(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <option value="">
+                                                                                Select credential
+                                                                                profile
+                                                                            </option>
+                                                                            {selectedManagedDatasource.credentialProfiles.map(
+                                                                                (profile) => (
+                                                                                    <option
+                                                                                        key={
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                        value={
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                    >
+                                                                                        {
+                                                                                            profile.profileId
+                                                                                        }
+                                                                                    </option>
+                                                                                )
+                                                                            )}
+                                                                        </select>
+
+                                                                        <label htmlFor="test-validation-query">
+                                                                            Validation Query
+                                                                        </label>
+                                                                        <input
+                                                                            id="test-validation-query"
+                                                                            value={
+                                                                                validationQueryInput
+                                                                            }
+                                                                            onChange={(event) =>
+                                                                                setValidationQueryInput(
+                                                                                    event.target
+                                                                                        .value
+                                                                                )
+                                                                            }
+                                                                            placeholder="SELECT 1"
+                                                                        />
+
+                                                                        <label className="checkbox-row">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={
+                                                                                    overrideTlsForTest
+                                                                                }
                                                                                 onChange={(event) =>
-                                                                                    setTestTlsMode(
+                                                                                    setOverrideTlsForTest(
                                                                                         event.target
-                                                                                            .value as TlsMode
+                                                                                            .checked
                                                                                     )
                                                                                 }
-                                                                            >
-                                                                                <option value="DISABLE">
-                                                                                    Disable
-                                                                                </option>
-                                                                                <option value="REQUIRE">
-                                                                                    Require
-                                                                                </option>
-                                                                            </select>
+                                                                            />
+                                                                            <span>
+                                                                                Override connection
+                                                                                TLS settings for
+                                                                                this test
+                                                                            </span>
+                                                                        </label>
 
-                                                                            <label className="checkbox-row">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={
-                                                                                        testVerifyServerCertificate
+                                                                        {overrideTlsForTest ? (
+                                                                            <>
+                                                                                <label htmlFor="test-tls-mode">
+                                                                                    TLS Mode
+                                                                                </label>
+                                                                                <select
+                                                                                    id="test-tls-mode"
+                                                                                    value={
+                                                                                        testTlsMode
                                                                                     }
                                                                                     onChange={(
                                                                                         event
                                                                                     ) =>
-                                                                                        setTestVerifyServerCertificate(
+                                                                                        setTestTlsMode(
                                                                                             event
                                                                                                 .target
-                                                                                                .checked
+                                                                                                .value as TlsMode
                                                                                         )
                                                                                     }
-                                                                                />
-                                                                                <span>
-                                                                                    Verify server
-                                                                                    certificate
-                                                                                </span>
-                                                                            </label>
+                                                                                >
+                                                                                    <option value="DISABLE">
+                                                                                        Disable
+                                                                                    </option>
+                                                                                    <option value="REQUIRE">
+                                                                                        Require
+                                                                                    </option>
+                                                                                </select>
 
-                                                                            <label className="checkbox-row">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={
-                                                                                        testAllowSelfSigned
-                                                                                    }
-                                                                                    onChange={(
-                                                                                        event
-                                                                                    ) =>
-                                                                                        setTestAllowSelfSigned(
+                                                                                <label className="checkbox-row">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={
+                                                                                            testVerifyServerCertificate
+                                                                                        }
+                                                                                        onChange={(
                                                                                             event
-                                                                                                .target
-                                                                                                .checked
-                                                                                        )
-                                                                                    }
-                                                                                />
-                                                                                <span>
-                                                                                    Allow
-                                                                                    self-signed
-                                                                                    certificates
-                                                                                </span>
-                                                                            </label>
-                                                                        </>
+                                                                                        ) =>
+                                                                                            setTestVerifyServerCertificate(
+                                                                                                event
+                                                                                                    .target
+                                                                                                    .checked
+                                                                                            )
+                                                                                        }
+                                                                                    />
+                                                                                    <span>
+                                                                                        Verify
+                                                                                        server
+                                                                                        certificate
+                                                                                    </span>
+                                                                                </label>
+
+                                                                                <label className="checkbox-row">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={
+                                                                                            testAllowSelfSigned
+                                                                                        }
+                                                                                        onChange={(
+                                                                                            event
+                                                                                        ) =>
+                                                                                            setTestAllowSelfSigned(
+                                                                                                event
+                                                                                                    .target
+                                                                                                    .checked
+                                                                                            )
+                                                                                        }
+                                                                                    />
+                                                                                    <span>
+                                                                                        Allow
+                                                                                        self-signed
+                                                                                        certificates
+                                                                                    </span>
+                                                                                </label>
+                                                                            </>
+                                                                        ) : null}
+
+                                                                        <button
+                                                                            type="submit"
+                                                                            disabled={
+                                                                                testingConnection
+                                                                            }
+                                                                        >
+                                                                            {testingConnection
+                                                                                ? 'Testing...'
+                                                                                : 'Run Test Connection'}
+                                                                        </button>
+                                                                    </form>
+
+                                                                    {testConnectionMessage ? (
+                                                                        <p
+                                                                            className={
+                                                                                testConnectionOutcome ===
+                                                                                'success'
+                                                                                    ? 'form-success'
+                                                                                    : 'form-error'
+                                                                            }
+                                                                            role="alert"
+                                                                        >
+                                                                            {testConnectionMessage}
+                                                                        </p>
                                                                     ) : null}
-
-                                                                    <button
-                                                                        type="submit"
-                                                                        disabled={testingConnection}
-                                                                    >
-                                                                        {testingConnection
-                                                                            ? 'Testing...'
-                                                                            : 'Run Test Connection'}
-                                                                    </button>
-                                                                </form>
-
-                                                                {testConnectionMessage ? (
-                                                                    <p
-                                                                        className={
-                                                                            testConnectionOutcome ===
-                                                                            'success'
-                                                                                ? 'form-success'
-                                                                                : 'form-error'
-                                                                        }
-                                                                        role="alert"
-                                                                    >
-                                                                        {testConnectionMessage}
-                                                                    </p>
-                                                                ) : null}
-                                                            </div>
-                                                        </details>
-                                                    ) : (
-                                                        <p className="muted-id">
-                                                            Save a connection first to manage
-                                                            credential profiles and run tests.
-                                                        </p>
-                                                    )}
-                                                </>
-                                            )}
-                                        </section>
-                                    ) : null}
+                                                                </div>
+                                                            </details>
+                                                        ) : (
+                                                            <p className="muted-id">
+                                                                Save a connection first to manage
+                                                                credential profiles and run tests.
+                                                            </p>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </section>
+                                        ) : null}
                                     </div>
                                 ) : null}
                             </section>
