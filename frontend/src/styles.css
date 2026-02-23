@@ -1113,8 +1113,8 @@ button:disabled {
 }
 
 .workspace-rail-toggle svg {
-    width: 0.86rem;
-    height: 0.86rem;
+    width: 1.06rem;
+    height: 1.06rem;
 }
 
 .workspace-rail-toggle:hover {
@@ -1272,8 +1272,8 @@ button:disabled {
 }
 
 .workspace-version-icon svg {
-    width: 0.92rem;
-    height: 0.92rem;
+    width: 1.06rem;
+    height: 1.06rem;
 }
 
 .workspace-version-popover {
@@ -1377,14 +1377,15 @@ button:disabled {
 
 .workspace-main {
     display: grid;
-    gap: 1rem;
+    gap: 0;
     min-width: 0;
     min-height: 100dvh;
     grid-template-rows: minmax(0, 1fr);
     height: 100dvh;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0.45rem 0.28rem 0.4rem 1.08rem;
+    background: #ece0cf;
+    padding: 0;
 }
 
 .workspace-grid {
@@ -1403,6 +1404,7 @@ button:disabled {
     height: 100%;
     overflow: hidden;
     background: #ece0cf;
+    padding-left: 0.9rem;
 }
 
 .workspace-grid.is-explorer-collapsed {
@@ -1418,13 +1420,14 @@ button:disabled {
     gap: 0;
     grid-row: 1 / span 2;
     border-right: 1px solid rgba(184, 162, 132, 0.56);
-    padding-right: 0.65rem;
+    padding: 0;
+    margin-right: 0.65rem;
     overflow: hidden;
 }
 
 .sidebar.is-collapsed {
     overflow: hidden;
-    padding-right: 0.25rem;
+    margin-right: 0.25rem;
 }
 
 .tile-heading {
@@ -2107,7 +2110,7 @@ button:disabled {
     border: 0;
     border-radius: 0;
     overflow: hidden;
-    background: #efe4d4;
+    background: #ece0cf;
     min-height: 0;
     height: 100%;
     display: grid;
@@ -2211,7 +2214,7 @@ button:disabled {
 }
 
 .result-stat strong {
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     color: #3d2b17;
     white-space: nowrap;
     overflow: hidden;
@@ -2297,6 +2300,17 @@ button:disabled {
     align-items: center;
     justify-content: center;
     padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        opacity 120ms ease,
+        background-color 120ms ease;
+}
+
+.result-cell:hover .result-copy-icon,
+.result-cell:focus-within .result-copy-icon {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .result-copy-icon:hover {
@@ -2576,6 +2590,22 @@ button:disabled {
 .snippets-panel,
 .admin-governance {
     overflow: auto;
+}
+
+.history-panel,
+.snippets-panel,
+.admin-audit,
+.admin-console,
+.admin-governance,
+.datasource-admin {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #ece0cf;
+    margin: 0;
+    padding: 0.82rem 0.95rem 0.95rem;
+    min-height: 100%;
+    height: 100%;
 }
 
 .admin-grid {

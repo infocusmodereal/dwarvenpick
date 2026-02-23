@@ -3652,7 +3652,7 @@ export default function WorkspacePage() {
                 { token: 'delimiter', foreground: '2a3b4c' }
             ],
             colors: {
-                'editor.background': '#f7f0e2',
+                'editor.background': '#ece0cf',
                 'editorLineNumber.foreground': '#8ea2b1',
                 'editorLineNumber.activeForeground': '#304759',
                 'editorCursor.foreground': '#0b5cad',
@@ -5191,7 +5191,7 @@ export default function WorkspacePage() {
                                     {showSchemaBrowser ? (
                                         <button
                                             type="button"
-                                            className="icon-button"
+                                            className="icon-button schema-browser-toggle"
                                             title={
                                                 loadingSchemaBrowser
                                                     ? 'Refreshing explorer metadata...'
