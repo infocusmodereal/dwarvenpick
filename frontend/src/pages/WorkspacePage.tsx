@@ -16,6 +16,14 @@ import railConnectionsIcon from '../assets/lucide/database.svg?raw';
 import railCollapseIcon from '../assets/lucide/panel-left-close.svg?raw';
 import railMenuIcon from '../assets/lucide/panel-left-open.svg?raw';
 import railInfoIcon from '../assets/lucide/info.svg?raw';
+import explorerDatabaseIcon from '../assets/lucide/database.svg?raw';
+import explorerSchemaIcon from '../assets/lucide/folder-tree.svg?raw';
+import explorerTableIcon from '../assets/lucide/table-properties.svg?raw';
+import explorerColumnIcon from '../assets/lucide/columns-3.svg?raw';
+import explorerInsertIcon from '../assets/lucide/arrow-up-right.svg?raw';
+import chevronRightIcon from '../assets/lucide/chevron-right.svg?raw';
+import chevronDownIcon from '../assets/lucide/chevron-down.svg?raw';
+import refreshCwIcon from '../assets/lucide/refresh-cw.svg?raw';
 
 loader.config({ monaco: MonacoModule });
 
@@ -496,6 +504,12 @@ const railIconSvgByGlyph: Record<RailGlyph, string> = {
     menu: railMenuIcon,
     info: railInfoIcon
 };
+const explorerIconSvgByGlyph: Record<ExplorerGlyph, string> = {
+    database: explorerDatabaseIcon,
+    schema: explorerSchemaIcon,
+    table: explorerTableIcon,
+    column: explorerColumnIcon
+};
 
 const resolveDatasourceIcon = (engine?: string): string => {
     if (!engine) {
@@ -958,49 +972,44 @@ const RailIcon = ({ glyph }: { glyph: RailGlyph }) => (
     />
 );
 
-const ExplorerIcon = ({ glyph }: { glyph: ExplorerGlyph }) => {
-    if (glyph === 'database') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <ellipse cx="10" cy="5.6" rx="5.8" ry="2.2" />
-                <path d="M4.2 5.6v7.2c0 1.2 2.6 2.2 5.8 2.2s5.8-1 5.8-2.2V5.6" />
-                <path d="M4.2 9.2c0 1.2 2.6 2.2 5.8 2.2s5.8-1 5.8-2.2" />
-            </svg>
-        );
-    }
+const ExplorerIcon = ({ glyph }: { glyph: ExplorerGlyph }) => (
+    <span
+        className="explorer-icon-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: explorerIconSvgByGlyph[glyph] ?? explorerDatabaseIcon
+        }}
+    />
+);
 
-    if (glyph === 'schema') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M3.8 5.5h12.4v9H3.8z" />
-                <path d="M3.8 8.4h12.4" />
-                <path d="M8.2 8.4v6.1" />
-            </svg>
-        );
-    }
+const ExplorerInsertIcon = () => (
+    <span
+        className="explorer-insert-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: explorerInsertIcon
+        }}
+    />
+);
 
-    if (glyph === 'table') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <rect x="3.8" y="4.6" width="12.4" height="10.8" rx="1.1" />
-                <path d="M3.8 8h12.4" />
-                <path d="M3.8 11.5h12.4" />
-                <path d="M8.3 4.6v10.8" />
-            </svg>
-        );
-    }
-
-    return (
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <circle cx="10" cy="10" r="2.1" />
-        </svg>
-    );
-};
+const ExplorerRefreshIcon = () => (
+    <span
+        className="explorer-icon-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: refreshCwIcon
+        }}
+    />
+);
 
 const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-        {expanded ? <path d="m5 12 5-5 5 5" /> : <path d="m8 5 5 5-5 5" />}
-    </svg>
+    <span
+        className="explorer-icon-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: expanded ? chevronDownIcon : chevronRightIcon
+        }}
+    />
 );
 
 export default function WorkspacePage() {
@@ -4864,8 +4873,8 @@ export default function WorkspacePage() {
                 <aside
                     className={
                         leftRailCollapsed
-                            ? 'panel workspace-left-rail is-collapsed'
-                            : 'panel workspace-left-rail'
+                            ? 'workspace-left-rail is-collapsed'
+                            : 'workspace-left-rail'
                     }
                 >
                     <div className="workspace-left-rail-head">
@@ -4898,6 +4907,7 @@ export default function WorkspacePage() {
                             <RailIcon glyph={leftRailCollapsed ? 'menu' : 'collapse'} />
                         </button>
                     </div>
+                    <div className="workspace-left-rail-separator" aria-hidden />
                     <nav
                         className="workspace-mode-tabs"
                         role="tablist"
@@ -5058,9 +5068,8 @@ export default function WorkspacePage() {
                                     title={`Running version ${appVersionLabel}`}
                                     aria-label={`Running version ${appVersionLabel}`}
                                 >
-                                    <span className="workspace-version-label">Version</span>
                                     <span className="workspace-version-value">
-                                        {appVersionLabel}
+                                        {`ver. ${appVersionLabel}`}
                                     </span>
                                 </div>
                             ) : (
@@ -5076,9 +5085,8 @@ export default function WorkspacePage() {
                             )}
                             {leftRailCollapsed && showVersionInfo ? (
                                 <div className="workspace-version-popover">
-                                    <span className="workspace-version-label">Version</span>
                                     <span className="workspace-version-value">
-                                        {appVersionLabel}
+                                        {`ver. ${appVersionLabel}`}
                                     </span>
                                 </div>
                             ) : null}
@@ -5131,11 +5139,7 @@ export default function WorkspacePage() {
                         }
                         hidden={activeSection !== 'workbench'}
                     >
-                        <aside
-                            className={
-                                showSchemaBrowser ? 'panel sidebar' : 'panel sidebar is-collapsed'
-                            }
-                        >
+                        <aside className={showSchemaBrowser ? 'sidebar' : 'sidebar is-collapsed'}>
                             <section
                                 className={
                                     showSchemaBrowser
@@ -5167,9 +5171,15 @@ export default function WorkspacePage() {
                                         </span>
                                     </button>
                                     {showSchemaBrowser ? (
-                                        <IconButton
-                                            icon="refresh"
+                                        <button
+                                            type="button"
+                                            className="icon-button"
                                             title={
+                                                loadingSchemaBrowser
+                                                    ? 'Refreshing explorer metadata...'
+                                                    : 'Refresh explorer metadata'
+                                            }
+                                            aria-label={
                                                 loadingSchemaBrowser
                                                     ? 'Refreshing explorer metadata...'
                                                     : 'Refresh explorer metadata'
@@ -5185,7 +5195,9 @@ export default function WorkspacePage() {
                                                       )
                                                     : undefined
                                             }
-                                        />
+                                        >
+                                            <ExplorerRefreshIcon />
+                                        </button>
                                     ) : null}
                                 </div>
                                 {showSchemaBrowser ? (
@@ -5352,26 +5364,28 @@ export default function WorkspacePage() {
                                                                         }
                                                                     />
                                                                 </button>
-                                                                <button
-                                                                    type="button"
-                                                                    className="explorer-item"
-                                                                    onClick={() =>
-                                                                        setSelectedExplorerNode(
-                                                                            datasourceKey
-                                                                        )
-                                                                    }
-                                                                    title={
-                                                                        activeDatasource?.name ??
-                                                                        schemaBrowser.datasourceId
-                                                                    }
-                                                                >
-                                                                    <span className="explorer-item-icon">
-                                                                        <ExplorerIcon glyph="database" />
-                                                                    </span>
-                                                                    <span className="explorer-item-title">
-                                                                        {activeDatasource?.name ??
-                                                                            schemaBrowser.datasourceId}
-                                                                    </span>
+                                                                <div className="explorer-item">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="explorer-item-main"
+                                                                        onClick={() =>
+                                                                            setSelectedExplorerNode(
+                                                                                datasourceKey
+                                                                            )
+                                                                        }
+                                                                        title={
+                                                                            activeDatasource?.name ??
+                                                                            schemaBrowser.datasourceId
+                                                                        }
+                                                                    >
+                                                                        <span className="explorer-item-icon">
+                                                                            <ExplorerIcon glyph="database" />
+                                                                        </span>
+                                                                        <span className="explorer-item-title">
+                                                                            {activeDatasource?.name ??
+                                                                                schemaBrowser.datasourceId}
+                                                                        </span>
+                                                                    </button>
                                                                     <span className="explorer-item-tail">
                                                                         {activeDatasource ? (
                                                                             <span className="explorer-item-meta">
@@ -5390,7 +5404,7 @@ export default function WorkspacePage() {
                                                                             }
                                                                         </span>
                                                                     </span>
-                                                                </button>
+                                                                </div>
                                                             </div>
                                                             {datasourceExpanded ? (
                                                                 <ul className="explorer-children">
@@ -5448,26 +5462,25 @@ export default function WorkspacePage() {
                                                                                                     }
                                                                                                 />
                                                                                             </button>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                className="explorer-item"
-                                                                                                onClick={() => {
-                                                                                                    setSelectedExplorerNode(
-                                                                                                        schemaKey
-                                                                                                    );
-                                                                                                    handleInsertTextIntoActiveQuery(
-                                                                                                        schemaEntry.schema
-                                                                                                    );
-                                                                                                }}
-                                                                                            >
-                                                                                                <span className="explorer-item-icon">
-                                                                                                    <ExplorerIcon glyph="schema" />
-                                                                                                </span>
-                                                                                                <span className="explorer-item-title">
-                                                                                                    {
-                                                                                                        schemaEntry.schema
+                                                                                            <div className="explorer-item">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    className="explorer-item-main"
+                                                                                                    onClick={() =>
+                                                                                                        setSelectedExplorerNode(
+                                                                                                            schemaKey
+                                                                                                        )
                                                                                                     }
-                                                                                                </span>
+                                                                                                >
+                                                                                                    <span className="explorer-item-icon">
+                                                                                                        <ExplorerIcon glyph="schema" />
+                                                                                                    </span>
+                                                                                                    <span className="explorer-item-title">
+                                                                                                        {
+                                                                                                            schemaEntry.schema
+                                                                                                        }
+                                                                                                    </span>
+                                                                                                </button>
                                                                                                 <span className="explorer-item-tail">
                                                                                                     <span
                                                                                                         className="explorer-item-count"
@@ -5479,8 +5492,24 @@ export default function WorkspacePage() {
                                                                                                                 .length
                                                                                                         }
                                                                                                     </span>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="explorer-insert-button"
+                                                                                                        title="Insert schema name into editor"
+                                                                                                        aria-label={`Insert schema ${schemaEntry.schema}`}
+                                                                                                        onClick={(
+                                                                                                            event
+                                                                                                        ) => {
+                                                                                                            event.stopPropagation();
+                                                                                                            handleInsertTextIntoActiveQuery(
+                                                                                                                schemaEntry.schema
+                                                                                                            );
+                                                                                                        }}
+                                                                                                    >
+                                                                                                        <ExplorerInsertIcon />
+                                                                                                    </button>
                                                                                                 </span>
-                                                                                            </button>
+                                                                                            </div>
                                                                                         </div>
                                                                                         {schemaExpanded ? (
                                                                                             <ul className="explorer-children">
@@ -5542,26 +5571,25 @@ export default function WorkspacePage() {
                                                                                                                     ) : (
                                                                                                                         <span className="explorer-toggle-spacer" />
                                                                                                                     )}
-                                                                                                                    <button
-                                                                                                                        type="button"
-                                                                                                                        className="explorer-item"
-                                                                                                                        onClick={() => {
-                                                                                                                            setSelectedExplorerNode(
-                                                                                                                                tableKey
-                                                                                                                            );
-                                                                                                                            handleInsertTextIntoActiveQuery(
-                                                                                                                                `${schemaEntry.schema}.${tableEntry.table}`
-                                                                                                                            );
-                                                                                                                        }}
-                                                                                                                    >
-                                                                                                                        <span className="explorer-item-icon">
-                                                                                                                            <ExplorerIcon glyph="table" />
-                                                                                                                        </span>
-                                                                                                                        <span className="explorer-item-title">
-                                                                                                                            {
-                                                                                                                                tableEntry.table
+                                                                                                                    <div className="explorer-item">
+                                                                                                                        <button
+                                                                                                                            type="button"
+                                                                                                                            className="explorer-item-main"
+                                                                                                                            onClick={() =>
+                                                                                                                                setSelectedExplorerNode(
+                                                                                                                                    tableKey
+                                                                                                                                )
                                                                                                                             }
-                                                                                                                        </span>
+                                                                                                                        >
+                                                                                                                            <span className="explorer-item-icon">
+                                                                                                                                <ExplorerIcon glyph="table" />
+                                                                                                                            </span>
+                                                                                                                            <span className="explorer-item-title">
+                                                                                                                                {
+                                                                                                                                    tableEntry.table
+                                                                                                                                }
+                                                                                                                            </span>
+                                                                                                                        </button>
                                                                                                                         <span className="explorer-item-tail">
                                                                                                                             <span
                                                                                                                                 className="explorer-item-count"
@@ -5573,8 +5601,24 @@ export default function WorkspacePage() {
                                                                                                                                         .length
                                                                                                                                 }
                                                                                                                             </span>
+                                                                                                                            <button
+                                                                                                                                type="button"
+                                                                                                                                className="explorer-insert-button"
+                                                                                                                                title="Insert table reference into editor"
+                                                                                                                                aria-label={`Insert table ${schemaEntry.schema}.${tableEntry.table}`}
+                                                                                                                                onClick={(
+                                                                                                                                    event
+                                                                                                                                ) => {
+                                                                                                                                    event.stopPropagation();
+                                                                                                                                    handleInsertTextIntoActiveQuery(
+                                                                                                                                        `${schemaEntry.schema}.${tableEntry.table}`
+                                                                                                                                    );
+                                                                                                                                }}
+                                                                                                                            >
+                                                                                                                                <ExplorerInsertIcon />
+                                                                                                                            </button>
                                                                                                                         </span>
-                                                                                                                    </button>
+                                                                                                                    </div>
                                                                                                                 </div>
                                                                                                                 {tableExpanded &&
                                                                                                                 tableEntry
@@ -5603,26 +5647,25 @@ export default function WorkspacePage() {
                                                                                                                                             }
                                                                                                                                         >
                                                                                                                                             <span className="explorer-toggle-spacer" />
-                                                                                                                                            <button
-                                                                                                                                                type="button"
-                                                                                                                                                className="explorer-item"
-                                                                                                                                                onClick={() => {
-                                                                                                                                                    setSelectedExplorerNode(
-                                                                                                                                                        columnKey
-                                                                                                                                                    );
-                                                                                                                                                    handleInsertTextIntoActiveQuery(
-                                                                                                                                                        columnEntry.name
-                                                                                                                                                    );
-                                                                                                                                                }}
-                                                                                                                                            >
-                                                                                                                                                <span className="explorer-item-icon">
-                                                                                                                                                    <ExplorerIcon glyph="column" />
-                                                                                                                                                </span>
-                                                                                                                                                <span className="explorer-item-title">
-                                                                                                                                                    {
-                                                                                                                                                        columnEntry.name
+                                                                                                                                            <div className="explorer-item">
+                                                                                                                                                <button
+                                                                                                                                                    type="button"
+                                                                                                                                                    className="explorer-item-main"
+                                                                                                                                                    onClick={() =>
+                                                                                                                                                        setSelectedExplorerNode(
+                                                                                                                                                            columnKey
+                                                                                                                                                        )
                                                                                                                                                     }
-                                                                                                                                                </span>
+                                                                                                                                                >
+                                                                                                                                                    <span className="explorer-item-icon">
+                                                                                                                                                        <ExplorerIcon glyph="column" />
+                                                                                                                                                    </span>
+                                                                                                                                                    <span className="explorer-item-title">
+                                                                                                                                                        {
+                                                                                                                                                            columnEntry.name
+                                                                                                                                                        }
+                                                                                                                                                    </span>
+                                                                                                                                                </button>
                                                                                                                                                 <span className="explorer-item-tail">
                                                                                                                                                     <span className="explorer-item-type">
                                                                                                                                                         (
@@ -5632,8 +5675,24 @@ export default function WorkspacePage() {
 
                                                                                                                                                         )
                                                                                                                                                     </span>
+                                                                                                                                                    <button
+                                                                                                                                                        type="button"
+                                                                                                                                                        className="explorer-insert-button"
+                                                                                                                                                        title="Insert column name into editor"
+                                                                                                                                                        aria-label={`Insert column ${columnEntry.name}`}
+                                                                                                                                                        onClick={(
+                                                                                                                                                            event
+                                                                                                                                                        ) => {
+                                                                                                                                                            event.stopPropagation();
+                                                                                                                                                            handleInsertTextIntoActiveQuery(
+                                                                                                                                                                columnEntry.name
+                                                                                                                                                            );
+                                                                                                                                                        }}
+                                                                                                                                                    >
+                                                                                                                                                        <ExplorerInsertIcon />
+                                                                                                                                                    </button>
                                                                                                                                                 </span>
-                                                                                                                                            </button>
+                                                                                                                                            </div>
                                                                                                                                         </div>
                                                                                                                                     </li>
                                                                                                                                 );
@@ -5668,7 +5727,7 @@ export default function WorkspacePage() {
                             </section>
                         </aside>
 
-                        <section className="panel editor">
+                        <section className="editor">
                             <div className="editor-toolbar">
                                 <div className="editor-tabs-row">
                                     <div
@@ -5902,6 +5961,8 @@ export default function WorkspacePage() {
                                                 minimap: { enabled: false },
                                                 lineNumbers: 'on',
                                                 lineNumbersMinChars: 4,
+                                                fontFamily:
+                                                    'JetBrains Mono, IBM Plex Mono, monospace',
                                                 bracketPairColorization: { enabled: true },
                                                 wordWrap: 'on',
                                                 scrollBeyondLastLine: false,
@@ -6028,7 +6089,7 @@ export default function WorkspacePage() {
                             </div>
                         </section>
 
-                        <section className="panel results">
+                        <section className="results">
                             <div className="results-head">
                                 {activeTab?.executionId ? (
                                     <div className="result-stats-grid">
