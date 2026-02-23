@@ -57,6 +57,7 @@ class RbacService(
 ) {
     private val groups = ConcurrentHashMap<String, GroupRecord>()
     private val datasourceAccess = ConcurrentHashMap<String, DatasourceAccessRecord>()
+    private val protectedGroupIds = setOf("platform-admins", "analytics-users")
 
     @PostConstruct
     fun initialize() {
@@ -154,6 +155,27 @@ class RbacService(
 
         group.members.remove(normalizedUsername)
         return group.toResponse()
+    }
+
+    fun deleteGroup(groupId: String): Boolean {
+        val normalizedGroupId = groupId.trim()
+        if (normalizedGroupId.isBlank()) {
+            throw IllegalArgumentException("groupId is required.")
+        }
+
+        if (normalizedGroupId in protectedGroupIds) {
+            throw IllegalArgumentException("Group '$normalizedGroupId' is a system group and cannot be deleted.")
+        }
+
+        val removedGroup =
+            groups.remove(normalizedGroupId)
+                ?: throw GroupNotFoundException("Group '$normalizedGroupId' was not found.")
+
+        datasourceAccess.entries.removeIf { (_, access) -> access.groupId == normalizedGroupId }
+        removedGroup.members.forEach { member ->
+            runCatching { userAccountService.removeGroupMembership(member, normalizedGroupId) }
+        }
+        return true
     }
 
     fun listDatasourceCatalog(): List<DatasourceResponse> =

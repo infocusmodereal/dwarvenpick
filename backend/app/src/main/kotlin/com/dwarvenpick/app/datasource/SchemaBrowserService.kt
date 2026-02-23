@@ -71,15 +71,33 @@ class SchemaBrowserService(
                 val catalog = connection.catalog
                 val schemaNames = mutableListOf<String>()
                 var schemaUsesCatalogFallback = false
+                val productName = metadata.databaseProductName.lowercase(Locale.getDefault())
+                val useCatalogsAsSchemas =
+                    productName.contains("mysql") || productName.contains("mariadb")
 
-                metadata.schemas.use { schemas ->
-                    while (schemas.next() && schemaNames.size < maxSchemas) {
-                        val schemaName =
-                            schemas.getString("TABLE_SCHEM")
-                                ?: schemas.getString(1)
-                                ?: continue
-                        if (schemaName.isNotBlank()) {
-                            schemaNames.add(schemaName)
+                if (useCatalogsAsSchemas) {
+                    metadata.catalogs.use { catalogs ->
+                        while (catalogs.next() && schemaNames.size < maxSchemas) {
+                            val schemaName =
+                                catalogs.getString("TABLE_CAT")
+                                    ?: catalogs.getString(1)
+                                    ?: continue
+                            if (schemaName.isNotBlank()) {
+                                schemaNames.add(schemaName)
+                            }
+                        }
+                    }
+                    schemaUsesCatalogFallback = true
+                } else {
+                    metadata.schemas.use { schemas ->
+                        while (schemas.next() && schemaNames.size < maxSchemas) {
+                            val schemaName =
+                                schemas.getString("TABLE_SCHEM")
+                                    ?: schemas.getString(1)
+                                    ?: continue
+                            if (schemaName.isNotBlank()) {
+                                schemaNames.add(schemaName)
+                            }
                         }
                     }
                 }

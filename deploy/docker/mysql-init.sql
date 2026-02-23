@@ -10,4 +10,5 @@ ON DUPLICATE KEY UPDATE status = VALUES(status), checked_at = CURRENT_TIMESTAMP;
 
 CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY 'readonly';
 GRANT SELECT, SHOW VIEW ON orders.* TO 'readonly'@'%';
+GRANT SELECT, SHOW VIEW ON *.* TO 'readonly'@'%';
 FLUSH PRIVILEGES;

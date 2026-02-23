@@ -283,11 +283,15 @@ type ReencryptCredentialsResponse = {
 
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin' | 'connections';
+type AdminSubsection = 'users' | 'groups' | 'access';
 type IconGlyph = 'new' | 'rename' | 'duplicate' | 'close' | 'refresh' | 'copy' | 'info' | 'delete';
 type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
 type DatasourceHealthState = 'active' | 'inactive' | 'unknown';
 type ConnectionEditorMode = 'list' | 'create' | 'edit';
+type GroupAdminMode = 'list' | 'create' | 'edit';
+type UserAdminMode = 'list' | 'create';
+type AccessAdminMode = 'list' | 'create' | 'edit';
 type EditorCursorLegend = {
     line: number;
     column: number;
@@ -308,7 +312,8 @@ type RailGlyph =
     | 'admin'
     | 'connections'
     | 'collapse'
-    | 'menu';
+    | 'menu'
+    | 'info';
 type ExplorerGlyph = 'database' | 'schema' | 'table' | 'column';
 
 type IconButtonProps = {
@@ -396,6 +401,7 @@ const builtInAuditOutcomes = [
     'canceled',
     'noop'
 ];
+const protectedGroupIds = new Set(['platform-admins', 'analytics-users']);
 
 const sqlKeywordSuggestions = [
     'SELECT',
@@ -963,6 +969,16 @@ const RailIcon = ({ glyph }: { glyph: RailGlyph }) => {
         );
     }
 
+    if (glyph === 'info') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="10" cy="10" r="7.1" />
+                <path d="M10 8.4v5.1" />
+                <circle cx="10" cy="6.1" r="0.7" fill="currentColor" stroke="none" />
+            </svg>
+        );
+    }
+
     if (glyph === 'menu') {
         return (
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -1155,10 +1171,17 @@ export default function WorkspacePage() {
     const [savingSnippet, setSavingSnippet] = useState(false);
     const [snippetError, setSnippetError] = useState('');
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
+    const [activeAdminSubsection, setActiveAdminSubsection] = useState<AdminSubsection>('groups');
+    const [groupAdminMode, setGroupAdminMode] = useState<GroupAdminMode>('list');
+    const [selectedGroupForEdit, setSelectedGroupForEdit] = useState('');
+    const [userAdminMode, setUserAdminMode] = useState<UserAdminMode>('list');
+    const [accessAdminMode, setAccessAdminMode] = useState<AccessAdminMode>('list');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
     const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+    const [showVersionInfo, setShowVersionInfo] = useState(false);
     const [leftRailUserMenuOpen, setLeftRailUserMenuOpen] = useState(false);
     const leftRailUserMenuRef = useRef<HTMLDivElement | null>(null);
+    const versionInfoRef = useRef<HTMLDivElement | null>(null);
     const [activeTabMenuOpen, setActiveTabMenuOpen] = useState(false);
     const activeTabMenuRef = useRef<HTMLDivElement | null>(null);
     const activeTabMenuAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -1194,6 +1217,7 @@ export default function WorkspacePage() {
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
     const localAuthEnabled = authMethods.includes('local');
+    const isAdminSection = activeSection === 'admin';
 
     useEffect(() => {
         if (
@@ -1215,6 +1239,43 @@ export default function WorkspacePage() {
     }, [activeSection]);
 
     useEffect(() => {
+        if (activeSection === 'admin') {
+            return;
+        }
+
+        setGroupAdminMode('list');
+        setUserAdminMode('list');
+        setAccessAdminMode('list');
+        setSelectedGroupForEdit('');
+    }, [activeSection]);
+
+    useEffect(() => {
+        if (activeSection !== 'admin') {
+            return;
+        }
+
+        if (activeAdminSubsection !== 'groups') {
+            setGroupAdminMode('list');
+            setSelectedGroupForEdit('');
+        }
+        if (activeAdminSubsection !== 'users') {
+            setUserAdminMode('list');
+        }
+        if (activeAdminSubsection !== 'access') {
+            setAccessAdminMode('list');
+        }
+    }, [activeAdminSubsection, activeSection]);
+
+    useEffect(() => {
+        if (!leftRailCollapsed) {
+            return;
+        }
+
+        setShowVersionInfo(false);
+        setLeftRailUserMenuOpen(false);
+    }, [leftRailCollapsed]);
+
+    useEffect(() => {
         if (connectionEditorMode !== 'edit') {
             return;
         }
@@ -1227,6 +1288,19 @@ export default function WorkspacePage() {
 
         setConnectionEditorMode('list');
     }, [adminManagedDatasources, connectionEditorMode, selectedManagedDatasourceId]);
+
+    useEffect(() => {
+        if (groupAdminMode !== 'edit') {
+            return;
+        }
+        const hasSelectedGroup = adminGroups.some((group) => group.id === selectedGroupForEdit);
+        if (hasSelectedGroup) {
+            return;
+        }
+
+        setGroupAdminMode('list');
+        setSelectedGroupForEdit('');
+    }, [adminGroups, groupAdminMode, selectedGroupForEdit]);
 
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
@@ -1244,6 +1318,23 @@ export default function WorkspacePage() {
             document.removeEventListener('mousedown', handleOutsideClick);
         };
     }, [leftRailUserMenuOpen]);
+
+    useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !versionInfoRef.current?.contains(target)) {
+                setShowVersionInfo(false);
+            }
+        };
+
+        if (showVersionInfo) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [showVersionInfo]);
 
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
@@ -1454,6 +1545,14 @@ export default function WorkspacePage() {
                     rule.datasourceId === selectedDatasourceForAccess
             ) ?? null,
         [adminDatasourceAccess, selectedDatasourceForAccess, selectedGroupId]
+    );
+    const selectedGroupRecord = useMemo(
+        () => adminGroups.find((group) => group.id === selectedGroupForEdit) ?? null,
+        [adminGroups, selectedGroupForEdit]
+    );
+    const selectedGroupProtected = useMemo(
+        () => (selectedGroupRecord ? protectedGroupIds.has(selectedGroupRecord.id) : false),
+        [selectedGroupRecord]
     );
 
     const selectedManagedDatasource = useMemo(
@@ -3745,6 +3844,7 @@ export default function WorkspacePage() {
             setLocalUserSystemAdmin(false);
             await loadAdminData(true, true);
             setAdminSuccess(`User '${username}' created.`);
+            setUserAdminMode('list');
         } catch (error) {
             setAdminError(error instanceof Error ? error.message : 'Failed to create user.');
         } finally {
@@ -3837,6 +3937,8 @@ export default function WorkspacePage() {
             setGroupDescriptionInput('');
             await loadAdminData();
             setAdminSuccess('Group created successfully.');
+            setGroupAdminMode('list');
+            setSelectedGroupForEdit('');
         } catch (error) {
             if (error instanceof Error) {
                 setAdminError(error.message);
@@ -3947,6 +4049,80 @@ export default function WorkspacePage() {
         }
     };
 
+    const handleStartCreateGroup = useCallback(() => {
+        setGroupNameInput('');
+        setGroupDescriptionInput('');
+        setSelectedGroupForEdit('');
+        setGroupAdminMode('create');
+        setAdminError('');
+        setAdminSuccess('');
+    }, []);
+
+    const handleStartEditGroup = useCallback(
+        (groupId: string) => {
+            const group = adminGroups.find((candidate) => candidate.id === groupId);
+            if (!group) {
+                return;
+            }
+
+            setSelectedGroupForEdit(groupId);
+            setGroupDescriptionDrafts((drafts) => ({
+                ...drafts,
+                [groupId]: group.description ?? ''
+            }));
+            setGroupAdminMode('edit');
+            setAdminError('');
+            setAdminSuccess('');
+        },
+        [adminGroups]
+    );
+
+    const handleCancelGroupAdmin = useCallback(() => {
+        setGroupAdminMode('list');
+        setSelectedGroupForEdit('');
+        setAdminError('');
+    }, []);
+
+    const handleDeleteGroup = useCallback(
+        async (groupId: string) => {
+            if (protectedGroupIds.has(groupId)) {
+                setAdminError('System groups cannot be deleted.');
+                return;
+            }
+
+            const confirmed = window.confirm(
+                `Delete group '${groupId}'? This will remove all related access rules.`
+            );
+            if (!confirmed) {
+                return;
+            }
+
+            setAdminError('');
+            setAdminSuccess('');
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(`/api/admin/groups/${encodeURIComponent(groupId)}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadAdminData(true, true);
+                setGroupAdminMode('list');
+                setSelectedGroupForEdit('');
+                setAdminSuccess(`Deleted group ${groupId}.`);
+            } catch (error) {
+                setAdminError(error instanceof Error ? error.message : 'Failed to delete group.');
+            }
+        },
+        [fetchCsrfToken, loadAdminData, readFriendlyError]
+    );
+
     const handleSaveDatasourceAccess = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setAdminError('');
@@ -3994,6 +4170,7 @@ export default function WorkspacePage() {
 
             await loadAdminData();
             setAdminSuccess('Connection access mapping saved.');
+            setAccessAdminMode('list');
         } catch (error) {
             if (error instanceof Error) {
                 setAdminError(error.message);
@@ -4004,6 +4181,90 @@ export default function WorkspacePage() {
             setSavingAccess(false);
         }
     };
+
+    const handleStartCreateAccessRule = useCallback(() => {
+        setSelectedGroupId(adminGroups[0]?.id ?? '');
+        setSelectedDatasourceForAccess(adminDatasourceCatalog[0]?.id ?? '');
+        setCanQuery(true);
+        setCanExport(false);
+        setReadOnly(true);
+        setMaxRowsPerQuery('');
+        setMaxRuntimeSeconds('');
+        setConcurrencyLimit('');
+        setCredentialProfile('');
+        setAccessAdminMode('create');
+        setAdminError('');
+        setAdminSuccess('');
+    }, [adminDatasourceCatalog, adminGroups]);
+
+    const handleStartEditAccessRule = useCallback((rule: DatasourceAccessResponse) => {
+        setSelectedGroupId(rule.groupId);
+        setSelectedDatasourceForAccess(rule.datasourceId);
+        setCanQuery(rule.canQuery);
+        setCanExport(rule.canExport);
+        setReadOnly(rule.readOnly);
+        setMaxRowsPerQuery(rule.maxRowsPerQuery?.toString() ?? '');
+        setMaxRuntimeSeconds(rule.maxRuntimeSeconds?.toString() ?? '');
+        setConcurrencyLimit(rule.concurrencyLimit?.toString() ?? '');
+        setCredentialProfile(rule.credentialProfile);
+        setAccessAdminMode('edit');
+        setAdminError('');
+        setAdminSuccess('');
+    }, []);
+
+    const handleCancelAccessAdmin = useCallback(() => {
+        setAccessAdminMode('list');
+        setAdminError('');
+    }, []);
+
+    const handleDeleteDatasourceAccess = useCallback(
+        async (groupId: string, datasourceId: string) => {
+            const confirmed = window.confirm(
+                `Delete access rule '${groupId} -> ${datasourceId}'?`
+            );
+            if (!confirmed) {
+                return;
+            }
+
+            setAdminError('');
+            setAdminSuccess('');
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(
+                    `/api/admin/datasource-access/${encodeURIComponent(groupId)}/${encodeURIComponent(datasourceId)}`,
+                    {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: {
+                            [csrfToken.headerName]: csrfToken.token
+                        }
+                    }
+                );
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadAdminData();
+                setAdminSuccess(`Deleted access rule ${groupId} -> ${datasourceId}.`);
+            } catch (error) {
+                setAdminError(
+                    error instanceof Error ? error.message : 'Failed to delete access rule.'
+                );
+            }
+        },
+        [fetchCsrfToken, loadAdminData, readFriendlyError]
+    );
+
+    const handleStartCreateUser = useCallback(() => {
+        setUserAdminMode('create');
+        setAdminError('');
+        setAdminSuccess('');
+    }, []);
+
+    const handleCancelUserAdmin = useCallback(() => {
+        setUserAdminMode('list');
+        setAdminError('');
+    }, []);
 
     const parsePositiveInteger = (value: string, fieldName: string): number => {
         const parsed = Number(value);
@@ -4729,58 +4990,111 @@ export default function WorkspacePage() {
                                 {!leftRailCollapsed ? <span>Admin</span> : null}
                             </button>
                         ) : null}
+                        {isSystemAdmin && activeSection === 'admin' && !leftRailCollapsed ? (
+                            <div className="workspace-admin-submenu">
+                                <button
+                                    type="button"
+                                    className={
+                                        activeAdminSubsection === 'users'
+                                            ? 'workspace-admin-submenu-item active'
+                                            : 'workspace-admin-submenu-item'
+                                    }
+                                    onClick={() => setActiveAdminSubsection('users')}
+                                >
+                                    Users
+                                </button>
+                                <button
+                                    type="button"
+                                    className={
+                                        activeAdminSubsection === 'groups'
+                                            ? 'workspace-admin-submenu-item active'
+                                            : 'workspace-admin-submenu-item'
+                                    }
+                                    onClick={() => setActiveAdminSubsection('groups')}
+                                >
+                                    Groups
+                                </button>
+                                <button
+                                    type="button"
+                                    className={
+                                        activeAdminSubsection === 'access'
+                                            ? 'workspace-admin-submenu-item active'
+                                            : 'workspace-admin-submenu-item'
+                                    }
+                                    onClick={() => setActiveAdminSubsection('access')}
+                                >
+                                    Access
+                                </button>
+                            </div>
+                        ) : null}
                     </nav>
 
-                    <div
-                        className="workspace-version-flag"
-                        title={`Running version ${appVersionLabel}`}
-                        aria-label={`Running version ${appVersionLabel}`}
-                    >
-                        {!leftRailCollapsed ? (
-                            <>
-                                <span className="workspace-version-label">Version</span>
-                                <strong>{appVersionLabel}</strong>
-                            </>
-                        ) : (
-                            <strong>{appVersionLabel}</strong>
-                        )}
-                    </div>
-
-                    {currentUser ? (
-                        <div className="workspace-left-user" ref={leftRailUserMenuRef}>
-                            <button
-                                type="button"
-                                className="workspace-left-user-trigger"
-                                onClick={() => setLeftRailUserMenuOpen((current) => !current)}
-                                title={leftRailCollapsed ? currentUser.displayName : undefined}
-                            >
-                                <span className="workspace-left-user-avatar">
-                                    {currentUser.displayName.charAt(0).toUpperCase()}
-                                </span>
-                                {!leftRailCollapsed ? (
-                                    <span className="workspace-left-user-meta">
-                                        <strong>{currentUser.displayName}</strong>
-                                        <small>@{currentUser.username}</small>
-                                    </span>
-                                ) : null}
-                            </button>
-                            {leftRailUserMenuOpen ? (
-                                <div className="workspace-left-user-menu" role="menu">
-                                    {currentUser.email ? <p>{currentUser.email}</p> : null}
-                                    <button
-                                        type="button"
-                                        className="danger-button"
-                                        onClick={() => {
-                                            setLeftRailUserMenuOpen(false);
-                                            void handleLogout();
-                                        }}
-                                    >
-                                        Logout
-                                    </button>
+                    <div className="workspace-left-footer">
+                        <div className="workspace-version-wrap" ref={versionInfoRef}>
+                            {!leftRailCollapsed ? (
+                                <div
+                                    className="workspace-version-flag"
+                                    title={`Running version ${appVersionLabel}`}
+                                    aria-label={`Running version ${appVersionLabel}`}
+                                >
+                                    <span className="workspace-version-label">Version</span>
+                                    <span className="workspace-version-value">{appVersionLabel}</span>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="workspace-version-icon"
+                                    title={`Version ${appVersionLabel}`}
+                                    aria-label={`Version ${appVersionLabel}`}
+                                    onClick={() => setShowVersionInfo((current) => !current)}
+                                >
+                                    <RailIcon glyph="info" />
+                                </button>
+                            )}
+                            {leftRailCollapsed && showVersionInfo ? (
+                                <div className="workspace-version-popover">
+                                    <span className="workspace-version-label">Version</span>
+                                    <span className="workspace-version-value">{appVersionLabel}</span>
                                 </div>
                             ) : null}
                         </div>
-                    ) : null}
+
+                        {currentUser ? (
+                            <div className="workspace-left-user" ref={leftRailUserMenuRef}>
+                                <button
+                                    type="button"
+                                    className="workspace-left-user-trigger"
+                                    onClick={() => setLeftRailUserMenuOpen((current) => !current)}
+                                    title={leftRailCollapsed ? currentUser.displayName : undefined}
+                                >
+                                    <span className="workspace-left-user-avatar">
+                                        {currentUser.displayName.charAt(0).toUpperCase()}
+                                    </span>
+                                    {!leftRailCollapsed ? (
+                                        <span className="workspace-left-user-meta">
+                                            <strong>{currentUser.displayName}</strong>
+                                            <small>@{currentUser.username}</small>
+                                        </span>
+                                    ) : null}
+                                </button>
+                                {leftRailUserMenuOpen ? (
+                                    <div className="workspace-left-user-menu" role="menu">
+                                        {currentUser.email ? <p>{currentUser.email}</p> : null}
+                                        <button
+                                            type="button"
+                                            className="danger-button"
+                                            onClick={() => {
+                                                setLeftRailUserMenuOpen(false);
+                                                void handleLogout();
+                                            }}
+                                        >
+                                            Logout
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </div>
                 </aside>
 
                 <section className="workspace-main">
@@ -6427,11 +6741,784 @@ export default function WorkspacePage() {
                                 </div>
                             </section>
 
+                            <section className="panel admin-console" hidden={activeSection !== 'admin'}>
+                                {adminError ? (
+                                    <p className="form-error" role="alert">
+                                        {adminError}
+                                    </p>
+                                ) : null}
+                                {adminSuccess ? <p className="form-success">{adminSuccess}</p> : null}
+
+                                {activeAdminSubsection === 'groups' ? (
+                                    <>
+                                        {groupAdminMode === 'list' ? (
+                                            <>
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleStartCreateGroup}
+                                                    >
+                                                        Create Group
+                                                    </button>
+                                                </div>
+                                                <div className="history-table-wrap">
+                                                    <table className="result-table history-table admin-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Name</th>
+                                                                <th>Group ID</th>
+                                                                <th>Description</th>
+                                                                <th>Members</th>
+                                                                <th>Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {adminGroups.length === 0 ? (
+                                                                <tr>
+                                                                    <td colSpan={5}>
+                                                                        No groups found.
+                                                                    </td>
+                                                                </tr>
+                                                            ) : (
+                                                                adminGroups.map((group) => (
+                                                                    <tr
+                                                                        key={`admin-group-row-${group.id}`}
+                                                                    >
+                                                                        <td>{group.name}</td>
+                                                                        <td>{group.id}</td>
+                                                                        <td>
+                                                                            {group.description ||
+                                                                                '-'}
+                                                                        </td>
+                                                                        <td>{group.members.length}</td>
+                                                                        <td className="history-actions">
+                                                                            <IconButton
+                                                                                icon="rename"
+                                                                                title={`Edit group ${group.name}`}
+                                                                                onClick={() =>
+                                                                                    handleStartEditGroup(
+                                                                                        group.id
+                                                                                    )
+                                                                                }
+                                                                            />
+                                                                            <IconButton
+                                                                                icon="delete"
+                                                                                title={
+                                                                                    protectedGroupIds.has(
+                                                                                        group.id
+                                                                                    )
+                                                                                        ? 'System groups cannot be deleted'
+                                                                                        : `Delete group ${group.name}`
+                                                                                }
+                                                                                variant="danger"
+                                                                                disabled={protectedGroupIds.has(
+                                                                                    group.id
+                                                                                )}
+                                                                                onClick={() =>
+                                                                                    void handleDeleteGroup(
+                                                                                        group.id
+                                                                                    )
+                                                                                }
+                                                                            />
+                                                                        </td>
+                                                                    </tr>
+                                                                ))
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </>
+                                        ) : null}
+
+                                        {groupAdminMode === 'create' ? (
+                                            <form
+                                                onSubmit={handleCreateGroup}
+                                                className="stack-form admin-mode-form"
+                                            >
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    <button type="submit">Save Group</button>
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        onClick={handleCancelGroupAdmin}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                                <label htmlFor="new-group-name">Group Name</label>
+                                                <input
+                                                    id="new-group-name"
+                                                    value={groupNameInput}
+                                                    onChange={(event) =>
+                                                        setGroupNameInput(event.target.value)
+                                                    }
+                                                    placeholder="Incident Responders"
+                                                    required
+                                                />
+                                                <label htmlFor="new-group-description">
+                                                    Description
+                                                </label>
+                                                <input
+                                                    id="new-group-description"
+                                                    value={groupDescriptionInput}
+                                                    onChange={(event) =>
+                                                        setGroupDescriptionInput(event.target.value)
+                                                    }
+                                                    placeholder="Optional description"
+                                                />
+                                            </form>
+                                        ) : null}
+
+                                        {groupAdminMode === 'edit' && selectedGroupRecord ? (
+                                            <div className="admin-mode-form">
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        onClick={handleCancelGroupAdmin}
+                                                    >
+                                                        Back
+                                                    </button>
+                                                    <span className="connection-mode-pill">
+                                                        Editing {selectedGroupRecord.name}
+                                                    </span>
+                                                </div>
+                                                <form
+                                                    className="stack-form"
+                                                    onSubmit={(event) => {
+                                                        event.preventDefault();
+                                                        void handleUpdateGroupDescription(
+                                                            selectedGroupRecord.id
+                                                        );
+                                                    }}
+                                                >
+                                                    <label
+                                                        htmlFor={`group-description-${selectedGroupRecord.id}`}
+                                                    >
+                                                        Description
+                                                    </label>
+                                                    <input
+                                                        id={`group-description-${selectedGroupRecord.id}`}
+                                                        value={
+                                                            groupDescriptionDrafts[
+                                                                selectedGroupRecord.id
+                                                            ] ?? ''
+                                                        }
+                                                        onChange={(event) =>
+                                                            setGroupDescriptionDrafts((drafts) => ({
+                                                                ...drafts,
+                                                                [selectedGroupRecord.id]:
+                                                                    event.target.value
+                                                            }))
+                                                        }
+                                                    />
+                                                    <button type="submit">
+                                                        Save Description
+                                                    </button>
+                                                </form>
+
+                                                <div className="stack-form">
+                                                    <label htmlFor="group-member-add">
+                                                        Add Member
+                                                    </label>
+                                                    <div className="member-row">
+                                                        <input
+                                                            id="group-member-add"
+                                                            value={
+                                                                memberDrafts[
+                                                                    selectedGroupRecord.id
+                                                                ] ?? ''
+                                                            }
+                                                            onChange={(event) =>
+                                                                setMemberDrafts((drafts) => ({
+                                                                    ...drafts,
+                                                                    [selectedGroupRecord.id]:
+                                                                        event.target.value
+                                                                }))
+                                                            }
+                                                            placeholder="username"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                void handleAddMember(
+                                                                    selectedGroupRecord.id
+                                                                )
+                                                            }
+                                                        >
+                                                            Add
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="history-table-wrap">
+                                                    <table className="result-table history-table admin-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Member</th>
+                                                                <th>Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {selectedGroupRecord.members.length === 0 ? (
+                                                                <tr>
+                                                                    <td colSpan={2}>
+                                                                        No members
+                                                                    </td>
+                                                                </tr>
+                                                            ) : (
+                                                                selectedGroupRecord.members.map(
+                                                                    (member) => (
+                                                                        <tr
+                                                                            key={`${selectedGroupRecord.id}-${member}`}
+                                                                        >
+                                                                            <td>{member}</td>
+                                                                            <td className="history-actions">
+                                                                                <IconButton
+                                                                                    icon="delete"
+                                                                                    title={`Remove ${member}`}
+                                                                                    variant="danger"
+                                                                                    onClick={() =>
+                                                                                        void handleRemoveMember(
+                                                                                            selectedGroupRecord.id,
+                                                                                            member
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </td>
+                                                                        </tr>
+                                                                    )
+                                                                )
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="danger-button"
+                                                    disabled={selectedGroupProtected}
+                                                    title={
+                                                        selectedGroupProtected
+                                                            ? 'System groups cannot be deleted'
+                                                            : `Delete group ${selectedGroupRecord.name}`
+                                                    }
+                                                    onClick={() =>
+                                                        void handleDeleteGroup(
+                                                            selectedGroupRecord.id
+                                                        )
+                                                    }
+                                                >
+                                                    Delete Group
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                    </>
+                                ) : null}
+
+                                {activeAdminSubsection === 'users' ? (
+                                    <>
+                                        {userAdminMode === 'list' ? (
+                                            <>
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    {localAuthEnabled ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleStartCreateUser}
+                                                        >
+                                                            Create Local User
+                                                        </button>
+                                                    ) : (
+                                                        <span className="muted-id">
+                                                            LDAP mode enabled. User creation is
+                                                            disabled.
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="history-table-wrap">
+                                                    <table className="result-table history-table admin-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Username</th>
+                                                                <th>Display Name</th>
+                                                                <th>Provider</th>
+                                                                <th>Groups</th>
+                                                                <th>Password</th>
+                                                                <th>Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {adminUsers.length === 0 ? (
+                                                                <tr>
+                                                                    <td colSpan={6}>
+                                                                        No users available.
+                                                                    </td>
+                                                                </tr>
+                                                            ) : (
+                                                                adminUsers.map((user) => (
+                                                                    <tr
+                                                                        key={`admin-user-row-${user.username}`}
+                                                                    >
+                                                                        <td>{user.username}</td>
+                                                                        <td>{user.displayName}</td>
+                                                                        <td>
+                                                                            {user.provider.toUpperCase()}
+                                                                        </td>
+                                                                        <td>
+                                                                            {user.groups.length > 0
+                                                                                ? user.groups.join(
+                                                                                      ', '
+                                                                                  )
+                                                                                : '-'}
+                                                                        </td>
+                                                                        <td>
+                                                                            {user.temporaryPassword
+                                                                                ? 'Temporary'
+                                                                                : 'Permanent'}
+                                                                        </td>
+                                                                        <td className="history-actions">
+                                                                            {user.provider ===
+                                                                            'local' ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="chip"
+                                                                                    disabled={
+                                                                                        resettingLocalUser ===
+                                                                                        user.username
+                                                                                    }
+                                                                                    onClick={() =>
+                                                                                        void handleResetLocalPassword(
+                                                                                            user.username
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    {resettingLocalUser ===
+                                                                                    user.username
+                                                                                        ? 'Resetting...'
+                                                                                        : 'Reset Password'}
+                                                                                </button>
+                                                                            ) : (
+                                                                                <span className="muted-id">
+                                                                                    LDAP managed
+                                                                                </span>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </>
+                                        ) : null}
+
+                                        {userAdminMode === 'create' ? (
+                                            <form
+                                                className="stack-form admin-mode-form"
+                                                onSubmit={handleCreateLocalUser}
+                                            >
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    <button type="submit" disabled={creatingLocalUser}>
+                                                        {creatingLocalUser
+                                                            ? 'Creating...'
+                                                            : 'Create User'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        onClick={handleCancelUserAdmin}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                                <label htmlFor="local-user-username">
+                                                    Username
+                                                </label>
+                                                <input
+                                                    id="local-user-username"
+                                                    value={localUserUsernameInput}
+                                                    onChange={(event) =>
+                                                        setLocalUserUsernameInput(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="new.analyst"
+                                                    required
+                                                />
+
+                                                <label htmlFor="local-user-display-name">
+                                                    Display Name
+                                                </label>
+                                                <input
+                                                    id="local-user-display-name"
+                                                    value={localUserDisplayNameInput}
+                                                    onChange={(event) =>
+                                                        setLocalUserDisplayNameInput(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="New Analyst"
+                                                />
+
+                                                <label htmlFor="local-user-email">Email</label>
+                                                <input
+                                                    id="local-user-email"
+                                                    type="email"
+                                                    value={localUserEmailInput}
+                                                    onChange={(event) =>
+                                                        setLocalUserEmailInput(event.target.value)
+                                                    }
+                                                    placeholder="analyst@example.com"
+                                                />
+
+                                                <label htmlFor="local-user-password">Password</label>
+                                                <input
+                                                    id="local-user-password"
+                                                    type="password"
+                                                    value={localUserPasswordInput}
+                                                    onChange={(event) =>
+                                                        setLocalUserPasswordInput(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    required
+                                                />
+
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={localUserTemporaryPassword}
+                                                        onChange={(event) =>
+                                                            setLocalUserTemporaryPassword(
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Temporary password</span>
+                                                </label>
+
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={localUserSystemAdmin}
+                                                        onChange={(event) =>
+                                                            setLocalUserSystemAdmin(
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Grant system admin role</span>
+                                                </label>
+                                            </form>
+                                        ) : null}
+                                    </>
+                                ) : null}
+
+                                {activeAdminSubsection === 'access' ? (
+                                    <>
+                                        {accessAdminMode === 'list' ? (
+                                            <>
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleStartCreateAccessRule}
+                                                    >
+                                                        Create Access Rule
+                                                    </button>
+                                                </div>
+                                                <div className="history-table-wrap">
+                                                    <table className="result-table history-table admin-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Group</th>
+                                                                <th>Connection</th>
+                                                                <th>Query</th>
+                                                                <th>Export</th>
+                                                                <th>Read Only</th>
+                                                                <th>Credential Profile</th>
+                                                                <th>Max Rows</th>
+                                                                <th>Max Runtime (s)</th>
+                                                                <th>Concurrency</th>
+                                                                <th>Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {adminDatasourceAccess.length === 0 ? (
+                                                                <tr>
+                                                                    <td colSpan={10}>
+                                                                        No access rules configured.
+                                                                    </td>
+                                                                </tr>
+                                                            ) : (
+                                                                adminDatasourceAccess.map(
+                                                                    (access) => (
+                                                                        <tr
+                                                                            key={`admin-access-row-${access.groupId}-${access.datasourceId}`}
+                                                                        >
+                                                                            <td>{access.groupId}</td>
+                                                                            <td>
+                                                                                {
+                                                                                    access.datasourceId
+                                                                                }
+                                                                            </td>
+                                                                            <td>
+                                                                                {access.canQuery
+                                                                                    ? 'Yes'
+                                                                                    : 'No'}
+                                                                            </td>
+                                                                            <td>
+                                                                                {access.canExport
+                                                                                    ? 'Yes'
+                                                                                    : 'No'}
+                                                                            </td>
+                                                                            <td>
+                                                                                {access.readOnly
+                                                                                    ? 'Yes'
+                                                                                    : 'No'}
+                                                                            </td>
+                                                                            <td>
+                                                                                {
+                                                                                    access.credentialProfile
+                                                                                }
+                                                                            </td>
+                                                                            <td>
+                                                                                {access.maxRowsPerQuery ??
+                                                                                    '-'}
+                                                                            </td>
+                                                                            <td>
+                                                                                {access.maxRuntimeSeconds ??
+                                                                                    '-'}
+                                                                            </td>
+                                                                            <td>
+                                                                                {access.concurrencyLimit ??
+                                                                                    '-'}
+                                                                            </td>
+                                                                            <td className="history-actions">
+                                                                                <IconButton
+                                                                                    icon="rename"
+                                                                                    title={`Edit access for ${access.groupId}`}
+                                                                                    onClick={() =>
+                                                                                        handleStartEditAccessRule(
+                                                                                            access
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                                <IconButton
+                                                                                    icon="delete"
+                                                                                    title={`Delete access for ${access.groupId}`}
+                                                                                    variant="danger"
+                                                                                    onClick={() =>
+                                                                                        void handleDeleteDatasourceAccess(
+                                                                                            access.groupId,
+                                                                                            access.datasourceId
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </td>
+                                                                        </tr>
+                                                                    )
+                                                                )
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </>
+                                        ) : null}
+
+                                        {(accessAdminMode === 'create' ||
+                                            accessAdminMode === 'edit') ? (
+                                            <form
+                                                className="stack-form admin-mode-form"
+                                                onSubmit={handleSaveDatasourceAccess}
+                                            >
+                                                <div className="row toolbar-actions admin-toolbar-actions">
+                                                    <button type="submit" disabled={savingAccess}>
+                                                        {savingAccess
+                                                            ? 'Saving...'
+                                                            : 'Save Access Rule'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="chip"
+                                                        onClick={handleCancelAccessAdmin}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                                <label htmlFor="access-group">Group</label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="access-group"
+                                                        value={selectedGroupId}
+                                                        onChange={(event) =>
+                                                            setSelectedGroupId(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    >
+                                                        <option value="">Select group</option>
+                                                        {adminGroups.map((group) => (
+                                                            <option
+                                                                key={group.id}
+                                                                value={group.id}
+                                                            >
+                                                                {group.name} ({group.id})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <label htmlFor="access-datasource">
+                                                    Connection
+                                                </label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="access-datasource"
+                                                        value={selectedDatasourceForAccess}
+                                                        onChange={(event) =>
+                                                            setSelectedDatasourceForAccess(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    >
+                                                        <option value="">
+                                                            Select connection
+                                                        </option>
+                                                        {adminDatasourceCatalog.map(
+                                                            (datasource) => (
+                                                                <option
+                                                                    key={datasource.id}
+                                                                    value={datasource.id}
+                                                                >
+                                                                    {datasource.name} (
+                                                                    {datasource.engine})
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+                                                </div>
+
+                                                <div className="row">
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={canQuery}
+                                                            onChange={(event) =>
+                                                                setCanQuery(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Can Query</span>
+                                                    </label>
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={canExport}
+                                                            onChange={(event) =>
+                                                                setCanExport(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Can Export</span>
+                                                    </label>
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={readOnly}
+                                                            onChange={(event) =>
+                                                                setReadOnly(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Read Only</span>
+                                                    </label>
+                                                </div>
+
+                                                <label htmlFor="credential-profile">
+                                                    Credential Profile
+                                                </label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="credential-profile"
+                                                        value={credentialProfile}
+                                                        onChange={(event) =>
+                                                            setCredentialProfile(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    >
+                                                        <option value="">
+                                                            Select credential profile
+                                                        </option>
+                                                        {(
+                                                            selectedAdminDatasource?.credentialProfiles ??
+                                                            []
+                                                        ).map((profile) => (
+                                                            <option
+                                                                key={profile}
+                                                                value={profile}
+                                                            >
+                                                                {profile}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <label htmlFor="max-rows">
+                                                    Max Rows Per Query
+                                                </label>
+                                                <input
+                                                    id="max-rows"
+                                                    type="number"
+                                                    min={1}
+                                                    value={maxRowsPerQuery}
+                                                    onChange={(event) =>
+                                                        setMaxRowsPerQuery(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                />
+
+                                                <label htmlFor="max-runtime">
+                                                    Max Runtime Seconds
+                                                </label>
+                                                <input
+                                                    id="max-runtime"
+                                                    type="number"
+                                                    min={1}
+                                                    value={maxRuntimeSeconds}
+                                                    onChange={(event) =>
+                                                        setMaxRuntimeSeconds(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                />
+
+                                                <label htmlFor="concurrency-limit">
+                                                    Concurrency Limit
+                                                </label>
+                                                <input
+                                                    id="concurrency-limit"
+                                                    type="number"
+                                                    min={1}
+                                                    value={concurrencyLimit}
+                                                    onChange={(event) =>
+                                                        setConcurrencyLimit(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                />
+                                            </form>
+                                        ) : null}
+                                    </>
+                                ) : null}
+                            </section>
+
                             <section
                                 className="panel admin-governance"
-                                hidden={
-                                    activeSection !== 'admin' && activeSection !== 'connections'
-                                }
+                                hidden={activeSection !== 'connections'}
                             >
                                 {adminError ? (
                                     <p className="form-error" role="alert">
@@ -6442,14 +7529,9 @@ export default function WorkspacePage() {
                                     <p className="form-success">{adminSuccess}</p>
                                 ) : null}
 
-                                <div
-                                    className={
-                                        activeSection === 'connections'
-                                            ? 'admin-grid admin-grid-connections'
-                                            : 'admin-grid'
-                                    }
-                                >
-                                    {activeSection === 'admin' ? (
+                                {activeSection === 'connections' ? (
+                                    <div className="admin-grid admin-grid-connections">
+                                    {isAdminSection ? (
                                         <section className="panel">
                                             <h3>Groups</h3>
                                             <form
@@ -6570,7 +7652,7 @@ export default function WorkspacePage() {
                                         </section>
                                     ) : null}
 
-                                    {activeSection === 'admin' ? (
+                                    {isAdminSection ? (
                                         <section className="panel">
                                             <h3>Connection Access Mapping</h3>
                                             <form
@@ -6799,7 +7881,7 @@ export default function WorkspacePage() {
                                         </section>
                                     ) : null}
 
-                                    {activeSection === 'admin' ? (
+                                    {isAdminSection ? (
                                         <section className="panel">
                                             <h3>Local Users</h3>
                                             {localAuthEnabled ? (
@@ -8183,7 +9265,8 @@ export default function WorkspacePage() {
                                             )}
                                         </section>
                                     ) : null}
-                                </div>
+                                    </div>
+                                ) : null}
                             </section>
                         </>
                     ) : null}

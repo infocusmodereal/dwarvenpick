@@ -324,6 +324,21 @@ class DwarvenpickApplicationTests {
                     .session(adminSession),
             ).andExpect(status().isOk)
 
+        mockMvc
+            .perform(
+                delete("/api/admin/groups/incident-responders")
+                    .with(csrf())
+                    .session(adminSession),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.deleted").value(true))
+
+        mockMvc
+            .perform(
+                delete("/api/admin/groups/platform-admins")
+                    .with(csrf())
+                    .session(adminSession),
+            ).andExpect(status().isBadRequest)
+
         val events = authAuditEventStore.snapshot()
         assertThat(events)
             .anyMatch { event ->

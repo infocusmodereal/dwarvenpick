@@ -115,6 +115,24 @@ class RbacAdminController(
             ResponseEntity.ok(updated)
         }.getOrElse { ex -> handleGroupErrors(ex) }
 
+    @DeleteMapping("/groups/{groupId}")
+    fun deleteGroup(
+        @PathVariable groupId: String,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<*> =
+        runCatching {
+            val deleted = rbacService.deleteGroup(groupId)
+            audit(
+                type = "rbac.group.delete",
+                actor = authentication.name,
+                outcome = if (deleted) "success" else "noop",
+                httpServletRequest = httpServletRequest,
+                details = mapOf("groupId" to groupId),
+            )
+            ResponseEntity.ok(mapOf("deleted" to deleted, "groupId" to groupId))
+        }.getOrElse { ex -> handleGroupErrors(ex) }
+
     @GetMapping("/datasources")
     fun listDatasourceCatalog(): List<DatasourceResponse> = rbacService.listDatasourceCatalog()
 

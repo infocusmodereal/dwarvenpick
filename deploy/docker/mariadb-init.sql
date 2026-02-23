@@ -227,4 +227,5 @@ GROUP BY c.customer_id, c.customer_name, c.customer_segment, c.region;
 
 CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY 'readonly';
 GRANT SELECT, SHOW VIEW ON warehouse.* TO 'readonly'@'%';
+GRANT SELECT, SHOW VIEW ON *.* TO 'readonly'@'%';
 FLUSH PRIVILEGES;
