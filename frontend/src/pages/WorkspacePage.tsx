@@ -4853,7 +4853,7 @@ export default function WorkspacePage() {
 
     if (loadingWorkspace) {
         return (
-            <AppShell title="dwarvenpick" showTitle={false}>
+            <AppShell title="dwarvenpick" showTitle={false} className="workspace-app-shell">
                 <section className="panel">
                     <p>Loading...</p>
                 </section>
@@ -4862,7 +4862,12 @@ export default function WorkspacePage() {
     }
 
     return (
-        <AppShell title="dwarvenpick" showTitle={false} topNav={false}>
+        <AppShell
+            title="dwarvenpick"
+            showTitle={false}
+            topNav={false}
+            className="workspace-app-shell"
+        >
             {workspaceError ? (
                 <section className="panel">
                     <p className="form-error">{workspaceError}</p>

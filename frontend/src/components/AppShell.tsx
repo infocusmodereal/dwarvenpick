@@ -12,6 +12,7 @@ type AppShellProps = PropsWithChildren<{
     showTitle?: boolean;
     user?: AppShellUser | null;
     topNav?: boolean;
+    className?: string;
 }>;
 
 export default function AppShell({
@@ -19,6 +20,7 @@ export default function AppShell({
     showTitle = true,
     user,
     topNav = true,
+    className = '',
     children
 }: AppShellProps) {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -42,7 +44,7 @@ export default function AppShell({
     }, [menuOpen]);
 
     return (
-        <div className="app-shell">
+        <div className={className ? `app-shell ${className}` : 'app-shell'}>
             {topNav ? (
                 <header className="top-nav">
                     <span className="top-nav-brand">{title}</span>
