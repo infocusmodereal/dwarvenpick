@@ -1174,9 +1174,12 @@ export default function WorkspacePage() {
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
     const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
     const [showVersionInfo, setShowVersionInfo] = useState(false);
+    const [collapsedAdminSubmenuOpen, setCollapsedAdminSubmenuOpen] = useState(false);
     const [leftRailUserMenuOpen, setLeftRailUserMenuOpen] = useState(false);
     const leftRailUserMenuRef = useRef<HTMLDivElement | null>(null);
     const versionInfoRef = useRef<HTMLDivElement | null>(null);
+    const collapsedAdminSubmenuRef = useRef<HTMLDivElement | null>(null);
+    const collapsedAdminAnchorRef = useRef<HTMLDivElement | null>(null);
     const [activeTabMenuOpen, setActiveTabMenuOpen] = useState(false);
     const activeTabMenuRef = useRef<HTMLDivElement | null>(null);
     const activeTabMenuAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -1264,11 +1267,13 @@ export default function WorkspacePage() {
 
     useEffect(() => {
         if (!leftRailCollapsed) {
+            setCollapsedAdminSubmenuOpen(false);
             return;
         }
 
         setShowVersionInfo(false);
         setLeftRailUserMenuOpen(false);
+        setCollapsedAdminSubmenuOpen(false);
     }, [leftRailCollapsed]);
 
     useEffect(() => {
@@ -1331,6 +1336,27 @@ export default function WorkspacePage() {
             document.removeEventListener('mousedown', handleOutsideClick);
         };
     }, [showVersionInfo]);
+
+    useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (
+                !target ||
+                (!collapsedAdminSubmenuRef.current?.contains(target) &&
+                    !collapsedAdminAnchorRef.current?.contains(target))
+            ) {
+                setCollapsedAdminSubmenuOpen(false);
+            }
+        };
+
+        if (collapsedAdminSubmenuOpen) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [collapsedAdminSubmenuOpen]);
 
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
@@ -4940,7 +4966,10 @@ export default function WorkspacePage() {
                                     : 'workspace-mode-tab'
                             }
                             aria-selected={activeSection === 'workbench'}
-                            onClick={() => setActiveSection('workbench')}
+                            onClick={() => {
+                                setCollapsedAdminSubmenuOpen(false);
+                                setActiveSection('workbench');
+                            }}
                             title={leftRailCollapsed ? 'Workbench' : undefined}
                         >
                             <span className="workspace-mode-icon">
@@ -4957,7 +4986,10 @@ export default function WorkspacePage() {
                                     : 'workspace-mode-tab'
                             }
                             aria-selected={activeSection === 'history'}
-                            onClick={() => setActiveSection('history')}
+                            onClick={() => {
+                                setCollapsedAdminSubmenuOpen(false);
+                                setActiveSection('history');
+                            }}
                             title={leftRailCollapsed ? 'Query History' : undefined}
                         >
                             <span className="workspace-mode-icon">
@@ -4974,7 +5006,10 @@ export default function WorkspacePage() {
                                     : 'workspace-mode-tab'
                             }
                             aria-selected={activeSection === 'snippets'}
-                            onClick={() => setActiveSection('snippets')}
+                            onClick={() => {
+                                setCollapsedAdminSubmenuOpen(false);
+                                setActiveSection('snippets');
+                            }}
                             title={leftRailCollapsed ? 'Snippets' : undefined}
                         >
                             <span className="workspace-mode-icon">
@@ -4992,7 +5027,10 @@ export default function WorkspacePage() {
                                         : 'workspace-mode-tab'
                                 }
                                 aria-selected={activeSection === 'connections'}
-                                onClick={() => setActiveSection('connections')}
+                                onClick={() => {
+                                    setCollapsedAdminSubmenuOpen(false);
+                                    setActiveSection('connections');
+                                }}
                                 title={leftRailCollapsed ? 'Connections' : undefined}
                             >
                                 <span className="workspace-mode-icon">
@@ -5011,7 +5049,10 @@ export default function WorkspacePage() {
                                         : 'workspace-mode-tab'
                                 }
                                 aria-selected={activeSection === 'audit'}
-                                onClick={() => setActiveSection('audit')}
+                                onClick={() => {
+                                    setCollapsedAdminSubmenuOpen(false);
+                                    setActiveSection('audit');
+                                }}
                                 title={leftRailCollapsed ? 'Audit Events' : undefined}
                             >
                                 <span className="workspace-mode-icon">
@@ -5021,23 +5062,88 @@ export default function WorkspacePage() {
                             </button>
                         ) : null}
                         {isSystemAdmin ? (
-                            <button
-                                type="button"
-                                role="tab"
-                                className={
-                                    activeSection === 'admin'
-                                        ? 'workspace-mode-tab active'
-                                        : 'workspace-mode-tab'
-                                }
-                                aria-selected={activeSection === 'admin'}
-                                onClick={() => setActiveSection('admin')}
-                                title={leftRailCollapsed ? 'Admin' : undefined}
+                            <div
+                                className="workspace-admin-menu-anchor"
+                                ref={collapsedAdminAnchorRef}
                             >
-                                <span className="workspace-mode-icon">
-                                    <RailIcon glyph="admin" />
-                                </span>
-                                {!leftRailCollapsed ? <span>Admin</span> : null}
-                            </button>
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    className={
+                                        activeSection === 'admin' || collapsedAdminSubmenuOpen
+                                            ? 'workspace-mode-tab active'
+                                            : 'workspace-mode-tab'
+                                    }
+                                    aria-selected={activeSection === 'admin'}
+                                    onClick={() => {
+                                        if (leftRailCollapsed) {
+                                            setCollapsedAdminSubmenuOpen((current) => !current);
+                                            return;
+                                        }
+
+                                        setCollapsedAdminSubmenuOpen(false);
+                                        setActiveSection('admin');
+                                    }}
+                                    title={leftRailCollapsed ? 'Admin' : undefined}
+                                >
+                                    <span className="workspace-mode-icon">
+                                        <RailIcon glyph="admin" />
+                                    </span>
+                                    {!leftRailCollapsed ? <span>Admin</span> : null}
+                                </button>
+                                {leftRailCollapsed && collapsedAdminSubmenuOpen ? (
+                                    <div
+                                        className="workspace-admin-submenu workspace-admin-submenu-flyout"
+                                        ref={collapsedAdminSubmenuRef}
+                                    >
+                                        <button
+                                            type="button"
+                                            className={
+                                                activeAdminSubsection === 'users'
+                                                    ? 'workspace-admin-submenu-item active'
+                                                    : 'workspace-admin-submenu-item'
+                                            }
+                                            onClick={() => {
+                                                setActiveAdminSubsection('users');
+                                                setActiveSection('admin');
+                                                setCollapsedAdminSubmenuOpen(false);
+                                            }}
+                                        >
+                                            Users
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={
+                                                activeAdminSubsection === 'groups'
+                                                    ? 'workspace-admin-submenu-item active'
+                                                    : 'workspace-admin-submenu-item'
+                                            }
+                                            onClick={() => {
+                                                setActiveAdminSubsection('groups');
+                                                setActiveSection('admin');
+                                                setCollapsedAdminSubmenuOpen(false);
+                                            }}
+                                        >
+                                            Groups
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={
+                                                activeAdminSubsection === 'access'
+                                                    ? 'workspace-admin-submenu-item active'
+                                                    : 'workspace-admin-submenu-item'
+                                            }
+                                            onClick={() => {
+                                                setActiveAdminSubsection('access');
+                                                setActiveSection('admin');
+                                                setCollapsedAdminSubmenuOpen(false);
+                                            }}
+                                        >
+                                            Access
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
                         ) : null}
                         {isSystemAdmin && activeSection === 'admin' && !leftRailCollapsed ? (
                             <div className="workspace-admin-submenu">
@@ -5079,37 +5185,6 @@ export default function WorkspacePage() {
                     </nav>
 
                     <div className="workspace-left-footer">
-                        <div className="workspace-version-wrap" ref={versionInfoRef}>
-                            {!leftRailCollapsed ? (
-                                <div
-                                    className="workspace-version-flag"
-                                    title={`Running version ${appVersionLabel}`}
-                                    aria-label={`Running version ${appVersionLabel}`}
-                                >
-                                    <span className="workspace-version-value">
-                                        {`ver. ${appVersionLabel}`}
-                                    </span>
-                                </div>
-                            ) : (
-                                <button
-                                    type="button"
-                                    className="workspace-version-icon"
-                                    title={`Version ${appVersionLabel}`}
-                                    aria-label={`Version ${appVersionLabel}`}
-                                    onClick={() => setShowVersionInfo((current) => !current)}
-                                >
-                                    <RailIcon glyph="info" />
-                                </button>
-                            )}
-                            {leftRailCollapsed && showVersionInfo ? (
-                                <div className="workspace-version-popover">
-                                    <span className="workspace-version-value">
-                                        {`ver. ${appVersionLabel}`}
-                                    </span>
-                                </div>
-                            ) : null}
-                        </div>
-
                         {currentUser ? (
                             <div className="workspace-left-user" ref={leftRailUserMenuRef}>
                                 <button
@@ -5145,6 +5220,37 @@ export default function WorkspacePage() {
                                 ) : null}
                             </div>
                         ) : null}
+
+                        <div className="workspace-version-wrap" ref={versionInfoRef}>
+                            {!leftRailCollapsed ? (
+                                <div
+                                    className="workspace-version-flag"
+                                    title={`Running version ${appVersionLabel}`}
+                                    aria-label={`Running version ${appVersionLabel}`}
+                                >
+                                    <span className="workspace-version-value">
+                                        {`version ${appVersionLabel}`}
+                                    </span>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="workspace-version-icon"
+                                    title={`Version ${appVersionLabel}`}
+                                    aria-label={`Version ${appVersionLabel}`}
+                                    onClick={() => setShowVersionInfo((current) => !current)}
+                                >
+                                    <RailIcon glyph="info" />
+                                </button>
+                            )}
+                            {leftRailCollapsed && showVersionInfo ? (
+                                <div className="workspace-version-popover">
+                                    <span className="workspace-version-value">
+                                        {`version ${appVersionLabel}`}
+                                    </span>
+                                </div>
+                            ) : null}
+                        </div>
                     </div>
                 </aside>
 

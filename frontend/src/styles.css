@@ -1040,6 +1040,13 @@ button:disabled {
     padding-inline: 0.44rem;
 }
 
+.workspace-left-rail.is-collapsed .workspace-left-rail-head {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.24rem;
+    padding-inline: 0;
+}
+
 .workspace-left-rail-head {
     display: flex;
     align-items: center;
@@ -1117,6 +1124,17 @@ button:disabled {
     height: 1.06rem;
 }
 
+.workspace-left-rail.is-collapsed .workspace-rail-toggle {
+    width: 2.45rem;
+    height: 2.45rem;
+    border-radius: 0.56rem;
+}
+
+.workspace-left-rail.is-collapsed .workspace-rail-toggle svg {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
 .workspace-rail-toggle:hover {
     filter: none;
     background: rgba(255, 255, 255, 0.13);
@@ -1161,6 +1179,21 @@ button:disabled {
     background: rgba(255, 255, 255, 0.03);
     display: grid;
     gap: 0.26rem;
+}
+
+.workspace-admin-menu-anchor {
+    position: relative;
+}
+
+.workspace-admin-submenu-flyout {
+    position: absolute;
+    left: calc(100% + 0.46rem);
+    top: 0;
+    min-width: 132px;
+    z-index: 45;
+    border: 1px solid #4f3e2b;
+    background: #251a11;
+    box-shadow: 0 14px 26px rgba(14, 9, 4, 0.42);
 }
 
 .workspace-admin-submenu-item {
@@ -1233,6 +1266,9 @@ button:disabled {
 
 .workspace-version-wrap {
     position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: center;
 }
 
 .workspace-version-flag {
@@ -1240,7 +1276,13 @@ button:disabled {
     border-radius: 0;
     background: transparent;
     color: #c9b190;
-    display: inline-flex;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    text-align: center;
     gap: 0;
     padding: 0.18rem 0.16rem;
 }
@@ -1253,14 +1295,15 @@ button:disabled {
 }
 
 .workspace-version-value {
+    display: inline-block;
     font-size: 0.74rem;
     font-weight: 400;
     color: #cfb692;
 }
 
 .workspace-version-icon {
-    width: 1.72rem;
-    min-height: 1.72rem;
+    width: 2.45rem;
+    min-height: 2.45rem;
     border-radius: 0.46rem;
     border: 0;
     background: transparent;
@@ -1272,8 +1315,8 @@ button:disabled {
 }
 
 .workspace-version-icon svg {
-    width: 1.06rem;
-    height: 1.06rem;
+    width: 1.2rem;
+    height: 1.2rem;
 }
 
 .workspace-version-popover {
@@ -1293,11 +1336,12 @@ button:disabled {
 }
 
 .workspace-left-rail.is-collapsed .workspace-left-footer {
-    align-items: flex-start;
+    align-items: center;
 }
 
 .workspace-left-rail.is-collapsed .workspace-version-wrap {
     width: 100%;
+    justify-content: center;
 }
 
 .workspace-left-user-trigger {
