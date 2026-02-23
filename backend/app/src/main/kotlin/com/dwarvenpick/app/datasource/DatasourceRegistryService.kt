@@ -395,9 +395,10 @@ class DatasourceRegistryService(
             throw IllegalArgumentException("Credential profile id is required.")
         }
 
-        val encrypted = request.password?.let { password ->
-            datasourceCredentialCryptoService.encryptPassword(password)
-        }
+        val encrypted =
+            request.password?.let { password ->
+                datasourceCredentialCryptoService.encryptPassword(password)
+            }
         val now = Instant.now()
 
         val existingRecord = datasource.credentialProfiles[normalizedProfileId]

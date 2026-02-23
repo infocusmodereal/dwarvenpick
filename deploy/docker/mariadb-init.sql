@@ -224,3 +224,7 @@ JOIN warehouse.order_items oi
     ON oi.order_id = o.order_id
 WHERE o.order_status IN ('PAID', 'SHIPPED', 'DELIVERED')
 GROUP BY c.customer_id, c.customer_name, c.customer_segment, c.region;
+
+CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY 'readonly';
+GRANT SELECT, SHOW VIEW ON warehouse.* TO 'readonly'@'%';
+FLUSH PRIVILEGES;

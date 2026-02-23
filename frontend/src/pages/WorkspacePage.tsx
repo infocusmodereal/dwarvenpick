@@ -23,6 +23,14 @@ type AuthMethodsResponse = {
     methods?: string[];
 };
 
+type VersionResponse = {
+    service: string;
+    version: string;
+    artifact: string;
+    group: string;
+    buildTime: string;
+};
+
 type CatalogDatasourceResponse = {
     id: string;
     name: string;
@@ -287,6 +295,11 @@ type EditorCursorLegend = {
     selectedChars: number;
     selectedLines: number;
 };
+type ResultSortDirection = 'asc' | 'desc';
+type ResultSortState = {
+    columnIndex: number;
+    direction: ResultSortDirection;
+} | null;
 type RailGlyph =
     | 'workbench'
     | 'history'
@@ -382,6 +395,61 @@ const builtInAuditOutcomes = [
     'succeeded',
     'canceled',
     'noop'
+];
+
+const sqlKeywordSuggestions = [
+    'SELECT',
+    'DISTINCT',
+    'FROM',
+    'WHERE',
+    'GROUP BY',
+    'HAVING',
+    'ORDER BY',
+    'LIMIT',
+    'OFFSET',
+    'JOIN',
+    'LEFT JOIN',
+    'RIGHT JOIN',
+    'INNER JOIN',
+    'FULL OUTER JOIN',
+    'CROSS JOIN',
+    'UNION',
+    'UNION ALL',
+    'WITH',
+    'INSERT INTO',
+    'UPDATE',
+    'DELETE FROM',
+    'CREATE TABLE',
+    'ALTER TABLE',
+    'DROP TABLE',
+    'CREATE VIEW',
+    'DROP VIEW',
+    'CREATE INDEX',
+    'DROP INDEX',
+    'PRIMARY KEY',
+    'FOREIGN KEY',
+    'VALUES',
+    'SET',
+    'AS',
+    'AND',
+    'OR',
+    'NOT',
+    'IN',
+    'BETWEEN',
+    'LIKE',
+    'IS NULL',
+    'IS NOT NULL',
+    'CASE',
+    'WHEN',
+    'THEN',
+    'ELSE',
+    'END',
+    'EXPLAIN',
+    'COUNT',
+    'SUM',
+    'AVG',
+    'MIN',
+    'MAX'
 ];
 
 const datasourceIconByEngine: Record<DatasourceEngine, string> = {
@@ -487,6 +555,39 @@ const formatCsvCell = (value: string | null): string => {
 
 const formatCsvRow = (row: Array<string | null>): string =>
     row.map((value) => formatCsvCell(value)).join(',');
+
+const compareResultValues = (
+    left: string | null,
+    right: string | null,
+    direction: ResultSortDirection
+): number => {
+    if (left === right) {
+        return 0;
+    }
+
+    if (left === null) {
+        return 1;
+    }
+    if (right === null) {
+        return -1;
+    }
+
+    const normalizedLeft = left.trim();
+    const normalizedRight = right.trim();
+    const leftNumeric = Number(normalizedLeft);
+    const rightNumeric = Number(normalizedRight);
+    const bothNumeric = Number.isFinite(leftNumeric) && Number.isFinite(rightNumeric);
+
+    if (bothNumeric) {
+        return direction === 'asc' ? leftNumeric - rightNumeric : rightNumeric - leftNumeric;
+    }
+
+    const lexicalOrder = normalizedLeft.localeCompare(normalizedRight, undefined, {
+        numeric: true,
+        sensitivity: 'base'
+    });
+    return direction === 'asc' ? lexicalOrder : -lexicalOrder;
+};
 
 const defaultPortByEngine: Record<DatasourceEngine, number> = {
     POSTGRESQL: 5432,
@@ -930,6 +1031,7 @@ export default function WorkspacePage() {
     const navigate = useNavigate();
 
     const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+    const [appVersion, setAppVersion] = useState('unknown');
     const [authMethods, setAuthMethods] = useState<string[]>([]);
     const [visibleDatasources, setVisibleDatasources] = useState<CatalogDatasourceResponse[]>([]);
     const [workspaceError, setWorkspaceError] = useState('');
@@ -1018,6 +1120,8 @@ export default function WorkspacePage() {
     const [exportIncludeHeaders, setExportIncludeHeaders] = useState(true);
     const [exportingCsv, setExportingCsv] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
+    const [resultsPageSize, setResultsPageSize] = useState(500);
+    const [resultSortState, setResultSortState] = useState<ResultSortState>(null);
     const [resultGridScrollTop, setResultGridScrollTop] = useState(0);
 
     const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
@@ -1229,10 +1333,28 @@ export default function WorkspacePage() {
 
     useEffect(() => {
         setResultGridScrollTop(0);
+        setResultSortState(null);
     }, [activeTabId]);
 
-    const visibleResultRows = useMemo(() => {
+    const sortedResultRows = useMemo(() => {
         const rows = activeTab?.resultRows ?? [];
+        if (!resultSortState) {
+            return rows;
+        }
+
+        const sortedRows = [...rows];
+        sortedRows.sort((left, right) =>
+            compareResultValues(
+                left[resultSortState.columnIndex] ?? null,
+                right[resultSortState.columnIndex] ?? null,
+                resultSortState.direction
+            )
+        );
+        return sortedRows;
+    }, [activeTab?.resultRows, resultSortState]);
+
+    const visibleResultRows = useMemo(() => {
+        const rows = sortedResultRows;
         if (rows.length === 0) {
             return {
                 start: 0,
@@ -1258,7 +1380,7 @@ export default function WorkspacePage() {
             bottomSpacerPx: Math.max(0, (rows.length - end) * resultRowHeightPx),
             rows: rows.slice(start, end)
         };
-    }, [activeTab?.resultRows, resultGridScrollTop]);
+    }, [resultGridScrollTop, sortedResultRows]);
 
     const selectedDatasource = useMemo(
         () =>
@@ -1308,6 +1430,13 @@ export default function WorkspacePage() {
         }
         return 'Unknown';
     }, [selectedDatasourceHealth]);
+    const appVersionLabel = useMemo(() => {
+        const normalized = appVersion.trim();
+        if (!normalized || normalized === 'unknown') {
+            return 'v-dev';
+        }
+        return normalized.startsWith('v') ? normalized : `v${normalized}`;
+    }, [appVersion]);
 
     const selectedAdminDatasource = useMemo(
         () =>
@@ -1699,6 +1828,10 @@ export default function WorkspacePage() {
                 const enabledMethods =
                     methodsPayload.methods?.map((method) => method.toLowerCase()) ?? [];
 
+                const versionResponsePromise = fetch('/api/version', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
                 const meResponse = await fetch('/api/auth/me', {
                     method: 'GET',
                     credentials: 'include'
@@ -1725,11 +1858,20 @@ export default function WorkspacePage() {
 
                 const datasources =
                     (await datasourceResponse.json()) as CatalogDatasourceResponse[];
+                const versionPayload = await versionResponsePromise
+                    .then(async (response) => {
+                        if (!response.ok) {
+                            return null;
+                        }
+                        return (await response.json()) as VersionResponse;
+                    })
+                    .catch(() => null);
                 if (!active) {
                     return;
                 }
 
                 setCurrentUser(me);
+                setAppVersion(versionPayload?.version ?? 'unknown');
                 setAuthMethods(enabledMethods);
                 setVisibleDatasources(datasources);
                 hydrateWorkspaceTabs(datasources);
@@ -2253,31 +2395,97 @@ export default function WorkspacePage() {
         if (!monaco) {
             return;
         }
-        if (!schemaBrowser || schemaBrowser.datasourceId !== activeTab?.datasourceId) {
-            return;
+
+        type CompletionSeed = Omit<MonacoModule.languages.CompletionItem, 'range'>;
+        const suggestions = new Map<string, CompletionSeed>();
+        const putSuggestion = (item: CompletionSeed) => {
+            const normalizedInsertText =
+                typeof item.insertText === 'string' ? item.insertText : String(item.label);
+            const key = `${String(item.label)}::${item.kind}::${normalizedInsertText}`;
+            if (!suggestions.has(key)) {
+                suggestions.set(key, item);
+            }
+        };
+
+        sqlKeywordSuggestions.forEach((keyword) => {
+            putSuggestion({
+                label: keyword,
+                insertText: keyword,
+                kind: monaco.languages.CompletionItemKind.Keyword,
+                detail: 'SQL keyword',
+                sortText: `0-${keyword}`
+            });
+        });
+
+        visibleDatasources.forEach((datasource) => {
+            putSuggestion({
+                label: datasource.name,
+                insertText: datasource.id,
+                kind: monaco.languages.CompletionItemKind.Module,
+                detail: `Connection (${datasource.engine})`,
+                sortText: `3-${datasource.name.toLowerCase()}`
+            });
+        });
+
+        if (schemaBrowser && schemaBrowser.datasourceId === activeTab?.datasourceId) {
+            schemaBrowser.schemas.forEach((schemaEntry) => {
+                putSuggestion({
+                    label: schemaEntry.schema,
+                    insertText: schemaEntry.schema,
+                    kind: monaco.languages.CompletionItemKind.Module,
+                    detail: 'Schema',
+                    sortText: `1-${schemaEntry.schema.toLowerCase()}`
+                });
+
+                schemaEntry.tables.forEach((tableEntry) => {
+                    const qualifiedTableName = `${schemaEntry.schema}.${tableEntry.table}`;
+                    putSuggestion({
+                        label: qualifiedTableName,
+                        insertText: qualifiedTableName,
+                        kind: monaco.languages.CompletionItemKind.Class,
+                        detail: `${tableEntry.type} table`,
+                        sortText: `1-${qualifiedTableName.toLowerCase()}`
+                    });
+                    putSuggestion({
+                        label: tableEntry.table,
+                        insertText: tableEntry.table,
+                        kind: monaco.languages.CompletionItemKind.Class,
+                        detail: `${tableEntry.type} table in ${schemaEntry.schema}`,
+                        sortText: `1-${tableEntry.table.toLowerCase()}`
+                    });
+
+                    tableEntry.columns.forEach((columnEntry) => {
+                        const tableColumnName = `${tableEntry.table}.${columnEntry.name}`;
+                        const qualifiedColumnName = `${qualifiedTableName}.${columnEntry.name}`;
+                        putSuggestion({
+                            label: columnEntry.name,
+                            insertText: columnEntry.name,
+                            kind: monaco.languages.CompletionItemKind.Field,
+                            detail: `${schemaEntry.schema}.${tableEntry.table} (${columnEntry.jdbcType})`,
+                            sortText: `2-${columnEntry.name.toLowerCase()}`
+                        });
+                        putSuggestion({
+                            label: tableColumnName,
+                            insertText: tableColumnName,
+                            kind: monaco.languages.CompletionItemKind.Field,
+                            detail: `${tableEntry.type} column`,
+                            sortText: `2-${tableColumnName.toLowerCase()}`
+                        });
+                        putSuggestion({
+                            label: qualifiedColumnName,
+                            insertText: qualifiedColumnName,
+                            kind: monaco.languages.CompletionItemKind.Field,
+                            detail: columnEntry.jdbcType,
+                            sortText: `2-${qualifiedColumnName.toLowerCase()}`
+                        });
+                    });
+                });
+            });
         }
 
-        const tableSuggestions = schemaBrowser.schemas.flatMap((schemaEntry) =>
-            schemaEntry.tables.map((tableEntry) => ({
-                label: `${schemaEntry.schema}.${tableEntry.table}`,
-                insertText: `${schemaEntry.schema}.${tableEntry.table}`,
-                kind: monaco.languages.CompletionItemKind.Class,
-                detail: `${tableEntry.type} table`
-            }))
-        );
-        const columnSuggestions = schemaBrowser.schemas.flatMap((schemaEntry) =>
-            schemaEntry.tables.flatMap((tableEntry) =>
-                tableEntry.columns.map((columnEntry) => ({
-                    label: columnEntry.name,
-                    insertText: columnEntry.name,
-                    kind: monaco.languages.CompletionItemKind.Field,
-                    detail: `${schemaEntry.schema}.${tableEntry.table} (${columnEntry.jdbcType})`
-                }))
-            )
-        );
-
-        const suggestions = [...tableSuggestions, ...columnSuggestions];
+        const completionItems = Array.from(suggestions.values());
         completionProviderRef.current = monaco.languages.registerCompletionItemProvider('sql', {
+            triggerCharacters: ['.', ' ', '('],
             provideCompletionItems(model, position) {
                 const word = model.getWordUntilPosition(position);
                 const range = {
@@ -2288,7 +2496,7 @@ export default function WorkspacePage() {
                 };
 
                 return {
-                    suggestions: suggestions.map((suggestion) => ({
+                    suggestions: completionItems.map((suggestion) => ({
                         ...suggestion,
                         range
                     }))
@@ -2300,7 +2508,7 @@ export default function WorkspacePage() {
             completionProviderRef.current?.dispose();
             completionProviderRef.current = null;
         };
-    }, [activeTab?.datasourceId, schemaBrowser]);
+    }, [activeTab?.datasourceId, schemaBrowser, visibleDatasources]);
 
     const handleOpenNewTabForDatasource = useCallback(
         (datasourceId: string, initialSql = 'SELECT 1;') => {
@@ -2387,7 +2595,7 @@ export default function WorkspacePage() {
             previousPageTokens?: string[]
         ) => {
             const queryParams = new URLSearchParams();
-            queryParams.set('pageSize', '100');
+            queryParams.set('pageSize', resultsPageSize.toString());
             if (pageToken) {
                 queryParams.set('pageToken', pageToken);
             }
@@ -2421,7 +2629,7 @@ export default function WorkspacePage() {
                 };
             });
         },
-        [readFriendlyError, updateWorkspaceTab]
+        [readFriendlyError, resultsPageSize, updateWorkspaceTab]
     );
 
     const fetchExecutionStatus = useCallback(
@@ -2876,6 +3084,33 @@ export default function WorkspacePage() {
             updatedHistory
         );
     }, [activeTab, fetchQueryResultsPage]);
+
+    useEffect(() => {
+        if (!activeTab?.executionId || activeTab.executionStatus !== 'SUCCEEDED') {
+            return;
+        }
+
+        setResultGridScrollTop(0);
+        void fetchQueryResultsPage(activeTab.id, activeTab.executionId, firstPageToken, []);
+    }, [
+        activeTab?.executionId,
+        activeTab?.executionStatus,
+        activeTab?.id,
+        fetchQueryResultsPage,
+        resultsPageSize
+    ]);
+
+    const handleToggleResultSort = useCallback((columnIndex: number) => {
+        setResultSortState((current) => {
+            if (!current || current.columnIndex !== columnIndex) {
+                return { columnIndex, direction: 'asc' };
+            }
+            if (current.direction === 'asc') {
+                return { columnIndex, direction: 'desc' };
+            }
+            return null;
+        });
+    }, []);
 
     const writeTextToClipboard = useCallback(async (value: string) => {
         if (navigator.clipboard?.writeText) {
@@ -4496,6 +4731,21 @@ export default function WorkspacePage() {
                         ) : null}
                     </nav>
 
+                    <div
+                        className="workspace-version-flag"
+                        title={`Running version ${appVersionLabel}`}
+                        aria-label={`Running version ${appVersionLabel}`}
+                    >
+                        {!leftRailCollapsed ? (
+                            <>
+                                <span className="workspace-version-label">Version</span>
+                                <strong>{appVersionLabel}</strong>
+                            </>
+                        ) : (
+                            <strong>{appVersionLabel}</strong>
+                        )}
+                    </div>
+
                     {currentUser ? (
                         <div className="workspace-left-user" ref={leftRailUserMenuRef}>
                             <button
@@ -5203,73 +5453,87 @@ export default function WorkspacePage() {
                             </div>
 
                             <div className="monaco-host">
-                                {monacoLoadTimedOut ? (
-                                    <div className="editor-fallback">
-                                        <p className="form-error">
-                                            SQL editor failed to initialize. You can continue using
-                                            fallback mode.
-                                        </p>
-                                        <textarea
+                                <div className="monaco-frame">
+                                    {monacoLoadTimedOut ? (
+                                        <div className="editor-fallback">
+                                            <p className="form-error">
+                                                SQL editor failed to initialize. You can continue
+                                                using fallback mode.
+                                            </p>
+                                            <textarea
+                                                value={activeTab?.queryText ?? ''}
+                                                onChange={(event) => {
+                                                    if (!activeTab) {
+                                                        return;
+                                                    }
+
+                                                    updateWorkspaceTab(
+                                                        activeTab.id,
+                                                        (currentTab) => ({
+                                                            ...currentTab,
+                                                            queryText: event.target.value
+                                                        })
+                                                    );
+                                                }}
+                                                rows={14}
+                                                className="fallback-editor-textarea"
+                                            />
+                                            <div className="row">
+                                                <button
+                                                    type="button"
+                                                    className="chip"
+                                                    onClick={handleRetryEditorLoad}
+                                                >
+                                                    Retry Monaco Editor
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Editor
+                                            key={`monaco-${editorRenderKey}`}
+                                            height="100%"
+                                            language="sql"
+                                            beforeMount={handleEditorWillMount}
+                                            theme="dwarvenpick-sql"
+                                            loading={
+                                                <div className="editor-loading">
+                                                    Loading SQL editor...
+                                                </div>
+                                            }
                                             value={activeTab?.queryText ?? ''}
-                                            onChange={(event) => {
+                                            onMount={handleEditorDidMount}
+                                            onChange={(value) => {
                                                 if (!activeTab) {
                                                     return;
                                                 }
 
                                                 updateWorkspaceTab(activeTab.id, (currentTab) => ({
                                                     ...currentTab,
-                                                    queryText: event.target.value
+                                                    queryText: value ?? '',
+                                                    errorMessage: currentTab.errorMessage,
+                                                    statusMessage: currentTab.statusMessage
                                                 }));
                                             }}
-                                            rows={14}
-                                            className="fallback-editor-textarea"
+                                            options={{
+                                                automaticLayout: true,
+                                                minimap: { enabled: false },
+                                                lineNumbers: 'on',
+                                                lineNumbersMinChars: 4,
+                                                bracketPairColorization: { enabled: true },
+                                                wordWrap: 'on',
+                                                scrollBeyondLastLine: false,
+                                                padding: { top: 10, bottom: 10 },
+                                                quickSuggestions: {
+                                                    comments: false,
+                                                    strings: false,
+                                                    other: true
+                                                },
+                                                suggestOnTriggerCharacters: true,
+                                                tabCompletion: 'on'
+                                            }}
                                         />
-                                        <div className="row">
-                                            <button
-                                                type="button"
-                                                className="chip"
-                                                onClick={handleRetryEditorLoad}
-                                            >
-                                                Retry Monaco Editor
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <Editor
-                                        key={`monaco-${editorRenderKey}`}
-                                        height="100%"
-                                        language="sql"
-                                        beforeMount={handleEditorWillMount}
-                                        theme="dwarvenpick-sql"
-                                        loading={
-                                            <div className="editor-loading">
-                                                Loading SQL editor...
-                                            </div>
-                                        }
-                                        value={activeTab?.queryText ?? ''}
-                                        onMount={handleEditorDidMount}
-                                        onChange={(value) => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                                ...currentTab,
-                                                queryText: value ?? '',
-                                                errorMessage: currentTab.errorMessage,
-                                                statusMessage: currentTab.statusMessage
-                                            }));
-                                        }}
-                                        options={{
-                                            automaticLayout: true,
-                                            minimap: { enabled: false },
-                                            lineNumbers: 'on',
-                                            bracketPairColorization: { enabled: true },
-                                            wordWrap: 'on',
-                                            scrollBeyondLastLine: false
-                                        }}
-                                    />
-                                )}
+                                    )}
+                                </div>
                             </div>
 
                             <div className="editor-action-row">
@@ -5497,13 +5761,59 @@ export default function WorkspacePage() {
                                                 <tr>
                                                     <th className="result-meta-heading">Row</th>
                                                     <th className="result-meta-heading">Actions</th>
-                                                    {activeTab.resultColumns.map((column) => (
-                                                        <th
-                                                            key={`${column.name}-${column.jdbcType}`}
-                                                        >
-                                                            {column.name}
-                                                        </th>
-                                                    ))}
+                                                    {activeTab.resultColumns.map(
+                                                        (column, columnIndex) => {
+                                                            const direction =
+                                                                resultSortState?.columnIndex ===
+                                                                columnIndex
+                                                                    ? resultSortState.direction
+                                                                    : null;
+                                                            const sortStateClass =
+                                                                direction === 'asc'
+                                                                    ? 'is-asc'
+                                                                    : direction === 'desc'
+                                                                      ? 'is-desc'
+                                                                      : 'is-none';
+
+                                                            return (
+                                                                <th
+                                                                    key={`${column.name}-${column.jdbcType}-${columnIndex}`}
+                                                                >
+                                                                    <button
+                                                                        type="button"
+                                                                        className="result-sort-trigger"
+                                                                        onClick={() =>
+                                                                            handleToggleResultSort(
+                                                                                columnIndex
+                                                                            )
+                                                                        }
+                                                                        title={`Sort by ${column.name}`}
+                                                                        aria-label={`Sort by ${column.name}`}
+                                                                    >
+                                                                        <span>{column.name}</span>
+                                                                        <span
+                                                                            className={`result-sort-icon ${sortStateClass}`}
+                                                                            aria-hidden
+                                                                        >
+                                                                            {direction ? (
+                                                                                direction ===
+                                                                                'asc' ? (
+                                                                                    <span>↑</span>
+                                                                                ) : (
+                                                                                    <span>↓</span>
+                                                                                )
+                                                                            ) : (
+                                                                                <>
+                                                                                    <span>↑</span>
+                                                                                    <span>↓</span>
+                                                                                </>
+                                                                            )}
+                                                                        </span>
+                                                                    </button>
+                                                                </th>
+                                                            );
+                                                        }
+                                                    )}
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -5585,6 +5895,25 @@ export default function WorkspacePage() {
                                                 ) : null}
                                             </tbody>
                                         </table>
+                                    </div>
+                                    <div className="result-table-footer">
+                                        <label htmlFor="result-page-size">Rows per page</label>
+                                        <div className="select-wrap">
+                                            <select
+                                                id="result-page-size"
+                                                value={resultsPageSize}
+                                                onChange={(event) => {
+                                                    setResultsPageSize(Number(event.target.value));
+                                                    setResultGridScrollTop(0);
+                                                }}
+                                            >
+                                                <option value={10}>10</option>
+                                                <option value={100}>100</option>
+                                                <option value={250}>250</option>
+                                                <option value={500}>500</option>
+                                                <option value={1000}>1000</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </>
                             ) : null}

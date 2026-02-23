@@ -27,8 +27,8 @@ server:
 
 dwarvenpick:
   query:
-    default-page-size: 100
-    max-page-size: 500
+    default-page-size: 500
+    max-page-size: 1000
     max-buffered-rows: 5000
     max-export-rows: 5000
     max-concurrency-per-user: 5

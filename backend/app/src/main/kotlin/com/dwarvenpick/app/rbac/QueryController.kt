@@ -35,8 +35,8 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import java.time.Instant
 import java.io.ByteArrayOutputStream
+import java.time.Instant
 
 @RestController
 @Validated

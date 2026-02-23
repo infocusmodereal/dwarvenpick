@@ -70,6 +70,7 @@ class SchemaBrowserService(
                 val metadata = connection.metaData
                 val catalog = connection.catalog
                 val schemaNames = mutableListOf<String>()
+                var schemaUsesCatalogFallback = false
 
                 metadata.schemas.use { schemas ->
                     while (schemas.next() && schemaNames.size < maxSchemas) {
@@ -84,7 +85,12 @@ class SchemaBrowserService(
                 }
 
                 if (schemaNames.isEmpty()) {
-                    schemaNames.add("default")
+                    if (!catalog.isNullOrBlank()) {
+                        schemaNames.add(catalog)
+                        schemaUsesCatalogFallback = true
+                    } else {
+                        schemaNames.add("default")
+                    }
                 }
 
                 val schemaResponses =
@@ -92,44 +98,58 @@ class SchemaBrowserService(
                         .distinctBy { schema -> schema.lowercase(Locale.getDefault()) }
                         .sortedBy { schema -> schema.lowercase(Locale.getDefault()) }
                         .map { schemaName ->
+                            val resolvedCatalog = if (schemaUsesCatalogFallback) schemaName else catalog
+                            val resolvedSchemaPattern = if (schemaUsesCatalogFallback) null else schemaName
                             val tables = mutableListOf<DatasourceTableEntryResponse>()
-                            metadata.getTables(catalog, schemaName, "%", arrayOf("TABLE", "VIEW")).use { tableRs ->
-                                while (tableRs.next() && tables.size < maxTablesPerSchema) {
-                                    val tableName =
-                                        tableRs.getString("TABLE_NAME")
-                                            ?: tableRs.getString(3)
-                                            ?: continue
-                                    val tableType = tableRs.getString("TABLE_TYPE") ?: "TABLE"
+                            metadata
+                                .getTables(
+                                    resolvedCatalog,
+                                    resolvedSchemaPattern,
+                                    "%",
+                                    arrayOf("TABLE", "VIEW"),
+                                ).use { tableRs ->
+                                    while (tableRs.next() && tables.size < maxTablesPerSchema) {
+                                        val tableName =
+                                            tableRs.getString("TABLE_NAME")
+                                                ?: tableRs.getString(3)
+                                                ?: continue
+                                        val tableType = tableRs.getString("TABLE_TYPE") ?: "TABLE"
 
-                                    val columns = mutableListOf<DatasourceColumnEntryResponse>()
-                                    metadata.getColumns(catalog, schemaName, tableName, "%").use { columnRs ->
-                                        while (columnRs.next() && columns.size < maxColumnsPerTable) {
-                                            val columnName =
-                                                columnRs.getString("COLUMN_NAME")
-                                                    ?: columnRs.getString(4)
-                                                    ?: continue
-                                            val jdbcType = columnRs.getString("TYPE_NAME") ?: "UNKNOWN"
-                                            val nullableCode =
-                                                columnRs.getInt("NULLABLE")
-                                            columns.add(
-                                                DatasourceColumnEntryResponse(
-                                                    name = columnName,
-                                                    jdbcType = jdbcType,
-                                                    nullable = nullableCode != 0,
-                                                ),
-                                            )
-                                        }
+                                        val columns = mutableListOf<DatasourceColumnEntryResponse>()
+                                        metadata
+                                            .getColumns(
+                                                resolvedCatalog,
+                                                resolvedSchemaPattern,
+                                                tableName,
+                                                "%",
+                                            ).use { columnRs ->
+                                                while (columnRs.next() && columns.size < maxColumnsPerTable) {
+                                                    val columnName =
+                                                        columnRs.getString("COLUMN_NAME")
+                                                            ?: columnRs.getString(4)
+                                                            ?: continue
+                                                    val jdbcType = columnRs.getString("TYPE_NAME") ?: "UNKNOWN"
+                                                    val nullableCode =
+                                                        columnRs.getInt("NULLABLE")
+                                                    columns.add(
+                                                        DatasourceColumnEntryResponse(
+                                                            name = columnName,
+                                                            jdbcType = jdbcType,
+                                                            nullable = nullableCode != 0,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+
+                                        tables.add(
+                                            DatasourceTableEntryResponse(
+                                                table = tableName,
+                                                type = tableType,
+                                                columns = columns,
+                                            ),
+                                        )
                                     }
-
-                                    tables.add(
-                                        DatasourceTableEntryResponse(
-                                            table = tableName,
-                                            type = tableType,
-                                            columns = columns,
-                                        ),
-                                    )
                                 }
-                            }
 
                             DatasourceSchemaEntryResponse(
                                 schema = schemaName,

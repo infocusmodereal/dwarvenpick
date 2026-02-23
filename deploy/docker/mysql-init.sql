@@ -7,3 +7,7 @@ CREATE TABLE IF NOT EXISTS orders.healthcheck (
 INSERT INTO orders.healthcheck (status)
 VALUES ('ok')
 ON DUPLICATE KEY UPDATE status = VALUES(status), checked_at = CURRENT_TIMESTAMP;
+
+CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY 'readonly';
+GRANT SELECT, SHOW VIEW ON orders.* TO 'readonly'@'%';
+FLUSH PRIVILEGES;

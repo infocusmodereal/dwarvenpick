@@ -4,8 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "dwarvenpick.query")
 data class QueryExecutionProperties(
-    val defaultPageSize: Int = 100,
-    val maxPageSize: Int = 500,
+    val defaultPageSize: Int = 500,
+    val maxPageSize: Int = 1000,
     val maxBufferedRows: Int = 5000,
     val maxExportRows: Int = 5000,
     val maxConcurrencyPerUser: Int = 3,
