@@ -780,23 +780,26 @@ kbd {
 
 .connection-form {
     min-width: 0;
-    gap: 0.95rem;
-    padding: 0.4rem 0.4rem 0.7rem;
+    gap: 1.12rem;
+    padding: 0.72rem 0.7rem 0.95rem;
+    font-size: 0.8rem;
 }
 
 .connection-form > h4 {
-    margin-top: 0.35rem;
+    margin-top: 0.12rem;
+    margin-bottom: 0.18rem;
+    font-size: 1.02rem;
 }
 
 .connection-form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 0.86rem 0.84rem;
+    gap: 1rem 0.95rem;
 }
 
 .form-field {
     display: grid;
-    gap: 0.3rem;
+    gap: 0.38rem;
     min-width: 0;
 }
 
@@ -806,7 +809,9 @@ kbd {
 
 .connection-form-note {
     margin-top: 0;
-    margin-bottom: 0.24rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
 }
 
 .connection-form-grid .managed-engine-field {
@@ -841,10 +846,11 @@ kbd {
     border: 1px solid var(--border);
     border-radius: 0.74rem;
     background: #efe4d4;
-    padding: 0.9rem;
+    padding: 1rem;
     display: grid;
-    gap: 1rem;
-    margin-top: 0.16rem;
+    gap: 0.95rem;
+    margin-top: 0.26rem;
+    font-size: 0.8rem;
 }
 
 .managed-advanced-block .form-field {
@@ -853,17 +859,39 @@ kbd {
 
 .managed-advanced-block > summary {
     cursor: pointer;
-    font-size: 0.86rem;
+    font-size: 0.82rem;
     font-weight: 690;
     color: #49351f;
 }
 
 .managed-advanced-block[open] > summary {
-    margin-bottom: 0.62rem;
+    margin-bottom: 0.72rem;
 }
 
 .managed-advanced-block > :not(summary) {
-    margin-top: 0.12rem;
+    margin-top: 0.2rem;
+}
+
+.managed-advanced-block input,
+.managed-advanced-block select,
+.managed-advanced-block textarea,
+.managed-advanced-block button {
+    font-size: 0.8rem;
+}
+
+.managed-advanced-block .form-field label {
+    font-size: 0.76rem;
+    line-height: 1.3;
+}
+
+.connection-form .form-field label {
+    font-size: 0.78rem;
+}
+
+.connection-form input,
+.connection-form select,
+.connection-form textarea {
+    font-size: 0.8rem;
 }
 
 .managed-datasource-actions {
@@ -1039,7 +1067,7 @@ button:disabled {
     width: 2rem;
     height: 2rem;
     border-radius: 0.6rem;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 0;
     padding: 0;
     display: inline-flex;
     align-items: center;
@@ -1439,36 +1467,38 @@ button:disabled {
     font-size: 0.84rem;
 }
 
-.explorer-toolbar-labels {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.45rem;
-    align-items: center;
-}
-
-.explorer-toolbar-labels label {
+.explorer-toolbar-label-row {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #6f5a43;
+    gap: 0.32rem;
 }
 
-.explorer-toolbar-controls {
+.explorer-toolbar-label-text {
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #6f5a43;
+    font-weight: 650;
+}
+
+.explorer-toolbar-control-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.45rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.4rem;
     align-items: center;
 }
 
-.explorer-toolbar-controls .editor-connection-picker {
+.explorer-toolbar-control-row .editor-connection-picker {
     min-width: 0;
 }
 
-.explorer-toolbar-controls .select-wrap {
+.explorer-toolbar-control-row .select-wrap {
     min-width: 0;
+    width: 100%;
+}
+
+.explorer-toolbar-control-row .select-wrap select {
+    width: 100%;
 }
 
 .explorer-empty {
@@ -1977,7 +2007,7 @@ button:disabled {
 .results-body .result-table-wrap {
     max-height: none;
     height: 100%;
-    min-height: 0;
+    min-height: 208px;
 }
 
 .results-body .result-table {
@@ -2028,6 +2058,13 @@ button:disabled {
 
 .result-actions {
     align-items: center;
+}
+
+.results .result-actions {
+    flex-wrap: wrap;
+    overflow: visible;
+    position: relative;
+    z-index: 2;
 }
 
 .results .result-actions button {
@@ -2335,13 +2372,23 @@ button:disabled {
     border: 1px solid var(--border);
     border-radius: 0.75rem;
     background: #efe4d2;
-    padding: 0.72rem;
+    padding: 0.9rem;
     display: grid;
-    gap: 0.62rem;
+    gap: 0.82rem;
+    font-size: 0.8rem;
 }
 
 .driver-upload h4 {
     margin: 0;
+    font-size: 0.84rem;
+}
+
+.driver-upload .form-field {
+    gap: 0.42rem;
+}
+
+.driver-upload .form-field label {
+    font-size: 0.76rem;
 }
 
 .history-panel,
@@ -2460,8 +2507,8 @@ select {
 .connection-editor-header {
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.72rem;
-    padding: 0.1rem 0.4rem 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.16rem 0.45rem 0.62rem;
     border-bottom: 1px solid rgba(184, 162, 132, 0.65);
 }
 
@@ -2619,8 +2666,7 @@ select {
         align-items: start;
     }
 
-    .explorer-toolbar-labels,
-    .explorer-toolbar-controls {
+    .explorer-toolbar-control-row {
         grid-template-columns: 1fr;
     }
 

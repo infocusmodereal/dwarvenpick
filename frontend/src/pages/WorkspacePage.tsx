@@ -1527,6 +1527,21 @@ export default function WorkspacePage() {
         }
         return 'Unknown';
     }, [selectedDatasourceHealth]);
+    const availableSchemaNames = useMemo(() => {
+        if (!schemaBrowser) {
+            return [] as string[];
+        }
+
+        const uniqueSchemas = new Set<string>();
+        schemaBrowser.schemas.forEach((schemaEntry) => {
+            const normalized = schemaEntry.schema.trim();
+            if (normalized) {
+                uniqueSchemas.add(normalized);
+            }
+        });
+
+        return Array.from(uniqueSchemas).sort((left, right) => left.localeCompare(right));
+    }, [schemaBrowser]);
     const appVersionLabel = useMemo(() => {
         const normalized = appVersion.trim();
         if (!normalized || normalized === 'unknown') {
@@ -3682,6 +3697,7 @@ export default function WorkspacePage() {
         updateWorkspaceTab(activeTab.id, (currentTab) => ({
             ...currentTab,
             datasourceId: nextDatasourceId,
+            schema: '',
             statusMessage: `Connection context set to ${nextDatasourceId}.`,
             errorMessage: ''
         }));
@@ -5175,17 +5191,21 @@ export default function WorkspacePage() {
                                 {showSchemaBrowser ? (
                                     <div className="explorer-body">
                                         <div className="explorer-toolbar-fields">
-                                            <div className="explorer-toolbar-labels">
-                                                <label htmlFor="tab-datasource">
-                                                    <span className="tile-heading-icon" aria-hidden>
-                                                        <RailIcon glyph="connections" />
-                                                    </span>
-                                                    <span>Connection</span>
-                                                </label>
-                                                <label htmlFor="tab-schema">Schema</label>
+                                            <div className="explorer-toolbar-label-row">
+                                                <span className="tile-heading-icon" aria-hidden>
+                                                    <RailIcon glyph="connections" />
+                                                </span>
+                                                <span className="explorer-toolbar-label-text">
+                                                    Connection
+                                                </span>
                                             </div>
-                                            <div className="explorer-toolbar-controls">
+                                            <div className="explorer-toolbar-control-row">
                                                 <div className="editor-connection-picker">
+                                                    <span
+                                                        className={`editor-connection-health tone-${selectedDatasourceHealth}`}
+                                                        title={`Connection status: ${selectedDatasourceHealthLabel}`}
+                                                        aria-label={`Connection status ${selectedDatasourceHealthLabel}`}
+                                                    />
                                                     <span
                                                         className="editor-connection-icon"
                                                         aria-hidden
@@ -5197,11 +5217,6 @@ export default function WorkspacePage() {
                                                             height={16}
                                                         />
                                                     </span>
-                                                    <span
-                                                        className={`editor-connection-health tone-${selectedDatasourceHealth}`}
-                                                        title={`Connection status: ${selectedDatasourceHealthLabel}`}
-                                                        aria-label={`Connection status ${selectedDatasourceHealthLabel}`}
-                                                    />
                                                     <div className="select-wrap">
                                                         <select
                                                             id="tab-datasource"
@@ -5229,25 +5244,58 @@ export default function WorkspacePage() {
                                                         </select>
                                                     </div>
                                                 </div>
-                                                <input
-                                                    id="tab-schema"
-                                                    value={activeTab?.schema ?? ''}
-                                                    onChange={(event) => {
-                                                        if (!activeTab) {
-                                                            return;
-                                                        }
+                                            </div>
+                                            <div className="explorer-toolbar-label-row">
+                                                <span className="tile-heading-icon" aria-hidden>
+                                                    <ExplorerIcon glyph="schema" />
+                                                </span>
+                                                <label
+                                                    htmlFor="tab-schema"
+                                                    className="explorer-toolbar-label-text"
+                                                >
+                                                    Default Schema
+                                                </label>
+                                            </div>
+                                            <div className="explorer-toolbar-control-row">
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="tab-schema"
+                                                        aria-label="Default schema"
+                                                        value={activeTab?.schema ?? ''}
+                                                        onChange={(event) => {
+                                                            if (!activeTab) {
+                                                                return;
+                                                            }
 
-                                                        updateWorkspaceTab(
-                                                            activeTab.id,
-                                                            (currentTab) => ({
-                                                                ...currentTab,
-                                                                schema: event.target.value
-                                                            })
-                                                        );
-                                                    }}
-                                                    placeholder="Schema (optional)"
-                                                    disabled={!activeTab}
-                                                />
+                                                            updateWorkspaceTab(
+                                                                activeTab.id,
+                                                                (currentTab) => ({
+                                                                    ...currentTab,
+                                                                    schema: event.target.value
+                                                                })
+                                                            );
+                                                        }}
+                                                        disabled={!activeTab}
+                                                    >
+                                                        <option value="">None</option>
+                                                        {availableSchemaNames.map((schemaName) => (
+                                                            <option
+                                                                key={`schema-option-${schemaName}`}
+                                                                value={schemaName}
+                                                            >
+                                                                {schemaName}
+                                                            </option>
+                                                        ))}
+                                                        {activeTab?.schema &&
+                                                        !availableSchemaNames.includes(
+                                                            activeTab.schema
+                                                        ) ? (
+                                                            <option value={activeTab.schema}>
+                                                                {activeTab.schema}
+                                                            </option>
+                                                        ) : null}
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
                                         {schemaBrowserError ? (
