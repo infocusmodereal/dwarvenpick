@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 :root {
     color-scheme: light;
     --bg: #dbd0bf;
@@ -1135,6 +1137,19 @@ button:disabled {
     height: 1.07rem;
 }
 
+.rail-icon-glyph {
+    width: 100%;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rail-icon-glyph svg {
+    width: 100%;
+    height: 100%;
+}
+
 .workspace-left-rail.is-collapsed .workspace-mode-tab {
     justify-content: center;
     padding-inline: 0;
@@ -1308,14 +1323,14 @@ button:disabled {
 
 .workspace-grid {
     --workbench-editor-min-height: 460px;
+    --workbench-editor-max-height: 760px;
     --workbench-results-min-height: 140px;
     display: grid;
     grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
-    grid-template-rows:
-        minmax(var(--workbench-editor-min-height), 4fr)
-        minmax(var(--workbench-results-min-height), 1fr);
+    grid-template-rows: auto minmax(var(--workbench-results-min-height), 1fr);
     gap: 1rem;
     align-items: stretch;
+    align-content: start;
     min-height: 100%;
     height: 100%;
 }
@@ -1424,8 +1439,36 @@ button:disabled {
     font-size: 0.84rem;
 }
 
-.explorer-toolbar-fields .editor-connection-control label {
-    font-size: 0.76rem;
+.explorer-toolbar-labels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.explorer-toolbar-labels label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #6f5a43;
+}
+
+.explorer-toolbar-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.explorer-toolbar-controls .editor-connection-picker {
+    min-width: 0;
+}
+
+.explorer-toolbar-controls .select-wrap {
+    min-width: 0;
 }
 
 .explorer-empty {
@@ -1599,9 +1642,11 @@ button:disabled {
     align-content: start;
     min-width: 0;
     min-height: var(--workbench-editor-min-height, 460px);
+    max-height: var(--workbench-editor-max-height, 760px);
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     height: 100%;
+    align-self: start;
 }
 
 .editor-toolbar {
@@ -1949,31 +1994,31 @@ button:disabled {
     display: flex;
     flex-wrap: nowrap;
     align-items: stretch;
-    gap: 0.4rem;
+    gap: 0.22rem;
     overflow-x: auto;
-    padding-bottom: 0.12rem;
+    padding-bottom: 0.08rem;
 }
 
 .result-stat {
     border: 1px solid var(--border);
-    border-radius: 0.62rem;
+    border-radius: 0.5rem;
     background: #efe3d1;
-    padding: 0.35rem 0.5rem;
+    padding: 0.2rem 0.3rem;
     display: grid;
-    gap: 0.12rem;
+    gap: 0.06rem;
     flex: 1 1 0;
-    min-width: 110px;
+    min-width: 72px;
 }
 
 .result-stat span {
-    font-size: 0.66rem;
+    font-size: 0.52rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: #6d5a44;
 }
 
 .result-stat strong {
-    font-size: 0.78rem;
+    font-size: 0.62rem;
     color: #3d2b17;
     white-space: nowrap;
     overflow: hidden;
@@ -1985,27 +2030,64 @@ button:disabled {
     align-items: center;
 }
 
+.results .result-actions button {
+    min-height: 1.7rem;
+    font-size: 0.71rem;
+    padding: 0.24rem 0.55rem;
+    font-weight: 620;
+}
+
+.result-export-wrapper {
+    position: relative;
+}
+
+.result-export-popover {
+    position: absolute;
+    top: calc(100% + 0.32rem);
+    right: 0;
+    z-index: 32;
+    min-width: 180px;
+    border: 1px solid #ab8f6a;
+    border-radius: 0.62rem;
+    background: #f6efe1;
+    box-shadow: 0 12px 22px rgba(44, 30, 15, 0.18);
+    padding: 0.45rem;
+    display: grid;
+    gap: 0.38rem;
+}
+
+.result-export-popover .checkbox-row span {
+    font-size: 0.74rem;
+    color: #5f4a31;
+}
+
+.result-export-popover button {
+    width: 100%;
+}
+
 .result-meta-heading {
     background: #dfcdb3 !important;
     color: #513a1f;
     text-transform: uppercase;
-    font-size: 0.73rem;
+    font-size: 0.58rem;
     letter-spacing: 0.04em;
 }
 
 .result-row-index,
 .result-cell-actions {
     background: #f0e3d0;
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
 }
 
 .copy-row-button {
-    font-size: 0.74rem;
-    padding: 0.28rem 0.56rem;
+    font-size: 0.62rem;
+    padding: 0.14rem 0.42rem;
+    min-height: 1.35rem;
 }
 
 .result-copy-icon {
-    width: 1.55rem;
-    height: 1.55rem;
+    width: 1.2rem;
+    height: 1.2rem;
     border-radius: 0.42rem;
     border: 1px solid #b79970;
     background: #f6ecde;
@@ -2022,8 +2104,8 @@ button:disabled {
 }
 
 .result-copy-icon svg {
-    width: 0.82rem;
-    height: 0.82rem;
+    width: 0.64rem;
+    height: 0.64rem;
 }
 
 .result-sort-trigger {
@@ -2047,7 +2129,7 @@ button:disabled {
 
 .result-sort-icon {
     min-width: 0.86rem;
-    font-size: 0.72rem;
+    font-size: 0.58rem;
     line-height: 0.62rem;
     color: #7a6244;
     display: inline-flex;
@@ -2058,7 +2140,7 @@ button:disabled {
 
 .result-sort-icon.is-asc,
 .result-sort-icon.is-desc {
-    font-size: 0.86rem;
+    font-size: 0.7rem;
     line-height: 1;
     color: #6a4b28;
 }
@@ -2071,14 +2153,49 @@ button:disabled {
 }
 
 .result-table-footer label {
-    font-size: 0.8rem;
+    font-size: 0.68rem;
     font-weight: 620;
     color: #6d5a44;
 }
 
 .result-table-footer .select-wrap select {
-    min-width: 7rem;
-    height: 2rem;
+    min-width: 5.4rem;
+    height: 1.72rem;
+    font-size: 0.7rem;
+    padding: 0.16rem 0.42rem;
+}
+
+.results-body .result-table {
+    min-width: 640px;
+    font-size: 0.56rem;
+}
+
+.results-body .result-table th,
+.results-body .result-table td {
+    padding: 0.2rem 0.34rem;
+}
+
+.results-body .result-table thead th {
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font-size: 0.58rem;
+}
+
+.results-body .result-table tbody td {
+    height: 22px;
+    line-height: 1.2;
+}
+
+.results-body .result-table tbody td:not(.result-row-index):not(.result-cell-actions) {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+.result-cell {
+    min-width: 128px;
+    gap: 0.3rem;
+}
+
+.result-cell > span {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
 }
 
 .history-filters {
@@ -2500,6 +2617,11 @@ select {
     .editor-connection-control {
         grid-template-columns: 1fr;
         align-items: start;
+    }
+
+    .explorer-toolbar-labels,
+    .explorer-toolbar-controls {
+        grid-template-columns: 1fr;
     }
 
     .results {

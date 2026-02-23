@@ -7,6 +7,15 @@ import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import { statementAtCursor } from '../sql/statementSplitter';
+import railWorkbenchIcon from '../assets/lucide/layout-panel-top.svg?raw';
+import railHistoryIcon from '../assets/lucide/history.svg?raw';
+import railSnippetsIcon from '../assets/lucide/file-text.svg?raw';
+import railAuditIcon from '../assets/lucide/shield-check.svg?raw';
+import railAdminIcon from '../assets/lucide/settings.svg?raw';
+import railConnectionsIcon from '../assets/lucide/database.svg?raw';
+import railCollapseIcon from '../assets/lucide/panel-left-close.svg?raw';
+import railMenuIcon from '../assets/lucide/panel-left-open.svg?raw';
+import railInfoIcon from '../assets/lucide/info.svg?raw';
 
 loader.config({ monaco: MonacoModule });
 
@@ -284,7 +293,16 @@ type ReencryptCredentialsResponse = {
 type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
 type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin' | 'connections';
 type AdminSubsection = 'users' | 'groups' | 'access';
-type IconGlyph = 'new' | 'rename' | 'duplicate' | 'close' | 'refresh' | 'copy' | 'info' | 'delete';
+type IconGlyph =
+    | 'new'
+    | 'rename'
+    | 'duplicate'
+    | 'close'
+    | 'refresh'
+    | 'copy'
+    | 'info'
+    | 'delete'
+    | 'download';
 type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
 type DatasourceHealthState = 'active' | 'inactive' | 'unknown';
@@ -374,7 +392,7 @@ const workspaceTabsStorageKey = 'dwarvenpick.workspace.tabs.v1';
 const queryStatusPollingIntervalMs = 500;
 const queryStatusPollingMaxAttempts = 600;
 const firstPageToken = '';
-const resultRowHeightPx = 34;
+const resultRowHeightPx = 22;
 const resultViewportHeightPx = 320;
 const builtInAuditActions = [
     'auth.local.login',
@@ -465,6 +483,18 @@ const datasourceIconByEngine: Record<DatasourceEngine, string> = {
     TRINO: '/db-icons/trino.svg',
     STARROCKS: '/db-icons/starrocks.svg',
     VERTICA: '/db-icons/vertica.svg'
+};
+
+const railIconSvgByGlyph: Record<RailGlyph, string> = {
+    workbench: railWorkbenchIcon,
+    history: railHistoryIcon,
+    snippets: railSnippetsIcon,
+    audit: railAuditIcon,
+    admin: railAdminIcon,
+    connections: railConnectionsIcon,
+    collapse: railCollapseIcon,
+    menu: railMenuIcon,
+    info: railInfoIcon
 };
 
 const resolveDatasourceIcon = (engine?: string): string => {
@@ -879,6 +909,16 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
         );
     }
 
+    if (icon === 'download') {
+        return (
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M10 3.8v8.2" />
+                <path d="m6.8 9.2 3.2 3.2 3.2-3.2" />
+                <path d="M4.6 15.8h10.8" />
+            </svg>
+        );
+    }
+
     return (
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="m5 5 10 10" />
@@ -908,95 +948,15 @@ const IconButton = ({
     </button>
 );
 
-const RailIcon = ({ glyph }: { glyph: RailGlyph }) => {
-    if (glyph === 'workbench') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3.5" y="4" width="13" height="12" rx="1.8" />
-                <path d="M3.5 8h13" />
-                <path d="M8 8v8" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'history') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M10 4.2a5.8 5.8 0 1 1-5.2 3.2" />
-                <path d="M3.8 5.2v3.2H7" />
-                <path d="M10 6.6v3.7l2.5 1.5" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'snippets') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M5 3.8h10a1.2 1.2 0 0 1 1.2 1.2v10a1.2 1.2 0 0 1-1.2 1.2H5A1.2 1.2 0 0 1 3.8 15V5A1.2 1.2 0 0 1 5 3.8Z" />
-                <path d="M6.6 7h6.8" />
-                <path d="M6.6 10h6.8" />
-                <path d="M6.6 13h4.3" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'audit') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M10 3.6 4.2 5.8v4.7c0 3.7 2.4 5.8 5.8 6.9 3.4-1.1 5.8-3.2 5.8-6.9V5.8L10 3.6Z" />
-                <path d="m7.4 10.1 1.6 1.8 3.7-3.8" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'admin') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="10" cy="10" r="2.4" />
-                <path d="m16.2 10-.9.5.1 1.1-.8.8-1.1-.1-.5.9h-1.1l-.5-.9-1.1.1-.8-.8.1-1.1-.9-.5v-1.1l.9-.5-.1-1.1.8-.8 1.1.1.5-.9h1.1l.5.9 1.1-.1.8.8-.1 1.1.9.5V10Z" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'connections') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M6.1 5.4h7.8a2 2 0 0 1 2 2v1.4a2 2 0 0 1-2 2H6.1a2 2 0 0 1-2-2V7.4a2 2 0 0 1 2-2Z" />
-                <path d="M6.1 10.8h7.8a2 2 0 0 1 2 2v.2a2 2 0 0 1-2 2H6.1a2 2 0 0 1-2-2V12.8a2 2 0 0 1 2-2Z" />
-                <circle cx="7.1" cy="8.1" r=".6" fill="currentColor" stroke="none" />
-                <circle cx="7.1" cy="13.5" r=".6" fill="currentColor" stroke="none" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'info') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="10" cy="10" r="7.1" />
-                <path d="M10 8.4v5.1" />
-                <circle cx="10" cy="6.1" r="0.7" fill="currentColor" stroke="none" />
-            </svg>
-        );
-    }
-
-    if (glyph === 'menu') {
-        return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M4 6h12" />
-                <path d="M4 10h12" />
-                <path d="M4 14h12" />
-            </svg>
-        );
-    }
-
-    return (
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M12.8 4 8.2 8.6 12.8 13.2" />
-            <path d="M16 4v9.2" />
-            <path d="M4.4 8.6h7.8" />
-        </svg>
-    );
-};
+const RailIcon = ({ glyph }: { glyph: RailGlyph }) => (
+    <span
+        className="rail-icon-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: railIconSvgByGlyph[glyph] ?? railInfoIcon
+        }}
+    />
+);
 
 const ExplorerIcon = ({ glyph }: { glyph: ExplorerGlyph }) => {
     if (glyph === 'database') {
@@ -1135,6 +1095,7 @@ export default function WorkspacePage() {
     );
     const [exportIncludeHeaders, setExportIncludeHeaders] = useState(true);
     const [exportingCsv, setExportingCsv] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
     const [resultsPageSize, setResultsPageSize] = useState(500);
     const [resultSortState, setResultSortState] = useState<ResultSortState>(null);
@@ -1190,6 +1151,7 @@ export default function WorkspacePage() {
         left: number;
     } | null>(null);
     const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
+    const exportMenuRef = useRef<HTMLDivElement | null>(null);
     const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
         Record<string, boolean>
     >({});
@@ -1376,8 +1338,26 @@ export default function WorkspacePage() {
     }, [showEditorShortcuts]);
 
     useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !exportMenuRef.current?.contains(target)) {
+                setShowExportMenu(false);
+            }
+        };
+
+        if (showExportMenu) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [showExportMenu]);
+
+    useEffect(() => {
         setActiveTabMenuOpen(false);
         setActiveTabMenuPosition(null);
+        setShowExportMenu(false);
     }, [activeTabId]);
 
     useEffect(() => {
@@ -3329,6 +3309,7 @@ export default function WorkspacePage() {
             anchor.remove();
             window.URL.revokeObjectURL(objectUrl);
             setCopyFeedback(`CSV export downloaded: ${fileName}`);
+            setShowExportMenu(false);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'CSV export failed.';
             setCopyFeedback(message);
@@ -5194,13 +5175,16 @@ export default function WorkspacePage() {
                                 {showSchemaBrowser ? (
                                     <div className="explorer-body">
                                         <div className="explorer-toolbar-fields">
-                                            <div className="editor-connection-control">
+                                            <div className="explorer-toolbar-labels">
                                                 <label htmlFor="tab-datasource">
                                                     <span className="tile-heading-icon" aria-hidden>
                                                         <RailIcon glyph="connections" />
                                                     </span>
                                                     <span>Connection</span>
                                                 </label>
+                                                <label htmlFor="tab-schema">Schema</label>
+                                            </div>
+                                            <div className="explorer-toolbar-controls">
                                                 <div className="editor-connection-picker">
                                                     <span
                                                         className="editor-connection-icon"
@@ -5245,9 +5229,6 @@ export default function WorkspacePage() {
                                                         </select>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="editor-connection-control">
-                                                <label htmlFor="tab-schema">Schema</label>
                                                 <input
                                                     id="tab-schema"
                                                     value={activeTab?.schema ?? ''}
@@ -6090,16 +6071,6 @@ export default function WorkspacePage() {
                             {activeTab?.resultColumns.length ? (
                                 <div className="results-body">
                                     <div className="result-actions row">
-                                        <label className="checkbox-row">
-                                            <input
-                                                type="checkbox"
-                                                checked={exportIncludeHeaders}
-                                                onChange={(event) =>
-                                                    setExportIncludeHeaders(event.target.checked)
-                                                }
-                                            />
-                                            <span>Include CSV headers</span>
-                                        </label>
                                         <button
                                             type="button"
                                             onClick={handleLoadPreviousResults}
@@ -6114,13 +6085,44 @@ export default function WorkspacePage() {
                                         >
                                             Next Page
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleExportCsv()}
-                                            disabled={exportingCsv}
-                                        >
-                                            {exportingCsv ? 'Exporting...' : 'Download CSV'}
-                                        </button>
+                                        <div className="result-export-wrapper" ref={exportMenuRef}>
+                                            <IconButton
+                                                icon="download"
+                                                title="Export CSV"
+                                                onClick={() =>
+                                                    setShowExportMenu((current) => !current)
+                                                }
+                                                disabled={exportingCsv}
+                                            />
+                                            {showExportMenu ? (
+                                                <div
+                                                    className="result-export-popover"
+                                                    role="dialog"
+                                                >
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={exportIncludeHeaders}
+                                                            onChange={(event) =>
+                                                                setExportIncludeHeaders(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Include headers</span>
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleExportCsv()}
+                                                        disabled={exportingCsv}
+                                                    >
+                                                        {exportingCsv
+                                                            ? 'Exporting...'
+                                                            : 'Download CSV'}
+                                                    </button>
+                                                </div>
+                                            ) : null}
+                                        </div>
                                     </div>
                                     <div
                                         className="result-table-wrap"
