@@ -4841,8 +4841,15 @@ export default function WorkspacePage() {
         setAdminError('');
         setAdminSuccess('');
 
-        if (!managedDatasourceForm.name.trim()) {
+        const connectionName = managedDatasourceForm.name.trim();
+        if (!connectionName) {
             setAdminError('Connection name is required.');
+            return;
+        }
+        if (!adminIdentifierPattern.test(connectionName)) {
+            setAdminError(
+                "Connection name must start with a letter and contain only lowercase letters, numbers, '.' and '-'."
+            );
             return;
         }
 
@@ -4907,7 +4914,7 @@ export default function WorkspacePage() {
                 })();
 
             const commonPayload = {
-                name: managedDatasourceForm.name.trim(),
+                name: connectionName,
                 host,
                 port,
                 database: managedDatasourceForm.database.trim()
@@ -8994,35 +9001,26 @@ export default function WorkspacePage() {
                                                         )}
                                                     </section>
                                                 ) : (
-                                                    <>
-                                                        <div className="row connection-editor-header">
-                                                            <button
-                                                                type="button"
-                                                                className="chip"
-                                                                onClick={
-                                                                    handleCancelConnectionEditor
-                                                                }
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                            <span className="connection-mode-pill">
+                                                    <div className="connection-editor-page">
+                                                        <header className="connection-editor-heading">
+                                                            <h3 className="connection-editor-title">
+                                                                {connectionEditorMode === 'edit'
+                                                                    ? 'Edit connection'
+                                                                    : 'Create connection'}
+                                                            </h3>
+                                                            <p className="muted-id connection-editor-subtitle">
                                                                 {connectionEditorMode === 'edit' &&
                                                                 selectedManagedDatasource
-                                                                    ? `Editing ${selectedManagedDatasource.name}`
-                                                                    : 'Creating a new connection'}
-                                                            </span>
-                                                        </div>
+                                                                    ? `Editing ${selectedManagedDatasource.name}.`
+                                                                    : 'Quick setup is usually enough. Advanced settings stay collapsed by default.'}
+                                                            </p>
+                                                        </header>
 
                                                         <form
                                                             className="stack-form connection-form"
                                                             onSubmit={handleSaveManagedDatasource}
                                                         >
                                                             <h4>Quick Setup</h4>
-                                                            <p className="muted-id connection-form-note">
-                                                                Use this section for a standard
-                                                                connection. Advanced settings stay
-                                                                collapsed by default.
-                                                            </p>
 
                                                             <div className="connection-form-grid">
                                                                 <div className="form-field">
@@ -9038,14 +9036,29 @@ export default function WorkspacePage() {
                                                                             setManagedDatasourceForm(
                                                                                 (current) => ({
                                                                                     ...current,
-                                                                                    name: event
-                                                                                        .target
-                                                                                        .value
+                                                                                    name: normalizeAdminIdentifier(
+                                                                                        event.target
+                                                                                            .value
+                                                                                    )
                                                                                 })
                                                                             )
                                                                         }
+                                                                        placeholder="mariadb-mart"
+                                                                        pattern="[a-z][a-z0-9.-]*"
+                                                                        autoCapitalize="none"
+                                                                        autoCorrect="off"
+                                                                        spellCheck={false}
                                                                         required
+                                                                        aria-describedby="managed-name-hint"
                                                                     />
+                                                                    <p
+                                                                        className="form-hint"
+                                                                        id="managed-name-hint"
+                                                                    >
+                                                                        Lowercase letters, numbers,
+                                                                        dots (.), and hyphens (-).
+                                                                        Must start with a letter.
+                                                                    </p>
                                                                 </div>
 
                                                                 <div className="form-field">
@@ -9246,7 +9259,18 @@ export default function WorkspacePage() {
                                                                         }
                                                                         placeholder="admin-ro"
                                                                         required
+                                                                        aria-describedby="managed-profile-id-hint"
                                                                     />
+                                                                    <p
+                                                                        className="form-hint"
+                                                                        id="managed-profile-id-hint"
+                                                                    >
+                                                                        Default profile to use for
+                                                                        this connection. After
+                                                                        saving, you can add more
+                                                                        profiles and run tests
+                                                                        below.
+                                                                    </p>
                                                                 </div>
 
                                                                 {managedDatasourceForm.authentication ===
@@ -9814,17 +9838,29 @@ export default function WorkspacePage() {
                                                                 </div>
                                                             </details>
 
-                                                            <button
-                                                                type="submit"
-                                                                className="connection-submit-button"
-                                                                disabled={savingDatasource}
-                                                            >
-                                                                {savingDatasource
-                                                                    ? 'Saving...'
-                                                                    : selectedManagedDatasource
-                                                                      ? 'Update Connection'
-                                                                      : 'Create Connection'}
-                                                            </button>
+                                                            <div className="row connection-form-actions">
+                                                                <button
+                                                                    type="submit"
+                                                                    className="connection-submit-button"
+                                                                    disabled={savingDatasource}
+                                                                >
+                                                                    {savingDatasource
+                                                                        ? 'Saving...'
+                                                                        : selectedManagedDatasource
+                                                                          ? 'Update Connection'
+                                                                          : 'Create Connection'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="chip"
+                                                                    onClick={
+                                                                        handleCancelConnectionEditor
+                                                                    }
+                                                                    disabled={savingDatasource}
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
                                                         </form>
 
                                                         {selectedManagedDatasource ? (
@@ -10191,7 +10227,7 @@ export default function WorkspacePage() {
                                                                 credential profiles and run tests.
                                                             </p>
                                                         )}
-                                                    </>
+                                                    </div>
                                                 )}
                                             </section>
                                         ) : null}
