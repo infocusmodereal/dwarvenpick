@@ -3093,8 +3093,18 @@ select {
         padding-right: 0;
     }
 
+    .editor {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .workbench-results-divider {
+        display: none;
+    }
+
     .results {
         grid-column: 1;
+        grid-row: auto;
         border-top: 1px solid rgba(184, 162, 132, 0.8);
     }
 }
