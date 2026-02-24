@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM gradle:8.12.1-jdk21 AS builder
 WORKDIR /workspace
 COPY . .
