@@ -2071,15 +2071,15 @@ button:disabled {
     margin-bottom: 0;
     margin-left: 0.24rem;
     border: 0;
-    width: 1.86rem;
-    height: 1.86rem;
+    width: 1.98rem;
+    height: 1.98rem;
     border-radius: 0;
     background: transparent;
 }
 
 .editor-tab-add .editor-tab-icon-glyph {
-    width: 1rem;
-    height: 1rem;
+    width: 1.08rem;
+    height: 1.08rem;
 }
 
 .editor-toolbar-fields {
@@ -2527,6 +2527,10 @@ button:disabled {
     align-items: end;
     overflow-x: auto;
     padding-bottom: 0.12rem;
+    background: #e0ccb0;
+    border: 1px solid rgba(171, 144, 108, 0.78);
+    border-radius: 0.68rem;
+    padding: 0.42rem;
 }
 
 .filter-field {
@@ -2785,9 +2789,13 @@ select {
 }
 
 .connection-catalog-list-standalone {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
     max-height: calc(100vh - 280px);
     overflow: auto;
     padding-right: 0.2rem;
+    align-content: start;
 }
 
 .connection-catalog-item-row {
@@ -2806,6 +2814,26 @@ select {
     width: 2rem;
     height: 2rem;
     border-radius: 0.5rem;
+}
+
+.connection-catalog-icon {
+    width: 2.28rem;
+    height: 2.28rem;
+}
+
+.connection-catalog-icon img {
+    width: 2rem;
+    height: 2rem;
+}
+
+.managed-engine-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+}
+
+.managed-engine-icon img {
+    width: 1.8rem;
+    height: 1.8rem;
 }
 
 .connection-editor-header {
@@ -2878,7 +2906,10 @@ select {
 
 .admin-audit .history-table th:nth-child(2),
 .admin-audit .history-table td:nth-child(2) {
-    width: 170px;
+    width: 190px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .admin-audit .history-table th:nth-child(3),
@@ -2965,6 +2996,10 @@ select {
         row-gap: 0.7rem;
     }
 
+    .connection-catalog-list-standalone {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .editor-toolbar-fields {
         grid-template-columns: 1fr;
     }
@@ -3015,5 +3050,9 @@ select {
     .editor-cursor-legend {
         justify-items: start;
         margin-left: 0;
+    }
+
+    .connection-catalog-list-standalone {
+        grid-template-columns: 1fr;
     }
 }

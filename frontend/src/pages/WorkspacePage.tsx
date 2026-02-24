@@ -27,6 +27,9 @@ import refreshCwIcon from '../assets/lucide/refresh-cw.svg?raw';
 import tabCloseIcon from '../assets/lucide/x.svg?raw';
 import tabMenuIcon from '../assets/lucide/ellipsis.svg?raw';
 import downloadIcon from '../assets/lucide/download.svg?raw';
+import plusIcon from '../assets/lucide/plus.svg?raw';
+import pencilIcon from '../assets/lucide/pencil.svg?raw';
+import trashIcon from '../assets/lucide/trash-2.svg?raw';
 import sortUpIcon from '../assets/lucide/arrow-up.svg?raw';
 import sortDownIcon from '../assets/lucide/arrow-down.svg?raw';
 import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
@@ -847,19 +850,25 @@ const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
 const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
     if (icon === 'new') {
         return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10 4v12" />
-                <path d="M4 10h12" />
-            </svg>
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: plusIcon
+                }}
+            />
         );
     }
 
     if (icon === 'rename') {
         return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M4 14.8 5 11l7.8-7.8a1.8 1.8 0 0 1 2.5 0l1.5 1.5a1.8 1.8 0 0 1 0 2.5L9 15l-5 1.2Z" />
-                <path d="m11.9 4.1 4 4" />
-            </svg>
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: pencilIcon
+                }}
+            />
         );
     }
 
@@ -874,10 +883,13 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
 
     if (icon === 'refresh') {
         return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M16 10a6 6 0 1 1-2.1-4.6" />
-                <path d="M16 4.5v3.8h-3.8" />
-            </svg>
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: refreshCwIcon
+                }}
+            />
         );
     }
 
@@ -892,13 +904,13 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
 
     if (icon === 'delete') {
         return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
-                <path d="M5.3 5.8h9.4" />
-                <path d="M8 5.8V4.4h4v1.4" />
-                <rect x="6.2" y="5.8" width="7.6" height="10" rx="1.2" />
-                <path d="M8.6 8.3v5.1" />
-                <path d="M11.4 8.3v5.1" />
-            </svg>
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: trashIcon
+                }}
+            />
         );
     }
 
@@ -1724,6 +1736,18 @@ export default function WorkspacePage() {
         });
         return rows;
     }, [auditEvents, auditSortOrder]);
+
+    const managedDatasourcesByEngine = useMemo(() => {
+        const rows = [...adminManagedDatasources];
+        rows.sort((left, right) => {
+            const engineOrder = left.engine.localeCompare(right.engine);
+            if (engineOrder !== 0) {
+                return engineOrder;
+            }
+            return left.name.localeCompare(right.name);
+        });
+        return rows;
+    }, [adminManagedDatasources]);
 
     const managedFormOptions = useMemo(
         () => parseOptionsInput(managedDatasourceForm.optionsInput),
@@ -2667,25 +2691,49 @@ export default function WorkspacePage() {
         }
 
         const completionItems = Array.from(suggestions.values());
-        completionProviderRef.current = monaco.languages.registerCompletionItemProvider('sql', {
-            triggerCharacters: ['.', ' ', '('],
-            provideCompletionItems(model, position) {
-                const word = model.getWordUntilPosition(position);
-                const range = {
-                    startLineNumber: position.lineNumber,
-                    endLineNumber: position.lineNumber,
-                    startColumn: word.startColumn,
-                    endColumn: word.endColumn
-                };
+        const activeModelLanguageId = editorRef.current?.getModel()?.getLanguageId() ?? '';
+        const completionLanguageIds = new Set([
+            'sql',
+            'mysql',
+            'mariadb',
+            'pgsql',
+            'postgres',
+            'postgresql',
+            'trino',
+            'starrocks',
+            'vertica'
+        ]);
+        if (activeModelLanguageId) {
+            completionLanguageIds.add(activeModelLanguageId);
+        }
 
-                return {
-                    suggestions: completionItems.map((suggestion) => ({
-                        ...suggestion,
-                        range
-                    }))
-                };
+        const providerDisposables = Array.from(completionLanguageIds).map((languageId) =>
+            monaco.languages.registerCompletionItemProvider(languageId, {
+                triggerCharacters: ['.', ' ', '(', ',', '\n', '\t'],
+                provideCompletionItems(model, position) {
+                    const word = model.getWordUntilPosition(position);
+                    const range = {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn,
+                        endColumn: word.endColumn
+                    };
+
+                    return {
+                        suggestions: completionItems.map((suggestion) => ({
+                            ...suggestion,
+                            range
+                        }))
+                    };
+                }
+            })
+        );
+
+        completionProviderRef.current = {
+            dispose: () => {
+                providerDisposables.forEach((provider) => provider.dispose());
             }
-        });
+        };
 
         return () => {
             completionProviderRef.current?.dispose();
@@ -3693,10 +3741,19 @@ export default function WorkspacePage() {
     const handleEditorDidMount: OnMount = (editorInstance, monacoInstance) => {
         editorRef.current = editorInstance;
         monacoRef.current = monacoInstance;
+        const model = editorInstance.getModel();
+        if (model && model.getLanguageId() !== 'sql') {
+            monacoInstance.editor.setModelLanguage(model, 'sql');
+        }
         setMonacoReady(true);
         setMonacoLoadTimedOut(false);
         editorInstance.focus();
         updateEditorCursorLegend(editorInstance);
+        window.setTimeout(() => {
+            if (editorRef.current === editorInstance) {
+                editorInstance.trigger('keyboard', 'editor.action.triggerSuggest', {});
+            }
+        }, 40);
 
         const disposables = [
             editorInstance.onDidChangeCursorPosition(() =>
@@ -6097,9 +6154,19 @@ export default function WorkspacePage() {
                                                 wordWrap: 'on',
                                                 scrollBeyondLastLine: false,
                                                 padding: { top: 10, bottom: 10 },
-                                                quickSuggestions: true,
+                                                quickSuggestions: {
+                                                    comments: false,
+                                                    strings: true,
+                                                    other: true
+                                                },
                                                 quickSuggestionsDelay: 75,
                                                 suggestOnTriggerCharacters: true,
+                                                suggest: {
+                                                    showKeywords: true,
+                                                    showWords: true,
+                                                    showFields: true,
+                                                    preview: true
+                                                },
                                                 tabCompletion: 'on',
                                                 wordBasedSuggestions: 'allDocuments'
                                             }}
@@ -6616,6 +6683,7 @@ export default function WorkspacePage() {
                                         <th>Status</th>
                                         <th>Connection</th>
                                         <th>Duration</th>
+                                        <th>Rows</th>
                                         <th>Query</th>
                                         <th>Actions</th>
                                     </tr>
@@ -6623,7 +6691,7 @@ export default function WorkspacePage() {
                                 <tbody>
                                     {sortedQueryHistoryEntries.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6}>
+                                            <td colSpan={7}>
                                                 No history entries found for current filters.
                                             </td>
                                         </tr>
@@ -6646,6 +6714,7 @@ export default function WorkspacePage() {
                                                         ? `${entry.durationMs} ms`
                                                         : '-'}
                                                 </td>
+                                                <td>{entry.rowCount.toLocaleString()}</td>
                                                 <td className="history-query">
                                                     {entry.queryTextRedacted
                                                         ? '[REDACTED]'
@@ -8389,13 +8458,13 @@ export default function WorkspacePage() {
                                                                     : 'Re-encrypt Credentials'}
                                                             </button>
                                                         </div>
-                                                        {adminManagedDatasources.length === 0 ? (
+                                                        {managedDatasourcesByEngine.length === 0 ? (
                                                             <p className="muted-id">
                                                                 No connections configured yet.
                                                             </p>
                                                         ) : (
                                                             <div className="connection-catalog-list connection-catalog-list-standalone">
-                                                                {adminManagedDatasources.map(
+                                                                {managedDatasourcesByEngine.map(
                                                                     (datasource) => (
                                                                         <article
                                                                             key={datasource.id}
