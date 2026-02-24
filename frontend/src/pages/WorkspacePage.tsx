@@ -3908,11 +3908,6 @@ export default function WorkspacePage() {
         }));
         editorInstance.focus();
         updateEditorCursorLegend(editorInstance);
-        window.setTimeout(() => {
-            if (editorRef.current === editorInstance) {
-                triggerAutocompleteSuggest('mount', editorInstance);
-            }
-        }, 40);
 
         const disposables = [
             editorInstance.onDidChangeCursorPosition(() =>
@@ -3929,7 +3924,7 @@ export default function WorkspacePage() {
                         change.rangeLength === 0 &&
                         change.text.length > 0 &&
                         change.text.length <= 2 &&
-                        /[A-Za-z0-9_.]/.test(change.text)
+                        /[A-Za-z0-9]/.test(change.text)
                 );
                 if (!shouldTriggerSuggest || !editorInstance.hasTextFocus()) {
                     return;
@@ -3942,17 +3937,9 @@ export default function WorkspacePage() {
                     triggerAutocompleteSuggest('model-content', editorInstance);
                 });
             }),
-            editorInstance.onDidFocusEditorText(() => {
-                window.requestAnimationFrame(() => {
-                    if (editorRef.current !== editorInstance) {
-                        return;
-                    }
-                    triggerAutocompleteSuggest('manual', editorInstance);
-                });
-            }),
             editorInstance.onKeyUp((event) => {
                 const key = event.browserEvent.key;
-                if (!/^[A-Za-z0-9_.]$/.test(key)) {
+                if (!/^[A-Za-z0-9]$/.test(key)) {
                     return;
                 }
 
