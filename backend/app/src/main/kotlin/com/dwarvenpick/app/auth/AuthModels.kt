@@ -1,6 +1,8 @@
 package com.dwarvenpick.app.auth
 
+import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import java.io.Serializable
 import java.security.Principal
 
@@ -24,13 +26,22 @@ data class PasswordResetRequest(
 
 data class CreateLocalUserRequest(
     @field:NotBlank(message = "Username is required.")
+    @field:Pattern(
+        regexp = "^[a-z][a-z0-9.-]*$",
+        message = "Username must start with a letter and contain only lowercase letters, numbers, '.' and '-'.",
+    )
     val username: String = "",
     val displayName: String? = null,
+    @field:Email(message = "Email must be a valid email address.")
     val email: String? = null,
     @field:NotBlank(message = "Password is required.")
     val password: String = "",
     val temporaryPassword: Boolean = false,
     val systemAdmin: Boolean = false,
+)
+
+data class UpdateLocalUserRequest(
+    val displayName: String? = null,
 )
 
 data class AuthenticatedUserPrincipal(

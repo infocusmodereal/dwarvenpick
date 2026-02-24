@@ -13,6 +13,8 @@ class UserNotFoundException(
     override val message: String,
 ) : RuntimeException(message)
 
+private val localUsernamePattern = Regex("^[a-z][a-z0-9.-]*$")
+
 private data class UserAccount(
     val username: String,
     var displayName: String,
@@ -56,9 +58,12 @@ class UserAccountService(
             passwordPolicyValidator.validateOrThrow(seedUser.password)
 
             val normalizedUsername = normalizeUsername(seedUser.username)
+            require(localUsernamePattern.matches(normalizedUsername)) {
+                "Seed user '${seedUser.username}' has an invalid username."
+            }
             users[normalizedUsername] =
                 UserAccount(
-                    username = seedUser.username,
+                    username = normalizedUsername,
                     displayName = seedUser.displayName,
                     email = seedUser.email,
                     passwordHash = passwordEncoder.encode(seedUser.password),
@@ -89,8 +94,13 @@ class UserAccountService(
         if (normalizedUsername.isBlank()) {
             throw IllegalArgumentException("Username is required.")
         }
+        if (!localUsernamePattern.matches(normalizedUsername)) {
+            throw IllegalArgumentException(
+                "Username must start with a letter and contain only lowercase letters, numbers, '.' and '-'.",
+            )
+        }
         if (users.containsKey(normalizedUsername)) {
-            throw IllegalArgumentException("User '$username' already exists.")
+            throw IllegalArgumentException("User '$normalizedUsername' already exists.")
         }
 
         val resolvedDisplayName = displayName?.trim()?.ifBlank { null } ?: username.trim()
@@ -104,7 +114,7 @@ class UserAccountService(
 
         users[normalizedUsername] =
             UserAccount(
-                username = username.trim(),
+                username = normalizedUsername,
                 displayName = resolvedDisplayName,
                 email = resolvedEmail,
                 passwordHash = passwordEncoder.encode(password),
@@ -116,6 +126,27 @@ class UserAccountService(
             )
 
         return toPrincipal(users.getValue(normalizedUsername))
+    }
+
+    fun updateLocalDisplayName(
+        username: String,
+        displayName: String?,
+    ): AdminUserAccount {
+        val normalizedUsername = normalizeUsername(username)
+        val user =
+            users[normalizedUsername]
+                ?: throw UserNotFoundException("User '$normalizedUsername' does not exist.")
+
+        if (!user.enabled) {
+            throw DisabledUserException()
+        }
+        if (user.provider != AuthProvider.LOCAL) {
+            throw IllegalArgumentException("User '$normalizedUsername' is LDAP managed.")
+        }
+
+        val resolvedDisplayName = displayName?.trim()?.ifBlank { null } ?: user.username
+        user.displayName = resolvedDisplayName
+        return user.toAdminSummary()
     }
 
     fun authenticateLocal(

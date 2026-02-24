@@ -79,7 +79,7 @@ class RbacService(
             .map { group -> group.toResponse() }
 
     fun createGroup(request: CreateGroupRequest): GroupResponse {
-        val groupId = slugify(request.name)
+        val groupId = request.name.trim()
         if (groups.containsKey(groupId)) {
             throw IllegalArgumentException("Group '$groupId' already exists.")
         }
@@ -87,7 +87,7 @@ class RbacService(
         groups[groupId] =
             GroupRecord(
                 id = groupId,
-                name = request.name.trim(),
+                name = groupId,
                 description = request.description?.trim()?.ifBlank { null },
                 members = linkedSetOf(),
             )
@@ -350,11 +350,26 @@ class RbacService(
         return QueryAccessPolicy(
             credentialProfile = selectedCredentialProfile,
             readOnly = matchingAccessRules.all { access -> access.readOnly },
-            maxRowsPerQuery = matchingAccessRules.mapNotNull { access -> access.maxRowsPerQuery }.minOrNull() ?: 5000,
-            maxRuntimeSeconds =
-                matchingAccessRules.mapNotNull { access -> access.maxRuntimeSeconds }.minOrNull() ?: 300,
-            concurrencyLimit = matchingAccessRules.mapNotNull { access -> access.concurrencyLimit }.minOrNull() ?: 5,
+            maxRowsPerQuery = resolveLimit(matchingAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
+            maxRuntimeSeconds = resolveLimit(matchingAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
+            concurrencyLimit = resolveLimit(matchingAccessRules.map { access -> access.concurrencyLimit }, 5),
         )
+    }
+
+    private fun resolveLimit(
+        values: List<Int?>,
+        defaultValue: Int,
+    ): Int {
+        val configured = values.filterNotNull()
+        val positive = configured.filter { it > 0 }
+        if (positive.isNotEmpty()) {
+            return positive.min()
+        }
+        if (configured.any { it == 0 }) {
+            return Int.MAX_VALUE
+        }
+
+        return defaultValue
     }
 
     private fun seedGroups() {
@@ -362,7 +377,7 @@ class RbacService(
         groups[adminGroupId] =
             GroupRecord(
                 id = adminGroupId,
-                name = "Platform Admins",
+                name = adminGroupId,
                 description = "System administrators with governance permissions.",
                 members = linkedSetOf("admin"),
             )
@@ -372,7 +387,7 @@ class RbacService(
         groups[analystsGroupId] =
             GroupRecord(
                 id = analystsGroupId,
-                name = "Analytics Users",
+                name = analystsGroupId,
                 description = "Analysts with warehouse query access.",
                 members = linkedSetOf("analyst"),
             )
@@ -408,21 +423,6 @@ class RbacService(
                 concurrencyLimit = 2,
                 credentialProfile = "analyst-ro",
             )
-    }
-
-    private fun slugify(input: String): String {
-        val slug =
-            input
-                .trim()
-                .lowercase(Locale.getDefault())
-                .replace(Regex("[^a-z0-9]+"), "-")
-                .trim('-')
-
-        if (slug.isBlank()) {
-            throw IllegalArgumentException("Group name must contain alphanumeric characters.")
-        }
-
-        return slug
     }
 
     private fun accessKey(

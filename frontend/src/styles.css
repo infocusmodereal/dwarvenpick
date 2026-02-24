@@ -596,6 +596,35 @@ textarea:focus {
     gap: 0.6rem;
 }
 
+.admin-form-page {
+    display: grid;
+    gap: 0.9rem;
+    align-content: start;
+}
+
+.admin-form-title {
+    margin: 0.35rem 0 0;
+    font-size: 1.15rem;
+}
+
+.admin-form {
+    max-width: 720px;
+}
+
+.admin-form-actions {
+    margin-top: 0.75rem;
+}
+
+.admin-form-actions button {
+    max-width: 220px;
+}
+
+.form-hint {
+    margin: -0.2rem 0 0;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
 .group-list {
     display: grid;
     gap: 0.8rem;

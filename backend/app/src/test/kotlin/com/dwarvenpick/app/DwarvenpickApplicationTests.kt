@@ -293,7 +293,7 @@ class DwarvenpickApplicationTests {
                     .content(
                         """
                         {
-                          "name": "Incident Responders",
+                          "name": "incident-responders",
                           "description": "On-call incident responders."
                         }
                         """.trimIndent(),

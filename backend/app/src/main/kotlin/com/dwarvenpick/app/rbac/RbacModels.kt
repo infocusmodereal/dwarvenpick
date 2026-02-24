@@ -1,7 +1,8 @@
 package com.dwarvenpick.app.rbac
 
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.Positive
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.PositiveOrZero
 
 data class GroupResponse(
     val id: String,
@@ -12,6 +13,10 @@ data class GroupResponse(
 
 data class CreateGroupRequest(
     @field:NotBlank(message = "Group name is required.")
+    @field:Pattern(
+        regexp = "^[a-z][a-z0-9.-]*$",
+        message = "Group name must start with a letter and contain only lowercase letters, numbers, '.' and '-'.",
+    )
     val name: String = "",
     val description: String? = null,
 )
@@ -48,11 +53,11 @@ data class UpsertDatasourceAccessRequest(
     val canQuery: Boolean = true,
     val canExport: Boolean = false,
     val readOnly: Boolean = true,
-    @field:Positive(message = "maxRowsPerQuery must be positive.")
+    @field:PositiveOrZero(message = "maxRowsPerQuery must be positive, or 0 for unlimited.")
     val maxRowsPerQuery: Int? = null,
-    @field:Positive(message = "maxRuntimeSeconds must be positive.")
+    @field:PositiveOrZero(message = "maxRuntimeSeconds must be positive, or 0 for unlimited.")
     val maxRuntimeSeconds: Int? = null,
-    @field:Positive(message = "concurrencyLimit must be positive.")
+    @field:PositiveOrZero(message = "concurrencyLimit must be positive, or 0 for unlimited.")
     val concurrencyLimit: Int? = null,
     @field:NotBlank(message = "credentialProfile is required.")
     val credentialProfile: String = "",

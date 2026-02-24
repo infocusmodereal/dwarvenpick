@@ -16,6 +16,7 @@ import org.springframework.security.web.context.SecurityContextRepository
 import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -291,6 +292,55 @@ class AuthController(
             )
         } catch (ex: PasswordPolicyException) {
             ResponseEntity.badRequest().body(ErrorResponse(ex.message))
+        } catch (ex: IllegalArgumentException) {
+            ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
+        }
+    }
+
+    @PatchMapping("/admin/users/{username}")
+    fun updateAdminUser(
+        @PathVariable username: String,
+        @RequestBody request: UpdateLocalUserRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<Any> {
+        if (!authProperties.local.enabled) {
+            return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse("Local authentication user management is disabled."))
+        }
+
+        return try {
+            val updatedUser = userAccountService.updateLocalDisplayName(username, request.displayName)
+
+            audit(
+                type = "auth.local.user_update",
+                actor = authentication.name,
+                outcome = "success",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "targetUser" to updatedUser.username,
+                        "displayName" to updatedUser.displayName,
+                    ),
+            )
+
+            ResponseEntity.ok(
+                AdminUserResponse(
+                    username = updatedUser.username,
+                    displayName = updatedUser.displayName,
+                    email = updatedUser.email,
+                    provider = updatedUser.provider.name.lowercase(),
+                    enabled = updatedUser.enabled,
+                    roles = updatedUser.roles,
+                    groups = updatedUser.groups,
+                    temporaryPassword = updatedUser.temporaryPassword,
+                ),
+            )
+        } catch (ex: DisabledUserException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
+        } catch (ex: UserNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
         }

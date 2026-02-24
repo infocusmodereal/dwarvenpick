@@ -592,6 +592,19 @@ const toStatusToneClass = (rawValue: string): string => {
     return 'status-pill tone-neutral';
 };
 
+const adminIdentifierPattern = /^[a-z][a-z0-9.-]*$/;
+
+const normalizeAdminIdentifier = (value: string): string => {
+    const trimmed = value.trim().toLowerCase();
+    return trimmed
+        .replace(/\s+/g, '-')
+        .replace(/_/g, '-')
+        .replace(/[^a-z0-9.-]/g, '');
+};
+
+const isValidEmailAddress = (value: string): boolean =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 const isTerminalExecutionStatus = (status: string): boolean =>
     status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELED';
 
@@ -1124,6 +1137,9 @@ export default function WorkspacePage() {
     const [adminSuccess, setAdminSuccess] = useState('');
     const [creatingLocalUser, setCreatingLocalUser] = useState(false);
     const [resettingLocalUser, setResettingLocalUser] = useState<string | null>(null);
+    const [editingUserDisplayName, setEditingUserDisplayName] = useState<string | null>(null);
+    const [editingUserDisplayNameDraft, setEditingUserDisplayNameDraft] = useState('');
+    const [savingUserDisplayName, setSavingUserDisplayName] = useState<string | null>(null);
     const [uploadDriverIdInput, setUploadDriverIdInput] = useState('');
     const [uploadDriverClassInput, setUploadDriverClassInput] = useState('');
     const [uploadDriverDescriptionInput, setUploadDriverDescriptionInput] = useState('');
@@ -4134,10 +4150,21 @@ export default function WorkspacePage() {
             return;
         }
 
-        const username = localUserUsernameInput.trim();
+        const username = normalizeAdminIdentifier(localUserUsernameInput);
+        const email = localUserEmailInput.trim();
         const password = localUserPasswordInput;
         if (!username) {
             setAdminError('Username is required.');
+            return;
+        }
+        if (!adminIdentifierPattern.test(username)) {
+            setAdminError(
+                "Username must start with a letter and contain only lowercase letters, numbers, '.' and '-'."
+            );
+            return;
+        }
+        if (email && !isValidEmailAddress(email)) {
+            setAdminError('Email must be a valid email address.');
             return;
         }
         if (!password.trim()) {
@@ -4158,7 +4185,7 @@ export default function WorkspacePage() {
                 body: JSON.stringify({
                     username,
                     displayName: localUserDisplayNameInput.trim() || null,
-                    email: localUserEmailInput.trim() || null,
+                    email: email || null,
                     password,
                     temporaryPassword: localUserTemporaryPassword,
                     systemAdmin: localUserSystemAdmin
@@ -4241,10 +4268,100 @@ export default function WorkspacePage() {
         }
     };
 
+    const handleStartEditUserDisplayName = useCallback(
+        (user: AdminUserResponse) => {
+            setAdminError('');
+            setAdminSuccess('');
+
+            if (!localAuthEnabled) {
+                setAdminError('Local authentication is disabled. User edits are unavailable.');
+                return;
+            }
+            if (user.provider !== 'local') {
+                setAdminError('LDAP managed users cannot be edited here.');
+                return;
+            }
+
+            setEditingUserDisplayName(user.username);
+            setEditingUserDisplayNameDraft(user.displayName);
+        },
+        [localAuthEnabled]
+    );
+
+    const handleCancelEditUserDisplayName = useCallback(() => {
+        setEditingUserDisplayName(null);
+        setEditingUserDisplayNameDraft('');
+        setSavingUserDisplayName(null);
+    }, []);
+
+    const handleSaveUserDisplayName = useCallback(
+        async (username: string) => {
+            setAdminError('');
+            setAdminSuccess('');
+
+            if (!localAuthEnabled) {
+                setAdminError('Local authentication is disabled. User edits are unavailable.');
+                return;
+            }
+
+            setSavingUserDisplayName(username);
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(
+                    `/api/auth/admin/users/${encodeURIComponent(username)}`,
+                    {
+                        method: 'PATCH',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            [csrfToken.headerName]: csrfToken.token
+                        },
+                        body: JSON.stringify({
+                            displayName: editingUserDisplayNameDraft.trim() || null
+                        })
+                    }
+                );
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadAdminData(true, true);
+                setAdminSuccess(`Updated display name for '${username}'.`);
+                setEditingUserDisplayName(null);
+                setEditingUserDisplayNameDraft('');
+            } catch (error) {
+                setAdminError(
+                    error instanceof Error ? error.message : 'Failed to update display name.'
+                );
+            } finally {
+                setSavingUserDisplayName(null);
+            }
+        },
+        [
+            editingUserDisplayNameDraft,
+            fetchCsrfToken,
+            loadAdminData,
+            localAuthEnabled,
+            readFriendlyError
+        ]
+    );
+
     const handleCreateGroup = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setAdminError('');
         setAdminSuccess('');
+
+        const name = normalizeAdminIdentifier(groupNameInput);
+        if (!name) {
+            setAdminError('Group name is required.');
+            return;
+        }
+        if (!adminIdentifierPattern.test(name)) {
+            setAdminError(
+                "Group name must start with a letter and contain only lowercase letters, numbers, '.' and '-'."
+            );
+            return;
+        }
 
         try {
             const csrfToken = await fetchCsrfToken();
@@ -4256,7 +4373,7 @@ export default function WorkspacePage() {
                     [csrfToken.headerName]: csrfToken.token
                 },
                 body: JSON.stringify({
-                    name: groupNameInput,
+                    name,
                     description: groupDescriptionInput
                 })
             });
@@ -6470,8 +6587,8 @@ export default function WorkspacePage() {
                             </div>
                         </section>
 
-	                        <section className="results">
-	                            <div className="results-head">
+                        <section className="results">
+                            <div className="results-head">
                                 {activeTab?.executionId ? (
                                     <div className="result-stats-grid">
                                         <div className="result-stat">
@@ -7354,42 +7471,65 @@ export default function WorkspacePage() {
                                         ) : null}
 
                                         {groupAdminMode === 'create' ? (
-                                            <form
-                                                onSubmit={handleCreateGroup}
-                                                className="stack-form"
-                                            >
-                                                <div className="row toolbar-actions admin-toolbar-actions">
-                                                    <button type="submit">Save Group</button>
-                                                    <button
-                                                        type="button"
-                                                        className="chip"
-                                                        onClick={handleCancelGroupAdmin}
+                                            <div className="admin-form-page">
+                                                <h3 className="admin-form-title">Create Group</h3>
+                                                <form
+                                                    onSubmit={handleCreateGroup}
+                                                    className="stack-form admin-form"
+                                                >
+                                                    <label htmlFor="new-group-name">Name</label>
+                                                    <input
+                                                        id="new-group-name"
+                                                        value={groupNameInput}
+                                                        onChange={(event) =>
+                                                            setGroupNameInput(
+                                                                normalizeAdminIdentifier(
+                                                                    event.target.value
+                                                                )
+                                                            )
+                                                        }
+                                                        placeholder="incident-responders"
+                                                        pattern="[a-z][a-z0-9.-]*"
+                                                        autoCapitalize="none"
+                                                        autoCorrect="off"
+                                                        spellCheck={false}
+                                                        required
+                                                        aria-describedby="new-group-name-hint"
+                                                    />
+                                                    <p
+                                                        className="form-hint"
+                                                        id="new-group-name-hint"
                                                     >
-                                                        Cancel
-                                                    </button>
-                                                </div>
-                                                <label htmlFor="new-group-name">Group Name</label>
-                                                <input
-                                                    id="new-group-name"
-                                                    value={groupNameInput}
-                                                    onChange={(event) =>
-                                                        setGroupNameInput(event.target.value)
-                                                    }
-                                                    placeholder="Incident Responders"
-                                                    required
-                                                />
-                                                <label htmlFor="new-group-description">
-                                                    Description
-                                                </label>
-                                                <input
-                                                    id="new-group-description"
-                                                    value={groupDescriptionInput}
-                                                    onChange={(event) =>
-                                                        setGroupDescriptionInput(event.target.value)
-                                                    }
-                                                    placeholder="Optional description"
-                                                />
-                                            </form>
+                                                        Lowercase letters, numbers, dots (.), and
+                                                        hyphens (-). Must start with a letter.
+                                                    </p>
+
+                                                    <label htmlFor="new-group-description">
+                                                        Description
+                                                    </label>
+                                                    <input
+                                                        id="new-group-description"
+                                                        value={groupDescriptionInput}
+                                                        onChange={(event) =>
+                                                            setGroupDescriptionInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="Optional description"
+                                                    />
+
+                                                    <div className="row admin-form-actions">
+                                                        <button type="submit">Create</button>
+                                                        <button
+                                                            type="button"
+                                                            className="chip"
+                                                            onClick={handleCancelGroupAdmin}
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
                                         ) : null}
 
                                         {groupAdminMode === 'edit' && selectedGroupRecord ? (
@@ -7545,7 +7685,7 @@ export default function WorkspacePage() {
                                                             type="button"
                                                             onClick={handleStartCreateUser}
                                                         >
-                                                            Create Local User
+                                                            Create User
                                                         </button>
                                                     ) : (
                                                         <span className="muted-id">
@@ -7579,7 +7719,31 @@ export default function WorkspacePage() {
                                                                         key={`admin-user-row-${user.username}`}
                                                                     >
                                                                         <td>{user.username}</td>
-                                                                        <td>{user.displayName}</td>
+                                                                        <td>
+                                                                            {editingUserDisplayName ===
+                                                                            user.username ? (
+                                                                                <input
+                                                                                    value={
+                                                                                        editingUserDisplayNameDraft
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        event
+                                                                                    ) =>
+                                                                                        setEditingUserDisplayNameDraft(
+                                                                                            event
+                                                                                                .target
+                                                                                                .value
+                                                                                        )
+                                                                                    }
+                                                                                    placeholder={
+                                                                                        user.username
+                                                                                    }
+                                                                                    aria-label={`Display name for ${user.username}`}
+                                                                                />
+                                                                            ) : (
+                                                                                user.displayName
+                                                                            )}
+                                                                        </td>
                                                                         <td>
                                                                             {user.provider.toUpperCase()}
                                                                         </td>
@@ -7596,26 +7760,73 @@ export default function WorkspacePage() {
                                                                                 : 'Permanent'}
                                                                         </td>
                                                                         <td className="history-actions">
-                                                                            {user.provider ===
-                                                                            'local' ? (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    className="chip"
-                                                                                    disabled={
-                                                                                        resettingLocalUser ===
-                                                                                        user.username
-                                                                                    }
-                                                                                    onClick={() =>
-                                                                                        void handleResetLocalPassword(
+                                                                            {editingUserDisplayName ===
+                                                                            user.username ? (
+                                                                                <>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        disabled={
+                                                                                            savingUserDisplayName ===
                                                                                             user.username
-                                                                                        )
-                                                                                    }
-                                                                                >
-                                                                                    {resettingLocalUser ===
-                                                                                    user.username
-                                                                                        ? 'Resetting...'
-                                                                                        : 'Reset Password'}
-                                                                                </button>
+                                                                                        }
+                                                                                        onClick={() =>
+                                                                                            void handleSaveUserDisplayName(
+                                                                                                user.username
+                                                                                            )
+                                                                                        }
+                                                                                    >
+                                                                                        {savingUserDisplayName ===
+                                                                                        user.username
+                                                                                            ? 'Saving...'
+                                                                                            : 'Save'}
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        disabled={
+                                                                                            savingUserDisplayName ===
+                                                                                            user.username
+                                                                                        }
+                                                                                        onClick={
+                                                                                            handleCancelEditUserDisplayName
+                                                                                        }
+                                                                                    >
+                                                                                        Cancel
+                                                                                    </button>
+                                                                                </>
+                                                                            ) : user.provider ===
+                                                                              'local' ? (
+                                                                                <>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() =>
+                                                                                            handleStartEditUserDisplayName(
+                                                                                                user
+                                                                                            )
+                                                                                        }
+                                                                                    >
+                                                                                        Edit Name
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        disabled={
+                                                                                            resettingLocalUser ===
+                                                                                            user.username
+                                                                                        }
+                                                                                        onClick={() =>
+                                                                                            void handleResetLocalPassword(
+                                                                                                user.username
+                                                                                            )
+                                                                                        }
+                                                                                    >
+                                                                                        {resettingLocalUser ===
+                                                                                        user.username
+                                                                                            ? 'Resetting...'
+                                                                                            : 'Reset Password'}
+                                                                                    </button>
+                                                                                </>
                                                                             ) : (
                                                                                 <span className="muted-id">
                                                                                     LDAP managed
@@ -7632,108 +7843,128 @@ export default function WorkspacePage() {
                                         ) : null}
 
                                         {userAdminMode === 'create' ? (
-                                            <form
-                                                className="stack-form"
-                                                onSubmit={handleCreateLocalUser}
-                                            >
-                                                <div className="row toolbar-actions admin-toolbar-actions">
-                                                    <button
-                                                        type="submit"
-                                                        disabled={creatingLocalUser}
-                                                    >
-                                                        {creatingLocalUser
-                                                            ? 'Creating...'
-                                                            : 'Create User'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="chip"
-                                                        onClick={handleCancelUserAdmin}
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                </div>
-                                                <label htmlFor="local-user-username">
-                                                    Username
-                                                </label>
-                                                <input
-                                                    id="local-user-username"
-                                                    value={localUserUsernameInput}
-                                                    onChange={(event) =>
-                                                        setLocalUserUsernameInput(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder="new.analyst"
-                                                    required
-                                                />
-
-                                                <label htmlFor="local-user-display-name">
-                                                    Display Name
-                                                </label>
-                                                <input
-                                                    id="local-user-display-name"
-                                                    value={localUserDisplayNameInput}
-                                                    onChange={(event) =>
-                                                        setLocalUserDisplayNameInput(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder="New Analyst"
-                                                />
-
-                                                <label htmlFor="local-user-email">Email</label>
-                                                <input
-                                                    id="local-user-email"
-                                                    type="email"
-                                                    value={localUserEmailInput}
-                                                    onChange={(event) =>
-                                                        setLocalUserEmailInput(event.target.value)
-                                                    }
-                                                    placeholder="analyst@example.com"
-                                                />
-
-                                                <label htmlFor="local-user-password">
-                                                    Password
-                                                </label>
-                                                <input
-                                                    id="local-user-password"
-                                                    type="password"
-                                                    value={localUserPasswordInput}
-                                                    onChange={(event) =>
-                                                        setLocalUserPasswordInput(
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    required
-                                                />
-
-                                                <label className="checkbox-row">
+                                            <div className="admin-form-page">
+                                                <h3 className="admin-form-title">Create User</h3>
+                                                <form
+                                                    className="stack-form admin-form"
+                                                    onSubmit={handleCreateLocalUser}
+                                                >
+                                                    <label htmlFor="local-user-username">
+                                                        Username
+                                                    </label>
                                                     <input
-                                                        type="checkbox"
-                                                        checked={localUserTemporaryPassword}
+                                                        id="local-user-username"
+                                                        value={localUserUsernameInput}
                                                         onChange={(event) =>
-                                                            setLocalUserTemporaryPassword(
-                                                                event.target.checked
+                                                            setLocalUserUsernameInput(
+                                                                normalizeAdminIdentifier(
+                                                                    event.target.value
+                                                                )
                                                             )
                                                         }
+                                                        placeholder="new.analyst"
+                                                        pattern="[a-z][a-z0-9.-]*"
+                                                        autoCapitalize="none"
+                                                        autoCorrect="off"
+                                                        spellCheck={false}
+                                                        required
+                                                        aria-describedby="local-user-username-hint"
                                                     />
-                                                    <span>Temporary password</span>
-                                                </label>
+                                                    <p
+                                                        className="form-hint"
+                                                        id="local-user-username-hint"
+                                                    >
+                                                        Lowercase letters, numbers, dots (.), and
+                                                        hyphens (-). Must start with a letter.
+                                                    </p>
 
-                                                <label className="checkbox-row">
+                                                    <label htmlFor="local-user-display-name">
+                                                        Display Name
+                                                    </label>
                                                     <input
-                                                        type="checkbox"
-                                                        checked={localUserSystemAdmin}
+                                                        id="local-user-display-name"
+                                                        value={localUserDisplayNameInput}
                                                         onChange={(event) =>
-                                                            setLocalUserSystemAdmin(
-                                                                event.target.checked
+                                                            setLocalUserDisplayNameInput(
+                                                                event.target.value
                                                             )
                                                         }
+                                                        placeholder="New Analyst"
                                                     />
-                                                    <span>Grant system admin role</span>
-                                                </label>
-                                            </form>
+
+                                                    <label htmlFor="local-user-email">Email</label>
+                                                    <input
+                                                        id="local-user-email"
+                                                        type="email"
+                                                        value={localUserEmailInput}
+                                                        onChange={(event) =>
+                                                            setLocalUserEmailInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="analyst@example.com"
+                                                    />
+
+                                                    <label htmlFor="local-user-password">
+                                                        Password
+                                                    </label>
+                                                    <input
+                                                        id="local-user-password"
+                                                        type="password"
+                                                        value={localUserPasswordInput}
+                                                        onChange={(event) =>
+                                                            setLocalUserPasswordInput(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        required
+                                                    />
+
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={localUserTemporaryPassword}
+                                                            onChange={(event) =>
+                                                                setLocalUserTemporaryPassword(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Temporary password</span>
+                                                    </label>
+
+                                                    <label className="checkbox-row">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={localUserSystemAdmin}
+                                                            onChange={(event) =>
+                                                                setLocalUserSystemAdmin(
+                                                                    event.target.checked
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Grant system admin role</span>
+                                                    </label>
+
+                                                    <div className="row admin-form-actions">
+                                                        <button
+                                                            type="submit"
+                                                            disabled={creatingLocalUser}
+                                                        >
+                                                            {creatingLocalUser
+                                                                ? 'Creating...'
+                                                                : 'Create'}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="chip"
+                                                            onClick={handleCancelUserAdmin}
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
                                         ) : null}
                                     </>
                                 ) : null}
@@ -7853,169 +8084,214 @@ export default function WorkspacePage() {
 
                                         {accessAdminMode === 'create' ||
                                         accessAdminMode === 'edit' ? (
-                                            <form
-                                                className={
-                                                    accessAdminMode === 'edit'
-                                                        ? 'stack-form access-edit-layout'
-                                                        : 'stack-form'
-                                                }
-                                                onSubmit={handleSaveDatasourceAccess}
-                                            >
-                                                <div className="row toolbar-actions admin-toolbar-actions">
-                                                    <button type="submit" disabled={savingAccess}>
-                                                        {savingAccess
-                                                            ? 'Saving...'
-                                                            : 'Save Access Rule'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="chip"
-                                                        onClick={handleCancelAccessAdmin}
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                </div>
-                                                <label htmlFor="access-group">Group</label>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="access-group"
-                                                        value={selectedGroupId}
-                                                        onChange={(event) =>
-                                                            setSelectedGroupId(event.target.value)
-                                                        }
-                                                    >
-                                                        <option value="">Select group</option>
-                                                        {adminGroups.map((group) => (
-                                                            <option key={group.id} value={group.id}>
-                                                                {group.name} ({group.id})
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-
-                                                <label htmlFor="access-datasource">
-                                                    Connection
-                                                </label>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="access-datasource"
-                                                        value={selectedDatasourceForAccess}
-                                                        onChange={(event) =>
-                                                            setSelectedDatasourceForAccess(
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                    >
-                                                        <option value="">Select connection</option>
-                                                        {adminDatasourceCatalog.map(
-                                                            (datasource) => (
+                                            <div className="admin-form-page">
+                                                <h3 className="admin-form-title">
+                                                    {accessAdminMode === 'edit'
+                                                        ? 'Edit Access Rule'
+                                                        : 'Create Access Rule'}
+                                                </h3>
+                                                <form
+                                                    className={
+                                                        accessAdminMode === 'edit'
+                                                            ? 'stack-form access-edit-layout admin-form'
+                                                            : 'stack-form admin-form'
+                                                    }
+                                                    onSubmit={handleSaveDatasourceAccess}
+                                                >
+                                                    <label htmlFor="access-group">Group</label>
+                                                    <div className="select-wrap">
+                                                        <select
+                                                            id="access-group"
+                                                            value={selectedGroupId}
+                                                            onChange={(event) =>
+                                                                setSelectedGroupId(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                        >
+                                                            <option value="">Select group</option>
+                                                            {adminGroups.map((group) => (
                                                                 <option
-                                                                    key={datasource.id}
-                                                                    value={datasource.id}
+                                                                    key={group.id}
+                                                                    value={group.id}
                                                                 >
-                                                                    {datasource.name} (
-                                                                    {datasource.engine})
+                                                                    {group.name} ({group.id})
                                                                 </option>
-                                                            )
-                                                        )}
-                                                    </select>
-                                                </div>
+                                                            ))}
+                                                        </select>
+                                                    </div>
 
-                                                <div className="row">
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={canQuery}
-                                                            onChange={(event) =>
-                                                                setCanQuery(event.target.checked)
-                                                            }
-                                                        />
-                                                        <span>Can Query</span>
+                                                    <label htmlFor="access-datasource">
+                                                        Connection
                                                     </label>
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={canExport}
+                                                    <div className="select-wrap">
+                                                        <select
+                                                            id="access-datasource"
+                                                            value={selectedDatasourceForAccess}
                                                             onChange={(event) =>
-                                                                setCanExport(event.target.checked)
+                                                                setSelectedDatasourceForAccess(
+                                                                    event.target.value
+                                                                )
                                                             }
-                                                        />
-                                                        <span>Can Export</span>
-                                                    </label>
-                                                    <label className="checkbox-row">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={readOnly}
-                                                            onChange={(event) =>
-                                                                setReadOnly(event.target.checked)
-                                                            }
-                                                        />
-                                                        <span>Read Only</span>
-                                                    </label>
-                                                </div>
-
-                                                <label htmlFor="credential-profile">
-                                                    Credential Profile
-                                                </label>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="credential-profile"
-                                                        value={credentialProfile}
-                                                        onChange={(event) =>
-                                                            setCredentialProfile(event.target.value)
-                                                        }
-                                                    >
-                                                        <option value="">
-                                                            Select credential profile
-                                                        </option>
-                                                        {(
-                                                            selectedAdminDatasource?.credentialProfiles ??
-                                                            []
-                                                        ).map((profile) => (
-                                                            <option key={profile} value={profile}>
-                                                                {profile}
+                                                        >
+                                                            <option value="">
+                                                                Select connection
                                                             </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
+                                                            {adminDatasourceCatalog.map(
+                                                                (datasource) => (
+                                                                    <option
+                                                                        key={datasource.id}
+                                                                        value={datasource.id}
+                                                                    >
+                                                                        {datasource.name} (
+                                                                        {datasource.engine})
+                                                                    </option>
+                                                                )
+                                                            )}
+                                                        </select>
+                                                    </div>
 
-                                                <label htmlFor="max-rows">Max Rows Per Query</label>
-                                                <input
-                                                    id="max-rows"
-                                                    type="number"
-                                                    min={1}
-                                                    value={maxRowsPerQuery}
-                                                    onChange={(event) =>
-                                                        setMaxRowsPerQuery(event.target.value)
-                                                    }
-                                                />
+                                                    <div className="row">
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={canQuery}
+                                                                onChange={(event) =>
+                                                                    setCanQuery(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Can Query</span>
+                                                        </label>
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={canExport}
+                                                                onChange={(event) =>
+                                                                    setCanExport(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Can Export</span>
+                                                        </label>
+                                                        <label className="checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={readOnly}
+                                                                onChange={(event) =>
+                                                                    setReadOnly(
+                                                                        event.target.checked
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>Read Only</span>
+                                                        </label>
+                                                    </div>
 
-                                                <label htmlFor="max-runtime">
-                                                    Max Runtime Seconds
-                                                </label>
-                                                <input
-                                                    id="max-runtime"
-                                                    type="number"
-                                                    min={1}
-                                                    value={maxRuntimeSeconds}
-                                                    onChange={(event) =>
-                                                        setMaxRuntimeSeconds(event.target.value)
-                                                    }
-                                                />
+                                                    <label htmlFor="credential-profile">
+                                                        Credential Profile
+                                                    </label>
+                                                    <div className="select-wrap">
+                                                        <select
+                                                            id="credential-profile"
+                                                            value={credentialProfile}
+                                                            onChange={(event) =>
+                                                                setCredentialProfile(
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                        >
+                                                            <option value="">
+                                                                Select credential profile
+                                                            </option>
+                                                            {(
+                                                                selectedAdminDatasource?.credentialProfiles ??
+                                                                []
+                                                            ).map((profile) => (
+                                                                <option
+                                                                    key={profile}
+                                                                    value={profile}
+                                                                >
+                                                                    {profile}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
 
-                                                <label htmlFor="concurrency-limit">
-                                                    Concurrency Limit
-                                                </label>
-                                                <input
-                                                    id="concurrency-limit"
-                                                    type="number"
-                                                    min={1}
-                                                    value={concurrencyLimit}
-                                                    onChange={(event) =>
-                                                        setConcurrencyLimit(event.target.value)
-                                                    }
-                                                />
-                                            </form>
+                                                    <label htmlFor="max-rows">
+                                                        Max Rows Per Query
+                                                    </label>
+                                                    <input
+                                                        id="max-rows"
+                                                        type="number"
+                                                        min={0}
+                                                        value={maxRowsPerQuery}
+                                                        onChange={(event) =>
+                                                            setMaxRowsPerQuery(event.target.value)
+                                                        }
+                                                    />
+                                                    <p className="form-hint">
+                                                        Default: 5,000. Leave blank for default. Use
+                                                        0 for unlimited.
+                                                    </p>
+
+                                                    <label htmlFor="max-runtime">
+                                                        Max Runtime Seconds
+                                                    </label>
+                                                    <input
+                                                        id="max-runtime"
+                                                        type="number"
+                                                        min={0}
+                                                        value={maxRuntimeSeconds}
+                                                        onChange={(event) =>
+                                                            setMaxRuntimeSeconds(event.target.value)
+                                                        }
+                                                    />
+                                                    <p className="form-hint">
+                                                        Default: 300. Leave blank for default. Use 0
+                                                        for unlimited.
+                                                    </p>
+
+                                                    <label htmlFor="concurrency-limit">
+                                                        Concurrency Limit
+                                                    </label>
+                                                    <input
+                                                        id="concurrency-limit"
+                                                        type="number"
+                                                        min={0}
+                                                        value={concurrencyLimit}
+                                                        onChange={(event) =>
+                                                            setConcurrencyLimit(event.target.value)
+                                                        }
+                                                    />
+                                                    <p className="form-hint">
+                                                        Default: 5. Leave blank for default. Use 0
+                                                        for unlimited.
+                                                    </p>
+
+                                                    <div className="row admin-form-actions">
+                                                        <button
+                                                            type="submit"
+                                                            disabled={savingAccess}
+                                                        >
+                                                            {savingAccess
+                                                                ? 'Saving...'
+                                                                : accessAdminMode === 'edit'
+                                                                  ? 'Save'
+                                                                  : 'Create'}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="chip"
+                                                            onClick={handleCancelAccessAdmin}
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
                                         ) : null}
                                     </>
                                 ) : null}
