@@ -1439,12 +1439,13 @@ button:disabled {
 .workspace-grid {
     --workbench-editor-min-height: 340px;
     --workbench-results-min-height: 220px;
+    --workbench-main-surface: #f2e9dc;
     display: grid;
     grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
     grid-template-rows:
         minmax(var(--workbench-editor-min-height), 1.7fr)
         minmax(var(--workbench-results-min-height), 1fr);
-    column-gap: 0.9rem;
+    column-gap: 0;
     row-gap: 0;
     align-items: stretch;
     align-content: start;
@@ -1470,14 +1471,14 @@ button:disabled {
     grid-row: 1 / span 2;
     border-right: 1px solid rgba(184, 162, 132, 0.56);
     padding: 0;
-    margin-right: 0.65rem;
-    padding-right: 0.35rem;
+    margin-right: 0;
+    padding-right: 0;
     overflow: hidden;
 }
 
 .sidebar.is-collapsed {
     overflow: hidden;
-    margin-right: 0.25rem;
+    margin-right: 0;
     padding-right: 0;
 }
 
@@ -1880,9 +1881,9 @@ button:disabled {
     align-self: stretch;
     border: 0;
     border-radius: 0;
-    background: #ece0cf;
+    background: var(--workbench-main-surface);
     box-shadow: none;
-    padding: 0 0 0.7rem 0.28rem;
+    padding: 0 0 0.7rem;
 }
 
 .editor-toolbar {
@@ -2079,6 +2080,7 @@ button:disabled {
     display: grid;
     grid-template-columns: minmax(220px, 0.85fr) minmax(220px, 1fr);
     gap: 0.5rem;
+    padding: 0.1rem 0.85rem 0.18rem;
 }
 
 .editor-connection-control {
@@ -2135,7 +2137,7 @@ button:disabled {
     justify-content: space-between;
     gap: 0.55rem;
     border-top: 1px solid rgba(184, 162, 132, 0.8);
-    padding-top: 0.48rem;
+    padding: 0.48rem 0.85rem 0;
     margin-top: 0.18rem;
 }
 
@@ -2185,7 +2187,7 @@ button:disabled {
     border: 0;
     border-radius: 0;
     overflow: hidden;
-    background: #ece0cf;
+    background: var(--workbench-main-surface);
     min-height: 0;
     height: 100%;
     display: grid;
@@ -2194,7 +2196,7 @@ button:disabled {
 .monaco-frame {
     min-height: 0;
     height: 100%;
-    padding: 0.2rem 0.3rem 0.3rem 0.1rem;
+    padding: 0.2rem 0.85rem 0.38rem;
     display: grid;
 }
 
@@ -2228,9 +2230,9 @@ button:disabled {
     border: 0;
     border-top: 1px solid rgba(184, 162, 132, 0.8);
     border-radius: 0;
-    background: #ece0cf;
+    background: var(--workbench-main-surface);
     box-shadow: none;
-    padding: 0.62rem 0 0;
+    padding: 0.62rem 0.85rem 0;
 }
 
 .results-head {
@@ -2268,12 +2270,16 @@ button:disabled {
     gap: 0.22rem;
     overflow-x: auto;
     padding-bottom: 0.08rem;
+    padding: 0.28rem;
+    border: 1px solid rgba(171, 144, 108, 0.74);
+    border-radius: 0.62rem;
+    background: #dcc8ab;
 }
 
 .result-stat {
     border: 1px solid var(--border);
     border-radius: 0.5rem;
-    background: #efe3d1;
+    background: #ead9bf;
     padding: 0.2rem 0.3rem;
     display: grid;
     gap: 0.06rem;
@@ -2470,6 +2476,14 @@ button:disabled {
 .results-body .result-table th,
 .results-body .result-table td {
     padding: 0.3rem 0.42rem;
+}
+
+.results-body .result-table th.result-meta-heading,
+.results-body .result-table td.result-row-index {
+    width: 1%;
+    white-space: nowrap;
+    padding-left: 0.32rem;
+    padding-right: 0.32rem;
 }
 
 .results-body .result-table thead th {

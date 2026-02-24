@@ -3678,7 +3678,7 @@ export default function WorkspacePage() {
                 { token: 'delimiter', foreground: '2a3b4c' }
             ],
             colors: {
-                'editor.background': '#ece0cf',
+                'editor.background': '#f2e9dc',
                 'editorLineNumber.foreground': '#8ea2b1',
                 'editorLineNumber.activeForeground': '#304759',
                 'editorCursor.foreground': '#0b5cad',
@@ -3702,7 +3702,27 @@ export default function WorkspacePage() {
             editorInstance.onDidChangeCursorSelection(() =>
                 updateEditorCursorLegend(editorInstance)
             ),
-            editorInstance.onDidChangeModelContent(() => updateEditorCursorLegend(editorInstance))
+            editorInstance.onDidChangeModelContent((event) => {
+                updateEditorCursorLegend(editorInstance);
+
+                const shouldTriggerSuggest = event.changes.some(
+                    (change) =>
+                        change.rangeLength === 0 &&
+                        change.text.length > 0 &&
+                        change.text.length <= 2 &&
+                        /[A-Za-z0-9_.]/.test(change.text)
+                );
+                if (!shouldTriggerSuggest || !editorInstance.hasTextFocus()) {
+                    return;
+                }
+
+                window.requestAnimationFrame(() => {
+                    if (editorRef.current !== editorInstance) {
+                        return;
+                    }
+                    editorInstance.trigger('keyboard', 'editor.action.triggerSuggest', {});
+                });
+            })
         ];
 
         editorInstance.onDidDispose(() => {
@@ -6074,13 +6094,11 @@ export default function WorkspacePage() {
                                                 wordWrap: 'on',
                                                 scrollBeyondLastLine: false,
                                                 padding: { top: 10, bottom: 10 },
-                                                quickSuggestions: {
-                                                    comments: false,
-                                                    strings: false,
-                                                    other: true
-                                                },
+                                                quickSuggestions: true,
+                                                quickSuggestionsDelay: 75,
                                                 suggestOnTriggerCharacters: true,
-                                                tabCompletion: 'on'
+                                                tabCompletion: 'on',
+                                                wordBasedSuggestions: 'allDocuments'
                                             }}
                                         />
                                     )}
