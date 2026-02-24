@@ -334,6 +334,22 @@ type EditorCursorLegend = {
     selectedChars: number;
     selectedLines: number;
 };
+type AutocompleteDiagnostics = {
+    enabled: boolean;
+    monacoReady: boolean;
+    editorMounted: boolean;
+    modelLanguageId: string;
+    availableLanguageIds: string[];
+    registeredLanguageIds: string[];
+    suggestionSeedCount: number;
+    triggerCount: number;
+    providerInvocationCount: number;
+    lastSuggestionCount: number;
+    lastTriggerSource: string;
+    lastTriggerAt: string;
+    lastInvocationAt: string;
+    lastError: string;
+};
 type ResultSortDirection = 'asc' | 'desc';
 type ResultSortState = {
     columnIndex: number;
@@ -437,6 +453,23 @@ const builtInAuditOutcomes = [
     'noop'
 ];
 const protectedGroupIds = new Set(['platform-admins', 'analytics-users']);
+
+const buildInitialAutocompleteDiagnostics = (): AutocompleteDiagnostics => ({
+    enabled: false,
+    monacoReady: false,
+    editorMounted: false,
+    modelLanguageId: '',
+    availableLanguageIds: [],
+    registeredLanguageIds: [],
+    suggestionSeedCount: 0,
+    triggerCount: 0,
+    providerInvocationCount: 0,
+    lastSuggestionCount: 0,
+    lastTriggerSource: '',
+    lastTriggerAt: '',
+    lastInvocationAt: '',
+    lastError: ''
+});
 
 const sqlKeywordSuggestions = [
     'SELECT',
@@ -1216,6 +1249,9 @@ export default function WorkspacePage() {
     const [selectedExplorerNode, setSelectedExplorerNode] = useState('');
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
+    const [autocompleteDiagnostics, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(
+        () => buildInitialAutocompleteDiagnostics()
+    );
     const [editorRenderKey, setEditorRenderKey] = useState(0);
     const [showEditorShortcuts, setShowEditorShortcuts] = useState(false);
     const [datasourceHealthById, setDatasourceHealthById] = useState<
@@ -1232,6 +1268,42 @@ export default function WorkspacePage() {
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
     const localAuthEnabled = authMethods.includes('local');
     const isAdminSection = activeSection === 'admin';
+
+    const triggerAutocompleteSuggest = useCallback(
+        (
+            source: 'mount' | 'model-content' | 'key-up' | 'manual' | 'manual-retry' | 'unknown',
+            editorInstance?: MonacoEditorNamespace.IStandaloneCodeEditor | null
+        ) => {
+            const targetEditor = editorInstance ?? editorRef.current;
+            const occurredAt = new Date().toISOString();
+            setAutocompleteDiagnostics((current) => ({
+                ...current,
+                lastTriggerSource: source,
+                lastTriggerAt: occurredAt,
+                triggerCount: current.triggerCount + 1
+            }));
+
+            if (!targetEditor) {
+                setAutocompleteDiagnostics((current) => ({
+                    ...current,
+                    lastError: 'Suggest trigger skipped because editor instance is unavailable.'
+                }));
+                return;
+            }
+
+            try {
+                targetEditor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Unknown Monaco trigger error.';
+                setAutocompleteDiagnostics((current) => ({
+                    ...current,
+                    lastError: `Suggest trigger failed: ${message}`
+                }));
+            }
+        },
+        []
+    );
 
     useEffect(() => {
         if (
@@ -2599,7 +2671,22 @@ export default function WorkspacePage() {
         completionProviderRef.current = null;
 
         const monaco = monacoRef.current;
+        const activeModelLanguageId = editorRef.current?.getModel()?.getLanguageId() ?? '';
         if (!monaco || !monacoReady) {
+            setAutocompleteDiagnostics((current) => ({
+                ...current,
+                enabled: false,
+                monacoReady,
+                editorMounted: Boolean(editorRef.current),
+                modelLanguageId: activeModelLanguageId,
+                availableLanguageIds: [],
+                registeredLanguageIds: [],
+                suggestionSeedCount: 0,
+                lastSuggestionCount: 0,
+                lastError: monacoReady
+                    ? 'Monaco API is not initialized for autocomplete registration.'
+                    : 'Monaco editor is still loading.'
+            }));
             return;
         }
 
@@ -2691,7 +2778,6 @@ export default function WorkspacePage() {
         }
 
         const completionItems = Array.from(suggestions.values());
-        const activeModelLanguageId = editorRef.current?.getModel()?.getLanguageId() ?? '';
         const availableLanguageIds = new Set(
             monaco.languages.getLanguages().map((language) => language.id)
         );
@@ -2714,10 +2800,12 @@ export default function WorkspacePage() {
             completionLanguageIds.push(activeModelLanguageId || 'sql');
         }
 
+        const providerErrors: string[] = [];
+        const registeredLanguageIds: string[] = [];
         const providerDisposables = completionLanguageIds
             .map((languageId) => {
                 try {
-                    return monaco.languages.registerCompletionItemProvider(languageId, {
+                    const provider = monaco.languages.registerCompletionItemProvider(languageId, {
                         triggerCharacters: ['.', ' ', '(', ',', '\n', '\t'],
                         provideCompletionItems(model, position) {
                             const word = model.getWordUntilPosition(position);
@@ -2727,6 +2815,14 @@ export default function WorkspacePage() {
                                 startColumn: word.startColumn,
                                 endColumn: word.endColumn
                             };
+                            const occurredAt = new Date().toISOString();
+                            setAutocompleteDiagnostics((current) => ({
+                                ...current,
+                                providerInvocationCount: current.providerInvocationCount + 1,
+                                lastInvocationAt: occurredAt,
+                                lastSuggestionCount: completionItems.length,
+                                lastError: ''
+                            }));
 
                             return {
                                 suggestions: completionItems.map((suggestion) => ({
@@ -2736,7 +2832,14 @@ export default function WorkspacePage() {
                             };
                         }
                     });
-                } catch {
+                    registeredLanguageIds.push(languageId);
+                    return provider;
+                } catch (error) {
+                    const message =
+                        error instanceof Error ? error.message : 'Unknown Monaco provider error.';
+                    providerErrors.push(
+                        `Provider registration failed for language "${languageId}": ${message}`
+                    );
                     return null;
                 }
             })
@@ -2753,6 +2856,24 @@ export default function WorkspacePage() {
                 providerDisposables.forEach((provider) => provider.dispose());
             }
         };
+
+        const providerErrorMessage = providerErrors.join(' ');
+        setAutocompleteDiagnostics((current) => ({
+            ...current,
+            enabled: providerDisposables.length > 0,
+            monacoReady,
+            editorMounted: Boolean(editorRef.current),
+            modelLanguageId: activeModelLanguageId,
+            availableLanguageIds: Array.from(availableLanguageIds).sort(),
+            registeredLanguageIds,
+            suggestionSeedCount: completionItems.length,
+            lastSuggestionCount: completionItems.length,
+            lastError:
+                providerErrorMessage ||
+                (providerDisposables.length === 0
+                    ? 'No autocomplete providers were registered.'
+                    : '')
+        }));
 
         return () => {
             completionProviderRef.current?.dispose();
@@ -3766,11 +3887,17 @@ export default function WorkspacePage() {
         }
         setMonacoReady(true);
         setMonacoLoadTimedOut(false);
+        setAutocompleteDiagnostics((current) => ({
+            ...current,
+            monacoReady: true,
+            editorMounted: true,
+            modelLanguageId: editorInstance.getModel()?.getLanguageId() ?? ''
+        }));
         editorInstance.focus();
         updateEditorCursorLegend(editorInstance);
         window.setTimeout(() => {
             if (editorRef.current === editorInstance) {
-                editorInstance.trigger('keyboard', 'editor.action.triggerSuggest', {});
+                triggerAutocompleteSuggest('mount', editorInstance);
             }
         }, 40);
 
@@ -3799,7 +3926,7 @@ export default function WorkspacePage() {
                     if (editorRef.current !== editorInstance) {
                         return;
                     }
-                    editorInstance.trigger('keyboard', 'editor.action.triggerSuggest', {});
+                    triggerAutocompleteSuggest('model-content', editorInstance);
                 });
             }),
             editorInstance.onKeyUp((event) => {
@@ -3812,8 +3939,14 @@ export default function WorkspacePage() {
                     if (editorRef.current !== editorInstance) {
                         return;
                     }
-                    editorInstance.trigger('keyboard', 'editor.action.triggerSuggest', {});
+                    triggerAutocompleteSuggest('key-up', editorInstance);
                 });
+            }),
+            editorInstance.onDidChangeModelLanguage(() => {
+                setAutocompleteDiagnostics((current) => ({
+                    ...current,
+                    modelLanguageId: editorInstance.getModel()?.getLanguageId() ?? ''
+                }));
             })
         ];
 
@@ -6312,6 +6445,48 @@ export default function WorkspacePage() {
                                             </span>
                                         ) : null}
                                     </div>
+                                    <div
+                                        className="autocomplete-diagnostics"
+                                        aria-live="polite"
+                                        title={`Registered: ${
+                                            autocompleteDiagnostics.registeredLanguageIds.join(
+                                                ', '
+                                            ) || 'none'
+                                        } | Available: ${
+                                            autocompleteDiagnostics.availableLanguageIds.join(
+                                                ', '
+                                            ) || 'none'
+                                        } | Last trigger: ${
+                                            autocompleteDiagnostics.lastTriggerSource || 'none'
+                                        } ${
+                                            autocompleteDiagnostics.lastTriggerAt
+                                                ? `@ ${new Date(autocompleteDiagnostics.lastTriggerAt).toLocaleTimeString()}`
+                                                : ''
+                                        }`}
+                                    >
+                                        <span>
+                                            AC {autocompleteDiagnostics.enabled ? 'ON' : 'OFF'}
+                                        </span>
+                                        <span>
+                                            Lang {autocompleteDiagnostics.modelLanguageId || '-'}
+                                        </span>
+                                        <span>
+                                            Providers{' '}
+                                            {autocompleteDiagnostics.registeredLanguageIds.length}
+                                        </span>
+                                        <span>
+                                            Seeds {autocompleteDiagnostics.suggestionSeedCount}
+                                        </span>
+                                        <span>
+                                            Hits {autocompleteDiagnostics.providerInvocationCount}
+                                        </span>
+                                        <span>Triggers {autocompleteDiagnostics.triggerCount}</span>
+                                        {autocompleteDiagnostics.lastError ? (
+                                            <span className="is-error">
+                                                {autocompleteDiagnostics.lastError}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -7239,7 +7414,7 @@ export default function WorkspacePage() {
                                         ) : null}
 
                                         {groupAdminMode === 'edit' && selectedGroupRecord ? (
-                                            <div className="admin-mode-form">
+                                            <div className="group-edit-layout">
                                                 <div className="row toolbar-actions admin-toolbar-actions">
                                                     <button
                                                         type="button"

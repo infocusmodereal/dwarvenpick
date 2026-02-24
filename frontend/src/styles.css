@@ -2889,6 +2889,35 @@ select {
     font-weight: 620;
 }
 
+.autocomplete-diagnostics {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+    margin-left: 0.5rem;
+    max-width: 540px;
+}
+
+.autocomplete-diagnostics span {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    color: #6b543b;
+    border: 1px solid #bca483;
+    border-radius: 0.42rem;
+    background: #ecddc8;
+    padding: 0.08rem 0.28rem;
+    white-space: nowrap;
+}
+
+.autocomplete-diagnostics .is-error {
+    border-color: #b56756;
+    background: #f0d3ce;
+    color: #8f2f24;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .admin-audit .history-table {
     width: 100%;
     min-width: 100%;
@@ -2942,6 +2971,34 @@ select {
     border-radius: 0.78rem;
     background: #efe5d5;
     padding: 0.78rem;
+}
+
+.group-edit-layout {
+    display: grid;
+    gap: 0.92rem;
+    align-content: start;
+    padding: 0.36rem 0;
+}
+
+.group-edit-layout .stack-form {
+    gap: 0.72rem;
+}
+
+.group-edit-layout .member-row {
+    align-items: center;
+    gap: 0.58rem;
+}
+
+.group-edit-layout .member-row input {
+    flex: 1 1 auto;
+}
+
+.group-edit-layout .history-table-wrap {
+    margin-top: 0.14rem;
+}
+
+.group-edit-layout .danger-button {
+    justify-self: start;
 }
 
 .admin-table .history-actions {
