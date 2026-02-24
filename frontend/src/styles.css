@@ -1491,6 +1491,7 @@ button:disabled {
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     gap: 0;
+    grid-column: 1;
     grid-row: 1 / span 2;
     border-right: 1px solid rgba(184, 162, 132, 0.56);
     padding: 0;
