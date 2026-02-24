@@ -2784,6 +2784,7 @@ export default function WorkspacePage() {
         const preferredLanguageIds = [
             activeModelLanguageId,
             'sql',
+            'plaintext',
             'mysql',
             'mariadb',
             'pgsql',
@@ -2793,9 +2794,7 @@ export default function WorkspacePage() {
             'starrocks',
             'vertica'
         ].filter((languageId): languageId is string => Boolean(languageId));
-        const completionLanguageIds = Array.from(new Set(preferredLanguageIds)).filter(
-            (languageId) => availableLanguageIds.has(languageId)
-        );
+        const completionLanguageIds = Array.from(new Set(preferredLanguageIds));
         if (completionLanguageIds.length === 0) {
             completionLanguageIds.push(activeModelLanguageId || 'sql');
         }
@@ -2815,17 +2814,29 @@ export default function WorkspacePage() {
                                 startColumn: word.startColumn,
                                 endColumn: word.endColumn
                             };
+                            const normalizedWord = word.word.trim().toLowerCase();
+                            const filteredSuggestions = (
+                                normalizedWord
+                                    ? completionItems.filter((candidate) => {
+                                          const label =
+                                              typeof candidate.label === 'string'
+                                                  ? candidate.label
+                                                  : candidate.label.label;
+                                          return label.toLowerCase().includes(normalizedWord);
+                                      })
+                                    : completionItems
+                            ).slice(0, 250);
                             const occurredAt = new Date().toISOString();
                             setAutocompleteDiagnostics((current) => ({
                                 ...current,
                                 providerInvocationCount: current.providerInvocationCount + 1,
                                 lastInvocationAt: occurredAt,
-                                lastSuggestionCount: completionItems.length,
+                                lastSuggestionCount: filteredSuggestions.length,
                                 lastError: ''
                             }));
 
                             return {
-                                suggestions: completionItems.map((suggestion) => ({
+                                suggestions: filteredSuggestions.map((suggestion) => ({
                                     ...suggestion,
                                     range
                                 }))
@@ -3929,6 +3940,14 @@ export default function WorkspacePage() {
                     triggerAutocompleteSuggest('model-content', editorInstance);
                 });
             }),
+            editorInstance.onDidFocusEditorText(() => {
+                window.requestAnimationFrame(() => {
+                    if (editorRef.current !== editorInstance) {
+                        return;
+                    }
+                    triggerAutocompleteSuggest('manual', editorInstance);
+                });
+            }),
             editorInstance.onKeyUp((event) => {
                 const key = event.browserEvent.key;
                 if (!/^[A-Za-z0-9_.]$/.test(key)) {
@@ -3947,6 +3966,14 @@ export default function WorkspacePage() {
                     ...current,
                     modelLanguageId: editorInstance.getModel()?.getLanguageId() ?? ''
                 }));
+            }),
+            editorInstance.onDidPaste(() => {
+                window.requestAnimationFrame(() => {
+                    if (editorRef.current !== editorInstance) {
+                        return;
+                    }
+                    triggerAutocompleteSuggest('manual-retry', editorInstance);
+                });
             })
         ];
 
@@ -6330,7 +6357,11 @@ export default function WorkspacePage() {
                                                     showKeywords: true,
                                                     showWords: true,
                                                     showFields: true,
-                                                    preview: true
+                                                    showStatusBar: true,
+                                                    preview: true,
+                                                    filterGraceful: true,
+                                                    localityBonus: true,
+                                                    matchOnWordStartOnly: false
                                                 },
                                                 tabCompletion: 'on',
                                                 wordBasedSuggestions: 'allDocuments'
@@ -9356,7 +9387,7 @@ export default function WorkspacePage() {
                                                                     </div>
                                                                     <button
                                                                         type="button"
-                                                                        className="chip"
+                                                                        className="chip upload-driver-button"
                                                                         onClick={() =>
                                                                             void handleUploadDriver()
                                                                         }
@@ -9560,6 +9591,7 @@ export default function WorkspacePage() {
 
                                                             <button
                                                                 type="submit"
+                                                                className="connection-submit-button"
                                                                 disabled={savingDatasource}
                                                             >
                                                                 {savingDatasource
@@ -9929,7 +9961,7 @@ export default function WorkspacePage() {
                                                                 </div>
                                                             </details>
                                                         ) : (
-                                                            <p className="muted-id">
+                                                            <p className="muted-id connection-tools-note">
                                                                 Save a connection first to manage
                                                                 credential profiles and run tests.
                                                             </p>
