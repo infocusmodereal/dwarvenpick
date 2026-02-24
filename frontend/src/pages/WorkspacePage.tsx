@@ -26,6 +26,7 @@ import chevronDownIcon from '../assets/lucide/chevron-down.svg?raw';
 import refreshCwIcon from '../assets/lucide/refresh-cw.svg?raw';
 import tabCloseIcon from '../assets/lucide/x.svg?raw';
 import tabMenuIcon from '../assets/lucide/ellipsis.svg?raw';
+import downloadIcon from '../assets/lucide/download.svg?raw';
 import sortUpIcon from '../assets/lucide/arrow-up.svg?raw';
 import sortDownIcon from '../assets/lucide/arrow-down.svg?raw';
 import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
@@ -915,11 +916,13 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
 
     if (icon === 'download') {
         return (
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M10 3.8v8.2" />
-                <path d="m6.8 9.2 3.2 3.2 3.2-3.2" />
-                <path d="M4.6 15.8h10.8" />
-            </svg>
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: downloadIcon
+                }}
+            />
         );
     }
 
@@ -2572,7 +2575,7 @@ export default function WorkspacePage() {
         completionProviderRef.current = null;
 
         const monaco = monacoRef.current;
-        if (!monaco) {
+        if (!monaco || !monacoReady) {
             return;
         }
 
@@ -2688,7 +2691,7 @@ export default function WorkspacePage() {
             completionProviderRef.current?.dispose();
             completionProviderRef.current = null;
         };
-    }, [activeTab?.datasourceId, schemaBrowser, visibleDatasources]);
+    }, [activeTab?.datasourceId, monacoReady, schemaBrowser, visibleDatasources]);
 
     const handleOpenNewTabForDatasource = useCallback(
         (datasourceId: string, initialSql = 'SELECT 1;') => {

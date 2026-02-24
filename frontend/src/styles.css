@@ -2071,9 +2071,15 @@ button:disabled {
     margin-bottom: 0;
     margin-left: 0.24rem;
     border: 0;
-    border-left: 1px solid rgba(184, 162, 132, 0.85);
+    width: 1.86rem;
+    height: 1.86rem;
     border-radius: 0;
     background: transparent;
+}
+
+.editor-tab-add .editor-tab-icon-glyph {
+    width: 1rem;
+    height: 1rem;
 }
 
 .editor-toolbar-fields {
