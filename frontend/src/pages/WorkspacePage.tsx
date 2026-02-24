@@ -8919,7 +8919,6 @@ export default function WorkspacePage() {
                                                         <div className="row connection-list-toolbar">
                                                             <button
                                                                 type="button"
-                                                                className="chip"
                                                                 onClick={
                                                                     handleStartCreateManagedDatasource
                                                                 }
@@ -8928,7 +8927,6 @@ export default function WorkspacePage() {
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="chip"
                                                                 disabled={reencryptingCredentials}
                                                                 title="Re-encrypt stored credential profiles with the current server key. Useful after rotating encryption keys or restoring backups."
                                                                 onClick={() =>
