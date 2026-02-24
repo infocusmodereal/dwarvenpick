@@ -861,8 +861,9 @@ kbd {
     border-radius: 0.74rem;
     background: #efe4d4;
     padding: 1rem;
-    display: grid;
-    gap: 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.95rem;
     margin-top: 0.26rem;
     font-size: 0.8rem;
 }
@@ -870,6 +871,10 @@ kbd {
 .managed-advanced-block .form-field {
     gap: 0.52rem;
     margin: 0;
+}
+
+.managed-advanced-block .form-field + .form-field {
+    padding-top: 0.45rem;
 }
 
 .managed-advanced-block > summary {
@@ -880,11 +885,11 @@ kbd {
 }
 
 .managed-advanced-block[open] > summary {
-    margin-bottom: 0.9rem;
+    margin-bottom: 0.35rem;
 }
 
 .managed-advanced-block > :not(summary) {
-    margin-top: 0.34rem;
+    margin-top: 0;
 }
 
 .managed-advanced-block input,
@@ -2243,6 +2248,17 @@ button:disabled {
     font-weight: 600;
 }
 
+.workbench-results-divider {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: start;
+    height: 0;
+    border-top: 1px solid rgba(184, 162, 132, 0.8);
+    pointer-events: none;
+    position: relative;
+    z-index: 2;
+}
+
 .results {
     grid-column: 2;
     display: grid;
@@ -2252,7 +2268,6 @@ button:disabled {
     align-content: stretch;
     grid-template-rows: auto minmax(0, 1fr);
     border: 0;
-    border-top: 1px solid rgba(184, 162, 132, 0.8);
     border-radius: 0;
     background: var(--workbench-main-surface);
     box-shadow: none;
@@ -2905,35 +2920,6 @@ select {
 .editor-cursor-legend span:last-child {
     color: #5c462f;
     font-weight: 620;
-}
-
-.autocomplete-diagnostics {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.32rem;
-    margin-left: 0.5rem;
-    max-width: 540px;
-}
-
-.autocomplete-diagnostics span {
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
-    font-size: 0.62rem;
-    color: #6b543b;
-    border: 1px solid #bca483;
-    border-radius: 0.42rem;
-    background: #ecddc8;
-    padding: 0.08rem 0.28rem;
-    white-space: nowrap;
-}
-
-.autocomplete-diagnostics .is-error {
-    border-color: #b56756;
-    background: #f0d3ce;
-    color: #8f2f24;
-    max-width: 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
 }
 
 .admin-audit .history-table {

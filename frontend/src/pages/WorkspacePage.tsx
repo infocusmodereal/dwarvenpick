@@ -1251,8 +1251,8 @@ export default function WorkspacePage() {
     const [selectedExplorerNode, setSelectedExplorerNode] = useState('');
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
-    const [autocompleteDiagnostics, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(
-        () => buildInitialAutocompleteDiagnostics()
+    const [, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(() =>
+        buildInitialAutocompleteDiagnostics()
     );
     const [editorRenderKey, setEditorRenderKey] = useState(0);
     const [showEditorShortcuts, setShowEditorShortcuts] = useState(false);
@@ -6479,51 +6479,11 @@ export default function WorkspacePage() {
                                             </span>
                                         ) : null}
                                     </div>
-                                    <div
-                                        className="autocomplete-diagnostics"
-                                        aria-live="polite"
-                                        title={`Registered: ${
-                                            autocompleteDiagnostics.registeredLanguageIds.join(
-                                                ', '
-                                            ) || 'none'
-                                        } | Available: ${
-                                            autocompleteDiagnostics.availableLanguageIds.join(
-                                                ', '
-                                            ) || 'none'
-                                        } | Last trigger: ${
-                                            autocompleteDiagnostics.lastTriggerSource || 'none'
-                                        } ${
-                                            autocompleteDiagnostics.lastTriggerAt
-                                                ? `@ ${new Date(autocompleteDiagnostics.lastTriggerAt).toLocaleTimeString()}`
-                                                : ''
-                                        }`}
-                                    >
-                                        <span>
-                                            AC {autocompleteDiagnostics.enabled ? 'ON' : 'OFF'}
-                                        </span>
-                                        <span>
-                                            Lang {autocompleteDiagnostics.modelLanguageId || '-'}
-                                        </span>
-                                        <span>
-                                            Providers{' '}
-                                            {autocompleteDiagnostics.registeredLanguageIds.length}
-                                        </span>
-                                        <span>
-                                            Seeds {autocompleteDiagnostics.suggestionSeedCount}
-                                        </span>
-                                        <span>
-                                            Hits {autocompleteDiagnostics.providerInvocationCount}
-                                        </span>
-                                        <span>Triggers {autocompleteDiagnostics.triggerCount}</span>
-                                        {autocompleteDiagnostics.lastError ? (
-                                            <span className="is-error">
-                                                {autocompleteDiagnostics.lastError}
-                                            </span>
-                                        ) : null}
-                                    </div>
                                 </div>
                             </div>
                         </section>
+
+                        <div className="workbench-results-divider" aria-hidden="true" />
 
                         <section className="results">
                             <div className="results-head">
