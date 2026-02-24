@@ -161,6 +161,6 @@ JOIN order_items oi
 WHERE o.order_status IN ('PAID', 'SHIPPED', 'DELIVERED')
 GROUP BY DATE(placed_at);
 
-CREATE USER IF NOT EXISTS readonly@'%' IDENTIFIED BY 'readonly';
-GRANT USAGE ON ALL CATALOGS TO USER readonly@'%';
-GRANT SELECT ON ALL TABLES IN DATABASE warehouse TO USER readonly@'%';
+CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY 'readonly';
+GRANT USAGE ON ALL CATALOGS TO USER 'readonly'@'%';
+GRANT SELECT ON ALL TABLES IN DATABASE warehouse TO USER 'readonly'@'%';
