@@ -39,6 +39,34 @@ services:
       - mariadbdata:/var/lib/mysql
       - ./mariadb-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
 
+  starrocks:
+    image: starrocks/allin1-ubuntu:3.1.7
+    container_name: dwarvenpick-starrocks
+    ports:
+      - "9030:9030"
+      - "8030:8030"
+    volumes:
+      - starrocksdata:/data
+
+  starrocks-seed:
+    image: mysql:8.4
+    container_name: dwarvenpick-starrocks-seed
+    depends_on:
+      - starrocks
+    volumes:
+      - ./starrocks-init.sql:/seed.sql:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until mysql -h starrocks -P 9030 -uroot -e "SELECT 1" >/dev/null 2>&1; do
+          echo "Waiting for StarRocks..."
+          sleep 2
+        done
+        mysql -h starrocks -P 9030 -uroot < /seed.sql
+        echo "StarRocks seeded."
+    restart: "no"
+
   backend:
     build:
       context: ../../
@@ -63,6 +91,11 @@ services:
       DWARVENPICK_SEED_MARIADB_DATABASE: warehouse
       DWARVENPICK_SEED_MARIADB_USERNAME: readonly
       DWARVENPICK_SEED_MARIADB_PASSWORD: readonly
+      DWARVENPICK_SEED_STARROCKS_HOST: starrocks
+      DWARVENPICK_SEED_STARROCKS_PORT: 9030
+      DWARVENPICK_SEED_STARROCKS_DATABASE: warehouse
+      DWARVENPICK_SEED_STARROCKS_USERNAME: readonly
+      DWARVENPICK_SEED_STARROCKS_PASSWORD: readonly
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
@@ -70,6 +103,8 @@ services:
       - postgres
       - mysql
       - mariadb
+      - starrocks
+      - starrocks-seed
 
   frontend:
     build:
@@ -85,3 +120,4 @@ volumes:
   pgdata:
   mysqldata:
   mariadbdata:
+  starrocksdata:

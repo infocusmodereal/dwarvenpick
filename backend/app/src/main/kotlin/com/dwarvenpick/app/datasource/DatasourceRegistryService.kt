@@ -140,6 +140,31 @@ class DatasourceRegistryService(
             key = "DWARVENPICK_SEED_MARIADB_PASSWORD",
             fallback = "readonly",
         )
+    private val seedStarrocksHost =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_STARROCKS_HOST",
+            fallback = "localhost",
+        )
+    private val seedStarrocksPort =
+        readIntEnv(
+            key = "DWARVENPICK_SEED_STARROCKS_PORT",
+            fallback = 9030,
+        )
+    private val seedStarrocksDatabase =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_STARROCKS_DATABASE",
+            fallback = "warehouse",
+        )
+    private val seedStarrocksUsername =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_STARROCKS_USERNAME",
+            fallback = "readonly",
+        )
+    private val seedStarrocksPassword =
+        readStringEnv(
+            key = "DWARVENPICK_SEED_STARROCKS_PASSWORD",
+            fallback = "readonly",
+        )
 
     @PostConstruct
     fun initialize() {
@@ -153,7 +178,7 @@ class DatasourceRegistryService(
         val postgresId =
             createDatasource(
                 CreateDatasourceRequest(
-                    name = "PostgreSQL Core",
+                    name = "postgresql-core",
                     engine = DatasourceEngine.POSTGRESQL,
                     host = seedPostgresHost,
                     port = seedPostgresPort,
@@ -184,7 +209,7 @@ class DatasourceRegistryService(
         val mysqlId =
             createDatasource(
                 CreateDatasourceRequest(
-                    name = "MySQL Orders",
+                    name = "mysql-orders",
                     engine = DatasourceEngine.MYSQL,
                     host = seedMysqlHost,
                     port = seedMysqlPort,
@@ -220,7 +245,7 @@ class DatasourceRegistryService(
         val mariadbId =
             createDatasource(
                 CreateDatasourceRequest(
-                    name = "MariaDB Mart",
+                    name = "mariadb-mart",
                     engine = DatasourceEngine.MARIADB,
                     host = seedMariadbHost,
                     port = seedMariadbPort,
@@ -255,7 +280,7 @@ class DatasourceRegistryService(
         val trinoId =
             createDatasource(
                 CreateDatasourceRequest(
-                    name = "Trino Warehouse",
+                    name = "trino-warehouse",
                     engine = DatasourceEngine.TRINO,
                     host = "localhost",
                     port = 8088,
@@ -279,6 +304,42 @@ class DatasourceRegistryService(
             UpsertCredentialProfileRequest(
                 username = "trino",
                 password = "trino",
+                description = "Analyst readonly profile.",
+            ),
+        )
+
+        val starrocksId =
+            createDatasource(
+                CreateDatasourceRequest(
+                    name = "starrocks-warehouse",
+                    engine = DatasourceEngine.STARROCKS,
+                    host = seedStarrocksHost,
+                    port = seedStarrocksPort,
+                    database = seedStarrocksDatabase,
+                    driverId = "starrocks-mysql",
+                    tls = TlsSettings(mode = TlsMode.DISABLE),
+                    options =
+                        mapOf(
+                            "allowPublicKeyRetrieval" to "true",
+                            "serverTimezone" to "UTC",
+                        ),
+                ),
+            ).id
+        upsertCredentialProfile(
+            starrocksId,
+            "admin-ro",
+            UpsertCredentialProfileRequest(
+                username = seedStarrocksUsername,
+                password = seedStarrocksPassword,
+                description = "Admin readonly profile.",
+            ),
+        )
+        upsertCredentialProfile(
+            starrocksId,
+            "analyst-ro",
+            UpsertCredentialProfileRequest(
+                username = seedStarrocksUsername,
+                password = seedStarrocksPassword,
                 description = "Analyst readonly profile.",
             ),
         )
