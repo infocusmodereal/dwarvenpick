@@ -1518,7 +1518,10 @@ button:disabled {
     row-gap: 0;
     align-items: stretch;
     align-content: stretch;
-    min-height: 100%;
+    min-height: max(
+        100%,
+        calc(var(--workbench-editor-min-height) + var(--workbench-results-min-height))
+    );
     height: 100%;
     overflow: visible;
     background: #ece0cf;
@@ -2338,7 +2341,7 @@ button:disabled {
 .results-body .result-table-wrap {
     max-height: none;
     height: 100%;
-    min-height: 208px;
+    min-height: 0;
 }
 
 .results-body .result-table {
