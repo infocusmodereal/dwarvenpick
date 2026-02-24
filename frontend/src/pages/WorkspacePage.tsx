@@ -8267,8 +8267,9 @@ export default function WorkspacePage() {
                                                         }
                                                     />
                                                     <p className="form-hint">
-                                                        Default: 5. Leave blank for default. Use 0
-                                                        for unlimited.
+                                                        Default: 5 (capped by the server max per
+                                                        user). Leave blank for default. Use 0 for
+                                                        unlimited.
                                                     </p>
 
                                                     <div className="row admin-form-actions">
