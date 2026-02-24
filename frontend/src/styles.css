@@ -1456,7 +1456,7 @@ button:disabled {
     overflow-y: auto;
     overflow-x: hidden;
     background: #ece0cf;
-    padding: 0 0 0.9rem;
+    padding: 0;
 }
 
 .workspace-grid {
@@ -1468,15 +1468,15 @@ button:disabled {
     grid-template-rows:
         minmax(var(--workbench-editor-min-height), 1.7fr)
         minmax(var(--workbench-results-min-height), 1fr);
-	    column-gap: 0;
-	    row-gap: 0;
-	    align-items: stretch;
-	    align-content: stretch;
-	    min-height: 100%;
-	    height: 100%;
-	    overflow: visible;
-	    background: #ece0cf;
-	    padding: 0 0 1.2rem 0.9rem;
+    column-gap: 0;
+    row-gap: 0;
+    align-items: stretch;
+    align-content: stretch;
+    min-height: 100%;
+    height: 100%;
+    overflow: visible;
+    background: #ece0cf;
+    padding: 0 0 0 0.9rem;
 }
 
 .workspace-grid.is-explorer-collapsed {
