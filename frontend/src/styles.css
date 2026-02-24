@@ -2966,13 +2966,6 @@ select {
     margin-bottom: 0.1rem;
 }
 
-.admin-mode-form {
-    border: 1px solid var(--border);
-    border-radius: 0.78rem;
-    background: #efe5d5;
-    padding: 0.78rem;
-}
-
 .group-edit-layout {
     display: grid;
     gap: 0.92rem;
@@ -2999,6 +2992,26 @@ select {
 
 .group-edit-layout .danger-button {
     justify-self: start;
+}
+
+.access-edit-layout {
+    gap: 0.82rem;
+    padding: 0.3rem 0;
+    align-content: start;
+}
+
+.access-edit-layout > label {
+    margin-top: 0.08rem;
+}
+
+.access-edit-layout .checkbox-row {
+    margin-top: 0.1rem;
+}
+
+.access-edit-layout .select-wrap,
+.access-edit-layout .checkbox-row,
+.access-edit-layout input {
+    margin-bottom: 0.04rem;
 }
 
 .admin-table .history-actions {

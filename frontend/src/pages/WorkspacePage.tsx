@@ -2806,7 +2806,7 @@ export default function WorkspacePage() {
             .map((languageId) => {
                 try {
                     const provider = monaco.languages.registerCompletionItemProvider(languageId, {
-                        triggerCharacters: ['.', ' ', '(', ',', '\n', '\t'],
+                        triggerCharacters: ['.', '(', ',', '_'],
                         provideCompletionItems(model, position) {
                             const word = model.getWordUntilPosition(position);
                             const range = {
@@ -7877,7 +7877,7 @@ export default function WorkspacePage() {
                                             <form
                                                 className={
                                                     accessAdminMode === 'edit'
-                                                        ? 'stack-form admin-mode-form'
+                                                        ? 'stack-form access-edit-layout'
                                                         : 'stack-form'
                                                 }
                                                 onSubmit={handleSaveDatasourceAccess}
