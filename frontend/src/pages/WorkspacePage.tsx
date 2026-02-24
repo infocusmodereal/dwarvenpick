@@ -1,6 +1,8 @@
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as MonacoModule from 'monaco-editor/esm/vs/editor/editor.api';
+import 'monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController';
+import 'monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetController2';
 import 'monaco-editor/esm/vs/basic-languages/sql/sql.contribution';
 import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
@@ -6342,6 +6344,7 @@ export default function WorkspacePage() {
                                                 lineNumbersMinChars: 4,
                                                 fontFamily:
                                                     'JetBrains Mono, IBM Plex Mono, monospace',
+                                                fixedOverflowWidgets: true,
                                                 bracketPairColorization: { enabled: true },
                                                 wordWrap: 'on',
                                                 scrollBeyondLastLine: false,
