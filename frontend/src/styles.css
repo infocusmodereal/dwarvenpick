@@ -1895,6 +1895,8 @@ button:disabled {
 }
 
 .editor {
+    grid-column: 2;
+    grid-row: 1;
     align-content: stretch;
     min-width: 0;
     min-height: 0;
@@ -2261,6 +2263,7 @@ button:disabled {
 
 .results {
     grid-column: 2;
+    grid-row: 2;
     display: grid;
     gap: 0.72rem;
     min-height: 0;
