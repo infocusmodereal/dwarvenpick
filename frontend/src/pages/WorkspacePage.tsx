@@ -5273,27 +5273,6 @@ export default function WorkspacePage() {
                             >
                                 <div className="row schema-browser-header">
                                     {showSchemaBrowser ? <h3>Explorer</h3> : null}
-                                    <button
-                                        type="button"
-                                        className="icon-button schema-browser-toggle"
-                                        onClick={() => setShowSchemaBrowser((current) => !current)}
-                                        title={
-                                            showSchemaBrowser
-                                                ? 'Collapse explorer'
-                                                : 'Expand explorer'
-                                        }
-                                        aria-label={
-                                            showSchemaBrowser
-                                                ? 'Collapse explorer'
-                                                : 'Expand explorer'
-                                        }
-                                    >
-                                        <span className="icon-button-glyph" aria-hidden>
-                                            <RailIcon
-                                                glyph={showSchemaBrowser ? 'collapse' : 'menu'}
-                                            />
-                                        </span>
-                                    </button>
                                     {showSchemaBrowser ? (
                                         <button
                                             type="button"
@@ -5323,6 +5302,27 @@ export default function WorkspacePage() {
                                             <ExplorerRefreshIcon />
                                         </button>
                                     ) : null}
+                                    <button
+                                        type="button"
+                                        className="icon-button schema-browser-toggle"
+                                        onClick={() => setShowSchemaBrowser((current) => !current)}
+                                        title={
+                                            showSchemaBrowser
+                                                ? 'Collapse explorer'
+                                                : 'Expand explorer'
+                                        }
+                                        aria-label={
+                                            showSchemaBrowser
+                                                ? 'Collapse explorer'
+                                                : 'Expand explorer'
+                                        }
+                                    >
+                                        <span className="icon-button-glyph" aria-hidden>
+                                            <RailIcon
+                                                glyph={showSchemaBrowser ? 'collapse' : 'menu'}
+                                            />
+                                        </span>
+                                    </button>
                                 </div>
                                 {showSchemaBrowser ? (
                                     <div className="explorer-body">

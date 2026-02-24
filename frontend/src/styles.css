@@ -1456,7 +1456,7 @@ button:disabled {
 }
 
 .workspace-grid.is-explorer-collapsed {
-    grid-template-columns: 90px minmax(0, 1fr);
+    grid-template-columns: 48px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -1470,12 +1470,14 @@ button:disabled {
     border-right: 1px solid rgba(184, 162, 132, 0.56);
     padding: 0;
     margin-right: 0.65rem;
+    padding-right: 0.35rem;
     overflow: hidden;
 }
 
 .sidebar.is-collapsed {
     overflow: hidden;
     margin-right: 0.25rem;
+    padding-right: 0;
 }
 
 .tile-heading {
@@ -1502,7 +1504,7 @@ button:disabled {
     border: 0;
     background: transparent;
     border-radius: 0;
-    padding: 0.18rem 0 0.1rem;
+    padding: 0.18rem 0.24rem 0.1rem;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 0.55rem;
@@ -1521,13 +1523,27 @@ button:disabled {
     justify-content: flex-start;
     gap: 0.45rem;
     padding-bottom: 0.45rem;
+    padding-inline: 0.24rem;
+    position: relative;
+}
+
+.schema-browser-header::after {
+    content: '';
+    position: absolute;
+    left: 0.24rem;
+    right: 0.24rem;
+    bottom: 0;
     border-bottom: 1px solid rgba(184, 162, 132, 0.62);
 }
 
 .schema-browser.is-collapsed .schema-browser-header {
-    justify-content: flex-start;
-    border-bottom: 0;
+    justify-content: center;
     padding-bottom: 0;
+    padding-inline: 0;
+}
+
+.schema-browser.is-collapsed .schema-browser-header::after {
+    display: none;
 }
 
 .schema-browser-toggle {
@@ -1556,7 +1572,7 @@ button:disabled {
 .explorer-toolbar-fields {
     display: grid;
     gap: 0.4rem;
-    padding: 0.55rem 0;
+    padding: 0.55rem 0.24rem;
     border-bottom: 0;
     border-radius: 0;
     background: transparent;
@@ -1578,8 +1594,8 @@ button:disabled {
 
 .explorer-toolbar-label-text {
     font-size: 0.72rem;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    text-transform: none;
     color: #6f5a43;
     font-weight: 650;
     font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
@@ -2080,8 +2096,8 @@ button:disabled {
 }
 
 .editor-connection-icon {
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 1.76rem;
+    height: 1.76rem;
     border-radius: 0.34rem;
     border: 1px solid #c5b39b;
     background: #f2e8d7;
@@ -2092,8 +2108,8 @@ button:disabled {
 }
 
 .editor-connection-icon img {
-    width: 1rem;
-    height: 1rem;
+    width: 1.3rem;
+    height: 1.3rem;
     object-fit: contain;
 }
 
@@ -2697,13 +2713,13 @@ button:disabled {
 }
 
 .login-brand-mark {
-    width: 4rem;
-    height: 4rem;
+    width: 4.8rem;
+    height: 4.8rem;
     object-fit: contain;
 }
 
 .login-brand strong {
-    font-size: 1.26rem;
+    font-size: 1.52rem;
     font-weight: 760;
     line-height: 1.05;
 }
