@@ -6483,10 +6483,8 @@ export default function WorkspacePage() {
                             </div>
                         </section>
 
-                        <div className="workbench-results-divider" aria-hidden="true" />
-
-                        <section className="results">
-                            <div className="results-head">
+	                        <section className="results">
+	                            <div className="results-head">
                                 {activeTab?.executionId ? (
                                     <div className="result-stats-grid">
                                         <div className="result-stat">
