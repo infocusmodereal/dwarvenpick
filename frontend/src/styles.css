@@ -1021,6 +1021,9 @@ button:disabled {
     padding: 0.82rem 0.72rem;
     position: sticky;
     top: 0;
+    z-index: 80;
+    isolation: isolate;
+    overflow: visible;
     display: flex;
     flex-direction: column;
     gap: 0.52rem;
@@ -1190,7 +1193,7 @@ button:disabled {
     left: calc(100% + 0.46rem);
     top: 0;
     min-width: 132px;
-    z-index: 45;
+    z-index: 140;
     border: 1px solid #4f3e2b;
     background: #251a11;
     box-shadow: 0 14px 26px rgba(14, 9, 4, 0.42);
@@ -1323,7 +1326,7 @@ button:disabled {
     position: absolute;
     left: calc(100% + 0.42rem);
     bottom: 0;
-    z-index: 35;
+    z-index: 140;
     min-width: 132px;
     border: 1px solid #4f3e2b;
     border-radius: 0.62rem;
@@ -1400,10 +1403,11 @@ button:disabled {
 
 .workspace-left-user-menu {
     position: absolute;
-    bottom: calc(100% + 0.4rem);
-    left: 0;
-    right: 0;
-    z-index: 30;
+    left: calc(100% + 0.46rem);
+    right: auto;
+    bottom: 0;
+    z-index: 140;
+    min-width: 210px;
     border: 1px solid #4f3e2b;
     border-radius: 0.75rem;
     background: #251a11;
@@ -2681,9 +2685,11 @@ button:disabled {
 }
 
 .login-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.62rem;
+    display: grid;
+    justify-items: center;
+    gap: 0.28rem;
+    width: 100%;
+    text-align: center;
     color: #2c2218;
     font-size: 1.18rem;
     font-weight: 760;
@@ -2691,9 +2697,15 @@ button:disabled {
 }
 
 .login-brand-mark {
-    width: 2.85rem;
-    height: 2.85rem;
+    width: 4rem;
+    height: 4rem;
     object-fit: contain;
+}
+
+.login-brand strong {
+    font-size: 1.26rem;
+    font-weight: 760;
+    line-height: 1.05;
 }
 
 select {
