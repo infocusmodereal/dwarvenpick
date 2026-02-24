@@ -2527,17 +2527,13 @@ button:disabled {
     align-items: end;
     overflow-x: auto;
     padding-bottom: 0.12rem;
-    background: #e0ccb0;
-    border: 1px solid rgba(171, 144, 108, 0.78);
-    border-radius: 0.68rem;
-    padding: 0.42rem;
 }
 
 .filter-field {
-    border: 1px solid var(--border);
+    border: 1px solid #a98960;
     border-radius: 0.58rem;
     padding: 0.28rem;
-    background: #efe5d5;
+    background: #e1ccb0;
     display: grid;
     gap: 0.16rem;
     flex: 0 0 155px;

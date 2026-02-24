@@ -2692,7 +2692,11 @@ export default function WorkspacePage() {
 
         const completionItems = Array.from(suggestions.values());
         const activeModelLanguageId = editorRef.current?.getModel()?.getLanguageId() ?? '';
-        const completionLanguageIds = new Set([
+        const availableLanguageIds = new Set(
+            monaco.languages.getLanguages().map((language) => language.id)
+        );
+        const preferredLanguageIds = [
+            activeModelLanguageId,
             'sql',
             'mysql',
             'mariadb',
@@ -2702,32 +2706,47 @@ export default function WorkspacePage() {
             'trino',
             'starrocks',
             'vertica'
-        ]);
-        if (activeModelLanguageId) {
-            completionLanguageIds.add(activeModelLanguageId);
+        ].filter((languageId): languageId is string => Boolean(languageId));
+        const completionLanguageIds = Array.from(new Set(preferredLanguageIds)).filter(
+            (languageId) => availableLanguageIds.has(languageId)
+        );
+        if (completionLanguageIds.length === 0) {
+            completionLanguageIds.push(activeModelLanguageId || 'sql');
         }
 
-        const providerDisposables = Array.from(completionLanguageIds).map((languageId) =>
-            monaco.languages.registerCompletionItemProvider(languageId, {
-                triggerCharacters: ['.', ' ', '(', ',', '\n', '\t'],
-                provideCompletionItems(model, position) {
-                    const word = model.getWordUntilPosition(position);
-                    const range = {
-                        startLineNumber: position.lineNumber,
-                        endLineNumber: position.lineNumber,
-                        startColumn: word.startColumn,
-                        endColumn: word.endColumn
-                    };
+        const providerDisposables = completionLanguageIds
+            .map((languageId) => {
+                try {
+                    return monaco.languages.registerCompletionItemProvider(languageId, {
+                        triggerCharacters: ['.', ' ', '(', ',', '\n', '\t'],
+                        provideCompletionItems(model, position) {
+                            const word = model.getWordUntilPosition(position);
+                            const range = {
+                                startLineNumber: position.lineNumber,
+                                endLineNumber: position.lineNumber,
+                                startColumn: word.startColumn,
+                                endColumn: word.endColumn
+                            };
 
-                    return {
-                        suggestions: completionItems.map((suggestion) => ({
-                            ...suggestion,
-                            range
-                        }))
-                    };
+                            return {
+                                suggestions: completionItems.map((suggestion) => ({
+                                    ...suggestion,
+                                    range
+                                }))
+                            };
+                        }
+                    });
+                } catch {
+                    return null;
                 }
             })
-        );
+            .filter(
+                (
+                    provider
+                ): provider is {
+                    dispose: () => void;
+                } => provider !== null
+            );
 
         completionProviderRef.current = {
             dispose: () => {
@@ -3773,6 +3792,19 @@ export default function WorkspacePage() {
                         /[A-Za-z0-9_.]/.test(change.text)
                 );
                 if (!shouldTriggerSuggest || !editorInstance.hasTextFocus()) {
+                    return;
+                }
+
+                window.requestAnimationFrame(() => {
+                    if (editorRef.current !== editorInstance) {
+                        return;
+                    }
+                    editorInstance.trigger('keyboard', 'editor.action.triggerSuggest', {});
+                });
+            }),
+            editorInstance.onKeyUp((event) => {
+                const key = event.browserEvent.key;
+                if (!/^[A-Za-z0-9_.]$/.test(key)) {
                     return;
                 }
 
@@ -7170,7 +7202,7 @@ export default function WorkspacePage() {
                                         {groupAdminMode === 'create' ? (
                                             <form
                                                 onSubmit={handleCreateGroup}
-                                                className="stack-form admin-mode-form"
+                                                className="stack-form"
                                             >
                                                 <div className="row toolbar-actions admin-toolbar-actions">
                                                     <button type="submit">Save Group</button>
@@ -7447,7 +7479,7 @@ export default function WorkspacePage() {
 
                                         {userAdminMode === 'create' ? (
                                             <form
-                                                className="stack-form admin-mode-form"
+                                                className="stack-form"
                                                 onSubmit={handleCreateLocalUser}
                                             >
                                                 <div className="row toolbar-actions admin-toolbar-actions">
@@ -7668,7 +7700,11 @@ export default function WorkspacePage() {
                                         {accessAdminMode === 'create' ||
                                         accessAdminMode === 'edit' ? (
                                             <form
-                                                className="stack-form admin-mode-form"
+                                                className={
+                                                    accessAdminMode === 'edit'
+                                                        ? 'stack-form admin-mode-form'
+                                                        : 'stack-form'
+                                                }
                                                 onSubmit={handleSaveDatasourceAccess}
                                             >
                                                 <div className="row toolbar-actions admin-toolbar-actions">
