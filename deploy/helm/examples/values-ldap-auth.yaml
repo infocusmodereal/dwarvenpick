@@ -1,0 +1,35 @@
+# Example: LDAP authentication enabled, local auth disabled.
+#
+# Prereqs:
+# - An LDAP server reachable from the cluster.
+# - A PostgreSQL metadata DB secret (see README in this folder).
+# - A credential master key secret.
+
+image:
+  repository: ghcr.io/your-org/dwarvenpick-backend
+  tag: latest
+
+env:
+  SPRING_PROFILES_ACTIVE: prod
+  DWARVENPICK_AUTH_LOCAL_ENABLED: "false"
+  DWARVENPICK_AUTH_LDAP_ENABLED: "true"
+  DWARVENPICK_AUTH_LDAP_URL: "ldap://openldap.default.svc.cluster.local:389"
+  DWARVENPICK_AUTH_LDAP_BIND_DN: "cn=admin,dc=example,dc=org"
+  DWARVENPICK_AUTH_LDAP_BIND_PASSWORD: "change-me"
+  DWARVENPICK_AUTH_LDAP_USER_SEARCH_BASE: "ou=people,dc=example,dc=org"
+  DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE: "ou=groups,dc=example,dc=org"
+
+database:
+  existingSecret: dwarvenpick-meta-db
+
+credentials:
+  masterKey:
+    existingSecret: dwarvenpick-credentials
+
+# Enable a writable, persistent external driver directory so admins can upload JDBC jars.
+drivers:
+  external:
+    enabled: true
+    createPvc: true
+    pvc:
+      size: 1Gi

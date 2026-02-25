@@ -1,0 +1,29 @@
+# Example: local authentication enabled, LDAP disabled.
+#
+# Prereqs:
+# - A PostgreSQL metadata DB secret (see README in this folder).
+# - A credential master key secret.
+
+image:
+  repository: ghcr.io/your-org/dwarvenpick-backend
+  tag: latest
+
+env:
+  SPRING_PROFILES_ACTIVE: prod
+  DWARVENPICK_AUTH_LOCAL_ENABLED: "true"
+  DWARVENPICK_AUTH_LDAP_ENABLED: "false"
+
+database:
+  existingSecret: dwarvenpick-meta-db
+
+credentials:
+  masterKey:
+    existingSecret: dwarvenpick-credentials
+
+# Enable a writable, persistent external driver directory so admins can upload JDBC jars.
+drivers:
+  external:
+    enabled: true
+    createPvc: true
+    pvc:
+      size: 1Gi

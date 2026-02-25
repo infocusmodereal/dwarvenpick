@@ -48,11 +48,34 @@ spec:
             - name: DWARVENPICK_EXTERNAL_DRIVERS_DIR
               value: {{ ternary .Values.drivers.external.mountPath .Values.env.DWARVENPICK_EXTERNAL_DRIVERS_DIR .Values.drivers.external.enabled | quote }}
             - name: SPRING_DATASOURCE_URL
+              {{- if .Values.database.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: {{ .Values.database.urlKey | quote }}
+              {{- else }}
               value: {{ .Values.env.SPRING_DATASOURCE_URL | quote }}
+              {{- end }}
             - name: SPRING_DATASOURCE_USERNAME
+              {{- if .Values.database.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: {{ .Values.database.usernameKey | quote }}
+              {{- else }}
               value: {{ .Values.env.SPRING_DATASOURCE_USERNAME | quote }}
+              {{- end }}
             - name: SPRING_DATASOURCE_PASSWORD
+              {{- if .Values.database.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: {{ .Values.database.passwordKey | quote }}
+              {{- else }}
               value: {{ .Values.env.SPRING_DATASOURCE_PASSWORD | quote }}
+              {{- end }}
+            - name: DWARVENPICK_AUTH_LOCAL_ENABLED
+              value: {{ .Values.env.DWARVENPICK_AUTH_LOCAL_ENABLED | quote }}
             - name: DWARVENPICK_AUTH_LDAP_ENABLED
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_ENABLED | quote }}
             - name: DWARVENPICK_AUTH_LDAP_URL
@@ -90,7 +113,7 @@ spec:
           volumeMounts:
             - name: external-drivers
               mountPath: {{ .Values.drivers.external.mountPath | quote }}
-              readOnly: true
+              readOnly: {{ .Values.drivers.external.readOnly }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
@@ -112,6 +135,9 @@ spec:
           {{- if .Values.drivers.external.existingClaim }}
           persistentVolumeClaim:
             claimName: {{ .Values.drivers.external.existingClaim | quote }}
+          {{- else if .Values.drivers.external.createPvc }}
+          persistentVolumeClaim:
+            claimName: {{ printf "%s-external-drivers" (include "dwarvenpick.fullname" .) | quote }}
           {{- else }}
           emptyDir: {}
           {{- end }}
