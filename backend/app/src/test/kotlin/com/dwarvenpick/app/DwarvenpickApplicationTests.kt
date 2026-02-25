@@ -30,7 +30,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @SpringBootTest(
     properties = [
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
         "dwarvenpick.auth.password-policy.min-length=8",
         "dwarvenpick.auth.ldap.mock.enabled=true",
         "dwarvenpick.auth.ldap.mock.users[0].username=ldap.user",

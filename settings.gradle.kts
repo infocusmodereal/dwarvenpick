@@ -6,8 +6,4 @@ rootProject.name = "dwarvenpick"
 
 include(
     "backend:app",
-    "backend:auth",
-    "backend:core",
-    "backend:datasource",
-    "backend:db",
 )

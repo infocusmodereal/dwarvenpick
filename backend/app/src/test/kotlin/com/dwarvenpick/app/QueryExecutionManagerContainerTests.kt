@@ -26,7 +26,6 @@ import java.sql.DriverManager
 
 @SpringBootTest(
     properties = [
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
         "dwarvenpick.auth.password-policy.min-length=8",
     ],
 )

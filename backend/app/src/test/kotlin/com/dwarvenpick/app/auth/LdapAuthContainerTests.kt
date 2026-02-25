@@ -27,7 +27,6 @@ import java.time.Duration
 
 @SpringBootTest(
     properties = [
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
         "dwarvenpick.auth.password-policy.min-length=8",
         "dwarvenpick.auth.ldap.enabled=true",
         "dwarvenpick.auth.ldap.user-search-base=ou=people,dc=example,dc=org",
