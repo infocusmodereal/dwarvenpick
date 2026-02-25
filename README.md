@@ -1,119 +1,97 @@
-# dwarvenpick (OpenSQL Workbench)
+# dwarvenpick
 
-`dwarvenpick` is an enterprise-focused, web-based SQL workbench for secure ad-hoc querying across multiple data platforms.
+[![CI](https://github.com/infocusmodereal/dwarvenpick/actions/workflows/ci.yml/badge.svg)](https://github.com/infocusmodereal/dwarvenpick/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-## Repository layout
+`dwarvenpick` is a web-based SQL workbench focused on secure, audited ad-hoc querying across multiple data platforms.
 
-- `backend/`: Kotlin + Spring Boot multi-module backend
-- `frontend/`: React + TypeScript web application
-- `deploy/`: Docker and Helm deployment assets
-- `docs/roadmap/`: Product spec and milestone roadmap
+## Features
 
-## Developer prerequisites
+- Tabbed SQL editor (Monaco) with syntax highlighting and keyboard shortcuts.
+- Results grid with pagination, sorting, and CSV export.
+- Connection catalog and connection management UI.
+- Governance:
+  - Groups and access rules (per-connection query/export/read-only controls).
+  - Local user management for development and small deployments.
+- Audit trail:
+  - User query history.
+  - Admin audit events.
 
-- Java 21 (for backend Gradle/Spring Boot tasks)
-- Node.js 22 + npm (for frontend dev/build/test)
-- Docker + Docker Compose (optional, for local full-stack runs)
+## Supported engines
 
-## Quick start (skeleton)
+Current focus is JDBC-backed SQL engines:
 
-### Backend
+- PostgreSQL
+- MySQL
+- MariaDB
+- StarRocks (via MySQL protocol)
+
+## Quick start (local, Docker Compose)
+
+Prerequisites:
+
+- Docker Desktop (or compatible Docker engine) with Compose support.
+
+Start the full stack:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml up -d --build
+```
+
+Open:
+
+- UI: `http://localhost:3000`
+- Backend health: `http://localhost:3000/api/health`
+
+Seeded local development users (dev only, do not reuse in production):
+
+- `admin / Admin1234!` (roles: `SYSTEM_ADMIN`, `USER`)
+- `analyst / Analyst123!` (role: `USER`)
+
+Seeded databases in local compose:
+
+- PostgreSQL metadata DB: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
+- MySQL sample source: `localhost:3306`, db `orders`, user `readonly`, password `readonly`
+- MariaDB sample source: `localhost:3307`, db `warehouse`, user `readonly`, password `readonly`
+- StarRocks sample source: `localhost:9030`, db `warehouse`, user `readonly`, password `readonly`
+
+The sample datasets include both transactional-style tables and analytical-style tables/views to exercise query/explain behavior.
+
+## Development
+
+Prerequisites:
+
+- Java 21 (backend)
+- Node.js 22 + npm (frontend)
+
+Backend:
 
 ```bash
 ./gradlew :backend:app:bootRun
 ```
 
-Health endpoint:
-
-- `GET http://localhost:8080/api/health`
-- `GET http://localhost:8080/actuator/health`
-- `GET http://localhost:8080/api/version`
-
-Authentication endpoints:
-
-- `GET http://localhost:8080/api/auth/csrf`
-- `GET http://localhost:8080/api/auth/methods`
-- `POST http://localhost:8080/api/auth/login`
-- `POST http://localhost:8080/api/auth/ldap/login`
-- `GET http://localhost:8080/api/auth/me`
-- `POST http://localhost:8080/api/auth/logout`
-- `GET http://localhost:8080/api/auth/admin/users` (`SYSTEM_ADMIN` only)
-- `POST http://localhost:8080/api/auth/admin/users` (`SYSTEM_ADMIN` only, local auth enabled)
-- `POST http://localhost:8080/api/auth/admin/users/{username}/reset-password` (`SYSTEM_ADMIN` only)
-
-RBAC and datasource governance endpoints:
-
-- `GET http://localhost:8080/api/admin/groups` (`SYSTEM_ADMIN` only)
-- `POST http://localhost:8080/api/admin/groups` (`SYSTEM_ADMIN` only)
-- `POST http://localhost:8080/api/admin/groups/{groupId}/members` (`SYSTEM_ADMIN` only)
-- `PUT http://localhost:8080/api/admin/datasource-access/{groupId}/{datasourceId}` (`SYSTEM_ADMIN` only)
-- `GET http://localhost:8080/api/admin/drivers` (`SYSTEM_ADMIN` only)
-- `GET http://localhost:8080/api/admin/datasource-management` (`SYSTEM_ADMIN` only)
-- `POST http://localhost:8080/api/admin/datasource-management` (`SYSTEM_ADMIN` only)
-- `PUT http://localhost:8080/api/admin/datasource-management/{datasourceId}/credentials/{profileId}` (`SYSTEM_ADMIN` only)
-- `POST http://localhost:8080/api/admin/datasource-management/credentials/reencrypt` (`SYSTEM_ADMIN` only)
-- `POST http://localhost:8080/api/datasources/{datasourceId}/test-connection` (`SYSTEM_ADMIN` only)
-- `GET http://localhost:8080/api/datasources` (user-scoped datasource visibility)
-- `POST http://localhost:8080/api/queries` (datasource access gate check)
-- `GET http://localhost:8080/api/queries/{executionId}/export.csv?headers=true|false` (RBAC export gate + audit)
-- `GET http://localhost:8080/api/queries/history` (user-scoped history, admin can filter by actor)
-- `GET http://localhost:8080/api/admin/audit-events` (`SYSTEM_ADMIN` only)
-
-Default local development users:
-
-- `admin / Admin1234!` (roles: `SYSTEM_ADMIN`, `USER`)
-- `analyst / Analyst123!` (role: `USER`)
-- `disabled.user / Disabled123!` (disabled account, login blocked)
-
-Query history and audit retention settings:
-
-- `dwarvenpick.query.history-retention-days` (default `30`)
-- `dwarvenpick.query.audit-retention-days` (default `90`)
-- `dwarvenpick.query.query-text-redaction-days` (default `0`, disabled)
-- `dwarvenpick.query.retention-cleanup-interval-ms` (default `3600000`)
-
-Compliance note:
-
-- Set `query-text-redaction-days` to a non-zero value to remove stored SQL text after the configured age while preserving query hash, status, timing, and datasource metadata for auditability.
-
-### Frontend
+Frontend:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Default local UI URL:
+By default the Vite dev server runs on `http://localhost:5173` and proxies `/api` and `/actuator` to `http://localhost:8080`.
 
-- `http://localhost:5173`
-- Dev server proxies `/api` and `/actuator` requests to `http://localhost:8080`.
-- `SYSTEM_ADMIN` users see RBAC and datasource management panels in `/workspace`.
-- `/workspace` includes Monaco SQL editor tabs with per-tab datasource context, Run Selection/Run All controls, and keyboard shortcuts (`Ctrl/Cmd+Enter`, `Esc`).
+## Repository layout
 
-### Local stack (Docker Compose)
+- `backend/`: Kotlin + Spring Boot backend (multi-module Gradle build)
+- `frontend/`: React + TypeScript web application
+- `deploy/`: Docker and Helm deployment assets
+- `docs/roadmap/`: Product spec and milestone roadmap
 
-```bash
-docker compose -f deploy/docker/docker-compose.yml up --build
-```
+## Documentation
 
-Seeded databases in local compose:
-
-- PostgreSQL metadata + sample source: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
-- MySQL sample source: `localhost:3306`, db `orders`, user `readonly`, password `readonly`
-- MariaDB sample source: `localhost:3307`, db `warehouse`, user `readonly`, password `readonly`
-
-The MariaDB dataset includes transactional tables (`orders`, `order_items`, `inventory_snapshots`) and analytical structures (`fact_daily_sales`, `v_customer_ltv`) so you can test query/explain behavior with both OLTP and OLAP-style patterns.
-
-## Local user management (UI)
-
-- In `/workspace` open `Governance` and use the `Local Users` panel.
-- `Create Local User` supports:
-  - Temporary password (user must rotate on next login).
-  - Permanent password.
-  - Optional `SYSTEM_ADMIN` role assignment.
-- Existing local users can be password-reset from the same panel, with temporary/permanent choice during reset.
-- When local auth is disabled (LDAP-only mode), user creation/reset is intentionally unavailable in UI.
+- Roadmap: `docs/roadmap/`
+- Contributing: `CONTRIBUTING.md`
+- Agent conventions: `AGENTS.md`
 
 ## License
 
