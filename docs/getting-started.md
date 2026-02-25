@@ -30,7 +30,7 @@ SELECT 1;
 
 The default local stack includes:
 
-- PostgreSQL metadata DB: `localhost:5432` (`dwarvenpick` / `dwarvenpick`)
+- PostgreSQL sample source: `localhost:5432` (`dwarvenpick` / `dwarvenpick`)
 - MySQL sample source: `localhost:3306` (`readonly` / `readonly`)
 - MariaDB sample source: `localhost:3307` (`readonly` / `readonly`)
 - StarRocks sample source: `localhost:9030` (`readonly` / `readonly`)
@@ -40,4 +40,3 @@ The default local stack includes:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml down
 ```
-

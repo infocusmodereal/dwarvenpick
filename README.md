@@ -54,7 +54,7 @@ Seeded local development users (dev only, do not reuse in production):
 
 Seeded databases in local compose:
 
-- PostgreSQL metadata DB: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
+- PostgreSQL sample source: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
 - MySQL sample source: `localhost:3306`, db `orders`, user `readonly`, password `readonly`
 - MariaDB sample source: `localhost:3307`, db `warehouse`, user `readonly`, password `readonly`
 - StarRocks sample source: `localhost:9030`, db `warehouse`, user `readonly`, password `readonly`
@@ -86,7 +86,7 @@ By default the Vite dev server runs on `http://localhost:5173` and proxies `/api
 
 ## Repository layout
 
-- `backend/`: Kotlin + Spring Boot backend (multi-module Gradle build)
+- `backend/`: Kotlin + Spring Boot backend (Gradle)
 - `frontend/`: React + TypeScript web application
 - `deploy/`: Docker and Helm deployment assets
 - `docs/`: User and operator documentation (published to GitHub Pages)

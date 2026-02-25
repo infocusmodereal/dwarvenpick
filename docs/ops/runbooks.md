@@ -6,19 +6,7 @@ nav_order: 40
 
 # Runbooks
 
-## 1) Metadata database unreachable
-
-Symptoms:
-- startup errors from Flyway/Hikari
-- API failures on auth/query endpoints
-
-Actions:
-1. Verify DB connectivity from application pod/container.
-2. Validate `SPRING_DATASOURCE_URL`, username, and password secret values.
-3. Check DB server status and connection limits.
-4. Restart app after DB is healthy.
-
-## 2) LDAP unavailable
+## 1) LDAP unavailable
 
 Symptoms:
 - LDAP login failures (`401`), local login still works (if enabled)
@@ -30,7 +18,7 @@ Actions:
 3. Temporarily route users to Local auth if operational policy allows.
 4. Restore LDAP and validate with `/api/auth/ldap/login`.
 
-## 3) Stuck query executions
+## 2) Stuck query executions
 
 Symptoms:
 - queued/running executions not progressing

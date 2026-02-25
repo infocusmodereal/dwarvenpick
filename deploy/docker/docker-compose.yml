@@ -73,9 +73,6 @@ services:
       dockerfile: deploy/docker/Dockerfile.backend
     container_name: dwarvenpick-backend
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dwarvenpick
-      SPRING_DATASOURCE_USERNAME: dwarvenpick
-      SPRING_DATASOURCE_PASSWORD: dwarvenpick
       DWARVENPICK_SEED_POSTGRES_HOST: postgres
       DWARVENPICK_SEED_POSTGRES_PORT: 5432
       DWARVENPICK_SEED_POSTGRES_DATABASE: dwarvenpick

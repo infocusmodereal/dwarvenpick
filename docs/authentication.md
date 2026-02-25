@@ -9,7 +9,7 @@ nav_order: 6
 
 ## Local
 
-- Username/password stored in the metadata database (passwords are hashed).
+- Username/password stored in memory (passwords are hashed).
 - Intended for development, small deployments, and break-glass access.
 - Local user administration is available to SYSTEM_ADMINs when enabled.
 

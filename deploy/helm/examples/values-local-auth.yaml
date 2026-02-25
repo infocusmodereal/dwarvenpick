@@ -1,7 +1,6 @@
 # Example: local authentication enabled, LDAP disabled.
 #
 # Prereqs:
-# - A PostgreSQL metadata DB secret (see README in this folder).
 # - A credential master key secret.
 
 image:
@@ -12,9 +11,6 @@ env:
   SPRING_PROFILES_ACTIVE: prod
   DWARVENPICK_AUTH_LOCAL_ENABLED: "true"
   DWARVENPICK_AUTH_LDAP_ENABLED: "false"
-
-database:
-  existingSecret: dwarvenpick-meta-db
 
 credentials:
   masterKey:

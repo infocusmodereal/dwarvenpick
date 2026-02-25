@@ -4,25 +4,6 @@ This folder contains sample `values.yaml` files for `deploy/helm/dwarvenpick`.
 
 ## Secrets
 
-### Metadata database secret
-
-The chart can read the Spring datasource configuration from a Kubernetes Secret.
-
-Create a secret with these keys:
-
-- `SPRING_DATASOURCE_URL`
-- `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
-
-Example:
-
-```bash
-kubectl create secret generic dwarvenpick-meta-db \
-  --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://postgres:5432/dwarvenpick' \
-  --from-literal=SPRING_DATASOURCE_USERNAME='dwarvenpick' \
-  --from-literal=SPRING_DATASOURCE_PASSWORD='change-me'
-```
-
 ### Credential master key secret
 
 `dwarvenpick` encrypts stored connection credential profiles with a master key. Store that key in a Kubernetes Secret.

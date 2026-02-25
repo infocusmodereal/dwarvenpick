@@ -23,7 +23,7 @@ Sample Helm deployments live under `deploy/helm/examples`:
 
 - Java 21 runtime for backend
 - Node/Nginx for frontend static bundle
-- PostgreSQL metadata database
+- No metadata DB required (catalog, history, and audit data are stored in memory)
 - Credential encryption key provided by environment or secret store
 
 ## Credential encryption configuration
@@ -49,20 +49,6 @@ curl -X POST \
 ```
 
 Detailed rotation guidance: `docs/ops/credential-rotation.md`.
-
-## Metadata database credentials (Helm)
-
-Prefer storing metadata DB connection info in a Kubernetes Secret.
-
-Create a secret with these keys:
-
-- `SPRING_DATASOURCE_URL`
-- `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
-
-Then set:
-
-- `.Values.database.existingSecret=<secret-name>`
 
 ## LDAP setup
 
@@ -136,34 +122,6 @@ Notes:
 - The default image value (`ghcr.io/your-org/dwarvenpick-backend:latest`) is a placeholder and will not pull until replaced.
 - Even with placeholder images, install/uninstall validates chart structure and Kubernetes resource wiring.
 - For real Vertica connectivity in Kubernetes, mount the vendor JDBC jar(s) via a PVC and set `.Values.drivers.external.enabled=true`.
-
-## Metadata DB backup and restore
-
-The metadata database is PostgreSQL and should be backed up independently from application pods.
-
-Example backup:
-
-```bash
-pg_dump --format=custom --no-owner --no-privileges \
-  --dbname="$SPRING_DATASOURCE_URL" \
-  --username="$SPRING_DATASOURCE_USERNAME" \
-  --file=dwarvenpick-meta-$(date +%Y%m%d%H%M%S).dump
-```
-
-Example restore to a new environment:
-
-```bash
-createdb dwarvenpick_restore
-pg_restore --clean --if-exists --no-owner \
-  --dbname=dwarvenpick_restore \
-  dwarvenpick-meta-YYYYMMDDHHMMSS.dump
-```
-
-After restore:
-
-- validate Flyway/schema compatibility with the running app version
-- rotate `DWARVENPICK_CREDENTIAL_MASTER_KEY` only with a planned re-encryption run
-- verify admin login and connection catalog integrity before opening traffic
 
 ## Sizing guidance
 

@@ -2,7 +2,6 @@
 #
 # Prereqs:
 # - An LDAP server reachable from the cluster.
-# - A PostgreSQL metadata DB secret (see README in this folder).
 # - A credential master key secret.
 
 image:
@@ -18,9 +17,6 @@ env:
   DWARVENPICK_AUTH_LDAP_BIND_PASSWORD: "change-me"
   DWARVENPICK_AUTH_LDAP_USER_SEARCH_BASE: "ou=people,dc=example,dc=org"
   DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE: "ou=groups,dc=example,dc=org"
-
-database:
-  existingSecret: dwarvenpick-meta-db
 
 credentials:
   masterKey:
