@@ -1,4 +1,10 @@
-# Monitoring and Alerts
+---
+title: Monitoring and alerts
+parent: Operations
+nav_order: 30
+---
+
+# Monitoring and alerts
 
 ## Metrics endpoint
 

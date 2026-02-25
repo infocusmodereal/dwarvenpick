@@ -1,0 +1,19 @@
+title: dwarvenpick
+description: Secure, audited SQL workbench for multi-engine querying.
+
+# GitHub Pages / Jekyll config (docs are published from `/docs`).
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+
+search_enabled: true
+
+aux_links:
+  GitHub Repository: https://github.com/infocusmodereal/dwarvenpick
+
+footer_content: "Apache-2.0 licensed. Copyright (c) dwarvenpick contributors."
+
+# GitHub Pages project site defaults.
+url: "https://infocusmodereal.github.io"
+baseurl: "/dwarvenpick"
+

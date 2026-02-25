@@ -1,4 +1,10 @@
-# Performance Testing
+---
+title: Performance testing
+parent: Development
+nav_order: 20
+---
+
+# Performance testing
 
 This repository includes a repeatable load harness for concurrent query execution, pagination, and CSV export.
 

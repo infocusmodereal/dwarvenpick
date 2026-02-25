@@ -85,11 +85,11 @@ By default the Vite dev server runs on `http://localhost:5173` and proxies `/api
 - `backend/`: Kotlin + Spring Boot backend (multi-module Gradle build)
 - `frontend/`: React + TypeScript web application
 - `deploy/`: Docker and Helm deployment assets
-- `docs/roadmap/`: Product spec and milestone roadmap
+- `docs/`: User and operator documentation (published to GitHub Pages)
 
 ## Documentation
 
-- Roadmap: `docs/roadmap/`
+- User docs (GitHub Pages): https://infocusmodereal.github.io/dwarvenpick/
 - Contributing: `CONTRIBUTING.md`
 - Agent conventions: `AGENTS.md`
 

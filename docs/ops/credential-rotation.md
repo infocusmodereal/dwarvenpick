@@ -1,4 +1,10 @@
-# Credential Encryption Rotation
+---
+title: Credential encryption rotation
+parent: Operations
+nav_order: 10
+---
+
+# Credential encryption rotation
 
 This project encrypts datasource credential passwords at rest using AES-GCM.
 

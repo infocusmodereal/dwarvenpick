@@ -1,4 +1,10 @@
-# Deployment Notes
+---
+title: Deployment
+parent: Operations
+nav_order: 20
+---
+
+# Deployment
 
 ## Targets
 

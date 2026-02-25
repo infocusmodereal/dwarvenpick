@@ -6,7 +6,7 @@ Contributor playbook for `dwarvenpick`.
 - Keep changes scoped to one concern (bug fix, feature slice, or refactor).
 - Prefer incremental, reviewable diffs over broad rewrites.
 - Preserve behavior unless a change is explicitly requested.
-- If work maps to a roadmap story, reference and update status in `/docs/roadmap/jira-backlog.md`.
+- If work maps to an issue/PR, reference it in the PR description and commit message body when helpful.
 
 ## 2) Tech stack and prerequisites
 - Backend: Kotlin + Spring Boot (Java 21, Gradle).
@@ -85,8 +85,7 @@ docker compose -f deploy/docker/docker-compose.yml down -v
 - Update docs when behavior/config changes:
   - `/README.md`
   - `/CONTRIBUTING.md`
-  - `/docs/ops/*`
-  - `/docs/roadmap/*`
+  - `/docs/*` (published to GitHub Pages)
 - For user-visible changes, include concise release notes in PR description.
 - Include local validation evidence (commands + results) in PR.
 
@@ -95,5 +94,5 @@ A change is done when:
 - Code is implemented and formatted/linted.
 - Relevant tests pass locally.
 - CI is green.
-- Docs/roadmap status are updated when applicable.
+- Docs are updated when applicable.
 - Branch is pushed to remote.

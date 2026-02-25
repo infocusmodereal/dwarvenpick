@@ -1,4 +1,10 @@
-# Operations Runbooks
+---
+title: Runbooks
+parent: Operations
+nav_order: 40
+---
+
+# Runbooks
 
 ## 1) Metadata database unreachable
 

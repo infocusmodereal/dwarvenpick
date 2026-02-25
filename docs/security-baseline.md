@@ -1,4 +1,10 @@
-# Security Baseline (Milestones 2-3)
+---
+title: Security baseline
+parent: Security
+nav_order: 10
+---
+
+# Security baseline
 
 ## Session and authentication
 
