@@ -97,6 +97,10 @@ By default the Vite dev server runs on `http://localhost:5173` and proxies `/api
 - Contributing: `CONTRIBUTING.md`
 - Agent conventions: `AGENTS.md`
 
+## Releases
+
+Releases are cut from Git tags (`vX.Y.Z`). Pushing a tag triggers the `Release` GitHub Actions workflow, which publishes a GitHub Release with a versioned backend jar and Helm chart package.
+
 ## License
 
 Apache-2.0. See `LICENSE`.

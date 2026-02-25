@@ -12,6 +12,13 @@ nav_order: 20
 - Kubernetes Helm (`deploy/helm/dwarvenpick`)
 - Bare metal systemd (`deploy/systemd/dwarvenpick.service`)
 
+## Helm example values
+
+Sample Helm deployments live under `deploy/helm/examples`:
+
+- `values-local-auth.yaml`: local auth enabled, LDAP disabled
+- `values-ldap-auth.yaml`: LDAP enabled, local auth disabled
+
 ## Runtime assumptions
 
 - Java 21 runtime for backend
@@ -42,6 +49,20 @@ curl -X POST \
 ```
 
 Detailed rotation guidance: `docs/ops/credential-rotation.md`.
+
+## Metadata database credentials (Helm)
+
+Prefer storing metadata DB connection info in a Kubernetes Secret.
+
+Create a secret with these keys:
+
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
+
+Then set:
+
+- `.Values.database.existingSecret=<secret-name>`
 
 ## LDAP setup
 
@@ -77,10 +98,11 @@ Vertica is intentionally not bundled. Driver jars must be mounted at runtime.
 Configure these values:
 
 - `.Values.drivers.external.enabled=true`
+- `.Values.drivers.external.createPvc=true` (recommended for UI driver uploads)
 - `.Values.drivers.external.mountPath` (default `/opt/app/drivers`)
 - `.Values.drivers.external.existingClaim` (PVC containing driver jars)
 
-If `existingClaim` is empty, chart uses `emptyDir` (useful for local smoke tests only).
+If `existingClaim` is empty and `createPvc=false`, chart uses `emptyDir` (useful for local smoke tests only).
 
 ### Bare metal
 
