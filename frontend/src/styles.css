@@ -2982,6 +2982,9 @@ select {
     justify-items: center;
     text-align: center;
     gap: 0.72rem;
+    align-content: center;
+    align-items: center;
+    min-height: 100%;
 }
 
 .connection-tile-bottom {
@@ -3029,6 +3032,7 @@ select {
 .connection-catalog-item-tile .connection-catalog-icon img {
     width: 5.2rem;
     height: 5.2rem;
+    display: block;
 }
 
 .managed-engine-icon {
