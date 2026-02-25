@@ -1,5 +1,13 @@
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    FormEvent,
+    type ReactNode,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState
+} from 'react';
 import * as MonacoModule from 'monaco-editor/esm/vs/editor/editor.api';
 import 'monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController';
 import 'monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetController2';
@@ -1079,6 +1087,22 @@ const InfoHint = ({ text }: { text: string }) => (
     <span className="info-hint" title={text} aria-label={text}>
         <IconGlyph icon="info" />
     </span>
+);
+
+const DetailsSummary = ({ children }: { children: ReactNode }) => (
+    <summary className="managed-advanced-summary">
+        <span className="managed-advanced-summary-icon" aria-hidden>
+            <span
+                className="managed-advanced-summary-icon-collapsed"
+                dangerouslySetInnerHTML={{ __html: chevronRightIcon }}
+            />
+            <span
+                className="managed-advanced-summary-icon-expanded"
+                dangerouslySetInnerHTML={{ __html: chevronDownIcon }}
+            />
+        </span>
+        <span className="managed-advanced-summary-label">{children}</span>
+    </summary>
 );
 
 const ResultSortIcon = ({ direction }: { direction: ResultSortDirection | null }) => (
@@ -8950,36 +8974,8 @@ export default function WorkspacePage() {
                                                                             key={datasource.id}
                                                                             className="connection-catalog-item connection-catalog-item-tile"
                                                                         >
-                                                                            <header className="connection-tile-top">
-                                                                                <span
-                                                                                    className="connection-catalog-icon"
-                                                                                    aria-hidden
-                                                                                >
-                                                                                    <img
-                                                                                        src={resolveDatasourceIcon(
-                                                                                            datasource.engine
-                                                                                        )}
-                                                                                        alt=""
-                                                                                        width={24}
-                                                                                        height={24}
-                                                                                    />
-                                                                                </span>
-                                                                                <span className="connection-catalog-main">
-                                                                                    <span className="connection-catalog-name">
-                                                                                        {
-                                                                                            datasource.name
-                                                                                        }
-                                                                                    </span>
-                                                                                    {datasource.id !==
-                                                                                    datasource.name ? (
-                                                                                        <span className="connection-catalog-id">
-                                                                                            {
-                                                                                                datasource.id
-                                                                                            }
-                                                                                        </span>
-                                                                                    ) : null}
-                                                                                </span>
-                                                                                <span className="connection-catalog-actions">
+                                                                            <header className="connection-tile-top connection-tile-top-centered">
+                                                                                <span className="connection-catalog-actions connection-catalog-actions-floating">
                                                                                     <IconButton
                                                                                         icon="rename"
                                                                                         title={`Edit ${datasource.name}`}
@@ -9002,6 +8998,34 @@ export default function WorkspacePage() {
                                                                                             )
                                                                                         }
                                                                                     />
+                                                                                </span>
+                                                                                <span
+                                                                                    className="connection-catalog-icon"
+                                                                                    aria-hidden
+                                                                                >
+                                                                                    <img
+                                                                                        src={resolveDatasourceIcon(
+                                                                                            datasource.engine
+                                                                                        )}
+                                                                                        alt=""
+                                                                                        width={24}
+                                                                                        height={24}
+                                                                                    />
+                                                                                </span>
+                                                                                <span className="connection-catalog-main connection-catalog-main-centered">
+                                                                                    <span className="connection-catalog-name">
+                                                                                        {
+                                                                                            datasource.name
+                                                                                        }
+                                                                                    </span>
+                                                                                    {datasource.id !==
+                                                                                    datasource.name ? (
+                                                                                        <span className="connection-catalog-id">
+                                                                                            {
+                                                                                                datasource.id
+                                                                                            }
+                                                                                        </span>
+                                                                                    ) : null}
                                                                                 </span>
                                                                             </header>
                                                                             <footer className="connection-tile-bottom">
@@ -9375,7 +9399,9 @@ export default function WorkspacePage() {
                                                             </div>
 
                                                             <details className="managed-advanced-block">
-                                                                <summary>Connection</summary>
+                                                                <DetailsSummary>
+                                                                    Connection
+                                                                </DetailsSummary>
 
                                                                 <div className="managed-advanced-body">
                                                                     <div className="form-field">
@@ -9487,7 +9513,9 @@ export default function WorkspacePage() {
                                                             </details>
 
                                                             <details className="managed-advanced-block">
-                                                                <summary>Driver</summary>
+                                                                <DetailsSummary>
+                                                                    Driver
+                                                                </DetailsSummary>
 
                                                                 <div className="managed-advanced-body">
                                                                     <div className="form-field">
@@ -9669,7 +9697,9 @@ export default function WorkspacePage() {
                                                             </details>
 
                                                             <details className="managed-advanced-block">
-                                                                <summary>Pooling</summary>
+                                                                <DetailsSummary>
+                                                                    Pooling
+                                                                </DetailsSummary>
 
                                                                 <div className="managed-advanced-body">
                                                                     <div className="form-field">
@@ -9779,7 +9809,7 @@ export default function WorkspacePage() {
                                                             </details>
 
                                                             <details className="managed-advanced-block">
-                                                                <summary>TLS</summary>
+                                                                <DetailsSummary>TLS</DetailsSummary>
 
                                                                 <div className="managed-advanced-body">
                                                                     <div className="form-field">
@@ -9898,10 +9928,10 @@ export default function WorkspacePage() {
 
                                                         {selectedManagedDatasource ? (
                                                             <details className="managed-advanced-block managed-connection-tools">
-                                                                <summary>
+                                                                <DetailsSummary>
                                                                     Credential Profiles and
                                                                     Connection Test
-                                                                </summary>
+                                                                </DetailsSummary>
                                                                 <div className="managed-advanced-body">
                                                                     <div className="managed-datasource-actions">
                                                                         <h4>Credential Profiles</h4>

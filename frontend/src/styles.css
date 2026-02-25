@@ -824,6 +824,15 @@ kbd {
     gap: 0.04rem;
 }
 
+.connection-catalog-main-centered {
+    justify-items: center;
+}
+
+.connection-catalog-main-centered .connection-catalog-name,
+.connection-catalog-main-centered .connection-catalog-id {
+    text-align: center;
+}
+
 .connection-catalog-name {
     font-size: 0.82rem;
     font-weight: 650;
@@ -935,6 +944,39 @@ kbd {
     transition:
         background-color 150ms ease,
         border-color 150ms ease;
+}
+
+.managed-advanced-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+}
+
+.managed-advanced-summary-icon {
+    width: 1rem;
+    height: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.managed-advanced-summary-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.managed-advanced-summary-icon-expanded {
+    display: none;
+}
+
+.managed-advanced-block[open] .managed-advanced-summary-icon-collapsed {
+    display: none;
+}
+
+.managed-advanced-block[open] .managed-advanced-summary-icon-expanded {
+    display: inline-flex;
 }
 
 .managed-advanced-block > summary::-webkit-details-marker {
@@ -2925,6 +2967,7 @@ select {
     aspect-ratio: 2 / 1;
     padding: 0.7rem 0.75rem;
     gap: 0.65rem;
+    position: relative;
 }
 
 .connection-tile-top {
@@ -2932,6 +2975,13 @@ select {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0.65rem;
     align-items: start;
+}
+
+.connection-tile-top-centered {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    gap: 0.72rem;
 }
 
 .connection-tile-bottom {
@@ -2946,6 +2996,13 @@ select {
     align-items: center;
     gap: 0.3rem;
     margin-left: auto;
+}
+
+.connection-catalog-actions-floating {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.55rem;
+    margin-left: 0;
 }
 
 .connection-catalog-actions .icon-button {
@@ -3276,5 +3333,4 @@ select {
         justify-items: start;
         margin-left: 0;
     }
-
 }
