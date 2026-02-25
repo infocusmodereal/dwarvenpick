@@ -30,6 +30,7 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation(enforcedPlatform("org.testcontainers:testcontainers-bom:1.21.0"))
     testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:ldap")
     testImplementation("org.testcontainers:mysql")
     testImplementation("org.testcontainers:postgresql")
 }

@@ -1,0 +1,30 @@
+# Minimal directory entries for LDAP integration tests.
+
+# People container
+
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+# Groups container
+
+dn: ou=groups,dc=example,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+# Test user
+
+dn: uid=ldap.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: ldap.user
+sn: User
+cn: LDAP User
+mail: ldap.user@example.org
+userPassword: LdapUser123!
+
+# Group membership used by group sync filter (member={0}).
+
+dn: cn=ldap-analysts,ou=groups,dc=example,dc=org
+objectClass: groupOfNames
+cn: ldap-analysts
+member: uid=ldap.user,ou=people,dc=example,dc=org
