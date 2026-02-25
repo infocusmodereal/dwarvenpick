@@ -35,5 +35,5 @@ npm run build
 ## Pull requests
 
 - Describe the intent and user impact clearly.
-- Reference related roadmap item(s) when applicable.
+- Reference related issue(s) or discussion(s) when applicable.
 - Include test evidence in the PR description.
