@@ -1,6 +1,5 @@
 package com.dwarvenpick.app.auth
 
-import com.dwarvenpick.app.auth.UserAccountService
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.hasItem
 import org.junit.jupiter.api.BeforeEach
@@ -20,10 +19,10 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.testcontainers.containers.GenericContainer
+import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.MountableFile
-import org.testcontainers.containers.wait.strategy.Wait
 import java.time.Duration
 
 @SpringBootTest(
@@ -116,7 +115,7 @@ class LdapAuthContainerTests {
             ?: throw AssertionError("Expected authenticated session.")
 
     companion object {
-        private const val ldapPort = 389
+        private const val LDAP_PORT = 389
 
         @JvmStatic
         @Container
@@ -130,7 +129,7 @@ class LdapAuthContainerTests {
                     MountableFile.forClasspathResource("ldap/bootstrap.ldif"),
                     "/container/service/slapd/assets/config/bootstrap/ldif/50-bootstrap.ldif",
                 )
-                withExposedPorts(ldapPort)
+                withExposedPorts(LDAP_PORT)
                 waitingFor(
                     Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(60)),
                 )
@@ -140,7 +139,7 @@ class LdapAuthContainerTests {
         @DynamicPropertySource
         fun registerLdapProperties(registry: DynamicPropertyRegistry) {
             registry.add("dwarvenpick.auth.ldap.url") {
-                "ldap://${ldapContainer.host}:${ldapContainer.getMappedPort(ldapPort)}"
+                "ldap://${ldapContainer.host}:${ldapContainer.getMappedPort(LDAP_PORT)}"
             }
             registry.add("dwarvenpick.auth.ldap.bind-dn") { "cn=admin,dc=example,dc=org" }
             registry.add("dwarvenpick.auth.ldap.bind-password") { "admin" }
