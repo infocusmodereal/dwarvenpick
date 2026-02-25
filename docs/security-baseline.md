@@ -35,8 +35,8 @@ The backend sets baseline security headers on responses, including:
 - Admin routes under `/api/admin/**` and `/api/auth/admin/**` require role `SYSTEM_ADMIN`.
 - Authenticated user routes return `401` when no session is present.
 - Role-protected routes return `403` for authenticated users without required permissions.
-- Datasource visibility is user-scoped (`GET /api/datasources`) based on group-to-datasource grants.
-- Query execution requests (`POST /api/queries`) are denied with `403` when datasource access is not granted.
+- Connection visibility is user-scoped (`GET /api/datasources`) based on group-to-connection grants.
+- Query execution requests (`POST /api/queries`) are denied with `403` when connection access is not granted.
 
 ## Audit events
 
@@ -48,5 +48,5 @@ Authentication, RBAC, and query governance actions produce audit events:
 - logout
 - admin password reset
 - group create/update/member add/member remove
-- datasource access mapping create/update/delete
+- connection access mapping create/update/delete
 - query execution allowed/denied decisions

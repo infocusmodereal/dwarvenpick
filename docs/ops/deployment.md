@@ -21,7 +21,7 @@ nav_order: 20
 
 ## Credential encryption configuration
 
-Datasource passwords are stored encrypted (AES-GCM). Configure the following runtime values:
+Connection passwords (credential profiles) are stored encrypted (AES-GCM). Configure the following runtime values:
 
 - `DWARVENPICK_CREDENTIAL_MASTER_KEY`: required in production; do not commit to source control.
 - `DWARVENPICK_CREDENTIAL_ACTIVE_KEY_ID`: key identifier used for new encryptions.
@@ -141,7 +141,7 @@ After restore:
 
 - validate Flyway/schema compatibility with the running app version
 - rotate `DWARVENPICK_CREDENTIAL_MASTER_KEY` only with a planned re-encryption run
-- verify admin login and datasource catalog integrity before opening traffic
+- verify admin login and connection catalog integrity before opening traffic
 
 ## Sizing guidance
 

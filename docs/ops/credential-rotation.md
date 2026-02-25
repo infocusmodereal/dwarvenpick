@@ -6,7 +6,7 @@ nav_order: 10
 
 # Credential encryption rotation
 
-This project encrypts datasource credential passwords at rest using AES-GCM.
+This project encrypts connection credential passwords at rest using AES-GCM.
 
 ## Runtime settings
 
@@ -22,11 +22,11 @@ This project encrypts datasource credential passwords at rest using AES-GCM.
 3. Run credential re-encryption:
    - `POST /api/admin/datasource-management/credentials/reencrypt`
 4. Verify response reports all expected credential profiles updated.
-5. Validate datasource connection tests from admin UI/API for critical datasources.
+5. Validate connection tests from admin UI/API for critical connections.
 6. Decommission old key material after verification.
 
 ## Notes
 
 - The master key is never persisted in DB tables and must not be logged.
-- Re-encryption also evicts active datasource pools so new connections use freshly decrypted secrets.
+- Re-encryption also evicts active connection pools so new connections use freshly decrypted secrets.
 - Keep the re-encryption call restricted to `SYSTEM_ADMIN`.
