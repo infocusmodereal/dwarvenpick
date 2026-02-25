@@ -6,9 +6,18 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2" apply false
 }
 
+val defaultDevVersion = "0.1.0-SNAPSHOT"
+val computedVersion =
+    System.getenv("DWARVENPICK_VERSION")?.trim()?.takeIf { it.isNotBlank() }
+        ?: System.getenv("GITHUB_REF_NAME")
+            ?.trim()
+            ?.takeIf { it.startsWith("v") && it.length > 1 }
+            ?.removePrefix("v")
+        ?: defaultDevVersion
+
 allprojects {
     group = "com.dwarvenpick"
-    version = "0.1.0-SNAPSHOT"
+    version = computedVersion
 
     repositories {
         mavenCentral()

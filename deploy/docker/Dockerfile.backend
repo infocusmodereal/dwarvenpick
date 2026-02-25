@@ -1,7 +1,8 @@
 FROM gradle:8.12.1-jdk21 AS builder
+ARG DWARVENPICK_VERSION=""
 WORKDIR /workspace
 COPY . .
-RUN gradle :backend:app:bootJar --no-daemon
+RUN DWARVENPICK_VERSION=$DWARVENPICK_VERSION gradle :backend:app:bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
