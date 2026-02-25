@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="frontend/public/dwarvenpick-mark.svg" width="140" alt="dwarvenpick logo" />
+</p>
+
 # dwarvenpick
 
 [![CI](https://github.com/infocusmodereal/dwarvenpick/actions/workflows/ci.yml/badge.svg)](https://github.com/infocusmodereal/dwarvenpick/actions/workflows/ci.yml)

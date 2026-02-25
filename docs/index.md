@@ -3,6 +3,10 @@ title: Home
 nav_order: 1
 ---
 
+<p align="center">
+  <img src="{{ site.baseurl }}/assets/dwarvenpick-mark.svg" width="120" alt="dwarvenpick logo" />
+</p>
+
 # dwarvenpick
 
 `dwarvenpick` is a web-based SQL workbench focused on secure, audited ad-hoc querying across multiple data platforms.
@@ -27,4 +31,3 @@ nav_order: 1
 - [Connections](connections.md)
 - [Governance](governance.md)
 - [Authentication](authentication.md)
-
