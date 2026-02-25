@@ -10,5 +10,4 @@ include(
     "backend:core",
     "backend:datasource",
     "backend:db",
-    "backend:query",
 )

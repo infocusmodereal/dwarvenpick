@@ -12,7 +12,6 @@ dependencies {
     implementation(project(":backend:core"))
     implementation(project(":backend:datasource"))
     implementation(project(":backend:db"))
-    implementation(project(":backend:query"))
 
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-security")
