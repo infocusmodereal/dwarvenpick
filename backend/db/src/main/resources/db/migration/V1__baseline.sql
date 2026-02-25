@@ -1,5 +1,5 @@
--- Baseline schema migration.
--- Evolve the schema via subsequent numbered Flyway migrations.
+-- Baseline schema placeholder for Milestone 1.
+-- Full DDL will be introduced incrementally from docs/roadmap/project-spec.md.
 
 create table if not exists schema_version_notes (
     id bigserial primary key,
