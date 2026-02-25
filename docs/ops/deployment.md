@@ -26,6 +26,14 @@ Sample Helm deployments live under `deploy/helm/examples`:
 - No metadata DB required (catalog, history, and audit data are stored in memory)
 - Credential encryption key provided by environment or secret store
 
+## Seeding sample connections
+
+For local demos, the backend can seed a small set of sample connections on startup.
+
+Disable in production:
+
+- `DWARVENPICK_SEED_ENABLED=false` (default in Helm)
+
 ## Credential encryption configuration
 
 Connection passwords (credential profiles) are stored encrypted (AES-GCM). Configure the following runtime values:

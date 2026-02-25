@@ -63,108 +63,9 @@ class DatasourceRegistryService(
     private val datasourceCredentialCryptoService: DatasourceCredentialCryptoService,
     private val driverRegistryService: DriverRegistryService,
     private val datasourceNetworkGuard: DatasourceNetworkGuard,
+    private val seedDatasourceProperties: SeedDatasourceProperties,
 ) {
     private val datasources = ConcurrentHashMap<String, ManagedDatasourceRecord>()
-    private val seedPostgresHost =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_POSTGRES_HOST",
-            fallback = "localhost",
-        )
-    private val seedPostgresPort =
-        readIntEnv(
-            key = "DWARVENPICK_SEED_POSTGRES_PORT",
-            fallback = 5432,
-        )
-    private val seedPostgresDatabase =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_POSTGRES_DATABASE",
-            fallback = "dwarvenpick",
-        )
-    private val seedPostgresUsername =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_POSTGRES_USERNAME",
-            fallback = "dwarvenpick",
-        )
-    private val seedPostgresPassword =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_POSTGRES_PASSWORD",
-            fallback = "dwarvenpick",
-        )
-    private val seedMysqlHost =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MYSQL_HOST",
-            fallback = "localhost",
-        )
-    private val seedMysqlPort =
-        readIntEnv(
-            key = "DWARVENPICK_SEED_MYSQL_PORT",
-            fallback = 3306,
-        )
-    private val seedMysqlDatabase =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MYSQL_DATABASE",
-            fallback = "orders",
-        )
-    private val seedMysqlUsername =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MYSQL_USERNAME",
-            fallback = "readonly",
-        )
-    private val seedMysqlPassword =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MYSQL_PASSWORD",
-            fallback = "readonly",
-        )
-    private val seedMariadbHost =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MARIADB_HOST",
-            fallback = "localhost",
-        )
-    private val seedMariadbPort =
-        readIntEnv(
-            key = "DWARVENPICK_SEED_MARIADB_PORT",
-            fallback = 3306,
-        )
-    private val seedMariadbDatabase =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MARIADB_DATABASE",
-            fallback = "warehouse",
-        )
-    private val seedMariadbUsername =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MARIADB_USERNAME",
-            fallback = "readonly",
-        )
-    private val seedMariadbPassword =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_MARIADB_PASSWORD",
-            fallback = "readonly",
-        )
-    private val seedStarrocksHost =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_STARROCKS_HOST",
-            fallback = "localhost",
-        )
-    private val seedStarrocksPort =
-        readIntEnv(
-            key = "DWARVENPICK_SEED_STARROCKS_PORT",
-            fallback = 9030,
-        )
-    private val seedStarrocksDatabase =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_STARROCKS_DATABASE",
-            fallback = "warehouse",
-        )
-    private val seedStarrocksUsername =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_STARROCKS_USERNAME",
-            fallback = "readonly",
-        )
-    private val seedStarrocksPassword =
-        readStringEnv(
-            key = "DWARVENPICK_SEED_STARROCKS_PASSWORD",
-            fallback = "readonly",
-        )
 
     @PostConstruct
     fun initialize() {
@@ -175,14 +76,19 @@ class DatasourceRegistryService(
     fun resetState() {
         datasources.clear()
 
+        if (!seedDatasourceProperties.enabled) {
+            return
+        }
+
+        val postgres = seedDatasourceProperties.postgres
         val postgresId =
             createDatasource(
                 CreateDatasourceRequest(
                     name = "postgresql-core",
                     engine = DatasourceEngine.POSTGRESQL,
-                    host = seedPostgresHost,
-                    port = seedPostgresPort,
-                    database = seedPostgresDatabase,
+                    host = postgres.host,
+                    port = postgres.port,
+                    database = postgres.database,
                     driverId = "postgres-default",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
                 ),
@@ -191,8 +97,8 @@ class DatasourceRegistryService(
             postgresId,
             "admin-ro",
             UpsertCredentialProfileRequest(
-                username = seedPostgresUsername,
-                password = seedPostgresPassword,
+                username = postgres.username,
+                password = postgres.password,
                 description = "Admin readonly profile for local compose.",
             ),
         )
@@ -200,20 +106,21 @@ class DatasourceRegistryService(
             postgresId,
             "analyst-ro",
             UpsertCredentialProfileRequest(
-                username = seedPostgresUsername,
-                password = seedPostgresPassword,
+                username = postgres.username,
+                password = postgres.password,
                 description = "Analyst readonly profile for local compose.",
             ),
         )
 
+        val mysql = seedDatasourceProperties.mysql
         val mysqlId =
             createDatasource(
                 CreateDatasourceRequest(
                     name = "mysql-orders",
                     engine = DatasourceEngine.MYSQL,
-                    host = seedMysqlHost,
-                    port = seedMysqlPort,
-                    database = seedMysqlDatabase,
+                    host = mysql.host,
+                    port = mysql.port,
+                    database = mysql.database,
                     driverId = "mysql-default",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
                     options =
@@ -227,8 +134,8 @@ class DatasourceRegistryService(
             mysqlId,
             "admin-ro",
             UpsertCredentialProfileRequest(
-                username = seedMysqlUsername,
-                password = seedMysqlPassword,
+                username = mysql.username,
+                password = mysql.password,
                 description = "Admin readonly profile.",
             ),
         )
@@ -236,20 +143,21 @@ class DatasourceRegistryService(
             mysqlId,
             "ops-ro",
             UpsertCredentialProfileRequest(
-                username = seedMysqlUsername,
-                password = seedMysqlPassword,
+                username = mysql.username,
+                password = mysql.password,
                 description = "Ops readonly profile.",
             ),
         )
 
+        val mariadb = seedDatasourceProperties.mariadb
         val mariadbId =
             createDatasource(
                 CreateDatasourceRequest(
                     name = "mariadb-mart",
                     engine = DatasourceEngine.MARIADB,
-                    host = seedMariadbHost,
-                    port = seedMariadbPort,
-                    database = seedMariadbDatabase,
+                    host = mariadb.host,
+                    port = mariadb.port,
+                    database = mariadb.database,
                     driverId = "mariadb-default",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
                     options =
@@ -262,8 +170,8 @@ class DatasourceRegistryService(
             mariadbId,
             "admin-ro",
             UpsertCredentialProfileRequest(
-                username = seedMariadbUsername,
-                password = seedMariadbPassword,
+                username = mariadb.username,
+                password = mariadb.password,
                 description = "Admin readonly profile.",
             ),
         )
@@ -271,51 +179,55 @@ class DatasourceRegistryService(
             mariadbId,
             "analyst-ro",
             UpsertCredentialProfileRequest(
-                username = seedMariadbUsername,
-                password = seedMariadbPassword,
+                username = mariadb.username,
+                password = mariadb.password,
                 description = "Analyst readonly profile.",
             ),
         )
 
-        val trinoId =
-            createDatasource(
-                CreateDatasourceRequest(
-                    name = "trino-warehouse",
-                    engine = DatasourceEngine.TRINO,
-                    host = "localhost",
-                    port = 8088,
-                    database = "hive.default",
-                    driverId = "trino-default",
-                    tls = TlsSettings(mode = TlsMode.REQUIRE, verifyServerCertificate = false),
+        val trino = seedDatasourceProperties.trino
+        if (trino.enabled) {
+            val trinoId =
+                createDatasource(
+                    CreateDatasourceRequest(
+                        name = "trino-warehouse",
+                        engine = DatasourceEngine.TRINO,
+                        host = trino.host,
+                        port = trino.port,
+                        database = trino.database,
+                        driverId = "trino-default",
+                        tls = TlsSettings(mode = TlsMode.REQUIRE, verifyServerCertificate = false),
+                    ),
+                ).id
+            upsertCredentialProfile(
+                trinoId,
+                "admin-ro",
+                UpsertCredentialProfileRequest(
+                    username = trino.username,
+                    password = trino.password,
+                    description = "Admin readonly profile.",
                 ),
-            ).id
-        upsertCredentialProfile(
-            trinoId,
-            "admin-ro",
-            UpsertCredentialProfileRequest(
-                username = "trino",
-                password = "trino",
-                description = "Admin readonly profile.",
-            ),
-        )
-        upsertCredentialProfile(
-            trinoId,
-            "analyst-ro",
-            UpsertCredentialProfileRequest(
-                username = "trino",
-                password = "trino",
-                description = "Analyst readonly profile.",
-            ),
-        )
+            )
+            upsertCredentialProfile(
+                trinoId,
+                "analyst-ro",
+                UpsertCredentialProfileRequest(
+                    username = trino.username,
+                    password = trino.password,
+                    description = "Analyst readonly profile.",
+                ),
+            )
+        }
 
+        val starrocks = seedDatasourceProperties.starrocks
         val starrocksId =
             createDatasource(
                 CreateDatasourceRequest(
                     name = "starrocks-warehouse",
                     engine = DatasourceEngine.STARROCKS,
-                    host = seedStarrocksHost,
-                    port = seedStarrocksPort,
-                    database = seedStarrocksDatabase,
+                    host = starrocks.host,
+                    port = starrocks.port,
+                    database = starrocks.database,
                     driverId = "starrocks-mysql",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
                     options =
@@ -329,8 +241,8 @@ class DatasourceRegistryService(
             starrocksId,
             "admin-ro",
             UpsertCredentialProfileRequest(
-                username = seedStarrocksUsername,
-                password = seedStarrocksPassword,
+                username = starrocks.username,
+                password = starrocks.password,
                 description = "Admin readonly profile.",
             ),
         )
@@ -338,8 +250,8 @@ class DatasourceRegistryService(
             starrocksId,
             "analyst-ro",
             UpsertCredentialProfileRequest(
-                username = seedStarrocksUsername,
-                password = seedStarrocksPassword,
+                username = starrocks.username,
+                password = starrocks.password,
                 description = "Analyst readonly profile.",
             ),
         )
@@ -664,23 +576,6 @@ class DatasourceRegistryService(
 
         return slug
     }
-
-    private fun readStringEnv(
-        key: String,
-        fallback: String,
-    ): String =
-        System
-            .getenv(key)
-            ?.trim()
-            ?.ifBlank { null }
-            ?: fallback
-
-    private fun readIntEnv(
-        key: String,
-        fallback: Int,
-    ): Int =
-        System.getenv(key)?.toIntOrNull()
-            ?: fallback
 
     private fun ManagedDatasourceRecord.toResponse(): ManagedDatasourceResponse =
         ManagedDatasourceResponse(
