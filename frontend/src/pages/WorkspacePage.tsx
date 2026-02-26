@@ -17,452 +17,103 @@ import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import { statementAtCursor } from '../sql/statementSplitter';
-import railWorkbenchIcon from '../assets/lucide/layout-panel-top.svg?raw';
-import railHistoryIcon from '../assets/lucide/history.svg?raw';
-import railSnippetsIcon from '../assets/lucide/file-text.svg?raw';
-import railAuditIcon from '../assets/lucide/shield-check.svg?raw';
-import railAdminIcon from '../assets/lucide/settings.svg?raw';
-import railConnectionsIcon from '../assets/lucide/database.svg?raw';
-import railCollapseIcon from '../assets/lucide/panel-left-close.svg?raw';
-import railMenuIcon from '../assets/lucide/panel-left-open.svg?raw';
-import railInfoIcon from '../assets/lucide/info.svg?raw';
-import explorerDatabaseIcon from '../assets/lucide/database.svg?raw';
-import explorerSchemaIcon from '../assets/lucide/folder-tree.svg?raw';
-import explorerTableIcon from '../assets/lucide/table-properties.svg?raw';
-import explorerColumnIcon from '../assets/lucide/columns-3.svg?raw';
-import explorerInsertIcon from '../assets/lucide/arrow-up-right.svg?raw';
-import chevronRightIcon from '../assets/lucide/chevron-right.svg?raw';
-import chevronDownIcon from '../assets/lucide/chevron-down.svg?raw';
-import refreshCwIcon from '../assets/lucide/refresh-cw.svg?raw';
-import tabCloseIcon from '../assets/lucide/x.svg?raw';
-import tabMenuIcon from '../assets/lucide/ellipsis.svg?raw';
-import downloadIcon from '../assets/lucide/download.svg?raw';
-import plusIcon from '../assets/lucide/plus.svg?raw';
-import pencilIcon from '../assets/lucide/pencil.svg?raw';
-import trashIcon from '../assets/lucide/trash-2.svg?raw';
-import sortUpIcon from '../assets/lucide/arrow-up.svg?raw';
-import sortDownIcon from '../assets/lucide/arrow-down.svg?raw';
-import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
+import type {
+    AccessAdminMode,
+    AdminSubsection,
+    AdminUserResponse,
+    ApiErrorResponse,
+    AuditEventResponse,
+    AuthMethodsResponse,
+    AutocompleteDiagnostics,
+    CatalogDatasourceResponse,
+    ConnectionAuthentication,
+    ConnectionEditorMode,
+    ConnectionType,
+    CsrfTokenResponse,
+    CurrentUserResponse,
+    DatasourceAccessResponse,
+    DatasourceEngine,
+    DatasourceHealthState,
+    DatasourceSchemaBrowserResponse,
+    DriverDescriptorResponse,
+    EditorCursorLegend,
+    ExplorerGlyph,
+    GroupAdminMode,
+    GroupResponse,
+    IconButtonProps,
+    IconGlyph,
+    ManagedDatasourceFormState,
+    ManagedCredentialProfileResponse,
+    ManagedDatasourceResponse,
+    PersistentWorkspaceTab,
+    QueryExecutionResponse,
+    QueryExecutionStatusResponse,
+    QueryHistoryEntryResponse,
+    QueryResultsResponse,
+    QueryRunMode,
+    QueryStatusEventResponse,
+    RailGlyph,
+    ReencryptCredentialsResponse,
+    ResultSortDirection,
+    ResultSortState,
+    SnippetResponse,
+    TestConnectionResponse,
+    TlsMode,
+    UserAdminMode,
+    VersionResponse,
+    WorkspaceSection,
+    WorkspaceTab
+} from '../workbench/types';
+import {
+    builtInAuditActions,
+    builtInAuditOutcomes,
+    defaultPoolSettings,
+    defaultPortByEngine,
+    defaultTlsSettings,
+    firstPageToken,
+    protectedGroupIds,
+    queryStatusPollingIntervalMs,
+    queryStatusPollingMaxAttempts,
+    resultRowHeightPx,
+    resultViewportHeightPx,
+    sqlKeywordSuggestions,
+    workspaceTabsStorageKey
+} from '../workbench/constants';
+import {
+    adminIdentifierPattern,
+    compareResultValues,
+    formatExecutionDuration,
+    formatExecutionTimestamp,
+    isTerminalExecutionStatus,
+    isValidEmailAddress,
+    normalizeAdminIdentifier,
+    toStatusToneClass
+} from '../workbench/utils';
+import {
+    buildJdbcUrlPreview,
+    optionsToInput,
+    parseOptionsInput
+} from '../workbench/connectionUtils';
+import {
+    chevronDownIcon,
+    chevronRightIcon,
+    downloadIcon,
+    explorerIconSvgByGlyph,
+    explorerInsertIcon,
+    pencilIcon,
+    plusIcon,
+    railIconSvgByGlyph,
+    refreshCwIcon,
+    resolveDatasourceIcon,
+    sortDownIcon,
+    sortNeutralIcon,
+    sortUpIcon,
+    tabCloseIcon,
+    tabMenuIcon,
+    trashIcon
+} from '../workbench/icons';
 
 loader.config({ monaco: MonacoModule });
-
-type CurrentUserResponse = {
-    username: string;
-    displayName: string;
-    email?: string;
-    provider?: string;
-    roles: string[];
-    groups: string[];
-};
-
-type AuthMethodsResponse = {
-    methods?: string[];
-};
-
-type VersionResponse = {
-    service: string;
-    version: string;
-    artifact: string;
-    group: string;
-    buildTime: string;
-};
-
-type CatalogDatasourceResponse = {
-    id: string;
-    name: string;
-    engine: string;
-    credentialProfiles: string[];
-};
-
-type DatasourceEngine = 'POSTGRESQL' | 'MYSQL' | 'MARIADB' | 'TRINO' | 'STARROCKS' | 'VERTICA';
-
-type TlsMode = 'DISABLE' | 'REQUIRE';
-
-type DriverDescriptorResponse = {
-    driverId: string;
-    engine: DatasourceEngine;
-    driverClass: string;
-    source: string;
-    available: boolean;
-    description: string;
-    message: string;
-    version?: string;
-};
-
-type PoolSettings = {
-    maximumPoolSize: number;
-    minimumIdle: number;
-    connectionTimeoutMs: number;
-    idleTimeoutMs: number;
-};
-
-type TlsSettings = {
-    mode: TlsMode;
-    verifyServerCertificate: boolean;
-    allowSelfSigned: boolean;
-};
-
-type ManagedCredentialProfileResponse = {
-    profileId: string;
-    username: string;
-    description?: string;
-    encryptionKeyId: string;
-    updatedAt: string;
-};
-
-type ManagedDatasourceResponse = {
-    id: string;
-    name: string;
-    engine: DatasourceEngine;
-    host: string;
-    port: number;
-    database?: string;
-    driverId: string;
-    driverClass: string;
-    pool: PoolSettings;
-    tls: TlsSettings;
-    options: Record<string, string>;
-    credentialProfiles: ManagedCredentialProfileResponse[];
-};
-
-type GroupResponse = {
-    id: string;
-    name: string;
-    description?: string;
-    members: string[];
-};
-
-type DatasourceAccessResponse = {
-    groupId: string;
-    datasourceId: string;
-    canQuery: boolean;
-    canExport: boolean;
-    readOnly: boolean;
-    maxRowsPerQuery?: number;
-    maxRuntimeSeconds?: number;
-    concurrencyLimit?: number;
-    credentialProfile: string;
-};
-
-type QueryExecutionResponse = {
-    executionId: string;
-    datasourceId: string;
-    status: string;
-    message: string;
-    queryHash: string;
-};
-
-type QueryExecutionStatusResponse = {
-    executionId: string;
-    datasourceId: string;
-    status: string;
-    message: string;
-    submittedAt: string;
-    startedAt?: string;
-    completedAt?: string;
-    queryHash: string;
-    errorSummary?: string;
-    rowCount: number;
-    columnCount: number;
-    rowLimitReached: boolean;
-    maxRowsPerQuery: number;
-    maxRuntimeSeconds: number;
-    credentialProfile: string;
-};
-
-type QueryResultColumn = {
-    name: string;
-    jdbcType: string;
-};
-
-type QueryResultsResponse = {
-    executionId: string;
-    status: string;
-    columns: QueryResultColumn[];
-    rows: Array<Array<string | null>>;
-    pageSize: number;
-    nextPageToken?: string;
-    rowLimitReached: boolean;
-};
-
-type QueryStatusEventResponse = {
-    eventId: string;
-    executionId: string;
-    datasourceId: string;
-    status: string;
-    message: string;
-    occurredAt: string;
-};
-
-type QueryHistoryEntryResponse = {
-    executionId: string;
-    actor: string;
-    datasourceId: string;
-    status: string;
-    message: string;
-    queryHash: string;
-    queryText?: string;
-    queryTextRedacted: boolean;
-    errorSummary?: string;
-    rowCount: number;
-    columnCount: number;
-    rowLimitReached: boolean;
-    maxRowsPerQuery: number;
-    maxRuntimeSeconds: number;
-    credentialProfile: string;
-    submittedAt: string;
-    startedAt?: string;
-    completedAt?: string;
-    durationMs?: number;
-};
-
-type AuditEventResponse = {
-    type: string;
-    actor?: string;
-    outcome: string;
-    ipAddress?: string;
-    details: Record<string, unknown>;
-    timestamp: string;
-};
-
-type AdminUserResponse = {
-    username: string;
-    displayName: string;
-    email?: string;
-    provider: string;
-    enabled: boolean;
-    roles: string[];
-    groups: string[];
-    temporaryPassword: boolean;
-};
-
-type DatasourceColumnEntryResponse = {
-    name: string;
-    jdbcType: string;
-    nullable: boolean;
-};
-
-type DatasourceTableEntryResponse = {
-    table: string;
-    type: string;
-    columns: DatasourceColumnEntryResponse[];
-};
-
-type DatasourceSchemaEntryResponse = {
-    schema: string;
-    tables: DatasourceTableEntryResponse[];
-};
-
-type DatasourceSchemaBrowserResponse = {
-    datasourceId: string;
-    cached: boolean;
-    fetchedAt: string;
-    schemas: DatasourceSchemaEntryResponse[];
-};
-
-type SnippetResponse = {
-    snippetId: string;
-    title: string;
-    sql: string;
-    owner: string;
-    groupId?: string;
-    createdAt: string;
-    updatedAt: string;
-};
-
-type PersistentWorkspaceTab = {
-    id: string;
-    title: string;
-    datasourceId: string;
-    schema: string;
-    queryText: string;
-};
-
-type WorkspaceTab = PersistentWorkspaceTab & {
-    isExecuting: boolean;
-    statusMessage: string;
-    errorMessage: string;
-    lastRunKind: 'query' | 'explain';
-    executionId: string;
-    executionStatus: string;
-    queryHash: string;
-    resultColumns: QueryResultColumn[];
-    resultRows: Array<Array<string | null>>;
-    nextPageToken: string;
-    currentPageToken: string;
-    previousPageTokens: string[];
-    rowLimitReached: boolean;
-    submittedAt: string;
-    startedAt: string;
-    completedAt: string;
-    rowCount: number;
-    columnCount: number;
-    maxRowsPerQuery: number;
-    maxRuntimeSeconds: number;
-    credentialProfile: string;
-};
-
-type TestConnectionResponse = {
-    success: boolean;
-    datasourceId: string;
-    credentialProfile: string;
-    driverId: string;
-    driverClass: string;
-    message: string;
-};
-
-type ReencryptCredentialsResponse = {
-    updatedProfiles: number;
-    activeKeyId: string;
-    message: string;
-};
-
-type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
-type WorkspaceSection = 'workbench' | 'history' | 'snippets' | 'audit' | 'admin' | 'connections';
-type AdminSubsection = 'users' | 'groups' | 'access';
-type IconGlyph =
-    | 'new'
-    | 'rename'
-    | 'duplicate'
-    | 'close'
-    | 'refresh'
-    | 'copy'
-    | 'info'
-    | 'delete'
-    | 'download';
-type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
-type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
-type DatasourceHealthState = 'active' | 'inactive' | 'unknown';
-type ConnectionEditorMode = 'list' | 'create' | 'edit';
-type GroupAdminMode = 'list' | 'create' | 'edit';
-type UserAdminMode = 'list' | 'create';
-type AccessAdminMode = 'list' | 'create' | 'edit';
-type EditorCursorLegend = {
-    line: number;
-    column: number;
-    position: number;
-    selectedChars: number;
-    selectedLines: number;
-};
-type AutocompleteDiagnostics = {
-    enabled: boolean;
-    monacoReady: boolean;
-    editorMounted: boolean;
-    modelLanguageId: string;
-    availableLanguageIds: string[];
-    registeredLanguageIds: string[];
-    suggestionSeedCount: number;
-    triggerCount: number;
-    providerInvocationCount: number;
-    lastSuggestionCount: number;
-    lastTriggerSource: string;
-    lastTriggerAt: string;
-    lastInvocationAt: string;
-    lastError: string;
-};
-type ResultSortDirection = 'asc' | 'desc';
-type ResultSortState = {
-    columnIndex: number;
-    direction: ResultSortDirection;
-} | null;
-type RailGlyph =
-    | 'workbench'
-    | 'history'
-    | 'snippets'
-    | 'audit'
-    | 'admin'
-    | 'connections'
-    | 'collapse'
-    | 'menu'
-    | 'info';
-type ExplorerGlyph = 'database' | 'schema' | 'table' | 'column';
-
-type IconButtonProps = {
-    icon: IconGlyph;
-    title: string;
-    onClick: () => void;
-    disabled?: boolean;
-    variant?: 'default' | 'danger';
-};
-
-type ManagedDatasourceFormState = {
-    name: string;
-    engine: DatasourceEngine;
-    connectionType: ConnectionType;
-    host: string;
-    port: string;
-    database: string;
-    jdbcUrl: string;
-    optionsInput: string;
-    authentication: ConnectionAuthentication;
-    credentialProfileId: string;
-    credentialUsername: string;
-    credentialPassword: string;
-    credentialDescription: string;
-    driverId: string;
-    maximumPoolSize: string;
-    minimumIdle: string;
-    connectionTimeoutMs: string;
-    idleTimeoutMs: string;
-    tlsMode: TlsMode;
-    verifyServerCertificate: boolean;
-    allowSelfSigned: boolean;
-};
-
-type ApiErrorResponse = {
-    error?: string;
-};
-
-type CsrfTokenResponse = {
-    token: string;
-    headerName: string;
-};
-
-const defaultPoolSettings: PoolSettings = {
-    maximumPoolSize: 5,
-    minimumIdle: 1,
-    connectionTimeoutMs: 30_000,
-    idleTimeoutMs: 600_000
-};
-
-const defaultTlsSettings: TlsSettings = {
-    mode: 'DISABLE',
-    verifyServerCertificate: true,
-    allowSelfSigned: false
-};
-
-const workspaceTabsStorageKey = 'dwarvenpick.workspace.tabs.v1';
-const queryStatusPollingIntervalMs = 500;
-const queryStatusPollingMaxAttempts = 600;
-const firstPageToken = '';
-const resultRowHeightPx = 31;
-const resultViewportHeightPx = 320;
-const builtInAuditActions = [
-    'auth.local.login',
-    'auth.ldap.login',
-    'auth.ldap.group_sync',
-    'auth.logout',
-    'auth.local.user_create',
-    'auth.password_reset',
-    'query.execute',
-    'query.cancel',
-    'query.export',
-    'snippet.create',
-    'snippet.update',
-    'snippet.delete'
-];
-const builtInAuditOutcomes = [
-    'success',
-    'failed',
-    'denied',
-    'limited',
-    'queued',
-    'running',
-    'succeeded',
-    'canceled',
-    'noop'
-];
-const protectedGroupIds = new Set(['platform-admins', 'analytics-users']);
 
 const buildInitialAutocompleteDiagnostics = (): AutocompleteDiagnostics => ({
     enabled: false,
@@ -480,327 +131,6 @@ const buildInitialAutocompleteDiagnostics = (): AutocompleteDiagnostics => ({
     lastInvocationAt: '',
     lastError: ''
 });
-
-const sqlKeywordSuggestions = [
-    'SELECT',
-    'DISTINCT',
-    'FROM',
-    'WHERE',
-    'GROUP BY',
-    'HAVING',
-    'ORDER BY',
-    'LIMIT',
-    'OFFSET',
-    'JOIN',
-    'LEFT JOIN',
-    'RIGHT JOIN',
-    'INNER JOIN',
-    'FULL OUTER JOIN',
-    'CROSS JOIN',
-    'UNION',
-    'UNION ALL',
-    'WITH',
-    'INSERT INTO',
-    'UPDATE',
-    'DELETE FROM',
-    'CREATE TABLE',
-    'ALTER TABLE',
-    'DROP TABLE',
-    'CREATE VIEW',
-    'DROP VIEW',
-    'CREATE INDEX',
-    'DROP INDEX',
-    'PRIMARY KEY',
-    'FOREIGN KEY',
-    'VALUES',
-    'SET',
-    'AS',
-    'AND',
-    'OR',
-    'NOT',
-    'IN',
-    'BETWEEN',
-    'LIKE',
-    'IS NULL',
-    'IS NOT NULL',
-    'CASE',
-    'WHEN',
-    'THEN',
-    'ELSE',
-    'END',
-    'EXPLAIN',
-    'COUNT',
-    'SUM',
-    'AVG',
-    'MIN',
-    'MAX'
-];
-
-const datasourceIconByEngine: Record<DatasourceEngine, string> = {
-    POSTGRESQL: '/db-icons/postgresql.svg',
-    MYSQL: '/db-icons/mysql.svg',
-    MARIADB: '/db-icons/mariadb.svg',
-    TRINO: '/db-icons/trino.svg',
-    STARROCKS: '/db-icons/starrocks.svg',
-    VERTICA: '/db-icons/vertica.svg'
-};
-
-const railIconSvgByGlyph: Record<RailGlyph, string> = {
-    workbench: railWorkbenchIcon,
-    history: railHistoryIcon,
-    snippets: railSnippetsIcon,
-    audit: railAuditIcon,
-    admin: railAdminIcon,
-    connections: railConnectionsIcon,
-    collapse: railCollapseIcon,
-    menu: railMenuIcon,
-    info: railInfoIcon
-};
-const explorerIconSvgByGlyph: Record<ExplorerGlyph, string> = {
-    database: explorerDatabaseIcon,
-    schema: explorerSchemaIcon,
-    table: explorerTableIcon,
-    column: explorerColumnIcon
-};
-
-const resolveDatasourceIcon = (engine?: string): string => {
-    if (!engine) {
-        return '/db-icons/database.svg';
-    }
-
-    const normalized = engine.toUpperCase();
-    if (normalized in datasourceIconByEngine) {
-        return datasourceIconByEngine[normalized as DatasourceEngine];
-    }
-
-    return '/db-icons/database.svg';
-};
-
-const toStatusToneClass = (rawValue: string): string => {
-    const value = rawValue.trim().toUpperCase();
-    if (value === 'SUCCEEDED' || value === 'SUCCESS') {
-        return 'status-pill tone-success';
-    }
-    if (value === 'FAILED' || value === 'DENIED') {
-        return 'status-pill tone-failed';
-    }
-    if (value === 'RUNNING') {
-        return 'status-pill tone-running';
-    }
-    if (value === 'QUEUED') {
-        return 'status-pill tone-queued';
-    }
-    if (value === 'CANCELED') {
-        return 'status-pill tone-canceled';
-    }
-    if (value === 'LIMITED') {
-        return 'status-pill tone-limited';
-    }
-
-    return 'status-pill tone-neutral';
-};
-
-const adminIdentifierPattern = /^[a-z][a-z0-9.-]*$/;
-
-const normalizeAdminIdentifier = (value: string): string => {
-    const trimmed = value.trim().toLowerCase();
-    return trimmed
-        .replace(/\s+/g, '-')
-        .replace(/_/g, '-')
-        .replace(/[^a-z0-9.-]/g, '');
-};
-
-const isValidEmailAddress = (value: string): boolean =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-
-const isTerminalExecutionStatus = (status: string): boolean =>
-    status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELED';
-
-const formatExecutionTimestamp = (value: string): string => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return '-';
-    }
-
-    const parsed = new Date(trimmed);
-    if (Number.isNaN(parsed.getTime())) {
-        return trimmed;
-    }
-    return parsed.toLocaleString();
-};
-
-const formatExecutionDuration = (start: string, end: string): string => {
-    const startedAt = new Date(start);
-    const completedAt = new Date(end);
-    if (Number.isNaN(startedAt.getTime()) || Number.isNaN(completedAt.getTime())) {
-        return '-';
-    }
-
-    const durationMs = completedAt.getTime() - startedAt.getTime();
-    if (!Number.isFinite(durationMs) || durationMs < 0) {
-        return '-';
-    }
-
-    if (durationMs < 1000) {
-        return `${durationMs} ms`;
-    }
-
-    if (durationMs < 60_000) {
-        return `${(durationMs / 1000).toFixed(2)} s`;
-    }
-
-    const minutes = Math.floor(durationMs / 60_000);
-    const seconds = ((durationMs % 60_000) / 1000).toFixed(1);
-    return `${minutes}m ${seconds}s`;
-};
-
-const compareResultValues = (
-    left: string | null,
-    right: string | null,
-    direction: ResultSortDirection
-): number => {
-    if (left === right) {
-        return 0;
-    }
-
-    if (left === null) {
-        return 1;
-    }
-    if (right === null) {
-        return -1;
-    }
-
-    const normalizedLeft = left.trim();
-    const normalizedRight = right.trim();
-    const leftNumeric = Number(normalizedLeft);
-    const rightNumeric = Number(normalizedRight);
-    const bothNumeric = Number.isFinite(leftNumeric) && Number.isFinite(rightNumeric);
-
-    if (bothNumeric) {
-        return direction === 'asc' ? leftNumeric - rightNumeric : rightNumeric - leftNumeric;
-    }
-
-    const lexicalOrder = normalizedLeft.localeCompare(normalizedRight, undefined, {
-        numeric: true,
-        sensitivity: 'base'
-    });
-    return direction === 'asc' ? lexicalOrder : -lexicalOrder;
-};
-
-const defaultPortByEngine: Record<DatasourceEngine, number> = {
-    POSTGRESQL: 5432,
-    MYSQL: 3306,
-    MARIADB: 3306,
-    TRINO: 8088,
-    STARROCKS: 9030,
-    VERTICA: 5433
-};
-
-const optionsToInput = (options: Record<string, string>): string =>
-    Object.entries(options)
-        .filter(([key]) => key !== 'jdbcUrl')
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n');
-
-const parseOptionsInput = (value: string): Record<string, string> => {
-    const options: Record<string, string> = {};
-    value
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0)
-        .forEach((line) => {
-            const separatorIndex = line.indexOf('=');
-            if (separatorIndex <= 0) {
-                return;
-            }
-
-            const key = line.slice(0, separatorIndex).trim();
-            const optionValue = line.slice(separatorIndex + 1).trim();
-            if (!key) {
-                return;
-            }
-
-            options[key] = optionValue;
-        });
-    return options;
-};
-
-const formatQueryParams = (options: Record<string, string>): string => {
-    const entries = Object.entries(options).filter(([key]) => key !== 'jdbcUrl');
-    if (entries.length === 0) {
-        return '';
-    }
-
-    return (
-        '?' +
-        entries
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([key, value]) => `${key}=${value}`)
-            .join('&')
-    );
-};
-
-const buildJdbcUrlPreview = (
-    engine: DatasourceEngine,
-    host: string,
-    port: string,
-    database: string,
-    tlsMode: TlsMode,
-    verifyServerCertificate: boolean,
-    options: Record<string, string>
-): string => {
-    const jdbcUrlOverride = options.jdbcUrl?.trim();
-    if (jdbcUrlOverride) {
-        return jdbcUrlOverride;
-    }
-
-    const normalizedHost = host.trim() || 'localhost';
-    const resolvedPort = Number(port) || defaultPortByEngine[engine];
-    const databaseSegment = database.trim() ? `/${database.trim()}` : '';
-    const mergedOptions: Record<string, string> = { ...options };
-
-    if (engine === 'POSTGRESQL') {
-        mergedOptions.sslmode = tlsMode === 'REQUIRE' ? 'require' : 'disable';
-        if (tlsMode === 'REQUIRE' && !verifyServerCertificate) {
-            mergedOptions.ssfactory = 'org.postgresql.ssl.NonValidatingFactory';
-        } else {
-            delete mergedOptions.ssfactory;
-        }
-        return `jdbc:postgresql://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
-    }
-
-    if (engine === 'MYSQL' || engine === 'STARROCKS') {
-        mergedOptions.useSSL = String(tlsMode === 'REQUIRE');
-        mergedOptions.requireSSL = String(tlsMode === 'REQUIRE');
-        mergedOptions.verifyServerCertificate = String(verifyServerCertificate);
-        return `jdbc:mysql://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
-    }
-
-    if (engine === 'MARIADB') {
-        mergedOptions.useSsl = String(tlsMode === 'REQUIRE');
-        mergedOptions.trustServerCertificate = String(!verifyServerCertificate);
-        return `jdbc:mariadb://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
-    }
-
-    if (engine === 'TRINO') {
-        mergedOptions.SSL = String(tlsMode === 'REQUIRE');
-        if (tlsMode === 'REQUIRE' && !verifyServerCertificate) {
-            mergedOptions.SSLVerification = 'NONE';
-        } else {
-            delete mergedOptions.SSLVerification;
-        }
-        return `jdbc:trino://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
-    }
-
-    mergedOptions.TLSmode = tlsMode === 'REQUIRE' ? 'require' : 'disable';
-    if (tlsMode === 'REQUIRE') {
-        mergedOptions.tls_verify_host = String(verifyServerCertificate);
-    } else {
-        delete mergedOptions.tls_verify_host;
-    }
-    return `jdbc:vertica://${normalizedHost}:${resolvedPort}${databaseSegment}${formatQueryParams(mergedOptions)}`;
-};
 
 const buildBlankDatasourceForm = (
     engine: DatasourceEngine = 'POSTGRESQL'
@@ -976,7 +306,7 @@ const IconGlyph = ({ icon }: { icon: IconGlyph }) => {
                 className="icon-raw-glyph"
                 aria-hidden
                 dangerouslySetInnerHTML={{
-                    __html: railInfoIcon
+                    __html: railIconSvgByGlyph.info
                 }}
             />
         );
@@ -1028,7 +358,7 @@ const RailIcon = ({ glyph }: { glyph: RailGlyph }) => (
         className="rail-icon-glyph"
         aria-hidden
         dangerouslySetInnerHTML={{
-            __html: railIconSvgByGlyph[glyph] ?? railInfoIcon
+            __html: railIconSvgByGlyph[glyph] ?? railIconSvgByGlyph.info
         }}
     />
 );
@@ -1038,7 +368,7 @@ const ExplorerIcon = ({ glyph }: { glyph: ExplorerGlyph }) => (
         className="explorer-icon-glyph"
         aria-hidden
         dangerouslySetInnerHTML={{
-            __html: explorerIconSvgByGlyph[glyph] ?? explorerDatabaseIcon
+            __html: explorerIconSvgByGlyph[glyph] ?? explorerIconSvgByGlyph.database
         }}
     />
 );
