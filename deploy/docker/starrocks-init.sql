@@ -147,12 +147,12 @@ SELECT
     DATE(placed_at) AS date_key,
     ROUND(SUM(quantity * unit_price), 2) AS gross_revenue,
     ROUND(SUM(quantity * unit_price * (1 - (discount_percent / 100))), 2) AS net_revenue,
-    COUNT(DISTINCT order_id) AS order_count,
+    COUNT(DISTINCT o.order_id) AS order_count,
     SUM(quantity) AS item_count,
     COUNT(DISTINCT customer_id) AS distinct_customers,
     ROUND(
         SUM(quantity * unit_price * (1 - (discount_percent / 100))) /
-            NULLIF(COUNT(DISTINCT order_id), 0),
+            NULLIF(COUNT(DISTINCT o.order_id), 0),
         2
     ) AS avg_order_value
 FROM orders o

@@ -59,6 +59,7 @@ services:
       - sh
       - -c
       - |
+        set -e
         until mysql -h starrocks -P 9030 -uroot -e "SELECT 1" >/dev/null 2>&1; do
           echo "Waiting for StarRocks..."
           sleep 2
