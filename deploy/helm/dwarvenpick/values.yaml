@@ -64,6 +64,10 @@ env:
 extraEnv: {}
 envFromSecrets: []
 
+metrics:
+  prometheus:
+    enabled: true
+
 credentials:
   activeKeyId: v1
   masterKey:

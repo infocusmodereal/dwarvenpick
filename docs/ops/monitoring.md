@@ -13,6 +13,11 @@ nav_order: 30
   - `GET /actuator/health/liveness`
   - `GET /actuator/health/readiness`
 
+## Configuration
+
+- `DWARVENPICK_METRICS_PROMETHEUS_ENABLED` (default: `true`) enables the Prometheus endpoint.
+- Helm chart value: `metrics.prometheus.enabled`
+
 ## Key metrics
 
 - Query lifecycle:

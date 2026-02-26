@@ -13,6 +13,8 @@ management:
     health:
       probes:
         enabled: true
+    prometheus:
+      enabled: ${DWARVENPICK_METRICS_PROMETHEUS_ENABLED:true}
   health:
     ldap:
       enabled: false

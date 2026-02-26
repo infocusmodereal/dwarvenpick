@@ -16,6 +16,10 @@ credentials:
   masterKey:
     existingSecret: dwarvenpick-credentials
 
+metrics:
+  prometheus:
+    enabled: true
+
 # Enable a writable, persistent external driver directory so admins can upload JDBC jars.
 drivers:
   external:

@@ -63,6 +63,8 @@ spec:
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_USER_SEARCH_BASE | quote }}
             - name: DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE | quote }}
+            - name: DWARVENPICK_METRICS_PROMETHEUS_ENABLED
+              value: {{ .Values.metrics.prometheus.enabled | quote }}
             {{- range $key, $value := .Values.extraEnv }}
             - name: {{ $key | quote }}
               value: {{ $value | quote }}

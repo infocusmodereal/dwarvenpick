@@ -2,6 +2,7 @@ package com.dwarvenpick.app
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
@@ -19,6 +20,8 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 @Configuration
 class SecurityConfig(
     private val objectMapper: ObjectMapper,
+    @Value("\${management.endpoint.prometheus.enabled:true}")
+    private val prometheusEndpointEnabled: Boolean,
 ) {
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
@@ -31,6 +34,22 @@ class SecurityConfig(
         http: HttpSecurity,
         securityContextRepository: SecurityContextRepository,
     ): SecurityFilterChain {
+        val publicMatchers =
+            mutableListOf(
+                "/actuator/health",
+                "/actuator/health/**",
+                "/actuator/info",
+                "/api/health",
+                "/api/version",
+                "/api/auth/login",
+                "/api/auth/ldap/login",
+                "/api/auth/csrf",
+                "/api/auth/methods",
+            )
+        if (prometheusEndpointEnabled) {
+            publicMatchers.add("/actuator/prometheus")
+        }
+
         http
             .csrf {
                 it.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
@@ -38,18 +57,8 @@ class SecurityConfig(
                 context.securityContextRepository(securityContextRepository)
             }.authorizeHttpRequests {
                 it
-                    .requestMatchers(
-                        "/actuator/health",
-                        "/actuator/health/**",
-                        "/actuator/prometheus",
-                        "/actuator/info",
-                        "/api/health",
-                        "/api/version",
-                        "/api/auth/login",
-                        "/api/auth/ldap/login",
-                        "/api/auth/csrf",
-                        "/api/auth/methods",
-                    ).permitAll()
+                    .requestMatchers(*publicMatchers.toTypedArray())
+                    .permitAll()
                     .requestMatchers(
                         "/api/admin/**",
                         "/api/auth/admin/**",
