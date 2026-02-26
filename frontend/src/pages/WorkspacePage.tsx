@@ -101,6 +101,7 @@ import {
     InfoHint,
     RailIcon
 } from '../workbench/components/WorkbenchIcons';
+import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import SnippetsSection from '../workbench/sections/SnippetsSection';
 import {
     chevronDownIcon,
@@ -6054,188 +6055,37 @@ export default function WorkspacePage() {
                         </section>
                     </div>
 
-                    <section className="panel history-panel" hidden={activeSection !== 'history'}>
-                        <div className="history-filters">
-                            <div className="filter-field">
-                                <label htmlFor="history-datasource-filter">Connection</label>
-                                <div className="select-wrap">
-                                    <select
-                                        id="history-datasource-filter"
-                                        value={historyDatasourceFilter}
-                                        onChange={(event) =>
-                                            setHistoryDatasourceFilter(event.target.value)
-                                        }
-                                    >
-                                        <option value="">All connections</option>
-                                        {visibleDatasources.map((datasource) => (
-                                            <option
-                                                key={`history-${datasource.id}`}
-                                                value={datasource.id}
-                                            >
-                                                {datasource.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="filter-field">
-                                <label htmlFor="history-status-filter">Status</label>
-                                <div className="select-wrap">
-                                    <select
-                                        id="history-status-filter"
-                                        value={historyStatusFilter}
-                                        onChange={(event) =>
-                                            setHistoryStatusFilter(event.target.value)
-                                        }
-                                    >
-                                        <option value="">All statuses</option>
-                                        <option value="QUEUED">QUEUED</option>
-                                        <option value="RUNNING">RUNNING</option>
-                                        <option value="SUCCEEDED">SUCCEEDED</option>
-                                        <option value="FAILED">FAILED</option>
-                                        <option value="CANCELED">CANCELED</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="filter-field">
-                                <label htmlFor="history-from-filter">From</label>
-                                <input
-                                    id="history-from-filter"
-                                    type="datetime-local"
-                                    value={historyFromFilter}
-                                    onChange={(event) => setHistoryFromFilter(event.target.value)}
-                                />
-                            </div>
-
-                            <div className="filter-field">
-                                <label htmlFor="history-to-filter">To</label>
-                                <input
-                                    id="history-to-filter"
-                                    type="datetime-local"
-                                    value={historyToFilter}
-                                    onChange={(event) => setHistoryToFilter(event.target.value)}
-                                />
-                            </div>
-                        </div>
-                        <div className="row toolbar-actions">
-                            <IconButton
-                                icon="refresh"
-                                title={
-                                    loadingQueryHistory
-                                        ? 'Refreshing history...'
-                                        : 'Refresh history'
-                                }
-                                onClick={() => void loadQueryHistory()}
-                                disabled={loadingQueryHistory}
-                            />
-                            <button
-                                type="button"
-                                className="chip"
-                                onClick={() =>
-                                    setHistorySortOrder((current) =>
-                                        current === 'newest' ? 'oldest' : 'newest'
-                                    )
-                                }
-                            >
-                                {historySortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
-                            </button>
-                            <button
-                                type="button"
-                                className="chip"
-                                onClick={() => {
-                                    setHistoryDatasourceFilter('');
-                                    setHistoryStatusFilter('');
-                                    setHistoryFromFilter('');
-                                    setHistoryToFilter('');
-                                    window.setTimeout(() => {
-                                        void loadQueryHistory();
-                                    }, 0);
-                                }}
-                            >
-                                Clear Filters
-                            </button>
-                        </div>
-                        <div className="history-table-wrap">
-                            <table className="result-table history-table">
-                                <thead>
-                                    <tr>
-                                        <th>Submitted</th>
-                                        <th>Status</th>
-                                        <th>Connection</th>
-                                        <th>Duration</th>
-                                        <th>Rows</th>
-                                        <th>Query</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sortedQueryHistoryEntries.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={7}>
-                                                No history entries found for current filters.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        sortedQueryHistoryEntries.map((entry) => (
-                                            <tr key={`history-${entry.executionId}`}>
-                                                <td>
-                                                    {new Date(entry.submittedAt).toLocaleString()}
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        className={toStatusToneClass(entry.status)}
-                                                    >
-                                                        {entry.status}
-                                                    </span>
-                                                </td>
-                                                <td>{entry.datasourceId}</td>
-                                                <td>
-                                                    {typeof entry.durationMs === 'number'
-                                                        ? `${entry.durationMs} ms`
-                                                        : '-'}
-                                                </td>
-                                                <td>{entry.rowCount.toLocaleString()}</td>
-                                                <td className="history-query">
-                                                    {entry.queryTextRedacted
-                                                        ? '[REDACTED]'
-                                                        : (entry.queryText ?? '[empty]')}
-                                                </td>
-                                                <td className="history-actions">
-                                                    <button
-                                                        type="button"
-                                                        className="chip"
-                                                        disabled={
-                                                            !entry.queryText ||
-                                                            entry.queryTextRedacted
-                                                        }
-                                                        onClick={() =>
-                                                            handleOpenHistoryEntry(entry, false)
-                                                        }
-                                                    >
-                                                        Open
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        disabled={
-                                                            !entry.queryText ||
-                                                            entry.queryTextRedacted
-                                                        }
-                                                        onClick={() =>
-                                                            handleOpenHistoryEntry(entry, true)
-                                                        }
-                                                    >
-                                                        Rerun
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
+                    <QueryHistorySection
+                        hidden={activeSection !== 'history'}
+                        visibleDatasources={visibleDatasources}
+                        datasourceFilter={historyDatasourceFilter}
+                        onDatasourceFilterChange={(value) => setHistoryDatasourceFilter(value)}
+                        statusFilter={historyStatusFilter}
+                        onStatusFilterChange={(value) => setHistoryStatusFilter(value)}
+                        fromFilter={historyFromFilter}
+                        onFromFilterChange={(value) => setHistoryFromFilter(value)}
+                        toFilter={historyToFilter}
+                        onToFilterChange={(value) => setHistoryToFilter(value)}
+                        loadingQueryHistory={loadingQueryHistory}
+                        onRefresh={() => void loadQueryHistory()}
+                        sortOrder={historySortOrder}
+                        onToggleSortOrder={() =>
+                            setHistorySortOrder((current) =>
+                                current === 'newest' ? 'oldest' : 'newest'
+                            )
+                        }
+                        onClearFilters={() => {
+                            setHistoryDatasourceFilter('');
+                            setHistoryStatusFilter('');
+                            setHistoryFromFilter('');
+                            setHistoryToFilter('');
+                            window.setTimeout(() => {
+                                void loadQueryHistory();
+                            }, 0);
+                        }}
+                        entries={sortedQueryHistoryEntries}
+                        onOpenEntry={handleOpenHistoryEntry}
+                    />
 
                     <SnippetsSection
                         hidden={activeSection !== 'snippets'}
