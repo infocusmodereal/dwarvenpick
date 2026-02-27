@@ -19,6 +19,9 @@
     --bg-radial-bottom: #bfa177;
     --workbench-surface: #f2e9dc;
     --workspace-surface: #ece0cf;
+    --control-bg: #f7f0e2;
+    --select-arrow: #7f6342;
+    --table-surface: #fbf6ee;
 }
 
 :root[data-theme='dark'] {
@@ -40,6 +43,9 @@
     --bg-radial-bottom: #1a120c;
     --workbench-surface: #15110d;
     --workspace-surface: #14100c;
+    --control-bg: #1f1711;
+    --select-arrow: var(--muted);
+    --table-surface: #17110c;
 }
 
 * {
@@ -459,7 +465,7 @@ p {
     border: 1px solid var(--border);
     border-radius: 0.72rem;
     max-height: 340px;
-    background: #fbf6ee;
+    background: var(--table-surface);
 }
 
 .result-cell-actions {
@@ -587,7 +593,7 @@ textarea {
     padding: 0.58rem 0.72rem;
     font: inherit;
     color: var(--text);
-    background: #f7f0e2;
+    background: var(--control-bg);
 }
 
 input:focus,
@@ -605,6 +611,12 @@ textarea:focus {
 .form-success {
     color: #157450;
     font-weight: 600;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--muted);
+    opacity: 1;
 }
 
 .history-panel,
@@ -767,7 +779,7 @@ kbd {
     border: 1px solid var(--border);
     border-radius: 0.35rem;
     padding: 0.1rem 0.35rem;
-    background: #f4f8fa;
+    background: var(--surface-alt);
     font-family: 'IBM Plex Mono', monospace;
 }
 
@@ -798,8 +810,8 @@ kbd {
 .connection-mode-pill {
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: #efe2ce;
-    color: #5a4326;
+    background: var(--surface-alt);
+    color: var(--text);
     font-size: 0.79rem;
     font-weight: 620;
     padding: 0.28rem 0.62rem;
@@ -808,7 +820,7 @@ kbd {
 .connection-catalog {
     border: 1px solid var(--border);
     border-radius: 0.78rem;
-    background: #ede2d1;
+    background: var(--surface-alt);
     padding: 0.62rem;
     display: grid;
     gap: 0.46rem;
@@ -830,7 +842,7 @@ kbd {
     width: 100%;
     border-radius: 0.62rem;
     border: 1px solid var(--border);
-    background: #f8f2e8;
+    background: var(--surface);
     color: var(--text);
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -841,8 +853,8 @@ kbd {
 }
 
 .connection-catalog-item.active {
-    border-color: #a9824f;
-    background: #f1e3cc;
+    border-color: var(--accent);
+    background: var(--surface-strong);
 }
 
 .connection-catalog-icon {
@@ -2784,10 +2796,10 @@ button:disabled {
 }
 
 .filter-field {
-    border: 1px solid #a98960;
+    border: 1px solid var(--border);
     border-radius: 0.58rem;
     padding: 0.28rem;
-    background: #e1ccb0;
+    background: var(--surface-alt);
     display: grid;
     gap: 0.16rem;
     flex: 0 0 155px;
@@ -2797,7 +2809,7 @@ button:disabled {
     font-size: var(--control-label-size);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #6e5b45;
+    color: var(--muted);
 }
 
 .filter-field input,
@@ -2972,7 +2984,7 @@ button:disabled {
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: #ece0cf;
+    background: var(--workspace-surface);
     margin: 0;
     padding: 0.82rem 0.95rem 0.95rem;
     min-height: 100%;
@@ -3035,8 +3047,8 @@ select {
     appearance: none;
     padding-right: 2.1rem;
     background-image:
-        linear-gradient(45deg, transparent 50%, #7f6342 50%),
-        linear-gradient(135deg, #7f6342 50%, transparent 50%);
+        linear-gradient(45deg, transparent 50%, var(--select-arrow) 50%),
+        linear-gradient(135deg, var(--select-arrow) 50%, transparent 50%);
     background-position:
         calc(100% - 1.1rem) calc(50% - 0.12rem),
         calc(100% - 0.78rem) calc(50% - 0.12rem);
