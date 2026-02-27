@@ -324,6 +324,9 @@ export default function WorkspacePage() {
     const [uploadingDriver, setUploadingDriver] = useState(false);
     const [mavenDriverPreset, setMavenDriverPreset] = useState<MavenDriverPreset>('POSTGRESQL');
     const [mavenDriverVersionInput, setMavenDriverVersionInput] = useState('');
+    const [mavenDriverVersions, setMavenDriverVersions] = useState<string[]>([]);
+    const [loadingMavenDriverVersions, setLoadingMavenDriverVersions] = useState(false);
+    const [mavenDriverVersionsError, setMavenDriverVersionsError] = useState('');
     const [installingMavenDriver, setInstallingMavenDriver] = useState(false);
 
     const [groupNameInput, setGroupNameInput] = useState('');
@@ -966,6 +969,72 @@ export default function WorkspacePage() {
         if (!mavenPresetsForFormEngine.includes(mavenDriverPreset)) {
             setMavenDriverPreset(mavenPresetsForFormEngine[0]);
         }
+    }, [mavenDriverPreset, mavenPresetsForFormEngine]);
+
+    useEffect(() => {
+        if (mavenPresetsForFormEngine.length === 0) {
+            setMavenDriverVersions([]);
+            setMavenDriverVersionsError('');
+            setLoadingMavenDriverVersions(false);
+            return;
+        }
+
+        if (!mavenPresetsForFormEngine.includes(mavenDriverPreset)) {
+            return;
+        }
+
+        const controller = new AbortController();
+        setLoadingMavenDriverVersions(true);
+        setMavenDriverVersionsError('');
+        setMavenDriverVersions([]);
+
+        void (async () => {
+            try {
+                const response = await fetch(
+                    `/api/admin/drivers/maven/versions?preset=${encodeURIComponent(mavenDriverPreset)}&limit=60`,
+                    {
+                        signal: controller.signal,
+                        headers: { Accept: 'application/json' }
+                    }
+                );
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || `Failed to load versions (HTTP ${response.status}).`);
+                }
+
+                const payload: unknown = await response.json();
+                const versions = Array.isArray(payload)
+                    ? payload.filter((value): value is string => typeof value === 'string')
+                    : [];
+
+                setMavenDriverVersions(versions);
+                setMavenDriverVersionInput((current) => {
+                    const trimmed = current.trim();
+                    if (!trimmed) {
+                        return versions[0] ?? '';
+                    }
+                    if (versions.length > 0 && !versions.includes(trimmed)) {
+                        return versions[0] ?? '';
+                    }
+                    return trimmed;
+                });
+            } catch (error) {
+                if (controller.signal.aborted) {
+                    return;
+                }
+                setMavenDriverVersions([]);
+                setMavenDriverVersionsError(
+                    error instanceof Error ? error.message : 'Unable to load versions.'
+                );
+            } finally {
+                if (!controller.signal.aborted) {
+                    setLoadingMavenDriverVersions(false);
+                }
+            }
+        })();
+
+        return () => controller.abort();
     }, [mavenDriverPreset, mavenPresetsForFormEngine]);
 
     const snippetGroupOptions = useMemo(() => {
@@ -8010,23 +8079,82 @@ export default function WorkspacePage() {
                                                                                 <label htmlFor="maven-driver-version">
                                                                                     Version
                                                                                 </label>
-                                                                                <input
-                                                                                    id="maven-driver-version"
-                                                                                    value={
-                                                                                        mavenDriverVersionInput
-                                                                                    }
-                                                                                    onChange={(
-                                                                                        event
-                                                                                    ) =>
-                                                                                        setMavenDriverVersionInput(
+                                                                                {mavenDriverVersions.length >
+                                                                                0 ? (
+                                                                                    <div className="select-wrap">
+                                                                                        <select
+                                                                                            id="maven-driver-version"
+                                                                                            value={
+                                                                                                mavenDriverVersionInput
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                event
+                                                                                            ) =>
+                                                                                                setMavenDriverVersionInput(
+                                                                                                    event
+                                                                                                        .target
+                                                                                                        .value
+                                                                                                )
+                                                                                            }
+                                                                                            disabled={
+                                                                                                loadingMavenDriverVersions
+                                                                                            }
+                                                                                        >
+                                                                                            {mavenDriverVersions.map(
+                                                                                                (
+                                                                                                    version
+                                                                                                ) => (
+                                                                                                    <option
+                                                                                                        key={
+                                                                                                            version
+                                                                                                        }
+                                                                                                        value={
+                                                                                                            version
+                                                                                                        }
+                                                                                                    >
+                                                                                                        {
+                                                                                                            version
+                                                                                                        }
+                                                                                                    </option>
+                                                                                                )
+                                                                                            )}
+                                                                                        </select>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <input
+                                                                                        id="maven-driver-version"
+                                                                                        value={
+                                                                                            mavenDriverVersionInput
+                                                                                        }
+                                                                                        onChange={(
                                                                                             event
-                                                                                                .target
-                                                                                                .value
-                                                                                        )
-                                                                                    }
-                                                                                    placeholder="42.7.5"
-                                                                                />
+                                                                                        ) =>
+                                                                                            setMavenDriverVersionInput(
+                                                                                                event
+                                                                                                    .target
+                                                                                                    .value
+                                                                                            )
+                                                                                        }
+                                                                                        placeholder="42.7.5"
+                                                                                        disabled={
+                                                                                            loadingMavenDriverVersions
+                                                                                        }
+                                                                                    />
+                                                                                )}
                                                                             </div>
+
+                                                                            {loadingMavenDriverVersions ? (
+                                                                                <p className="muted-id">
+                                                                                    Loading
+                                                                                    available
+                                                                                    versions...
+                                                                                </p>
+                                                                            ) : null}
+                                                                            {mavenDriverVersionsError ? (
+                                                                                <p className="form-error">
+                                                                                    {mavenDriverVersionsError}
+                                                                                </p>
+                                                                            ) : null}
 
                                                                             <button
                                                                                 type="button"

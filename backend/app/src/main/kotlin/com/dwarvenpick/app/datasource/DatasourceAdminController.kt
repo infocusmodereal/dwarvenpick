@@ -162,6 +162,24 @@ class DatasourceAdminController(
             handleDatasourceErrors(ex)
         }
 
+    @GetMapping("/drivers/maven/versions")
+    fun listMavenDriverVersions(
+        @RequestParam preset: MavenDriverPreset,
+        @RequestParam(required = false, defaultValue = "50") limit: Int,
+        @RequestParam(required = false, defaultValue = "false") includeSnapshots: Boolean,
+    ): ResponseEntity<*> =
+        runCatching {
+            ResponseEntity.ok(
+                driverRegistryService.listMavenDriverVersions(
+                    preset = preset,
+                    limit = limit,
+                    includeSnapshots = includeSnapshots,
+                ),
+            )
+        }.getOrElse { ex ->
+            handleDatasourceErrors(ex)
+        }
+
     @GetMapping("/datasource-management")
     fun listManagedDatasources(): List<ManagedDatasourceResponse> = datasourceRegistryService.listManagedDatasources()
 

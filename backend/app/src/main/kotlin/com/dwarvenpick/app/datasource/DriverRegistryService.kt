@@ -14,6 +14,7 @@ import java.sql.DriverManager
 import java.sql.DriverPropertyInfo
 import java.sql.SQLFeatureNotSupportedException
 import java.time.Duration
+import java.time.Instant
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Logger
@@ -35,6 +36,17 @@ private data class UploadedDriverRegistration(
     val driverClass: String,
     val description: String,
     val jarPath: Path,
+)
+
+private data class MavenVersionCacheKey(
+    val preset: MavenDriverPreset,
+    val includeSnapshots: Boolean,
+    val limit: Int,
+)
+
+private data class MavenVersionCacheEntry(
+    val versions: List<String>,
+    val fetchedAt: Instant,
 )
 
 data class DriverDescriptor(
@@ -61,12 +73,15 @@ class DriverRegistryService(
     private val registeredExternalDrivers = ConcurrentHashMap.newKeySet<String>()
     private val externalDriverClassLoaders = ConcurrentHashMap<String, URLClassLoader>()
     private val uploadedDrivers = ConcurrentHashMap<String, UploadedDriverRegistration>()
+    private val mavenVersionCache = ConcurrentHashMap<MavenVersionCacheKey, MavenVersionCacheEntry>()
+    private val mavenVersionCacheTtl = Duration.ofMinutes(10)
     private val httpClient =
         HttpClient
             .newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(6))
             .build()
+    private val mavenVersionPattern = Regex("<version>([^<]+)</version>", RegexOption.IGNORE_CASE)
 
     private val builtInDriverSpecs =
         listOf(
@@ -315,6 +330,78 @@ class DriverRegistryService(
             requestedDriverId = driverId,
             requestedDescription = description,
         )
+    }
+
+    fun listMavenDriverVersions(
+        preset: MavenDriverPreset,
+        limit: Int,
+        includeSnapshots: Boolean,
+    ): List<String> {
+        if (!driverRegistryProperties.maven.enabled) {
+            throw IllegalStateException(
+                "Maven driver downloads are disabled. Set DWARVENPICK_DRIVERS_MAVEN_ENABLED=true to enable.",
+            )
+        }
+
+        val normalizedLimit = limit.coerceIn(1, 200)
+        val cacheKey =
+            MavenVersionCacheKey(
+                preset = preset,
+                includeSnapshots = includeSnapshots,
+                limit = normalizedLimit,
+            )
+        val now = Instant.now()
+
+        val cached = mavenVersionCache[cacheKey]
+        if (cached != null && Duration.between(cached.fetchedAt, now) < mavenVersionCacheTtl) {
+            return cached.versions
+        }
+
+        val repositoryUrl =
+            driverRegistryProperties.maven.repositoryUrl
+                .trim()
+                .ifBlank { "https://repo1.maven.org/maven2/" }
+                .let { url -> if (url.endsWith("/")) url else "$url/" }
+
+        val groupPath = preset.groupId.replace('.', '/')
+        val metadataUri =
+            URI.create(
+                "$repositoryUrl$groupPath/${preset.artifactId}/maven-metadata.xml",
+            )
+
+        val metadataXml =
+            runCatching {
+                val request =
+                    HttpRequest
+                        .newBuilder(metadataUri)
+                        .timeout(Duration.ofSeconds(15))
+                        .header("User-Agent", "dwarvenpick")
+                        .GET()
+                        .build()
+                val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+                if (response.statusCode() != 200) {
+                    throw DriverNotAvailableException(
+                        "Failed to fetch available versions (HTTP ${response.statusCode()}).",
+                    )
+                }
+                response.body()
+            }.getOrElse { ex ->
+                throw DriverNotAvailableException(ex.message ?: "Failed to fetch available versions.")
+            }
+
+        val versions =
+            mavenVersionPattern
+                .findAll(metadataXml)
+                .map { match -> match.groupValues[1].trim() }
+                .filter { value -> value.isNotBlank() }
+                .filter { value -> includeSnapshots || !value.contains("SNAPSHOT", ignoreCase = true) }
+                .toList()
+                .distinct()
+                .asReversed()
+                .take(normalizedLimit)
+
+        mavenVersionCache[cacheKey] = MavenVersionCacheEntry(versions = versions, fetchedAt = now)
+        return versions
     }
 
     private fun builtInDriverDescriptors(): List<DriverDescriptor> {
