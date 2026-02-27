@@ -42,6 +42,14 @@ services:
   starrocks:
     image: starrocks/allin1-ubuntu:3.1.7
     container_name: dwarvenpick-starrocks
+    # StarRocks persists its full /data tree. On restart, FE can refuse to start if a stale
+    # pid file collides with a different supervised process id. Clean it up before boot.
+    command:
+      - sh
+      - -lc
+      - |
+        rm -f /data/deploy/starrocks/fe/bin/fe.pid
+        exec /data/deploy/entrypoint.sh
     ports:
       - "9030:9030"
       - "8030:8030"
