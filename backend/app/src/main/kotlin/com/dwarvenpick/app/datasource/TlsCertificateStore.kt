@@ -189,7 +189,10 @@ class TlsCertificateStore(
         writeKeyStore(keyStorePath, keyStore)
     }
 
-    private fun writeKeyStore(path: Path, keyStore: KeyStore) {
+    private fun writeKeyStore(
+        path: Path,
+        keyStore: KeyStore,
+    ) {
         Files.createDirectories(path.parent)
         Files.newOutputStream(path).use { stream ->
             keyStore.store(stream, storePassword.toCharArray())
