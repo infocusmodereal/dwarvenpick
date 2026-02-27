@@ -49,6 +49,10 @@ dwarvenpick:
       master-key: ${DWARVENPICK_CREDENTIAL_MASTER_KEY:dwarvenpick-dev-master-key-change-me}
   drivers:
     external-dir: ${DWARVENPICK_EXTERNAL_DRIVERS_DIR:/opt/app/drivers}
+    maven:
+      enabled: ${DWARVENPICK_DRIVERS_MAVEN_ENABLED:true}
+      repository-url: ${DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL:https://repo1.maven.org/maven2/}
+      max-jar-size-mb: ${DWARVENPICK_DRIVERS_MAVEN_MAX_JAR_SIZE_MB:50}
   datasource:
     network-guard:
       enabled: true

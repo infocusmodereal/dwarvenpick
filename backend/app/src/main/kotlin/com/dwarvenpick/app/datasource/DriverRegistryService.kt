@@ -1,7 +1,11 @@
 package com.dwarvenpick.app.datasource
 
 import org.springframework.stereotype.Service
+import java.net.URI
 import java.net.URLClassLoader
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
@@ -9,11 +13,13 @@ import java.sql.Driver
 import java.sql.DriverManager
 import java.sql.DriverPropertyInfo
 import java.sql.SQLFeatureNotSupportedException
+import java.time.Duration
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Logger
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
+import kotlin.math.max
 
 private data class BuiltInDriverSpec(
     val driverId: String,
@@ -55,6 +61,12 @@ class DriverRegistryService(
     private val registeredExternalDrivers = ConcurrentHashMap.newKeySet<String>()
     private val externalDriverClassLoaders = ConcurrentHashMap<String, URLClassLoader>()
     private val uploadedDrivers = ConcurrentHashMap<String, UploadedDriverRegistration>()
+    private val httpClient =
+        HttpClient
+            .newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(6))
+            .build()
 
     private val builtInDriverSpecs =
         listOf(
@@ -230,6 +242,80 @@ class DriverRegistryService(
     }
 
     fun externalDriverDirectory(): String = driverRegistryProperties.externalDir
+
+    fun installMavenDriver(
+        preset: MavenDriverPreset,
+        version: String,
+        requestedDriverId: String?,
+        requestedDescription: String?,
+    ): DriverDescriptor {
+        if (!driverRegistryProperties.maven.enabled) {
+            throw IllegalStateException(
+                "Maven driver downloads are disabled. Set DWARVENPICK_DRIVERS_MAVEN_ENABLED=true to enable.",
+            )
+        }
+
+        val normalizedVersion = version.trim()
+        if (normalizedVersion.isBlank()) {
+            throw IllegalArgumentException("Version is required.")
+        }
+
+        if (!Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$").matches(normalizedVersion)) {
+            throw IllegalArgumentException("Version contains invalid characters.")
+        }
+
+        val repositoryUrl =
+            driverRegistryProperties.maven.repositoryUrl
+                .trim()
+                .ifBlank { "https://repo1.maven.org/maven2/" }
+                .let { url -> if (url.endsWith("/")) url else "$url/" }
+
+        val groupPath = preset.groupId.replace('.', '/')
+        val jarFileName = "${preset.artifactId}-$normalizedVersion.jar"
+        val jarUri = URI.create("$repositoryUrl$groupPath/${preset.artifactId}/$normalizedVersion/$jarFileName")
+
+        val jarBytes =
+            runCatching {
+                val request =
+                    HttpRequest
+                        .newBuilder(jarUri)
+                        .timeout(Duration.ofSeconds(30))
+                        .header("User-Agent", "dwarvenpick")
+                        .GET()
+                        .build()
+
+                val response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
+                if (response.statusCode() != 200) {
+                    throw DriverNotAvailableException(
+                        "Failed to download driver jar (HTTP ${response.statusCode()}). Verify the version exists.",
+                    )
+                }
+                response.body()
+            }.getOrElse { ex ->
+                throw DriverNotAvailableException(ex.message ?: "Failed to download driver jar.")
+            }
+
+        val maxJarSizeMb = max(1, driverRegistryProperties.maven.maxJarSizeMb)
+        val maxJarBytes = maxJarSizeMb.toLong() * 1024L * 1024L
+        if (jarBytes.size.toLong() > maxJarBytes) {
+            throw IllegalArgumentException("Downloaded jar exceeds maximum size (${maxJarSizeMb}MiB).")
+        }
+
+        val defaultDriverId = "${preset.name.lowercase().replace('_', '-')}-$normalizedVersion"
+        val driverId = requestedDriverId?.trim()?.ifBlank { null } ?: defaultDriverId
+        val description =
+            requestedDescription?.trim()?.ifBlank { null }
+                ?: "${preset.defaultDescription} v$normalizedVersion"
+
+        return uploadDriver(
+            engine = preset.engine,
+            driverClass = preset.driverClass,
+            jarFileName = jarFileName,
+            jarBytes = jarBytes,
+            requestedDriverId = driverId,
+            requestedDescription = description,
+        )
+    }
 
     private fun builtInDriverDescriptors(): List<DriverDescriptor> {
         val externalJars = externalDriverJarFiles(Path.of(externalDriverDirectory()))

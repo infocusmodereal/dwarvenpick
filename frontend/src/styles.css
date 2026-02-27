@@ -2913,6 +2913,28 @@ button:disabled {
     font-size: 0.76rem;
 }
 
+.driver-maven-install {
+    border-top: 1px solid rgba(184, 162, 132, 0.52);
+    margin-top: 0.1rem;
+    padding-top: 0.95rem;
+    display: grid;
+    gap: 0.82rem;
+    font-size: 0.8rem;
+}
+
+.driver-maven-install h4 {
+    margin: 0;
+    font-size: 0.84rem;
+}
+
+.driver-maven-install .form-field {
+    gap: 0.42rem;
+}
+
+.driver-maven-install .form-field label {
+    font-size: 0.76rem;
+}
+
 .history-panel,
 .admin-audit,
 .snippets-panel,

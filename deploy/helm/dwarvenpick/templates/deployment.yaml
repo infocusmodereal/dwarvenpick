@@ -47,6 +47,12 @@ spec:
               value: {{ .Values.credentials.activeKeyId | quote }}
             - name: DWARVENPICK_EXTERNAL_DRIVERS_DIR
               value: {{ ternary .Values.drivers.external.mountPath .Values.env.DWARVENPICK_EXTERNAL_DRIVERS_DIR .Values.drivers.external.enabled | quote }}
+            - name: DWARVENPICK_DRIVERS_MAVEN_ENABLED
+              value: {{ .Values.drivers.maven.enabled | quote }}
+            - name: DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL
+              value: {{ .Values.drivers.maven.repositoryUrl | quote }}
+            - name: DWARVENPICK_DRIVERS_MAVEN_MAX_JAR_SIZE_MB
+              value: {{ .Values.drivers.maven.maxJarSizeMb | quote }}
             - name: DWARVENPICK_SEED_ENABLED
               value: {{ .Values.env.DWARVENPICK_SEED_ENABLED | quote }}
             - name: DWARVENPICK_AUTH_LOCAL_ENABLED

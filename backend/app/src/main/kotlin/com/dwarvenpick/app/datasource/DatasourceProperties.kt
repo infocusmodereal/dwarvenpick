@@ -11,4 +11,11 @@ data class CredentialEncryptionProperties(
 @ConfigurationProperties(prefix = "dwarvenpick.drivers")
 data class DriverRegistryProperties(
     val externalDir: String = "/opt/app/drivers",
+    val maven: MavenDriverDownloadProperties = MavenDriverDownloadProperties(),
+)
+
+data class MavenDriverDownloadProperties(
+    val enabled: Boolean = true,
+    val repositoryUrl: String = "https://repo1.maven.org/maven2/",
+    val maxJarSizeMb: Int = 50,
 )

@@ -103,6 +103,65 @@ class DatasourceAdminController(
             handleDatasourceErrors(ex)
         }
 
+    @PostMapping("/drivers/install-maven")
+    fun installMavenDriver(
+        @Valid @RequestBody request: InstallMavenDriverRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<*> =
+        runCatching {
+            val descriptor =
+                driverRegistryService.installMavenDriver(
+                    preset = request.preset,
+                    version = request.version,
+                    requestedDriverId = request.driverId,
+                    requestedDescription = request.description,
+                )
+
+            val response =
+                DriverDescriptorResponse(
+                    driverId = descriptor.driverId,
+                    engine = descriptor.engine.name,
+                    driverClass = descriptor.driverClass,
+                    source = descriptor.source,
+                    available = descriptor.available,
+                    description = descriptor.description,
+                    message = descriptor.message,
+                    version = descriptor.version,
+                )
+
+            audit(
+                type = "driver.install_maven",
+                actor = authentication.name,
+                outcome = "success",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "preset" to request.preset.name,
+                        "version" to request.version,
+                        "engine" to response.engine,
+                        "driverId" to response.driverId,
+                        "driverClass" to response.driverClass,
+                    ),
+            )
+
+            ResponseEntity.status(HttpStatus.CREATED).body(response)
+        }.getOrElse { ex ->
+            audit(
+                type = "driver.install_maven",
+                actor = authentication.name,
+                outcome = "failed",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "preset" to request.preset.name,
+                        "version" to request.version,
+                        "reason" to (ex.message ?: "install_failed"),
+                    ),
+            )
+            handleDatasourceErrors(ex)
+        }
+
     @GetMapping("/datasource-management")
     fun listManagedDatasources(): List<ManagedDatasourceResponse> = datasourceRegistryService.listManagedDatasources()
 
@@ -245,6 +304,7 @@ class DatasourceAdminController(
     private fun handleDatasourceErrors(ex: Throwable): ResponseEntity<*> =
         when (ex) {
             is IllegalArgumentException -> ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
+            is IllegalStateException -> ResponseEntity.badRequest().body(ErrorResponse(ex.message ?: "Bad request."))
             is ManagedDatasourceNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
             is CredentialProfileNotFoundException -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
             is DriverNotAvailableException -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))

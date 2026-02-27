@@ -47,6 +47,14 @@ export type DriverDescriptorResponse = {
     version?: string;
 };
 
+export type MavenDriverPreset =
+    | 'POSTGRESQL'
+    | 'MYSQL'
+    | 'MARIADB'
+    | 'TRINO'
+    | 'STARROCKS_MYSQL'
+    | 'STARROCKS_MARIADB';
+
 export type PoolSettings = {
     maximumPoolSize: number;
     minimumIdle: number;

@@ -40,6 +40,22 @@ For Helm deployments:
 - set `.Values.drivers.external.enabled=true`
 - set `.Values.drivers.external.createPvc=true` (or provide `.Values.drivers.external.existingClaim`)
 
+## Installing drivers from Maven Central
+
+System admins can also install supported JDBC driver versions directly from the UI. Downloads are stored in the external drivers directory.
+
+Settings:
+
+- `DWARVENPICK_DRIVERS_MAVEN_ENABLED` (default: `true`)
+- `DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL` (default: `https://repo1.maven.org/maven2/`)
+- `DWARVENPICK_DRIVERS_MAVEN_MAX_JAR_SIZE_MB` (default: `50`)
+
+Helm chart values:
+
+- `.Values.drivers.maven.enabled`
+- `.Values.drivers.maven.repositoryUrl`
+- `.Values.drivers.maven.maxJarSizeMb`
+
 ## Pooling
 
 Connections can use pooled JDBC connections for better concurrency. Pool sizing and timeouts are configurable per connection.

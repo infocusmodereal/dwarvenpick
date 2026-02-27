@@ -44,6 +44,7 @@ import type {
     ManagedDatasourceFormState,
     ManagedCredentialProfileResponse,
     ManagedDatasourceResponse,
+    MavenDriverPreset,
     PersistentWorkspaceTab,
     QueryExecutionResponse,
     QueryExecutionStatusResponse,
@@ -321,6 +322,9 @@ export default function WorkspacePage() {
     const [uploadDriverDescriptionInput, setUploadDriverDescriptionInput] = useState('');
     const [uploadDriverJarFile, setUploadDriverJarFile] = useState<File | null>(null);
     const [uploadingDriver, setUploadingDriver] = useState(false);
+    const [mavenDriverPreset, setMavenDriverPreset] = useState<MavenDriverPreset>('POSTGRESQL');
+    const [mavenDriverVersionInput, setMavenDriverVersionInput] = useState('');
+    const [installingMavenDriver, setInstallingMavenDriver] = useState(false);
 
     const [groupNameInput, setGroupNameInput] = useState('');
     const [groupDescriptionInput, setGroupDescriptionInput] = useState('');
@@ -929,6 +933,23 @@ export default function WorkspacePage() {
         [adminDrivers, managedDatasourceForm.engine]
     );
 
+    const mavenPresetsForFormEngine = useMemo<MavenDriverPreset[]>(() => {
+        switch (managedDatasourceForm.engine) {
+            case 'POSTGRESQL':
+                return ['POSTGRESQL'];
+            case 'MYSQL':
+                return ['MYSQL'];
+            case 'MARIADB':
+                return ['MARIADB'];
+            case 'TRINO':
+                return ['TRINO'];
+            case 'STARROCKS':
+                return ['STARROCKS_MYSQL', 'STARROCKS_MARIADB'];
+            default:
+                return [];
+        }
+    }, [managedDatasourceForm.engine]);
+
     const selectedDriverForForm = useMemo(
         () =>
             driversForFormEngine.find(
@@ -936,6 +957,16 @@ export default function WorkspacePage() {
             ) ?? null,
         [driversForFormEngine, managedDatasourceForm.driverId]
     );
+
+    useEffect(() => {
+        if (mavenPresetsForFormEngine.length === 0) {
+            return;
+        }
+
+        if (!mavenPresetsForFormEngine.includes(mavenDriverPreset)) {
+            setMavenDriverPreset(mavenPresetsForFormEngine[0]);
+        }
+    }, [mavenDriverPreset, mavenPresetsForFormEngine]);
 
     const snippetGroupOptions = useMemo(() => {
         const options = new Set<string>();
@@ -4251,6 +4282,54 @@ export default function WorkspacePage() {
             }
         } finally {
             setUploadingDriver(false);
+        }
+    };
+
+    const handleInstallMavenDriver = async () => {
+        const version = mavenDriverVersionInput.trim();
+        if (!version) {
+            setAdminError('Driver version is required.');
+            return;
+        }
+
+        setAdminError('');
+        setAdminSuccess('');
+        setInstallingMavenDriver(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch('/api/admin/drivers/install-maven', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    [csrfToken.headerName]: csrfToken.token
+                },
+                body: JSON.stringify({
+                    preset: mavenDriverPreset,
+                    version
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const installedDriver = (await response.json()) as DriverDescriptorResponse;
+            await loadAdminData();
+            setManagedDatasourceForm((current) => ({
+                ...current,
+                driverId: installedDriver.driverId
+            }));
+            setMavenDriverVersionInput('');
+            setAdminSuccess(`Driver ${installedDriver.driverId} installed.`);
+        } catch (error) {
+            if (error instanceof Error) {
+                setAdminError(error.message);
+            } else {
+                setAdminError('Failed to install JDBC driver.');
+            }
+        } finally {
+            setInstallingMavenDriver(false);
         }
     };
 
@@ -7875,6 +7954,98 @@ export default function WorkspacePage() {
                                                                                 : 'Upload Driver Jar'}
                                                                         </button>
                                                                     </div>
+
+                                                                    {mavenPresetsForFormEngine.length >
+                                                                    0 ? (
+                                                                        <div className="driver-maven-install">
+                                                                            <h4>Download Driver</h4>
+                                                                            <p className="muted-id">
+                                                                                Download a JDBC
+                                                                                driver jar from
+                                                                                Maven Central and
+                                                                                store it alongside
+                                                                                uploaded drivers.
+                                                                            </p>
+                                                                            <div className="form-field">
+                                                                                <label htmlFor="maven-driver-preset">
+                                                                                    Preset
+                                                                                </label>
+                                                                                <div className="select-wrap">
+                                                                                    <select
+                                                                                        id="maven-driver-preset"
+                                                                                        value={
+                                                                                            mavenDriverPreset
+                                                                                        }
+                                                                                        onChange={(
+                                                                                            event
+                                                                                        ) =>
+                                                                                            setMavenDriverPreset(
+                                                                                                event
+                                                                                                    .target
+                                                                                                    .value as MavenDriverPreset
+                                                                                            )
+                                                                                        }
+                                                                                    >
+                                                                                        {mavenPresetsForFormEngine.map(
+                                                                                            (
+                                                                                                preset
+                                                                                            ) => (
+                                                                                                <option
+                                                                                                    key={
+                                                                                                        preset
+                                                                                                    }
+                                                                                                    value={
+                                                                                                        preset
+                                                                                                    }
+                                                                                                >
+                                                                                                    {
+                                                                                                        preset
+                                                                                                    }
+                                                                                                </option>
+                                                                                            )
+                                                                                        )}
+                                                                                    </select>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            <div className="form-field">
+                                                                                <label htmlFor="maven-driver-version">
+                                                                                    Version
+                                                                                </label>
+                                                                                <input
+                                                                                    id="maven-driver-version"
+                                                                                    value={
+                                                                                        mavenDriverVersionInput
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        event
+                                                                                    ) =>
+                                                                                        setMavenDriverVersionInput(
+                                                                                            event
+                                                                                                .target
+                                                                                                .value
+                                                                                        )
+                                                                                    }
+                                                                                    placeholder="42.7.5"
+                                                                                />
+                                                                            </div>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                className="chip upload-driver-button"
+                                                                                onClick={() =>
+                                                                                    void handleInstallMavenDriver()
+                                                                                }
+                                                                                disabled={
+                                                                                    installingMavenDriver
+                                                                                }
+                                                                            >
+                                                                                {installingMavenDriver
+                                                                                    ? 'Downloading...'
+                                                                                    : 'Download Driver Jar'}
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : null}
                                                                 </div>
                                                             </details>
 

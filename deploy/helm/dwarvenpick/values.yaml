@@ -76,6 +76,10 @@ credentials:
     value: ""
 
 drivers:
+  maven:
+    enabled: true
+    repositoryUrl: https://repo1.maven.org/maven2/
+    maxJarSizeMb: 50
   external:
     enabled: false
     mountPath: /opt/app/drivers
