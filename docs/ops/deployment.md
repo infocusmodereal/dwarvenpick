@@ -83,6 +83,25 @@ When local auth is enabled (`DWARVENPICK_AUTH_LOCAL_ENABLED=true`), `SYSTEM_ADMI
 
 When local auth is disabled (LDAP-only), user creation/reset is blocked in UI and API (`/api/auth/admin/users*`).
 
+## Persistent storage (drivers + TLS materials)
+
+The backend uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as a writable state directory.
+
+It stores:
+
+- Uploaded and Maven-downloaded JDBC driver jars under `uploads/`
+- Uploaded TLS certificates/keys and generated keystores/truststores under `tls/`
+
+Kubernetes (Helm) recommendation:
+
+- Enable the external drivers volume: `.Values.drivers.external.enabled=true`
+- Back it with a PVC: set `.Values.drivers.external.createPvc=true` or provide `.Values.drivers.external.existingClaim=<pvc-name>`.
+- Ensure it is writable (`.Values.drivers.external.readOnly=false`) if you plan to upload drivers or TLS materials from the UI.
+
+Docker Compose:
+
+- `deploy/docker/docker-compose.yml` mounts a named volume at `/opt/app/drivers` so uploaded drivers, Maven downloads, and TLS materials persist across restarts.
+
 ## External JDBC drivers (Vertica)
 
 Vertica is intentionally not bundled. Driver jars must be mounted at runtime.

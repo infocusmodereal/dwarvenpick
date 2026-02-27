@@ -18,6 +18,14 @@ nav_order: 30
 - `DWARVENPICK_METRICS_PROMETHEUS_ENABLED` (default: `true`) enables the Prometheus endpoint.
 - Helm chart value: `metrics.prometheus.enabled`
 
+## Kubernetes scraping
+
+The Helm chart exposes the backend on `.Values.service.port` (default `8080`). Configure your Prometheus instance to scrape:
+
+- `http://<service-name>:8080/actuator/prometheus`
+
+If you use Prometheus Operator, create a `ServiceMonitor` that targets the backend `Service` and port.
+
 ## Key metrics
 
 - Query lifecycle:

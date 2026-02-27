@@ -56,6 +56,29 @@ Helm chart values:
 - `.Values.drivers.maven.repositoryUrl`
 - `.Values.drivers.maven.maxJarSizeMb`
 
+The UI shows the Maven coordinates (`groupId` + `artifactId`) and driver class for each preset so operators can verify exactly what is being downloaded.
+
+## TLS and SSL certificates
+
+`dwarvenpick` supports TLS for all connections. In the UI, TLS controls whether transport encryption is required and how the server certificate is validated.
+
+Optionally, you can also upload certificates for TLS verification and mutual TLS:
+
+- **CA certificate (PEM)**: used to verify the database server certificate.
+- **Client certificate (PEM)** + **client private key (PEM)**: used for mutual TLS (mTLS) authentication.
+
+Notes:
+
+- The client private key must be an **unencrypted PKCS#8 PEM** (`BEGIN PRIVATE KEY`). PKCS#1 (`BEGIN RSA PRIVATE KEY`) and encrypted private keys are rejected with a clear error.
+- Uploaded TLS materials are stored on the backend under `${DWARVENPICK_EXTERNAL_DRIVERS_DIR}/tls/<connection-id>/`.
+- In Kubernetes, make sure the external drivers directory is writable and backed by a PVC if you want TLS materials (and driver jars) to survive pod restarts.
+
+Convert a PKCS#1 RSA key to PKCS#8 (unencrypted):
+
+```bash
+openssl pkcs8 -topk8 -nocrypt -in client.key -out client.pkcs8.key
+```
+
 ## Pooling
 
 Connections can use pooled JDBC connections for better concurrency. Pool sizing and timeouts are configurable per connection.

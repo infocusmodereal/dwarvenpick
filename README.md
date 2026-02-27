@@ -61,6 +61,26 @@ Seeded databases in local compose:
 
 The sample datasets include both transactional-style tables and analytical-style tables/views to exercise query/explain behavior.
 
+## Persistence (drivers + TLS materials)
+
+The backend uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as a writable state directory for:
+
+- JDBC driver jars uploaded from the UI
+- JDBC driver jars downloaded from Maven Central
+- Uploaded TLS/SSL certificates and generated keystores/truststores
+
+Docker Compose mounts a named volume at `/opt/app/drivers` so these artifacts persist across restarts.
+
+For Kubernetes (Helm), enable the external drivers volume and back it with a PVC:
+
+- `.Values.drivers.external.enabled=true`
+- `.Values.drivers.external.createPvc=true` (or provide `.Values.drivers.external.existingClaim`)
+
+## Observability
+
+- Logs: backend logs are emitted to stdout as JSON. Configure levels with `LOGGING_LEVEL_ROOT` and `LOGGING_LEVEL_COM_DWARVENPICK`.
+- Metrics: `GET /actuator/prometheus` (toggle with `DWARVENPICK_METRICS_PROMETHEUS_ENABLED`).
+
 ## Development
 
 Prerequisites:
