@@ -1020,10 +1020,10 @@ kbd {
     list-style: none;
     font-size: 0.82rem;
     font-weight: 690;
-    color: #49351f;
+    color: var(--text);
     padding: 0.52rem 0.78rem;
     border-radius: 0.74rem;
-    background: #f8f2e8;
+    background: var(--surface);
     border: 1px solid var(--border);
     transition:
         background-color 150ms ease,
@@ -1068,8 +1068,8 @@ kbd {
 }
 
 .managed-advanced-block > summary:hover {
-    background: #f1e3cc;
-    border-color: #a9824f;
+    background: var(--hover-tint);
+    border-color: var(--border-hover);
 }
 
 .managed-advanced-block[open] > summary {
@@ -1081,7 +1081,7 @@ kbd {
     border: 1px solid var(--border);
     border-top: 0;
     border-radius: 0 0 0.74rem 0.74rem;
-    background: #f8f2e8;
+    background: var(--surface-alt);
     padding: 1.05rem 1.05rem 1.15rem;
     display: grid;
     gap: 1.05rem;
