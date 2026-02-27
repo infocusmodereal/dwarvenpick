@@ -2571,7 +2571,7 @@ button:disabled {
     padding: 0.28rem;
     border: 1px solid var(--border);
     border-radius: 0.62rem;
-    background: var(--surface);
+    background: var(--surface-alt);
 }
 
 .result-stat {
