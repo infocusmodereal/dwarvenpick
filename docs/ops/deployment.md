@@ -102,6 +102,8 @@ Docker Compose:
 
 - `deploy/docker/docker-compose.yml` mounts a named volume at `/opt/app/drivers` so uploaded drivers, Maven downloads, and TLS materials persist across restarts.
 
+More details: `docs/ops/storage.md`.
+
 ## External JDBC drivers (Vertica)
 
 Vertica is intentionally not bundled. Driver jars must be mounted at runtime.
