@@ -7,6 +7,10 @@ nav_order: 3
 
 The Workbench is the main SQL editor and results viewer.
 
+## Theme
+
+- Use the user menu in the left rail to toggle between Light mode and Dark mode.
+
 ## Editor
 
 - Create tabs for multiple queries.
@@ -23,4 +27,3 @@ The Workbench is the main SQL editor and results viewer.
 
 - The Explorer shows databases/schemas/tables/columns for the active connection.
 - Use it to navigate metadata and help author queries.
-

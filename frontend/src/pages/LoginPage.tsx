@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
+import { MoonIcon, SunIcon } from '../components/ThemeIcons';
+import { useTheme } from '../theme/ThemeContext';
 
 type AuthMethod = 'local' | 'ldap';
 
@@ -22,6 +24,7 @@ const authMethodPriority: AuthMethod[] = ['local', 'ldap'];
 
 export default function LoginPage() {
     const navigate = useNavigate();
+    const { theme, toggleTheme } = useTheme();
     const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>(authMethodPriority);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -184,6 +187,17 @@ export default function LoginPage() {
     return (
         <AppShell title="dwarvenpick" showTitle={false} topNav={false}>
             <section className="panel login-card">
+                <button
+                    type="button"
+                    className="icon-button login-theme-toggle"
+                    onClick={toggleTheme}
+                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                    aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                    <span className="icon-button-glyph" aria-hidden>
+                        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+                    </span>
+                </button>
                 <div className="login-brand">
                     <img
                         src="/dwarvenpick-mark.svg"

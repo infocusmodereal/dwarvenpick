@@ -16,7 +16,9 @@ import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
+import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
+import { useTheme } from '../theme/ThemeContext';
 import type {
     AccessAdminMode,
     AdminSubsection,
@@ -275,6 +277,7 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
 
 export default function WorkspacePage() {
     const navigate = useNavigate();
+    const { theme, toggleTheme } = useTheme();
 
     const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
     const [appVersion, setAppVersion] = useState('unknown');
@@ -3077,6 +3080,25 @@ export default function WorkspacePage() {
                 'editor.selectionBackground': '#e3d2b3'
             }
         });
+
+        monacoInstance.editor.defineTheme('dwarvenpick-sql-dark', {
+            base: 'vs-dark',
+            inherit: true,
+            rules: [
+                { token: 'keyword', foreground: 'd6a057', fontStyle: 'bold' },
+                { token: 'number', foreground: 'b48ead' },
+                { token: 'string', foreground: '90c57a' },
+                { token: 'comment', foreground: '7f6a55', fontStyle: 'italic' },
+                { token: 'delimiter', foreground: 'd0c4b4' }
+            ],
+            colors: {
+                'editor.background': '#15110d',
+                'editorLineNumber.foreground': '#7f6a55',
+                'editorLineNumber.activeForeground': '#f3e8d9',
+                'editorCursor.foreground': '#d6a057',
+                'editor.selectionBackground': '#3a2b1f'
+            }
+        });
     };
 
     const handleEditorDidMount: OnMount = (editorInstance, monacoInstance) => {
@@ -4765,6 +4787,19 @@ export default function WorkspacePage() {
                                         {currentUser.email ? <p>{currentUser.email}</p> : null}
                                         <button
                                             type="button"
+                                            className="workspace-left-user-menu-action"
+                                            onClick={toggleTheme}
+                                        >
+                                            <span
+                                                className="workspace-left-user-menu-icon"
+                                                aria-hidden
+                                            >
+                                                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+                                            </span>
+                                            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                                        </button>
+                                        <button
+                                            type="button"
                                             className="danger-button"
                                             onClick={() => {
                                                 setLeftRailUserMenuOpen(false);
@@ -5600,7 +5635,11 @@ export default function WorkspacePage() {
                                             height="100%"
                                             language="sql"
                                             beforeMount={handleEditorWillMount}
-                                            theme="dwarvenpick-sql"
+                                            theme={
+                                                theme === 'dark'
+                                                    ? 'dwarvenpick-sql-dark'
+                                                    : 'dwarvenpick-sql'
+                                            }
                                             loading={
                                                 <div className="editor-loading">
                                                     Loading SQL editor...

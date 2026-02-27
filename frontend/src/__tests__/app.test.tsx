@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, vi } from 'vitest';
 import App from '../App';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 vi.mock('@monaco-editor/react', () => ({
     loader: {
@@ -82,9 +83,11 @@ describe('App shell', () => {
 
     it('renders workspace route', async () => {
         render(
-            <MemoryRouter initialEntries={['/workspace']}>
-                <App />
-            </MemoryRouter>
+            <ThemeProvider>
+                <MemoryRouter initialEntries={['/workspace']}>
+                    <App />
+                </MemoryRouter>
+            </ThemeProvider>
         );
 
         expect(screen.getByText(/^dwarvenpick$/i)).toBeInTheDocument();
@@ -94,9 +97,11 @@ describe('App shell', () => {
 
     it('renders login route', async () => {
         render(
-            <MemoryRouter initialEntries={['/login']}>
-                <App />
-            </MemoryRouter>
+            <ThemeProvider>
+                <MemoryRouter initialEntries={['/login']}>
+                    <App />
+                </MemoryRouter>
+            </ThemeProvider>
         );
 
         expect(screen.queryByText(/dwarvenpick login/i)).not.toBeInTheDocument();
@@ -203,9 +208,11 @@ describe('App shell', () => {
         }) as unknown as typeof fetch;
 
         render(
-            <MemoryRouter initialEntries={['/workspace']}>
-                <App />
-            </MemoryRouter>
+            <ThemeProvider>
+                <MemoryRouter initialEntries={['/workspace']}>
+                    <App />
+                </MemoryRouter>
+            </ThemeProvider>
         );
 
         expect((await screen.findAllByText(/^admin$/i)).length).toBeGreaterThan(0);
