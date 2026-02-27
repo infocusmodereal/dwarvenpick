@@ -1818,6 +1818,18 @@ button:disabled {
     height: 100%;
     align-items: stretch;
     overflow: hidden;
+    opacity: 1;
+    transform: translateX(0);
+    transition:
+        opacity 200ms ease,
+        transform 240ms ease;
+    will-change: opacity, transform;
+}
+
+.explorer-body.is-collapsed {
+    opacity: 0;
+    transform: translateX(-10px);
+    pointer-events: none;
 }
 
 .explorer-toolbar-fields {
