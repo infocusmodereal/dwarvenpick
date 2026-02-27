@@ -276,6 +276,42 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     />
 );
 
+const mavenDriverPresetDetails: Record<
+    MavenDriverPreset,
+    { groupId: string; artifactId: string; driverClass: string }
+> = {
+    POSTGRESQL: {
+        groupId: 'org.postgresql',
+        artifactId: 'postgresql',
+        driverClass: 'org.postgresql.Driver'
+    },
+    MYSQL: {
+        groupId: 'com.mysql',
+        artifactId: 'mysql-connector-j',
+        driverClass: 'com.mysql.cj.jdbc.Driver'
+    },
+    MARIADB: {
+        groupId: 'org.mariadb.jdbc',
+        artifactId: 'mariadb-java-client',
+        driverClass: 'org.mariadb.jdbc.Driver'
+    },
+    TRINO: {
+        groupId: 'io.trino',
+        artifactId: 'trino-jdbc',
+        driverClass: 'io.trino.jdbc.TrinoDriver'
+    },
+    STARROCKS_MYSQL: {
+        groupId: 'com.mysql',
+        artifactId: 'mysql-connector-j',
+        driverClass: 'com.mysql.cj.jdbc.Driver'
+    },
+    STARROCKS_MARIADB: {
+        groupId: 'org.mariadb.jdbc',
+        artifactId: 'mariadb-java-client',
+        driverClass: 'org.mariadb.jdbc.Driver'
+    }
+};
+
 export default function WorkspacePage() {
     const navigate = useNavigate();
     const { theme, toggleTheme } = useTheme();
@@ -317,7 +353,6 @@ export default function WorkspacePage() {
     const [editingUserDisplayName, setEditingUserDisplayName] = useState<string | null>(null);
     const [editingUserDisplayNameDraft, setEditingUserDisplayNameDraft] = useState('');
     const [savingUserDisplayName, setSavingUserDisplayName] = useState<string | null>(null);
-    const [uploadDriverIdInput, setUploadDriverIdInput] = useState('');
     const [uploadDriverClassInput, setUploadDriverClassInput] = useState('');
     const [uploadDriverDescriptionInput, setUploadDriverDescriptionInput] = useState('');
     const [uploadDriverJarFile, setUploadDriverJarFile] = useState<File | null>(null);
@@ -371,6 +406,14 @@ export default function WorkspacePage() {
     const [testTlsMode, setTestTlsMode] = useState<TlsMode>('DISABLE');
     const [testVerifyServerCertificate, setTestVerifyServerCertificate] = useState(true);
     const [testAllowSelfSigned, setTestAllowSelfSigned] = useState(false);
+    const [tlsCaCertificatePemInput, setTlsCaCertificatePemInput] = useState<string | null>(null);
+    const [tlsCaCertificateFileName, setTlsCaCertificateFileName] = useState('');
+    const [tlsClientCertificatePemInput, setTlsClientCertificatePemInput] = useState<string | null>(
+        null
+    );
+    const [tlsClientCertificateFileName, setTlsClientCertificateFileName] = useState('');
+    const [tlsClientKeyPemInput, setTlsClientKeyPemInput] = useState<string | null>(null);
+    const [tlsClientKeyFileName, setTlsClientKeyFileName] = useState('');
     const [testingConnection, setTestingConnection] = useState(false);
     const [testConnectionMessage, setTestConnectionMessage] = useState('');
     const [testConnectionOutcome, setTestConnectionOutcome] = useState<'success' | 'failure' | ''>(
@@ -1535,6 +1578,12 @@ export default function WorkspacePage() {
             setCredentialDescriptionInput('');
             setTestConnectionMessage('');
             setTestConnectionOutcome('');
+            setTlsCaCertificatePemInput(null);
+            setTlsCaCertificateFileName('');
+            setTlsClientCertificatePemInput(null);
+            setTlsClientCertificateFileName('');
+            setTlsClientKeyPemInput(null);
+            setTlsClientKeyFileName('');
             return;
         }
 
@@ -1557,6 +1606,12 @@ export default function WorkspacePage() {
         );
         setTestConnectionMessage('');
         setTestConnectionOutcome('');
+        setTlsCaCertificatePemInput(null);
+        setTlsCaCertificateFileName('');
+        setTlsClientCertificatePemInput(null);
+        setTlsClientCertificateFileName('');
+        setTlsClientKeyPemInput(null);
+        setTlsClientKeyFileName('');
     }, [adminDrivers, selectedManagedDatasource]);
 
     useEffect(() => {
@@ -4097,10 +4152,15 @@ export default function WorkspacePage() {
         setSelectedCredentialProfileForTest('');
         setTestConnectionMessage('');
         setTestConnectionOutcome('');
-        setUploadDriverIdInput('');
         setUploadDriverClassInput('');
         setUploadDriverDescriptionInput('');
         setUploadDriverJarFile(null);
+        setTlsCaCertificatePemInput(null);
+        setTlsCaCertificateFileName('');
+        setTlsClientCertificatePemInput(null);
+        setTlsClientCertificateFileName('');
+        setTlsClientKeyPemInput(null);
+        setTlsClientKeyFileName('');
         setAdminError('');
         setAdminSuccess('');
     }, [adminDrivers, managedDatasourceForm.engine]);
@@ -4207,6 +4267,21 @@ export default function WorkspacePage() {
                     return hostMatch?.[1] ?? 'localhost';
                 })();
 
+            const tlsCertificatesPayload: Record<string, string> = {};
+            const shouldSendTlsCertificates =
+                tlsCaCertificatePemInput !== null ||
+                tlsClientCertificatePemInput !== null ||
+                tlsClientKeyPemInput !== null;
+            if (tlsCaCertificatePemInput !== null) {
+                tlsCertificatesPayload.caCertificatePem = tlsCaCertificatePemInput;
+            }
+            if (tlsClientCertificatePemInput !== null) {
+                tlsCertificatesPayload.clientCertificatePem = tlsClientCertificatePemInput;
+            }
+            if (tlsClientKeyPemInput !== null) {
+                tlsCertificatesPayload.clientKeyPem = tlsClientKeyPemInput;
+            }
+
             const commonPayload = {
                 name: connectionName,
                 host,
@@ -4221,7 +4296,10 @@ export default function WorkspacePage() {
                     mode: managedDatasourceForm.tlsMode,
                     verifyServerCertificate: managedDatasourceForm.verifyServerCertificate,
                     allowSelfSigned: managedDatasourceForm.allowSelfSigned
-                }
+                },
+                ...(shouldSendTlsCertificates
+                    ? { tlsCertificates: tlsCertificatesPayload }
+                    : {})
             };
 
             const payload = selectedManagedDatasource
@@ -4274,6 +4352,12 @@ export default function WorkspacePage() {
             setCredentialPasswordInput('');
             setSelectedManagedDatasourceId(savedDatasource.id);
             setSelectedCredentialProfileForTest(selectedProfile);
+            setTlsCaCertificatePemInput(null);
+            setTlsCaCertificateFileName('');
+            setTlsClientCertificatePemInput(null);
+            setTlsClientCertificateFileName('');
+            setTlsClientKeyPemInput(null);
+            setTlsClientKeyFileName('');
             await loadAdminData();
             setConnectionEditorMode('list');
             setAdminSuccess(
@@ -4312,9 +4396,6 @@ export default function WorkspacePage() {
             formData.append('engine', managedDatasourceForm.engine);
             formData.append('driverClass', uploadDriverClassInput.trim());
             formData.append('jarFile', uploadDriverJarFile);
-            if (uploadDriverIdInput.trim()) {
-                formData.append('driverId', uploadDriverIdInput.trim());
-            }
             if (uploadDriverDescriptionInput.trim()) {
                 formData.append('description', uploadDriverDescriptionInput.trim());
             }
@@ -4339,7 +4420,6 @@ export default function WorkspacePage() {
                 driverId: uploadedDriver.driverId
             }));
             setUploadDriverJarFile(null);
-            setUploadDriverIdInput('');
             setUploadDriverClassInput('');
             setUploadDriverDescriptionInput('');
             setAdminSuccess(`Driver ${uploadedDriver.driverId} uploaded.`);
@@ -7932,25 +8012,6 @@ export default function WorkspacePage() {
                                                                             are unavailable.
                                                                         </p>
                                                                         <div className="form-field">
-                                                                            <label htmlFor="upload-driver-id">
-                                                                                Driver ID (optional)
-                                                                            </label>
-                                                                            <input
-                                                                                id="upload-driver-id"
-                                                                                value={
-                                                                                    uploadDriverIdInput
-                                                                                }
-                                                                                onChange={(event) =>
-                                                                                    setUploadDriverIdInput(
-                                                                                        event.target
-                                                                                            .value
-                                                                                    )
-                                                                                }
-                                                                                placeholder="mysql-custom-9"
-                                                                            />
-                                                                        </div>
-
-                                                                        <div className="form-field">
                                                                             <label htmlFor="upload-driver-class">
                                                                                 Driver Class
                                                                             </label>
@@ -8075,6 +8136,57 @@ export default function WorkspacePage() {
                                                                                 </div>
                                                                             </div>
 
+                                                                            <div className="muted-id driver-maven-details">
+                                                                                <div>
+                                                                                    Group:{' '}
+                                                                                    <code>
+                                                                                        {
+                                                                                            mavenDriverPresetDetails[
+                                                                                                mavenDriverPreset
+                                                                                            ].groupId
+                                                                                        }
+                                                                                    </code>
+                                                                                </div>
+                                                                                <div>
+                                                                                    Artifact:{' '}
+                                                                                    <code>
+                                                                                        {
+                                                                                            mavenDriverPresetDetails[
+                                                                                                mavenDriverPreset
+                                                                                            ].artifactId
+                                                                                        }
+                                                                                    </code>
+                                                                                </div>
+                                                                                <div>
+                                                                                    Maven Central:{' '}
+                                                                                    <a
+                                                                                        href={`https://search.maven.org/artifact/${encodeURIComponent(
+                                                                                            mavenDriverPresetDetails[
+                                                                                                mavenDriverPreset
+                                                                                            ].groupId
+                                                                                        )}/${encodeURIComponent(
+                                                                                            mavenDriverPresetDetails[
+                                                                                                mavenDriverPreset
+                                                                                            ].artifactId
+                                                                                        )}`}
+                                                                                        target="_blank"
+                                                                                        rel="noreferrer"
+                                                                                    >
+                                                                                        search.maven.org
+                                                                                    </a>
+                                                                                </div>
+                                                                                <div>
+                                                                                    Driver class:{' '}
+                                                                                    <code>
+                                                                                        {
+                                                                                            mavenDriverPresetDetails[
+                                                                                                mavenDriverPreset
+                                                                                            ].driverClass
+                                                                                        }
+                                                                                    </code>
+                                                                                </div>
+                                                                            </div>
+
                                                                             <div className="form-field">
                                                                                 <label htmlFor="maven-driver-version">
                                                                                     Version
@@ -8177,7 +8289,8 @@ export default function WorkspacePage() {
 
                                                             <details className="managed-advanced-block">
                                                                 <DetailsSummary>
-                                                                    Pooling
+                                                                    Pooling{' '}
+                                                                    <InfoHint text="Connection pooling keeps a small set of warm connections for each credential profile to reduce latency. Tune carefully to avoid exhausting database connection limits." />
                                                                 </DetailsSummary>
 
                                                                 <div className="managed-advanced-body">
@@ -8288,12 +8401,16 @@ export default function WorkspacePage() {
                                                             </details>
 
                                                             <details className="managed-advanced-block">
-                                                                <DetailsSummary>TLS</DetailsSummary>
+                                                                <DetailsSummary>
+                                                                    TLS{' '}
+                                                                    <InfoHint text="TLS encrypts traffic between dwarvenpick and your database. For production, enable TLS and verify the server certificate (recommended)." />
+                                                                </DetailsSummary>
 
                                                                 <div className="managed-advanced-body">
                                                                     <div className="form-field">
                                                                         <label htmlFor="managed-tls-mode">
-                                                                            TLS Mode
+                                                                            TLS Mode{' '}
+                                                                            <InfoHint text="Controls whether dwarvenpick uses TLS when connecting to this database." />
                                                                         </label>
                                                                         <div className="select-wrap">
                                                                             <select
@@ -8341,7 +8458,13 @@ export default function WorkspacePage() {
                                                                                             verifyServerCertificate:
                                                                                                 event
                                                                                                     .target
+                                                                                                    .checked,
+                                                                                            allowSelfSigned:
+                                                                                                event
+                                                                                                    .target
                                                                                                     .checked
+                                                                                                    ? false
+                                                                                                    : current.allowSelfSigned
                                                                                         })
                                                                                     )
                                                                                 }
@@ -8366,7 +8489,13 @@ export default function WorkspacePage() {
                                                                                             allowSelfSigned:
                                                                                                 event
                                                                                                     .target
+                                                                                                    .checked,
+                                                                                            verifyServerCertificate:
+                                                                                                event
+                                                                                                    .target
                                                                                                     .checked
+                                                                                                    ? false
+                                                                                                    : current.verifyServerCertificate
                                                                                         })
                                                                                     )
                                                                                 }
@@ -8376,6 +8505,309 @@ export default function WorkspacePage() {
                                                                                 certificates
                                                                             </span>
                                                                         </label>
+                                                                    </div>
+
+                                                                    <div className="form-field tls-certificates-section">
+                                                                        <label className="form-section-label">
+                                                                            SSL Certificates{' '}
+                                                                            <InfoHint text="Optional certificates for TLS. Provide a CA certificate to verify the database server, and (optionally) a client certificate + private key for mutual TLS." />
+                                                                        </label>
+                                                                        <p className="muted-id">
+                                                                            Certificates are stored on the server and
+                                                                            applied when you save this connection.
+                                                                        </p>
+
+                                                                        <div className="form-field">
+                                                                            <label htmlFor="tls-ca-certificate">
+                                                                                CA Certificate (PEM){' '}
+                                                                                <InfoHint text="Used to verify the database server certificate when TLS verification is enabled." />
+                                                                            </label>
+                                                                            <input
+                                                                                id="tls-ca-certificate"
+                                                                                type="file"
+                                                                                accept=".pem,.crt,.cer,text/plain"
+                                                                                onChange={(event) => {
+                                                                                    const file =
+                                                                                        event.target.files?.[0] ??
+                                                                                        null;
+                                                                                    if (!file) {
+                                                                                        return;
+                                                                                    }
+                                                                                    void (async () => {
+                                                                                        try {
+                                                                                            setAdminError('');
+                                                                                            setAdminSuccess('');
+                                                                                            setTlsCaCertificatePemInput(
+                                                                                                await file.text()
+                                                                                            );
+                                                                                            setTlsCaCertificateFileName(
+                                                                                                file.name
+                                                                                            );
+                                                                                        } catch {
+                                                                                            setAdminError(
+                                                                                                'Failed to read CA certificate file.'
+                                                                                            );
+                                                                                        }
+                                                                                    })();
+                                                                                }}
+                                                                            />
+                                                                            {tlsCaCertificatePemInput === '' ? (
+                                                                                <p className="muted-id">
+                                                                                    CA certificate will be removed
+                                                                                    when you save.
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsCaCertificatePemInput(
+                                                                                                null
+                                                                                            );
+                                                                                            setTlsCaCertificateFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Undo
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : tlsCaCertificatePemInput ? (
+                                                                                <p className="muted-id">
+                                                                                    Selected:{' '}
+                                                                                    <code>
+                                                                                        {tlsCaCertificateFileName ||
+                                                                                            'ca.pem'}
+                                                                                    </code>{' '}
+                                                                                    (will be saved)
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsCaCertificatePemInput(
+                                                                                                null
+                                                                                            );
+                                                                                            setTlsCaCertificateFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Undo
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : selectedManagedDatasource?.tlsCertificates
+                                                                                  .hasCaCertificate ? (
+                                                                                <p className="muted-id">
+                                                                                    CA certificate is stored.
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsCaCertificatePemInput(
+                                                                                                ''
+                                                                                            );
+                                                                                            setTlsCaCertificateFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : null}
+                                                                        </div>
+
+                                                                        <div className="form-field">
+                                                                            <label htmlFor="tls-client-certificate">
+                                                                                Client Certificate (PEM){' '}
+                                                                                <InfoHint text="Optional. Provide together with a client private key to enable mutual TLS authentication." />
+                                                                            </label>
+                                                                            <input
+                                                                                id="tls-client-certificate"
+                                                                                type="file"
+                                                                                accept=".pem,.crt,.cer,text/plain"
+                                                                                onChange={(event) => {
+                                                                                    const file =
+                                                                                        event.target.files?.[0] ??
+                                                                                        null;
+                                                                                    if (!file) {
+                                                                                        return;
+                                                                                    }
+                                                                                    void (async () => {
+                                                                                        try {
+                                                                                            setAdminError('');
+                                                                                            setAdminSuccess('');
+                                                                                            setTlsClientCertificatePemInput(
+                                                                                                await file.text()
+                                                                                            );
+                                                                                            setTlsClientCertificateFileName(
+                                                                                                file.name
+                                                                                            );
+                                                                                        } catch {
+                                                                                            setAdminError(
+                                                                                                'Failed to read client certificate file.'
+                                                                                            );
+                                                                                        }
+                                                                                    })();
+                                                                                }}
+                                                                            />
+                                                                            {tlsClientCertificatePemInput === '' ? (
+                                                                                <p className="muted-id">
+                                                                                    Client certificate will be removed
+                                                                                    when you save.
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsClientCertificatePemInput(
+                                                                                                null
+                                                                                            );
+                                                                                            setTlsClientCertificateFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Undo
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : tlsClientCertificatePemInput ? (
+                                                                                <p className="muted-id">
+                                                                                    Selected:{' '}
+                                                                                    <code>
+                                                                                        {tlsClientCertificateFileName ||
+                                                                                            'client.pem'}
+                                                                                    </code>{' '}
+                                                                                    (will be saved)
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsClientCertificatePemInput(
+                                                                                                null
+                                                                                            );
+                                                                                            setTlsClientCertificateFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Undo
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : selectedManagedDatasource?.tlsCertificates
+                                                                                  .hasClientCertificate ? (
+                                                                                <p className="muted-id">
+                                                                                    Client certificate is stored.
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsClientCertificatePemInput(
+                                                                                                ''
+                                                                                            );
+                                                                                            setTlsClientCertificateFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : null}
+                                                                        </div>
+
+                                                                        <div className="form-field">
+                                                                            <label htmlFor="tls-client-key">
+                                                                                Client Private Key (PEM){' '}
+                                                                                <InfoHint text="Optional. Must be an unencrypted PKCS#8 PEM (BEGIN PRIVATE KEY). Provide together with a client certificate." />
+                                                                            </label>
+                                                                            <input
+                                                                                id="tls-client-key"
+                                                                                type="file"
+                                                                                accept=".pem,.key,text/plain"
+                                                                                onChange={(event) => {
+                                                                                    const file =
+                                                                                        event.target.files?.[0] ??
+                                                                                        null;
+                                                                                    if (!file) {
+                                                                                        return;
+                                                                                    }
+                                                                                    void (async () => {
+                                                                                        try {
+                                                                                            setAdminError('');
+                                                                                            setAdminSuccess('');
+                                                                                            setTlsClientKeyPemInput(
+                                                                                                await file.text()
+                                                                                            );
+                                                                                            setTlsClientKeyFileName(
+                                                                                                file.name
+                                                                                            );
+                                                                                        } catch {
+                                                                                            setAdminError(
+                                                                                                'Failed to read client key file.'
+                                                                                            );
+                                                                                        }
+                                                                                    })();
+                                                                                }}
+                                                                            />
+                                                                            {tlsClientKeyPemInput === '' ? (
+                                                                                <p className="muted-id">
+                                                                                    Client key will be removed when you
+                                                                                    save.
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsClientKeyPemInput(
+                                                                                                null
+                                                                                            );
+                                                                                            setTlsClientKeyFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Undo
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : tlsClientKeyPemInput ? (
+                                                                                <p className="muted-id">
+                                                                                    Selected:{' '}
+                                                                                    <code>
+                                                                                        {tlsClientKeyFileName ||
+                                                                                            'client.key'}
+                                                                                    </code>{' '}
+                                                                                    (will be saved)
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsClientKeyPemInput(
+                                                                                                null
+                                                                                            );
+                                                                                            setTlsClientKeyFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Undo
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : selectedManagedDatasource?.tlsCertificates
+                                                                                  .hasClientKey ? (
+                                                                                <p className="muted-id">
+                                                                                    Client key is stored.
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="chip"
+                                                                                        onClick={() => {
+                                                                                            setTlsClientKeyPemInput('');
+                                                                                            setTlsClientKeyFileName(
+                                                                                                ''
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                </p>
+                                                                            ) : null}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </details>
@@ -8702,15 +9134,18 @@ export default function WorkspacePage() {
                                                                                             checked={
                                                                                                 testVerifyServerCertificate
                                                                                             }
-                                                                                            onChange={(
-                                                                                                event
-                                                                                            ) =>
+                                                                                            onChange={(event) => {
+                                                                                                const checked =
+                                                                                                    event.target.checked;
                                                                                                 setTestVerifyServerCertificate(
-                                                                                                    event
-                                                                                                        .target
-                                                                                                        .checked
-                                                                                                )
-                                                                                            }
+                                                                                                    checked
+                                                                                                );
+                                                                                                if (checked) {
+                                                                                                    setTestAllowSelfSigned(
+                                                                                                        false
+                                                                                                    );
+                                                                                                }
+                                                                                            }}
                                                                                         />
                                                                                         <span>
                                                                                             Verify
@@ -8725,15 +9160,18 @@ export default function WorkspacePage() {
                                                                                             checked={
                                                                                                 testAllowSelfSigned
                                                                                             }
-                                                                                            onChange={(
-                                                                                                event
-                                                                                            ) =>
+                                                                                            onChange={(event) => {
+                                                                                                const checked =
+                                                                                                    event.target.checked;
                                                                                                 setTestAllowSelfSigned(
-                                                                                                    event
-                                                                                                        .target
-                                                                                                        .checked
-                                                                                                )
-                                                                                            }
+                                                                                                    checked
+                                                                                                );
+                                                                                                if (checked) {
+                                                                                                    setTestVerifyServerCertificate(
+                                                                                                        false
+                                                                                                    );
+                                                                                                }
+                                                                                            }}
                                                                                         />
                                                                                         <span>
                                                                                             Allow

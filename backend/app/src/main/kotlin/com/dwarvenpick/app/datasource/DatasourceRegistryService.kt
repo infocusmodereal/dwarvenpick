@@ -64,6 +64,7 @@ class DatasourceRegistryService(
     private val driverRegistryService: DriverRegistryService,
     private val datasourceNetworkGuard: DatasourceNetworkGuard,
     private val seedDatasourceProperties: SeedDatasourceProperties,
+    private val tlsCertificateStore: TlsCertificateStore,
 ) {
     private val datasources = ConcurrentHashMap<String, ManagedDatasourceRecord>()
 
@@ -317,6 +318,8 @@ class DatasourceRegistryService(
                 credentialProfiles = linkedMapOf(),
             )
 
+        request.tlsCertificates?.let { tlsCertificateStore.apply(datasourceId, it) }
+
         return datasources.getValue(datasourceId).toResponse()
     }
 
@@ -342,6 +345,7 @@ class DatasourceRegistryService(
             datasource.options.clear()
             datasource.options.putAll(it)
         }
+        request.tlsCertificates?.let { tlsCertificateStore.apply(datasourceId, it) }
 
         if (request.driverId != null) {
             val resolvedDriver = driverRegistryService.resolveDriver(datasource.engine, request.driverId)
@@ -352,7 +356,13 @@ class DatasourceRegistryService(
         return datasource.toResponse()
     }
 
-    fun deleteDatasource(datasourceId: String): Boolean = datasources.remove(datasourceId) != null
+    fun deleteDatasource(datasourceId: String): Boolean {
+        val removed = datasources.remove(datasourceId) != null
+        if (removed) {
+            tlsCertificateStore.clear(datasourceId)
+        }
+        return removed
+    }
 
     fun upsertCredentialProfile(
         datasourceId: String,
@@ -502,41 +512,153 @@ class DatasourceRegistryService(
         val databaseSegment = datasource.database?.let { "/$it" } ?: ""
         val parameters = mutableMapOf<String, String>()
         parameters.putAll(datasource.options)
+        val tlsMaterials = tlsCertificateStore.resolvePaths(datasource.id)
+        val effectiveVerifyServerCertificate = tls.verifyServerCertificate && !tls.allowSelfSigned
 
         when (datasource.engine) {
             DatasourceEngine.POSTGRESQL -> {
-                parameters["sslmode"] = if (tls.mode == TlsMode.REQUIRE) "require" else "disable"
-                if (tls.mode == TlsMode.REQUIRE && !tls.verifyServerCertificate) {
+                parameters["sslmode"] =
+                    if (tls.mode == TlsMode.REQUIRE) {
+                        if (effectiveVerifyServerCertificate && tlsMaterials.caCertificatePem != null) {
+                            "verify-ca"
+                        } else {
+                            "require"
+                        }
+                    } else {
+                        "disable"
+                    }
+                if (tls.mode == TlsMode.REQUIRE && !effectiveVerifyServerCertificate) {
                     parameters["sslfactory"] = "org.postgresql.ssl.NonValidatingFactory"
                 }
+                tlsMaterials.caCertificatePem?.let { path -> parameters["sslrootcert"] = path.toString() }
+                tlsMaterials.clientCertificatePem?.let { path -> parameters["sslcert"] = path.toString() }
+                tlsMaterials.clientKeyPem?.let { path -> parameters["sslkey"] = path.toString() }
                 return "jdbc:postgresql://${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
             }
 
             DatasourceEngine.MYSQL -> {
                 parameters["useSSL"] = (tls.mode == TlsMode.REQUIRE).toString()
                 parameters["requireSSL"] = (tls.mode == TlsMode.REQUIRE).toString()
-                parameters["verifyServerCertificate"] = tls.verifyServerCertificate.toString()
+                parameters["verifyServerCertificate"] = effectiveVerifyServerCertificate.toString()
+                parameters["sslMode"] =
+                    if (tls.mode == TlsMode.REQUIRE) {
+                        when {
+                            !effectiveVerifyServerCertificate -> "REQUIRED"
+                            tlsMaterials.trustStore != null -> "VERIFY_CA"
+                            else -> "REQUIRED"
+                        }
+                    } else {
+                        "DISABLED"
+                    }
+                if (tls.mode == TlsMode.REQUIRE && tlsMaterials.trustStore != null) {
+                    parameters["trustCertificateKeyStoreUrl"] = tlsMaterials.trustStore.toUri().toString()
+                    parameters["trustCertificateKeyStorePassword"] = tlsCertificateStore.storePassword()
+                    parameters["trustCertificateKeyStoreType"] = "PKCS12"
+                }
+                if (tls.mode == TlsMode.REQUIRE && tlsMaterials.keyStore != null) {
+                    parameters["clientCertificateKeyStoreUrl"] = tlsMaterials.keyStore.toUri().toString()
+                    parameters["clientCertificateKeyStorePassword"] = tlsCertificateStore.storePassword()
+                    parameters["clientCertificateKeyStoreType"] = "PKCS12"
+                }
                 return "jdbc:mysql://${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
             }
 
             DatasourceEngine.MARIADB -> {
                 parameters["useSsl"] = (tls.mode == TlsMode.REQUIRE).toString()
-                parameters["trustServerCertificate"] = (!tls.verifyServerCertificate).toString()
+                parameters["trustServerCertificate"] = (!effectiveVerifyServerCertificate).toString()
+                parameters["sslMode"] =
+                    if (tls.mode == TlsMode.REQUIRE) {
+                        when {
+                            !effectiveVerifyServerCertificate -> "trust"
+                            tlsMaterials.caCertificatePem != null -> "verify-ca"
+                            else -> "trust"
+                        }
+                    } else {
+                        "disable"
+                    }
+                if (tls.mode == TlsMode.REQUIRE && tlsMaterials.caCertificatePem != null) {
+                    parameters["serverSslCert"] = tlsMaterials.caCertificatePem.toString()
+                }
+                if (tls.mode == TlsMode.REQUIRE && tlsMaterials.keyStore != null) {
+                    parameters["keyStore"] = tlsMaterials.keyStore.toString()
+                    parameters["keyStorePassword"] = tlsCertificateStore.storePassword()
+                    parameters["keyPassword"] = tlsCertificateStore.storePassword()
+                    parameters["keyStoreType"] = "PKCS12"
+                }
                 return "jdbc:mariadb://${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
             }
 
             DatasourceEngine.TRINO -> {
                 parameters["SSL"] = (tls.mode == TlsMode.REQUIRE).toString()
-                if (tls.mode == TlsMode.REQUIRE && !tls.verifyServerCertificate) {
-                    parameters["SSLVerification"] = "NONE"
+                if (tls.mode == TlsMode.REQUIRE) {
+                    parameters["SSLVerification"] =
+                        when {
+                            !effectiveVerifyServerCertificate -> "NONE"
+                            tlsMaterials.trustStore != null -> "CA"
+                            else -> "FULL"
+                        }
+                    if (tlsMaterials.trustStore != null) {
+                        parameters["SSLTrustStorePath"] = tlsMaterials.trustStore.toString()
+                        parameters["SSLTrustStorePassword"] = tlsCertificateStore.storePassword()
+                        parameters["SSLTrustStoreType"] = "PKCS12"
+                    }
+                    if (tlsMaterials.keyStore != null) {
+                        parameters["SSLKeyStorePath"] = tlsMaterials.keyStore.toString()
+                        parameters["SSLKeyStorePassword"] = tlsCertificateStore.storePassword()
+                        parameters["SSLKeyStoreType"] = "PKCS12"
+                    }
                 }
                 return "jdbc:trino://${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
             }
 
             DatasourceEngine.STARROCKS -> {
-                parameters["useSSL"] = (tls.mode == TlsMode.REQUIRE).toString()
-                parameters["requireSSL"] = (tls.mode == TlsMode.REQUIRE).toString()
-                parameters["verifyServerCertificate"] = tls.verifyServerCertificate.toString()
+                if (datasource.driverClass == "org.mariadb.jdbc.Driver") {
+                    parameters["useSsl"] = (tls.mode == TlsMode.REQUIRE).toString()
+                    parameters["trustServerCertificate"] = (!effectiveVerifyServerCertificate).toString()
+                    parameters["sslMode"] =
+                        if (tls.mode == TlsMode.REQUIRE) {
+                            when {
+                                !effectiveVerifyServerCertificate -> "trust"
+                                tlsMaterials.caCertificatePem != null -> "verify-ca"
+                                else -> "trust"
+                            }
+                        } else {
+                            "disable"
+                        }
+                    if (tls.mode == TlsMode.REQUIRE && tlsMaterials.caCertificatePem != null) {
+                        parameters["serverSslCert"] = tlsMaterials.caCertificatePem.toString()
+                    }
+                    if (tls.mode == TlsMode.REQUIRE && tlsMaterials.keyStore != null) {
+                        parameters["keyStore"] = tlsMaterials.keyStore.toString()
+                        parameters["keyStorePassword"] = tlsCertificateStore.storePassword()
+                        parameters["keyPassword"] = tlsCertificateStore.storePassword()
+                        parameters["keyStoreType"] = "PKCS12"
+                    }
+                } else {
+                    parameters["useSSL"] = (tls.mode == TlsMode.REQUIRE).toString()
+                    parameters["requireSSL"] = (tls.mode == TlsMode.REQUIRE).toString()
+                    parameters["verifyServerCertificate"] = effectiveVerifyServerCertificate.toString()
+                    parameters["sslMode"] =
+                        if (tls.mode == TlsMode.REQUIRE) {
+                            when {
+                                !effectiveVerifyServerCertificate -> "REQUIRED"
+                                tlsMaterials.trustStore != null -> "VERIFY_CA"
+                                else -> "REQUIRED"
+                            }
+                        } else {
+                            "DISABLED"
+                        }
+                    if (tls.mode == TlsMode.REQUIRE && tlsMaterials.trustStore != null) {
+                        parameters["trustCertificateKeyStoreUrl"] = tlsMaterials.trustStore.toUri().toString()
+                        parameters["trustCertificateKeyStorePassword"] = tlsCertificateStore.storePassword()
+                        parameters["trustCertificateKeyStoreType"] = "PKCS12"
+                    }
+                    if (tls.mode == TlsMode.REQUIRE && tlsMaterials.keyStore != null) {
+                        parameters["clientCertificateKeyStoreUrl"] = tlsMaterials.keyStore.toUri().toString()
+                        parameters["clientCertificateKeyStorePassword"] = tlsCertificateStore.storePassword()
+                        parameters["clientCertificateKeyStoreType"] = "PKCS12"
+                    }
+                }
                 return "jdbc:mysql://${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
             }
 
@@ -589,6 +711,7 @@ class DatasourceRegistryService(
             driverClass = driverClass,
             pool = pool,
             tls = tls,
+            tlsCertificates = tlsCertificateStore.status(id),
             options = options.toMap(),
             credentialProfiles =
                 credentialProfiles.values

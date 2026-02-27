@@ -37,6 +37,18 @@ data class TlsSettings(
     val allowSelfSigned: Boolean = false,
 )
 
+data class TlsCertificateRequest(
+    val caCertificatePem: String? = null,
+    val clientCertificatePem: String? = null,
+    val clientKeyPem: String? = null,
+)
+
+data class TlsCertificateStatus(
+    val hasCaCertificate: Boolean = false,
+    val hasClientCertificate: Boolean = false,
+    val hasClientKey: Boolean = false,
+)
+
 data class DriverDescriptorResponse(
     val driverId: String,
     val engine: String,
@@ -59,6 +71,7 @@ data class ManagedDatasourceResponse(
     val driverClass: String,
     val pool: PoolSettings,
     val tls: TlsSettings,
+    val tlsCertificates: TlsCertificateStatus = TlsCertificateStatus(),
     val options: Map<String, String>,
     val credentialProfiles: List<CredentialProfileResponse>,
 )
@@ -84,6 +97,7 @@ data class CreateDatasourceRequest(
     val driverId: String? = null,
     val pool: PoolSettings = PoolSettings(),
     val tls: TlsSettings = TlsSettings(),
+    val tlsCertificates: TlsCertificateRequest? = null,
     val options: Map<String, String> = emptyMap(),
 )
 
@@ -97,6 +111,7 @@ data class UpdateDatasourceRequest(
     val driverId: String? = null,
     val pool: PoolSettings? = null,
     val tls: TlsSettings? = null,
+    val tlsCertificates: TlsCertificateRequest? = null,
     val options: Map<String, String>? = null,
 )
 

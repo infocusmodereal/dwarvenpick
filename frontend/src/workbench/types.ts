@@ -68,6 +68,12 @@ export type TlsSettings = {
     allowSelfSigned: boolean;
 };
 
+export type TlsCertificateStatus = {
+    hasCaCertificate: boolean;
+    hasClientCertificate: boolean;
+    hasClientKey: boolean;
+};
+
 export type ManagedCredentialProfileResponse = {
     profileId: string;
     username: string;
@@ -87,6 +93,7 @@ export type ManagedDatasourceResponse = {
     driverClass: string;
     pool: PoolSettings;
     tls: TlsSettings;
+    tlsCertificates: TlsCertificateStatus;
     options: Record<string, string>;
     credentialProfiles: ManagedCredentialProfileResponse[];
 };
