@@ -70,8 +70,8 @@
     --icon-button-hover-fg: var(--accent);
     --hover-tint: rgba(214, 160, 87, 0.12);
     --hover-tint-strong: rgba(214, 160, 87, 0.18);
-    --vendor-badge-bg: rgba(243, 232, 217, 0.14);
-    --vendor-badge-border: rgba(243, 232, 217, 0.18);
+    --vendor-badge-bg: rgba(243, 232, 217, 0.28);
+    --vendor-badge-border: rgba(243, 232, 217, 0.22);
 }
 
 * {
