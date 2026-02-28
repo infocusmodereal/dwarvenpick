@@ -198,6 +198,29 @@ export type AuditEventResponse = {
     timestamp: string;
 };
 
+export type SystemHealthStatus = 'OK' | 'INSUFFICIENT_PRIVILEGES' | 'UNSUPPORTED' | 'ERROR';
+
+export type SystemHealthNode = {
+    name: string;
+    role?: string;
+    status: string;
+    details: Record<string, unknown>;
+};
+
+export type SystemHealthResponse = {
+    datasourceId: string;
+    datasourceName: string;
+    engine: DatasourceEngine;
+    credentialProfile: string;
+    checkedAt: string;
+    status: SystemHealthStatus;
+    message?: string;
+    nodeCount: number;
+    healthyNodeCount: number;
+    nodes: SystemHealthNode[];
+    details: Record<string, unknown>;
+};
+
 export type AdminUserResponse = {
     username: string;
     displayName: string;
@@ -297,6 +320,7 @@ export type WorkspaceSection =
     | 'history'
     | 'snippets'
     | 'audit'
+    | 'health'
     | 'admin'
     | 'connections';
 export type AdminSubsection = 'users' | 'groups' | 'access';
@@ -350,6 +374,7 @@ export type RailGlyph =
     | 'history'
     | 'snippets'
     | 'audit'
+    | 'health'
     | 'admin'
     | 'connections'
     | 'collapse'

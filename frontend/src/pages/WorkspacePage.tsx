@@ -1,6 +1,9 @@
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import {
     FormEvent,
+    type CSSProperties,
+    type KeyboardEvent as ReactKeyboardEvent,
+    type PointerEvent as ReactPointerEvent,
     type ReactNode,
     useCallback,
     useEffect,
@@ -56,6 +59,7 @@ import type {
     ResultSortDirection,
     ResultSortState,
     SnippetResponse,
+    SystemHealthResponse,
     TestConnectionResponse,
     TlsMode,
     UserAdminMode,
@@ -106,6 +110,7 @@ import {
 import AuditEventsSection from '../workbench/sections/AuditEventsSection';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import SnippetsSection from '../workbench/sections/SnippetsSection';
+import SystemHealthSection from '../workbench/sections/SystemHealthSection';
 import {
     chevronDownIcon,
     chevronRightIcon,
@@ -116,6 +121,19 @@ import {
 } from '../workbench/icons';
 
 loader.config({ monaco: MonacoModule });
+
+const workbenchResultsSizeStorageKey = 'dwarvenpick.workbench.resultsSizePx';
+
+const parsePxValue = (rawValue: string, fallback: number): number => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+        return fallback;
+    }
+
+    const match = trimmed.match(/^([0-9.]+)px$/i);
+    const parsed = Number(match ? match[1] : trimmed);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 const buildInitialAutocompleteDiagnostics = (): AutocompleteDiagnostics => ({
     enabled: false,
@@ -427,6 +445,28 @@ export default function WorkspacePage() {
     const [resultsPageSize, setResultsPageSize] = useState(500);
     const [resultSortState, setResultSortState] = useState<ResultSortState>(null);
     const [resultGridScrollTop, setResultGridScrollTop] = useState(0);
+    const [workbenchResultsSizePx, setWorkbenchResultsSizePx] = useState<number | null>(() => {
+        try {
+            const raw = window.localStorage.getItem(workbenchResultsSizeStorageKey);
+            if (!raw) {
+                return null;
+            }
+
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        } catch {
+            return null;
+        }
+    });
+    const workbenchGridRef = useRef<HTMLDivElement | null>(null);
+    const resultsSectionRef = useRef<HTMLElement | null>(null);
+    const resultsResizeStateRef = useRef<{
+        pointerId: number;
+        startY: number;
+        startHeight: number;
+        editorMinHeight: number;
+        resultsMinHeight: number;
+    } | null>(null);
 
     const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
     const [loadingQueryHistory, setLoadingQueryHistory] = useState(false);
@@ -444,6 +484,14 @@ export default function WorkspacePage() {
     const [auditFromFilter, setAuditFromFilter] = useState('');
     const [auditToFilter, setAuditToFilter] = useState('');
     const [auditSortOrder, setAuditSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+    const [systemHealthDatasourceId, setSystemHealthDatasourceId] = useState('');
+    const [systemHealthCredentialProfile, setSystemHealthCredentialProfile] = useState('');
+    const [systemHealthResponse, setSystemHealthResponse] = useState<SystemHealthResponse | null>(
+        null
+    );
+    const [loadingSystemHealth, setLoadingSystemHealth] = useState(false);
+    const [systemHealthError, setSystemHealthError] = useState('');
 
     const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(
         null
@@ -513,6 +561,165 @@ export default function WorkspacePage() {
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
     const localAuthEnabled = authMethods.includes('local');
 
+    useEffect(() => {
+        try {
+            if (workbenchResultsSizePx === null) {
+                window.localStorage.removeItem(workbenchResultsSizeStorageKey);
+                return;
+            }
+
+            window.localStorage.setItem(
+                workbenchResultsSizeStorageKey,
+                workbenchResultsSizePx.toString()
+            );
+        } catch {
+            // Ignore persistence failures.
+        }
+    }, [workbenchResultsSizePx]);
+
+    const handleResultsResizerPointerDown = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            if (event.button !== 0) {
+                return;
+            }
+
+            const grid = workbenchGridRef.current;
+            const results = resultsSectionRef.current;
+            if (!grid || !results) {
+                return;
+            }
+
+            const computed = window.getComputedStyle(grid);
+            const editorMinHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-editor-min-height'),
+                340
+            );
+            const resultsMinHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-results-min-height'),
+                220
+            );
+            const startHeight = results.getBoundingClientRect().height;
+
+            resultsResizeStateRef.current = {
+                pointerId: event.pointerId,
+                startY: event.clientY,
+                startHeight,
+                editorMinHeight,
+                resultsMinHeight
+            };
+
+            event.currentTarget.setPointerCapture(event.pointerId);
+            document.body.style.userSelect = 'none';
+        },
+        []
+    );
+
+    const handleResultsResizerPointerMove = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            const state = resultsResizeStateRef.current;
+            if (!state || state.pointerId !== event.pointerId) {
+                return;
+            }
+
+            const grid = workbenchGridRef.current;
+            if (!grid) {
+                return;
+            }
+
+            const containerHeight = grid.getBoundingClientRect().height;
+            const maxHeight = Math.max(
+                state.resultsMinHeight,
+                Math.floor(containerHeight - state.editorMinHeight)
+            );
+
+            const deltaY = event.clientY - state.startY;
+            const nextHeight = Math.round(state.startHeight - deltaY);
+            const clamped = Math.min(maxHeight, Math.max(state.resultsMinHeight, nextHeight));
+            setWorkbenchResultsSizePx(clamped);
+        },
+        []
+    );
+
+    const stopResultsResize = useCallback((pointerId: number) => {
+        const state = resultsResizeStateRef.current;
+        if (!state || state.pointerId !== pointerId) {
+            return;
+        }
+
+        resultsResizeStateRef.current = null;
+        document.body.style.userSelect = '';
+    }, []);
+
+    const handleResultsResizerPointerUp = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            stopResultsResize(event.pointerId);
+        },
+        [stopResultsResize]
+    );
+
+    const handleResultsResizerPointerCancel = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            stopResultsResize(event.pointerId);
+        },
+        [stopResultsResize]
+    );
+
+    const handleResultsResizerReset = useCallback(() => {
+        setWorkbenchResultsSizePx(null);
+    }, []);
+
+    const handleResultsResizerKeyDown = useCallback(
+        (event: ReactKeyboardEvent<HTMLDivElement>) => {
+            if (
+                event.key !== 'ArrowUp' &&
+                event.key !== 'ArrowDown' &&
+                event.key !== 'Home' &&
+                event.key !== 'End'
+            ) {
+                return;
+            }
+
+            const grid = workbenchGridRef.current;
+            const results = resultsSectionRef.current;
+            if (!grid || !results) {
+                return;
+            }
+
+            const computed = window.getComputedStyle(grid);
+            const editorMinHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-editor-min-height'),
+                340
+            );
+            const resultsMinHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-results-min-height'),
+                220
+            );
+            const containerHeight = grid.getBoundingClientRect().height;
+            const maxHeight = Math.max(
+                resultsMinHeight,
+                Math.floor(containerHeight - editorMinHeight)
+            );
+
+            const currentHeight = workbenchResultsSizePx ?? results.getBoundingClientRect().height;
+            const step = 24;
+            let nextHeight = currentHeight;
+            if (event.key === 'ArrowUp') {
+                nextHeight = currentHeight + step;
+            } else if (event.key === 'ArrowDown') {
+                nextHeight = currentHeight - step;
+            } else if (event.key === 'Home') {
+                nextHeight = resultsMinHeight;
+            } else if (event.key === 'End') {
+                nextHeight = maxHeight;
+            }
+
+            const clamped = Math.min(maxHeight, Math.max(resultsMinHeight, Math.round(nextHeight)));
+            setWorkbenchResultsSizePx(clamped);
+            event.preventDefault();
+        },
+        [workbenchResultsSizePx]
+    );
+
     const triggerAutocompleteSuggest = useCallback(
         (
             source: 'mount' | 'model-content' | 'key-up' | 'manual' | 'manual-retry' | 'unknown',
@@ -553,12 +760,19 @@ export default function WorkspacePage() {
         if (
             !isSystemAdmin &&
             (activeSection === 'audit' ||
+                activeSection === 'health' ||
                 activeSection === 'admin' ||
                 activeSection === 'connections')
         ) {
             setActiveSection('workbench');
         }
     }, [activeSection, isSystemAdmin]);
+
+    useEffect(() => {
+        if (!localAuthEnabled && activeAdminSubsection === 'users') {
+            setActiveAdminSubsection('groups');
+        }
+    }, [activeAdminSubsection, localAuthEnabled]);
 
     useEffect(() => {
         if (activeSection !== 'connections') {
@@ -1928,6 +2142,44 @@ export default function WorkspacePage() {
         readFriendlyError
     ]);
 
+    const loadSystemHealth = useCallback(async () => {
+        if (!isSystemAdmin) {
+            return;
+        }
+
+        const resolvedDatasourceId = systemHealthDatasourceId.trim();
+        const resolvedCredentialProfile = systemHealthCredentialProfile.trim();
+        if (!resolvedDatasourceId || !resolvedCredentialProfile) {
+            setSystemHealthResponse(null);
+            return;
+        }
+
+        setLoadingSystemHealth(true);
+        setSystemHealthError('');
+        try {
+            const queryParams = new URLSearchParams();
+            queryParams.set('datasourceId', resolvedDatasourceId);
+            queryParams.set('credentialProfile', resolvedCredentialProfile);
+
+            const response = await fetch(`/api/admin/system-health?${queryParams.toString()}`, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as SystemHealthResponse;
+            setSystemHealthResponse(payload);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Failed to load system health.';
+            setSystemHealthError(message);
+        } finally {
+            setLoadingSystemHealth(false);
+        }
+    }, [isSystemAdmin, readFriendlyError, systemHealthCredentialProfile, systemHealthDatasourceId]);
+
     useEffect(() => {
         if (!currentUser) {
             return;
@@ -1943,6 +2195,14 @@ export default function WorkspacePage() {
 
         void loadAuditEvents();
     }, [isSystemAdmin, loadAuditEvents]);
+
+    useEffect(() => {
+        if (!isSystemAdmin || activeSection !== 'health') {
+            return;
+        }
+
+        void loadSystemHealth();
+    }, [activeSection, isSystemAdmin, loadSystemHealth]);
 
     useEffect(() => {
         if (!isSystemAdmin || !adminSuccess) {
@@ -4876,6 +5136,28 @@ export default function WorkspacePage() {
                             </button>
                         ) : null}
                         {isSystemAdmin ? (
+                            <button
+                                type="button"
+                                role="tab"
+                                className={
+                                    activeSection === 'health'
+                                        ? 'workspace-mode-tab active'
+                                        : 'workspace-mode-tab'
+                                }
+                                aria-selected={activeSection === 'health'}
+                                onClick={() => {
+                                    setCollapsedAdminSubmenuOpen(false);
+                                    setActiveSection('health');
+                                }}
+                                title={leftRailCollapsed ? 'System Health' : undefined}
+                            >
+                                <span className="workspace-mode-icon">
+                                    <RailIcon glyph="health" />
+                                </span>
+                                {!leftRailCollapsed ? <span>System Health</span> : null}
+                            </button>
+                        ) : null}
+                        {isSystemAdmin ? (
                             <div
                                 className="workspace-admin-menu-anchor"
                                 ref={collapsedAdminAnchorRef}
@@ -4910,21 +5192,23 @@ export default function WorkspacePage() {
                                         className="workspace-admin-submenu workspace-admin-submenu-flyout"
                                         ref={collapsedAdminSubmenuRef}
                                     >
-                                        <button
-                                            type="button"
-                                            className={
-                                                activeAdminSubsection === 'users'
-                                                    ? 'workspace-admin-submenu-item active'
-                                                    : 'workspace-admin-submenu-item'
-                                            }
-                                            onClick={() => {
-                                                setActiveAdminSubsection('users');
-                                                setActiveSection('admin');
-                                                setCollapsedAdminSubmenuOpen(false);
-                                            }}
-                                        >
-                                            Users
-                                        </button>
+                                        {localAuthEnabled ? (
+                                            <button
+                                                type="button"
+                                                className={
+                                                    activeAdminSubsection === 'users'
+                                                        ? 'workspace-admin-submenu-item active'
+                                                        : 'workspace-admin-submenu-item'
+                                                }
+                                                onClick={() => {
+                                                    setActiveAdminSubsection('users');
+                                                    setActiveSection('admin');
+                                                    setCollapsedAdminSubmenuOpen(false);
+                                                }}
+                                            >
+                                                Users
+                                            </button>
+                                        ) : null}
                                         <button
                                             type="button"
                                             className={
@@ -4961,17 +5245,19 @@ export default function WorkspacePage() {
                         ) : null}
                         {isSystemAdmin && activeSection === 'admin' && !leftRailCollapsed ? (
                             <div className="workspace-admin-submenu">
-                                <button
-                                    type="button"
-                                    className={
-                                        activeAdminSubsection === 'users'
-                                            ? 'workspace-admin-submenu-item active'
-                                            : 'workspace-admin-submenu-item'
-                                    }
-                                    onClick={() => setActiveAdminSubsection('users')}
-                                >
-                                    Users
-                                </button>
+                                {localAuthEnabled ? (
+                                    <button
+                                        type="button"
+                                        className={
+                                            activeAdminSubsection === 'users'
+                                                ? 'workspace-admin-submenu-item active'
+                                                : 'workspace-admin-submenu-item'
+                                        }
+                                        onClick={() => setActiveAdminSubsection('users')}
+                                    >
+                                        Users
+                                    </button>
+                                ) : null}
                                 <button
                                     type="button"
                                     className={
@@ -5083,6 +5369,14 @@ export default function WorkspacePage() {
 
                 <section className="workspace-main">
                     <div
+                        ref={workbenchGridRef}
+                        style={
+                            workbenchResultsSizePx === null
+                                ? undefined
+                                : ({
+                                      '--workbench-results-size': `${workbenchResultsSizePx}px`
+                                  } as CSSProperties)
+                        }
                         className={
                             showSchemaBrowser
                                 ? 'workspace-grid'
@@ -6091,7 +6385,21 @@ export default function WorkspacePage() {
                             </div>
                         </section>
 
-                        <section className="results">
+                        <section className="results" ref={resultsSectionRef}>
+                            <div
+                                className="workbench-results-resizer"
+                                role="separator"
+                                aria-label="Resize results panel"
+                                aria-orientation="horizontal"
+                                title="Drag to resize results panel (double-click to reset)"
+                                tabIndex={0}
+                                onPointerDown={handleResultsResizerPointerDown}
+                                onPointerMove={handleResultsResizerPointerMove}
+                                onPointerUp={handleResultsResizerPointerUp}
+                                onPointerCancel={handleResultsResizerPointerCancel}
+                                onDoubleClick={handleResultsResizerReset}
+                                onKeyDown={handleResultsResizerKeyDown}
+                            />
                             <div className="results-head">
                                 {activeTab?.executionId ? (
                                     <div className="result-stats-grid">
@@ -6430,6 +6738,30 @@ export default function WorkspacePage() {
 
                     {isSystemAdmin ? (
                         <>
+                            <SystemHealthSection
+                                hidden={activeSection !== 'health'}
+                                visibleDatasources={visibleDatasources}
+                                datasourceId={systemHealthDatasourceId}
+                                onDatasourceChange={(value) => {
+                                    setSystemHealthDatasourceId(value);
+                                    setSystemHealthError('');
+                                    setSystemHealthResponse(null);
+
+                                    const selected = visibleDatasources.find(
+                                        (datasource) => datasource.id === value
+                                    );
+                                    const defaultProfile = selected?.credentialProfiles[0] ?? '';
+                                    setSystemHealthCredentialProfile(defaultProfile);
+                                }}
+                                credentialProfile={systemHealthCredentialProfile}
+                                onCredentialProfileChange={(value) =>
+                                    setSystemHealthCredentialProfile(value)
+                                }
+                                loading={loadingSystemHealth}
+                                error={systemHealthError}
+                                response={systemHealthResponse}
+                                onRefresh={() => void loadSystemHealth()}
+                            />
                             <AuditEventsSection
                                 hidden={activeSection !== 'audit'}
                                 auditActionOptions={auditActionOptions}

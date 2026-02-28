@@ -3,6 +3,7 @@ import railHistoryIcon from '../assets/lucide/history.svg?raw';
 import railSnippetsIcon from '../assets/lucide/file-text.svg?raw';
 import railAuditIcon from '../assets/lucide/shield-check.svg?raw';
 import railAdminIcon from '../assets/lucide/settings.svg?raw';
+import railHealthIcon from '../assets/lucide/activity.svg?raw';
 import railConnectionsIcon from '../assets/lucide/database.svg?raw';
 import railCollapseIcon from '../assets/lucide/panel-left-close.svg?raw';
 import railMenuIcon from '../assets/lucide/panel-left-open.svg?raw';
@@ -41,6 +42,7 @@ export const railIconSvgByGlyph: Record<RailGlyph, string> = {
     history: railHistoryIcon,
     snippets: railSnippetsIcon,
     audit: railAuditIcon,
+    health: railHealthIcon,
     admin: railAdminIcon,
     connections: railConnectionsIcon,
     collapse: railCollapseIcon,

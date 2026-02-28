@@ -5,7 +5,13 @@ export const toStatusToneClass = (rawValue: string): string => {
     if (value === 'SUCCEEDED' || value === 'SUCCESS') {
         return 'status-pill tone-success';
     }
+    if (value === 'UP' || value === 'HEALTHY' || value === 'OK') {
+        return 'status-pill tone-success';
+    }
     if (value === 'FAILED' || value === 'DENIED') {
+        return 'status-pill tone-failed';
+    }
+    if (value === 'DOWN' || value === 'UNHEALTHY') {
         return 'status-pill tone-failed';
     }
     if (value === 'RUNNING') {
@@ -18,6 +24,9 @@ export const toStatusToneClass = (rawValue: string): string => {
         return 'status-pill tone-canceled';
     }
     if (value === 'LIMITED') {
+        return 'status-pill tone-limited';
+    }
+    if (value === 'DEGRADED' || value === 'WARNING') {
         return 'status-pill tone-limited';
     }
 
