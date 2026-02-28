@@ -13,6 +13,7 @@ logs/
 # Build outputs
 build/
 out/
+output/
 backend/**/build/
 frontend/dist/
 frontend/node_modules/
