@@ -46,10 +46,10 @@ class AuthController(
     @GetMapping("/methods")
     fun methods(): AuthMethodsResponse {
         val methods = mutableListOf<String>()
-        if (authProperties.local.enabled) {
+        if (authProperties.isLocalAuthEnabled()) {
             methods.add("local")
         }
-        if (authProperties.ldap.enabled || authProperties.ldap.mock.enabled) {
+        if (authProperties.isLdapAuthEnabled()) {
             methods.add("ldap")
         }
         return AuthMethodsResponse(methods = methods)
@@ -61,7 +61,7 @@ class AuthController(
         httpServletRequest: HttpServletRequest,
         httpServletResponse: HttpServletResponse,
     ): ResponseEntity<Any> {
-        if (!authProperties.local.enabled) {
+        if (!authProperties.isLocalAuthEnabled()) {
             recordAuthAttempt(provider = "local", outcome = "unsupported")
             return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
@@ -114,7 +114,7 @@ class AuthController(
         httpServletRequest: HttpServletRequest,
         httpServletResponse: HttpServletResponse,
     ): ResponseEntity<Any> {
-        if (!authProperties.ldap.enabled && !authProperties.ldap.mock.enabled) {
+        if (!authProperties.isLdapAuthEnabled()) {
             recordAuthAttempt(provider = "ldap", outcome = "unsupported")
             return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
@@ -221,7 +221,7 @@ class AuthController(
 
     @GetMapping("/admin/users")
     fun listAdminUsers(): ResponseEntity<Any> {
-        if (!authProperties.local.enabled) {
+        if (!authProperties.isLocalAuthEnabled()) {
             return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse("Local authentication user management is disabled."))
@@ -249,7 +249,7 @@ class AuthController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
-        if (!authProperties.local.enabled) {
+        if (!authProperties.isLocalAuthEnabled()) {
             return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse("Local authentication user management is disabled."))
@@ -305,7 +305,7 @@ class AuthController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
-        if (!authProperties.local.enabled) {
+        if (!authProperties.isLocalAuthEnabled()) {
             return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse("Local authentication user management is disabled."))
@@ -355,7 +355,7 @@ class AuthController(
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
         return try {
-            if (!authProperties.local.enabled) {
+            if (!authProperties.isLocalAuthEnabled()) {
                 return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(ErrorResponse("Local authentication user management is disabled."))

@@ -7,10 +7,29 @@ data class AuthProperties(
     val local: LocalAuthProperties = LocalAuthProperties(),
     val passwordPolicy: PasswordPolicyProperties = PasswordPolicyProperties(),
     val ldap: LdapAuthProperties = LdapAuthProperties(),
-)
+) {
+    fun isLdapAuthEnabled(): Boolean = ldap.enabled || ldap.mock.enabled
+
+    fun isLocalAuthEnabled(): Boolean {
+        if (!local.enabled) {
+            return false
+        }
+
+        if (isLdapAuthEnabled() && !local.allowWithLdap) {
+            return false
+        }
+
+        return true
+    }
+}
 
 data class LocalAuthProperties(
     val enabled: Boolean = true,
+    /**
+     * When LDAP is enabled, local authentication is disabled by default to avoid accidental backdoor access via seeded
+     * users. Set this to true to keep local authentication enabled alongside LDAP (useful for local development).
+     */
+    val allowWithLdap: Boolean = false,
     val seedUsers: List<SeedUserProperties> =
         listOf(
             SeedUserProperties(

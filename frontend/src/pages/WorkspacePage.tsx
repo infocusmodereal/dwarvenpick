@@ -203,6 +203,7 @@ const buildWorkspaceTab = (
     title,
     datasourceId,
     schema: '',
+    requestedCredentialProfile: '',
     queryText,
     isExecuting: false,
     statusMessage: '',
@@ -1229,6 +1230,7 @@ export default function WorkspacePage() {
                             ? tab.datasourceId
                             : fallbackDatasourceId,
                         schema: typeof tab.schema === 'string' ? tab.schema : '',
+                        requestedCredentialProfile: '',
                         queryText: typeof tab.queryText === 'string' ? tab.queryText : 'SELECT 1;',
                         isExecuting: false,
                         statusMessage: '',
@@ -2671,6 +2673,14 @@ export default function WorkspacePage() {
 
             try {
                 const csrfToken = await fetchCsrfToken();
+                const requestPayload: Record<string, unknown> = {
+                    datasourceId,
+                    sql: normalizedSql
+                };
+                const requestedCredentialProfile = tab.requestedCredentialProfile.trim();
+                if (isSystemAdmin && requestedCredentialProfile) {
+                    requestPayload.credentialProfile = requestedCredentialProfile;
+                }
                 const response = await fetch('/api/queries', {
                     method: 'POST',
                     credentials: 'include',
@@ -2678,10 +2688,7 @@ export default function WorkspacePage() {
                         'Content-Type': 'application/json',
                         [csrfToken.headerName]: csrfToken.token
                     },
-                    body: JSON.stringify({
-                        datasourceId,
-                        sql: normalizedSql
-                    })
+                    body: JSON.stringify(requestPayload)
                 });
 
                 if (!response.ok) {
@@ -2712,6 +2719,7 @@ export default function WorkspacePage() {
         [
             clearQueryStatusPolling,
             fetchCsrfToken,
+            isSystemAdmin,
             readFriendlyError,
             startQueryStatusPolling,
             updateWorkspaceTab,
@@ -3372,6 +3380,7 @@ export default function WorkspacePage() {
             ...currentTab,
             datasourceId: nextDatasourceId,
             schema: '',
+            requestedCredentialProfile: '',
             statusMessage: `Connection context set to ${nextDatasourceId}.`,
             errorMessage: ''
         }));
@@ -5203,6 +5212,59 @@ export default function WorkspacePage() {
                                                 </div>
                                             </div>
                                         </div>
+                                        {isSystemAdmin && activeTab ? (
+                                            <>
+                                                <div className="explorer-toolbar-label-row">
+                                                    <span className="tile-heading-icon" aria-hidden>
+                                                        <ExplorerIcon glyph="database" />
+                                                    </span>
+                                                    <label
+                                                        htmlFor="tab-credential-profile"
+                                                        className="explorer-toolbar-label-text"
+                                                    >
+                                                        Credential Profile
+                                                    </label>
+                                                </div>
+                                                <div className="explorer-toolbar-control-row">
+                                                    <div className="select-wrap">
+                                                        <select
+                                                            id="tab-credential-profile"
+                                                            aria-label="Credential profile override"
+                                                            value={
+                                                                activeTab.requestedCredentialProfile
+                                                            }
+                                                            onChange={(event) => {
+                                                                updateWorkspaceTab(
+                                                                    activeTab.id,
+                                                                    (currentTab) => ({
+                                                                        ...currentTab,
+                                                                        requestedCredentialProfile:
+                                                                            event.target.value
+                                                                    })
+                                                                );
+                                                            }}
+                                                            disabled={activeTab.isExecuting}
+                                                        >
+                                                            <option value="">Auto (RBAC)</option>
+                                                            {(
+                                                                visibleDatasources.find(
+                                                                    (datasource) =>
+                                                                        datasource.id ===
+                                                                        activeTab.datasourceId
+                                                                )?.credentialProfiles ?? []
+                                                            ).map((profile) => (
+                                                                <option
+                                                                    key={`credential-profile-${profile}`}
+                                                                    value={profile}
+                                                                >
+                                                                    {profile}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : null}
                                         <div className="explorer-toolbar-label-row">
                                             <span className="tile-heading-icon" aria-hidden>
                                                 <ExplorerIcon glyph="schema" />

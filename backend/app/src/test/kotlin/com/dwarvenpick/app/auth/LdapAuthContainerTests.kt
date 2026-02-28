@@ -2,6 +2,7 @@ package com.dwarvenpick.app.auth
 
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.hasItem
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -56,6 +57,7 @@ class LdapAuthContainerTests {
             .perform(get("/api/auth/methods"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.methods", hasItem("ldap")))
+            .andExpect(jsonPath("$.methods", not(hasItem("local"))))
     }
 
     @Test

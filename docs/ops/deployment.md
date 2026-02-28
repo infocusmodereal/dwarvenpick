@@ -34,6 +34,52 @@ Disable in production:
 
 - `DWARVENPICK_SEED_ENABLED=false` (default in Helm)
 
+## Bootstrapping connections from a config file
+
+For environments that want connections managed as code, the backend can bootstrap connections, credential profiles, and
+(optionally) group access rules from a YAML file at startup:
+
+- `DWARVENPICK_CONNECTIONS_CONFIG_PATH=/path/to/connections.yaml`
+
+### Structured YAML format
+
+```yaml
+connections:
+  - name: starrocks-adhoc-dev
+    engine: STARROCKS
+    host: dev.example.com
+    port: 9030
+    driverId: starrocks-mysql
+    options:
+      allowPublicKeyRetrieval: "true"
+      serverTimezone: "UTC"
+    credentialProfiles:
+      read-only:
+        username: svc_reader
+        password: ${ENV:STARROCKS_RO_PASSWORD}
+      read-write:
+        username: svc_writer
+        password: ${ENV:STARROCKS_RW_PASSWORD}
+    access:
+      - groupId: analytics-users
+        credentialProfile: read-only
+        canQuery: true
+        canExport: false
+        readOnly: true
+```
+
+### Environment interpolation
+
+Any string value may reference environment variables using:
+
+- `${ENV:VAR_NAME}` (required)
+- `${ENV:VAR_NAME:-default}` (optional with default)
+
+By default, the application fails fast if a referenced environment variable is missing. To allow missing vars (replaced
+with an empty string), set:
+
+- `DWARVENPICK_CONNECTIONS_FAIL_ON_MISSING_ENV=false`
+
 ## Credential encryption configuration
 
 Connection passwords (credential profiles) are stored encrypted (AES-GCM). Configure the following runtime values:
@@ -74,6 +120,11 @@ Configure LDAP only when directory authentication is required:
     - `DWARVENPICK_AUTH_LDAP_SYSTEM_ADMIN_GROUPS=<comma-separated-group-ids>` (grants `SYSTEM_ADMIN` when any mapped group matches)
 
 Login UX only supports `Local` and `LDAP` methods. The enabled set is exposed by `GET /api/auth/methods`.
+
+When LDAP is enabled, local auth is disabled by default to avoid accidental backdoor access via seeded users. To keep local
+auth enabled alongside LDAP (for example in local development), set:
+
+- `DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_LDAP=true`
 
 ## Local user administration
 

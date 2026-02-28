@@ -17,6 +17,12 @@ data class QueryExecutionRequest(
     val datasourceId: String = "",
     @field:NotBlank(message = "sql is required.")
     val sql: String = "",
+    /**
+     * Optional credential profile override.
+     *
+     * When omitted, the backend resolves the effective credential profile via RBAC rules (or SYSTEM_ADMIN defaults).
+     */
+    val credentialProfile: String? = null,
 )
 
 data class QueryExecutionResponse(

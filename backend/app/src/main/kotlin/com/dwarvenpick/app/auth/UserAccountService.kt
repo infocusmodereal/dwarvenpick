@@ -54,6 +54,9 @@ class UserAccountService(
     @Synchronized
     fun resetState() {
         users.clear()
+        if (!authProperties.isLocalAuthEnabled()) {
+            return
+        }
         authProperties.local.seedUsers.forEach { seedUser ->
             passwordPolicyValidator.validateOrThrow(seedUser.password)
 

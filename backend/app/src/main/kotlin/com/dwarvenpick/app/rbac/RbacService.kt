@@ -309,6 +309,23 @@ class RbacService(
     fun resolveQueryAccessPolicy(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
+        requestedCredentialProfile: String?,
+    ): QueryAccessPolicy {
+        val requested = requestedCredentialProfile?.trim()?.ifBlank { null }
+        if (requested == null) {
+            return resolveQueryAccessPolicy(principal, datasourceId)
+        }
+
+        return resolveQueryAccessPolicyForProfile(
+            principal = principal,
+            datasourceId = datasourceId,
+            credentialProfile = requested,
+        )
+    }
+
+    fun resolveQueryAccessPolicy(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
     ): QueryAccessPolicy {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
@@ -326,8 +343,27 @@ class RbacService(
 
         if (matchingAccessRules.isEmpty()) {
             if (principal.roles.contains("SYSTEM_ADMIN")) {
+                val availableProfiles = datasourceRegistryService.credentialProfilesForDatasource(datasourceId)
+                val selectedProfile =
+                    listOf(
+                        "admin",
+                        "admin-ro",
+                        "read-write",
+                        "readwrite",
+                        "rw",
+                        "writer",
+                        "default",
+                        "read-only",
+                        "readonly",
+                        "ro",
+                    ).firstOrNull { candidate -> candidate in availableProfiles }
+                        ?: availableProfiles.sorted().firstOrNull()
+                        ?: throw QueryAccessDeniedException(
+                            "No credential profile is available for datasource '$datasourceId'.",
+                        )
+
                 return QueryAccessPolicy(
-                    credentialProfile = "admin-ro",
+                    credentialProfile = selectedProfile,
                     readOnly = false,
                     maxRowsPerQuery = 5000,
                     maxRuntimeSeconds = 300,
@@ -356,6 +392,54 @@ class RbacService(
         )
     }
 
+    private fun resolveQueryAccessPolicyForProfile(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+        credentialProfile: String,
+    ): QueryAccessPolicy {
+        if (!datasourceRegistryService.hasDatasource(datasourceId)) {
+            throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+        }
+
+        val availableProfiles = datasourceRegistryService.credentialProfilesForDatasource(datasourceId)
+        if (credentialProfile !in availableProfiles) {
+            throw IllegalArgumentException(
+                "credentialProfile '$credentialProfile' is not available for datasource '$datasourceId'.",
+            )
+        }
+
+        val isSystemAdmin = principal.roles.contains("SYSTEM_ADMIN")
+        val matchingAccessRules =
+            datasourceAccess.values
+                .asSequence()
+                .filter { access ->
+                    access.datasourceId == datasourceId &&
+                        access.canQuery &&
+                        access.credentialProfile == credentialProfile &&
+                        (isSystemAdmin || access.groupId in principal.groups)
+                }.sortedWith(compareBy({ access -> access.groupId }, { access -> access.credentialProfile }))
+                .toList()
+
+        if (matchingAccessRules.isEmpty() && !isSystemAdmin) {
+            throw QueryAccessDeniedException("Datasource access denied for query execution.")
+        }
+
+        val resolvedReadOnly =
+            if (matchingAccessRules.isEmpty()) {
+                false
+            } else {
+                matchingAccessRules.all { access -> access.readOnly }
+            }
+
+        return QueryAccessPolicy(
+            credentialProfile = credentialProfile,
+            readOnly = resolvedReadOnly,
+            maxRowsPerQuery = resolveLimit(matchingAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
+            maxRuntimeSeconds = resolveLimit(matchingAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
+            concurrencyLimit = resolveLimit(matchingAccessRules.map { access -> access.concurrencyLimit }, 5),
+        )
+    }
+
     private fun resolveLimit(
         values: List<Int?>,
         defaultValue: Int,
@@ -374,24 +458,30 @@ class RbacService(
 
     private fun seedGroups() {
         val adminGroupId = "platform-admins"
+        val adminSeedUser = userAccountService.currentUserPrincipal("admin")
         groups[adminGroupId] =
             GroupRecord(
                 id = adminGroupId,
                 name = adminGroupId,
                 description = "System administrators with governance permissions.",
-                members = linkedSetOf("admin"),
+                members = adminSeedUser?.let { linkedSetOf("admin") } ?: linkedSetOf(),
             )
-        userAccountService.addGroupMembership("admin", adminGroupId)
+        if (adminSeedUser != null) {
+            userAccountService.addGroupMembership("admin", adminGroupId)
+        }
 
         val analystsGroupId = "analytics-users"
+        val analystSeedUser = userAccountService.currentUserPrincipal("analyst")
         groups[analystsGroupId] =
             GroupRecord(
                 id = analystsGroupId,
                 name = analystsGroupId,
                 description = "Analysts with warehouse query access.",
-                members = linkedSetOf("analyst"),
+                members = analystSeedUser?.let { linkedSetOf("analyst") } ?: linkedSetOf(),
             )
-        userAccountService.addGroupMembership("analyst", analystsGroupId)
+        if (analystSeedUser != null) {
+            userAccountService.addGroupMembership("analyst", analystsGroupId)
+        }
     }
 
     private fun seedAccessMappings() {

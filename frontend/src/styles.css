@@ -3405,7 +3405,7 @@ select {
     margin-right: 0;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 960px) {
     .workspace-shell {
         grid-template-columns: 1fr;
         min-height: auto;

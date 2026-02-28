@@ -252,6 +252,7 @@ export type PersistentWorkspaceTab = {
 };
 
 export type WorkspaceTab = PersistentWorkspaceTab & {
+    requestedCredentialProfile: string;
     isExecuting: boolean;
     statusMessage: string;
     errorMessage: string;

@@ -1,14 +1,25 @@
 package com.dwarvenpick.app
 
 import com.dwarvenpick.app.auth.AuthAuditEventStore
+import com.dwarvenpick.app.auth.AuthProvider
+import com.dwarvenpick.app.auth.AuthenticatedUserPrincipal
 import com.dwarvenpick.app.auth.UserAccountService
+import com.dwarvenpick.app.datasource.CreateDatasourceRequest
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.datasource.DatasourceRegistryService
+import com.dwarvenpick.app.datasource.TlsMode
+import com.dwarvenpick.app.datasource.TlsSettings
+import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
+import com.dwarvenpick.app.rbac.CreateGroupRequest
+import com.dwarvenpick.app.rbac.QueryAccessDeniedException
 import com.dwarvenpick.app.rbac.RbacService
+import com.dwarvenpick.app.rbac.UpsertDatasourceAccessRequest
 import com.jayway.jsonpath.JsonPath
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.containsStringIgnoringCase
 import org.hamcrest.Matchers.hasItem
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -31,6 +42,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 @SpringBootTest(
     properties = [
         "dwarvenpick.auth.password-policy.min-length=8",
+        "dwarvenpick.auth.local.allow-with-ldap=true",
         "dwarvenpick.auth.ldap.mock.enabled=true",
         "dwarvenpick.auth.ldap.mock.users[0].username=ldap.user",
         "dwarvenpick.auth.ldap.mock.users[0].password=LdapUser123!",
@@ -408,6 +420,102 @@ class DwarvenpickApplicationTests {
                     event.actor == "analyst" &&
                     event.outcome == "denied"
             }
+    }
+
+    @Test
+    fun `credential profile override allows system admins to select profile and enforces readOnly rules when configured`() {
+        val datasourceId =
+            datasourceRegistryService
+                .createDatasource(
+                    CreateDatasourceRequest(
+                        name = "starrocks-adhoc-dev",
+                        engine = DatasourceEngine.STARROCKS,
+                        host = "localhost",
+                        port = 9030,
+                        driverId = "starrocks-mysql",
+                        tls = TlsSettings(mode = TlsMode.DISABLE),
+                    ),
+                ).id
+
+        datasourceRegistryService.upsertCredentialProfile(
+            datasourceId,
+            "read-only",
+            UpsertCredentialProfileRequest(
+                username = "reader",
+                password = "reader-password",
+            ),
+        )
+        datasourceRegistryService.upsertCredentialProfile(
+            datasourceId,
+            "read-write",
+            UpsertCredentialProfileRequest(
+                username = "writer",
+                password = "writer-password",
+            ),
+        )
+
+        rbacService.createGroup(CreateGroupRequest(name = "ldap-data-systems-airflow-admin"))
+        rbacService.createGroup(CreateGroupRequest(name = "ldap-data-systems-airflow-viewer"))
+
+        rbacService.upsertDatasourceAccess(
+            groupId = "ldap-data-systems-airflow-viewer",
+            datasourceId = datasourceId,
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "read-only",
+                    canQuery = true,
+                    canExport = false,
+                    readOnly = true,
+                ),
+        )
+
+        rbacService.upsertDatasourceAccess(
+            groupId = "ldap-data-systems-airflow-admin",
+            datasourceId = datasourceId,
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "read-write",
+                    canQuery = true,
+                    canExport = true,
+                    readOnly = false,
+                ),
+        )
+
+        val systemAdmin =
+            AuthenticatedUserPrincipal(
+                username = "admin",
+                displayName = "Administrator",
+                email = null,
+                provider = AuthProvider.LOCAL,
+                roles = setOf("SYSTEM_ADMIN", "USER"),
+                groups = emptySet(),
+            )
+
+        val readOnlyPolicy = rbacService.resolveQueryAccessPolicy(systemAdmin, datasourceId, "read-only")
+        assertThat(readOnlyPolicy.credentialProfile).isEqualTo("read-only")
+        assertThat(readOnlyPolicy.readOnly).isTrue()
+
+        val readWritePolicy = rbacService.resolveQueryAccessPolicy(systemAdmin, datasourceId, "read-write")
+        assertThat(readWritePolicy.credentialProfile).isEqualTo("read-write")
+        assertThat(readWritePolicy.readOnly).isFalse()
+
+        val viewer =
+            AuthenticatedUserPrincipal(
+                username = "ldap.user",
+                displayName = "LDAP User",
+                email = "ldap.user@example.local",
+                provider = AuthProvider.LDAP,
+                roles = setOf("USER"),
+                groups = setOf("ldap-data-systems-airflow-viewer"),
+            )
+
+        val viewerPolicy = rbacService.resolveQueryAccessPolicy(viewer, datasourceId, "read-only")
+        assertThat(viewerPolicy.credentialProfile).isEqualTo("read-only")
+        assertThat(viewerPolicy.readOnly).isTrue()
+
+        assertThrows(QueryAccessDeniedException::class.java) {
+            rbacService.resolveQueryAccessPolicy(viewer, datasourceId, "read-write")
+        }
     }
 
     @Test

@@ -57,7 +57,12 @@ class QueryController(
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         return try {
-            val accessPolicy = rbacService.resolveQueryAccessPolicy(principal, request.datasourceId)
+            val accessPolicy =
+                rbacService.resolveQueryAccessPolicy(
+                    principal = principal,
+                    datasourceId = request.datasourceId,
+                    requestedCredentialProfile = request.credentialProfile,
+                )
             val response =
                 queryExecutionManager.submitQuery(
                     actor = principal.username,
