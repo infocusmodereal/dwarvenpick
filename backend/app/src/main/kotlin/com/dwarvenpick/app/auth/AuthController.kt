@@ -143,6 +143,7 @@ class AuthController(
                 userAccountService.provisionOrUpdateLdapUser(
                     profile = ldapResult.profile,
                     internalGroups = ldapResult.mappedGroups,
+                    roles = ldapResult.roles,
                 )
 
             establishSession(principal, httpServletRequest, httpServletResponse)

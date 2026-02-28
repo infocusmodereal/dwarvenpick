@@ -70,6 +70,8 @@ Configure LDAP only when directory authentication is required:
 - Optional group sync:
   - `DWARVENPICK_AUTH_LDAP_GROUP_SYNC_ENABLED=true`
   - `DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE=<group-base-dn>`
+  - Optional role mapping:
+    - `DWARVENPICK_AUTH_LDAP_SYSTEM_ADMIN_GROUPS=<comma-separated-group-ids>` (grants `SYSTEM_ADMIN` when any mapped group matches)
 
 Login UX only supports `Local` and `LDAP` methods. The enabled set is exposed by `GET /api/auth/methods`.
 

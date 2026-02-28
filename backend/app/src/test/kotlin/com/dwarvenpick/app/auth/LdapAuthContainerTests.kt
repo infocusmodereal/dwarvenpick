@@ -33,6 +33,7 @@ import java.time.Duration
         "dwarvenpick.auth.ldap.group-sync.enabled=true",
         "dwarvenpick.auth.ldap.group-sync.group-search-base=ou=groups,dc=example,dc=org",
         "dwarvenpick.auth.ldap.group-sync.mapping-rules.ldap-analysts=ANALYSTS",
+        "dwarvenpick.auth.ldap.system-admin-groups=ANALYSTS",
     ],
 )
 @AutoConfigureMockMvc
@@ -66,6 +67,7 @@ class LdapAuthContainerTests {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("ldap.user"))
             .andExpect(jsonPath("$.provider").value("ldap"))
+            .andExpect(jsonPath("$.roles", hasItem("SYSTEM_ADMIN")))
             .andExpect(jsonPath("$.groups", hasItem("ANALYSTS")))
     }
 

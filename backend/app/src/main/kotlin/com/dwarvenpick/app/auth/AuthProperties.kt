@@ -65,6 +65,7 @@ data class LdapAuthProperties(
     val userFilter: String = "(uid={0})",
     val attributeMapping: LdapAttributeMappingProperties = LdapAttributeMappingProperties(),
     val groupSync: LdapGroupSyncProperties = LdapGroupSyncProperties(),
+    val systemAdminGroups: Set<String> = emptySet(),
     val mock: LdapMockProperties = LdapMockProperties(),
 )
 

@@ -196,9 +196,18 @@ class UserAccountService(
     fun provisionOrUpdateLdapUser(
         profile: LdapUserProfile,
         internalGroups: Set<String>,
+        roles: Set<String>,
     ): AuthenticatedUserPrincipal {
         val normalizedUsername = normalizeUsername(profile.username)
         val existingUser = users[normalizedUsername]
+
+        val normalizedRoles =
+            roles
+                .asSequence()
+                .map { it.trim().uppercase() }
+                .filter { it.isNotBlank() }
+                .toMutableSet()
+                .apply { add("USER") }
 
         if (existingUser == null) {
             users[normalizedUsername] =
@@ -210,7 +219,7 @@ class UserAccountService(
                     provider = AuthProvider.LDAP,
                     enabled = true,
                     temporaryPassword = false,
-                    roles = mutableSetOf("USER"),
+                    roles = normalizedRoles,
                     groups = internalGroups.toMutableSet(),
                 )
 
@@ -227,9 +236,8 @@ class UserAccountService(
         existingUser.temporaryPassword = false
         existingUser.groups.clear()
         existingUser.groups.addAll(internalGroups)
-        if (existingUser.roles.isEmpty()) {
-            existingUser.roles.add("USER")
-        }
+        existingUser.roles.clear()
+        existingUser.roles.addAll(normalizedRoles)
 
         return toPrincipal(existingUser)
     }

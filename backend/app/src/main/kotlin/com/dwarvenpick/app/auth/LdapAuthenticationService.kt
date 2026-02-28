@@ -19,6 +19,7 @@ data class LdapUserProfile(
 data class LdapAuthenticationResult(
     val profile: LdapUserProfile,
     val mappedGroups: Set<String>,
+    val roles: Set<String>,
 )
 
 @Service
@@ -64,10 +65,12 @@ class LdapAuthenticationService(
 
             val profile = lookupUserProfile(ldapTemplate, userFilter, trimmedUsername) ?: return null
             val mappedGroups = resolveMappedGroups(ldapTemplate, profile)
+            val roles = resolveRoles(mappedGroups)
 
             LdapAuthenticationResult(
                 profile = profile,
                 mappedGroups = mappedGroups,
+                roles = roles,
             )
         }.getOrElse { ex ->
             logger.warn("LDAP authentication failed for user '{}': {}", trimmedUsername, ex.message)
@@ -93,7 +96,8 @@ class LdapAuthenticationService(
             )
 
         val mappedGroups = mapGroups(mockUser.groups)
-        return LdapAuthenticationResult(profile = profile, mappedGroups = mappedGroups)
+        val roles = resolveRoles(mappedGroups)
+        return LdapAuthenticationResult(profile = profile, mappedGroups = mappedGroups, roles = roles)
     }
 
     private fun lookupUserProfile(
@@ -163,6 +167,17 @@ class LdapAuthenticationService(
         }
 
         return ldapGroups.mapNotNull { mappingRules[it] }.toSet()
+    }
+
+    private fun resolveRoles(mappedGroups: Set<String>): Set<String> {
+        val roles = mutableSetOf("USER")
+
+        val systemAdminGroups = authProperties.ldap.systemAdminGroups
+        if (systemAdminGroups.isNotEmpty() && mappedGroups.any { it in systemAdminGroups }) {
+            roles.add("SYSTEM_ADMIN")
+        }
+
+        return roles
     }
 
     private fun createLdapTemplate(): LdapTemplate {
