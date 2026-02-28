@@ -20,6 +20,8 @@
 - Audit trail:
   - User query history.
   - Admin audit events.
+- Operations:
+  - System Health (SYSTEM_ADMIN) with engine-specific cluster checks.
 
 ## Supported engines
 

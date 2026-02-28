@@ -26,4 +26,4 @@ When Local auth is enabled, SYSTEM_ADMINs can:
 - optionally grant SYSTEM_ADMIN
 
 When LDAP-only mode is enabled, user creation and password resets are intentionally disabled.
-
+The Users admin menu is also hidden in the UI to avoid presenting an empty local-user table.
