@@ -385,7 +385,8 @@ class DatasourceRegistryService(
         val now = Instant.now()
 
         val existingRecord = datasource.credentialProfiles[normalizedProfileId]
-        if (existingRecord == null && encrypted == null) {
+        val passwordOptionalForNewProfile = datasource.engine == DatasourceEngine.TRINO
+        if (existingRecord == null && encrypted == null && !passwordOptionalForNewProfile) {
             throw IllegalArgumentException("Credential password is required for a new profile.")
         }
 
