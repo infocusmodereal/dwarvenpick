@@ -18,11 +18,14 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.MySQLContainer
 import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.DriverManager
+import java.time.Duration
 
 @SpringBootTest(
     properties = [
@@ -183,6 +186,37 @@ class QueryExecutionManagerContainerTests {
         assertThat(results.columns).isNotEmpty
     }
 
+    @Test
+    fun `trino execution succeeds against containerized datasource`() {
+        val datasourceId = registerTrinoDatasource()
+        val actor = "tc-trino-user"
+
+        val submitted =
+            queryExecutionManager.submitQuery(
+                actor = actor,
+                ipAddress = "127.0.0.1",
+                request =
+                    QueryExecutionRequest(
+                        datasourceId = datasourceId,
+                        sql = "select count(*) from nation",
+                    ),
+                policy = defaultPolicy(),
+            )
+
+        val terminal = waitForTerminalStatus(actor, submitted.executionId, timeoutMs = 30_000)
+        assertThat(terminal.status).isEqualTo("SUCCEEDED")
+
+        val results =
+            queryExecutionManager.getQueryResults(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+                request = QueryResultsRequest(pageSize = 10),
+            )
+        assertThat(results.rows).hasSize(1)
+        assertThat(results.rows[0][0]).isEqualTo("25")
+    }
+
     private fun registerPostgresDatasource(): String {
         val created =
             datasourceRegistryService.createDatasource(
@@ -203,6 +237,31 @@ class QueryExecutionManagerContainerTests {
                     username = postgresContainer.username,
                     password = postgresContainer.password,
                     description = "Testcontainers postgres profile",
+                ),
+        )
+        return created.id
+    }
+
+    private fun registerTrinoDatasource(): String {
+        val created =
+            datasourceRegistryService.createDatasource(
+                CreateDatasourceRequest(
+                    name = "Trino TC",
+                    engine = DatasourceEngine.TRINO,
+                    host = trinoContainer.host,
+                    port = trinoContainer.getMappedPort(TRINO_PORT),
+                    database = "tpch/sf1",
+                    driverId = "trino-default",
+                ),
+            )
+        datasourceRegistryService.upsertCredentialProfile(
+            datasourceId = created.id,
+            profileId = "admin-ro",
+            request =
+                UpsertCredentialProfileRequest(
+                    username = "tc-trino",
+                    password = null,
+                    description = "Testcontainers trino profile",
                 ),
         )
         return created.id
@@ -272,5 +331,20 @@ class QueryExecutionManagerContainerTests {
         @JvmStatic
         @Container
         val mysqlContainer = MySQLContainer<Nothing>("mysql:8.4")
+
+        private const val TRINO_PORT = 8080
+
+        @JvmStatic
+        @Container
+        val trinoContainer: GenericContainer<Nothing> =
+            GenericContainer<Nothing>("trinodb/trino:479").apply {
+                withExposedPorts(TRINO_PORT)
+                waitingFor(
+                    Wait
+                        .forHttp("/v1/info")
+                        .forStatusCode(200)
+                        .withStartupTimeout(Duration.ofSeconds(120)),
+                )
+            }
     }
 }

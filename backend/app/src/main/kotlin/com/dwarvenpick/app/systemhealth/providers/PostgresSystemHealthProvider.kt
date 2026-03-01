@@ -37,6 +37,14 @@ class PostgresSystemHealthProvider : SystemHealthProvider {
             details["serverVersion"] = version
         }
 
+        val uptimeSeconds =
+            runCatching {
+                queryLong(connection, "SELECT EXTRACT(EPOCH FROM now() - pg_postmaster_start_time())::bigint")
+            }.getOrNull()
+        if (uptimeSeconds != null) {
+            details["uptimeSeconds"] = uptimeSeconds
+        }
+
         nodes.add(
             SystemHealthNode(
                 name = spec.datasourceName,
@@ -58,14 +66,21 @@ class PostgresSystemHealthProvider : SystemHealthProvider {
                         """
                         SELECT client_addr::text AS client_addr,
                                state AS state,
-                               sync_state AS sync_state
+                               sync_state AS sync_state,
+                               write_lag::text AS write_lag,
+                               flush_lag::text AS flush_lag,
+                               replay_lag::text AS replay_lag
                         FROM pg_stat_replication
                         """.trimIndent(),
                     )
+                details["standbyCount"] = replication.size
                 replication.forEachIndexed { index, row ->
                     val addr = row["client_addr"]?.takeIf { it.isNotBlank() } ?: "standby-${index + 1}"
                     val state = row["state"] ?: "unknown"
                     val syncState = row["sync_state"] ?: "unknown"
+                    val writeLag = row["write_lag"]
+                    val flushLag = row["flush_lag"]
+                    val replayLag = row["replay_lag"]
                     val status = if (state.equals("streaming", ignoreCase = true)) "UP" else "DEGRADED"
                     nodes.add(
                         SystemHealthNode(
@@ -76,6 +91,9 @@ class PostgresSystemHealthProvider : SystemHealthProvider {
                                 mapOf(
                                     "state" to state,
                                     "syncState" to syncState,
+                                    "writeLag" to writeLag,
+                                    "flushLag" to flushLag,
+                                    "replayLag" to replayLag,
                                 ),
                         ),
                     )
@@ -166,6 +184,20 @@ class PostgresSystemHealthProvider : SystemHealthProvider {
                     return fallback
                 }
                 resultSet.getString(1) ?: fallback
+            }
+        }
+
+    private fun queryLong(
+        connection: Connection,
+        sql: String,
+    ): Long? =
+        connection.createStatement().use { statement ->
+            statement.queryTimeout = 10
+            statement.executeQuery(sql).use { resultSet ->
+                if (!resultSet.next()) {
+                    return null
+                }
+                resultSet.getLong(1)
             }
         }
 

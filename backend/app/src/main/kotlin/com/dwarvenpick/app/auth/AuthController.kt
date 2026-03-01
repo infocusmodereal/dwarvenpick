@@ -1,7 +1,6 @@
 package com.dwarvenpick.app.auth
 
 import io.micrometer.core.instrument.MeterRegistry
-import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
@@ -414,12 +413,6 @@ class AuthController(
         SecurityContextHolder.setContext(context)
         val session = httpServletRequest.getSession(true)
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
-        httpServletResponse.addCookie(
-            Cookie("JSESSIONID", session.id).apply {
-                path = "/"
-                isHttpOnly = true
-            },
-        )
         securityContextRepository.saveContext(context, httpServletRequest, httpServletResponse)
     }
 

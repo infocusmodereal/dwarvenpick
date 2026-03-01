@@ -3,6 +3,7 @@ import { IconButton } from '../components/WorkbenchIcons';
 import MariaDbSystemHealthView from '../systemHealth/MariaDbSystemHealthView';
 import PostgresSystemHealthView from '../systemHealth/PostgresSystemHealthView';
 import StarRocksSystemHealthView from '../systemHealth/StarRocksSystemHealthView';
+import TrinoSystemHealthView from '../systemHealth/TrinoSystemHealthView';
 
 type SystemHealthSectionProps = {
     hidden: boolean;
@@ -145,8 +146,10 @@ export default function SystemHealthSection({
                         <PostgresSystemHealthView response={response} />
                     ) : response.engine === 'STARROCKS' ? (
                         <StarRocksSystemHealthView response={response} />
-                    ) : response.engine === 'MARIADB' ? (
+                    ) : response.engine === 'MARIADB' || response.engine === 'MYSQL' ? (
                         <MariaDbSystemHealthView response={response} />
+                    ) : response.engine === 'TRINO' ? (
+                        <TrinoSystemHealthView response={response} />
                     ) : (
                         <div className="panel-inner">
                             <h3>System Health</h3>

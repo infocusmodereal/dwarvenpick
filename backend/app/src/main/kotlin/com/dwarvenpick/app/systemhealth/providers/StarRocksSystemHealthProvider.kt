@@ -36,10 +36,15 @@ class StarRocksSystemHealthProvider : SystemHealthProvider {
             }
 
         val nodes = mutableListOf<SystemHealthNode>()
+        var frontendsAlive = 0
+        var backendsAlive = 0
 
         feRows.forEachIndexed { index, row ->
             val host = row["host"]?.takeIf { it.isNotBlank() } ?: row["name"] ?: "frontend-${index + 1}"
             val alive = parseTruth(row["alive"])
+            if (alive != false) {
+                frontendsAlive += 1
+            }
             val status = if (alive == false) "DOWN" else "UP"
             nodes.add(
                 SystemHealthNode(
@@ -47,11 +52,15 @@ class StarRocksSystemHealthProvider : SystemHealthProvider {
                     role = "frontend",
                     status = status,
                     details =
-                        mapOf(
-                            "role" to row["role"],
-                            "isMaster" to row["ismaster"],
-                            "alive" to row["alive"],
-                        ),
+                        buildMap {
+                            put("role", row["role"])
+                            put("isMaster", row["ismaster"])
+                            put("alive", row["alive"])
+                            row["version"]?.takeIf { it.isNotBlank() }?.let { put("version", it) }
+                            row["laststarttime"]?.takeIf { it.isNotBlank() }?.let { put("lastStartTime", it) }
+                            row["lastheartbeat"]?.takeIf { it.isNotBlank() }?.let { put("lastHeartbeat", it) }
+                            row["errmsg"]?.takeIf { it.isNotBlank() }?.let { put("errMsg", it) }
+                        },
                 ),
             )
         }
@@ -59,6 +68,9 @@ class StarRocksSystemHealthProvider : SystemHealthProvider {
         beRows.forEachIndexed { index, row ->
             val host = row["host"]?.takeIf { it.isNotBlank() } ?: row["backendid"] ?: "backend-${index + 1}"
             val alive = parseTruth(row["alive"])
+            if (alive != false) {
+                backendsAlive += 1
+            }
             val status = if (alive == false) "DOWN" else "UP"
             nodes.add(
                 SystemHealthNode(
@@ -66,17 +78,26 @@ class StarRocksSystemHealthProvider : SystemHealthProvider {
                     role = "backend",
                     status = status,
                     details =
-                        mapOf(
-                            "backendId" to row["backendid"],
-                            "alive" to row["alive"],
-                            "errMsg" to row["errmsg"],
-                        ),
+                        buildMap {
+                            put("backendId", row["backendid"])
+                            put("alive", row["alive"])
+                            row["version"]?.takeIf { it.isNotBlank() }?.let { put("version", it) }
+                            row["laststarttime"]?.takeIf { it.isNotBlank() }?.let { put("lastStartTime", it) }
+                            row["lastheartbeat"]?.takeIf { it.isNotBlank() }?.let { put("lastHeartbeat", it) }
+                            row["cpucore"]?.takeIf { it.isNotBlank() }?.let { put("cpuCores", it) }
+                            row["tabletnum"]?.takeIf { it.isNotBlank() }?.let { put("tabletNum", it) }
+                            row["diskusedcapacity"]?.takeIf { it.isNotBlank() }?.let { put("diskUsedCapacity", it) }
+                            row["diskavailcapacity"]?.takeIf { it.isNotBlank() }?.let { put("diskAvailCapacity", it) }
+                            row["errmsg"]?.takeIf { it.isNotBlank() }?.let { put("errMsg", it) }
+                        },
                 ),
             )
         }
 
         details["frontends"] = feRows.size
         details["backends"] = beRows.size
+        details["frontendsAlive"] = frontendsAlive
+        details["backendsAlive"] = backendsAlive
 
         return SystemHealthCheckResult(
             status = SystemHealthStatus.OK,

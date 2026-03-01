@@ -3,6 +3,8 @@ spring:
     name: dwarvenpick-backend
   jackson:
     default-property-inclusion: non_null
+  session:
+    store-type: none
 
 management:
   endpoints:
@@ -25,6 +27,7 @@ server:
     session:
       cookie:
         http-only: true
+        secure: ${DWARVENPICK_SESSION_COOKIE_SECURE:false}
         same-site: lax
 
 dwarvenpick:

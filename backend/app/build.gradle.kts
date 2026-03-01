@@ -9,9 +9,11 @@ extra["testcontainers.version"] = "1.21.0"
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.session:spring-session-jdbc")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("com.zaxxer:HikariCP")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
@@ -23,6 +25,7 @@ dependencies {
     runtimeOnly("com.mysql:mysql-connector-j")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
     runtimeOnly("io.trino:trino-jdbc:479")
+    runtimeOnly("com.h2database:h2")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

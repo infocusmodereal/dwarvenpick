@@ -25,6 +25,7 @@ Sample Helm deployments live under `deploy/helm/examples`:
 - Node/Nginx for frontend static bundle
 - No metadata DB required (catalog, history, and audit data are stored in memory)
 - Credential encryption key provided by environment or secret store
+- Optional: a shared session store (Spring Session JDBC) for HA and redeploy-safe logins
 
 ## Seeding sample connections
 
@@ -33,6 +34,21 @@ For local demos, the backend can seed a small set of sample connections on start
 Disable in production:
 
 - `DWARVENPICK_SEED_ENABLED=false` (default in Helm)
+
+## Session persistence (optional)
+
+By default, authentication sessions are stored in memory. A backend restart/redeploy invalidates active sessions.
+
+For multi-replica deployments and redeploy-safe logins, configure a shared JDBC-backed session store:
+
+- `SPRING_SESSION_STORE_TYPE=jdbc`
+- `SPRING_DATASOURCE_URL=jdbc:postgresql://<host>:5432/<db>`
+- `SPRING_DATASOURCE_USERNAME=<user>`
+- `SPRING_DATASOURCE_PASSWORD=<password>`
+
+When running behind HTTPS, also set:
+
+- `DWARVENPICK_SESSION_COOKIE_SECURE=true`
 
 ## Bootstrapping connections from a config file
 

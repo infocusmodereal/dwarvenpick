@@ -9,6 +9,8 @@ nav_order: 10
 ## Session and authentication
 
 - Authentication uses server-side HTTP sessions (`JSESSIONID`) with HTTP-only cookies.
+- By default, sessions are stored in memory (a backend restart/redeploy invalidates active sessions).
+- For HA (multi-replica) and redeploy-safe logins, use a shared session store (Spring Session JDBC).
 - Local login and LDAP login are exposed as JSON endpoints:
   - `POST /api/auth/login`
   - `POST /api/auth/ldap/login`

@@ -13,7 +13,7 @@ import java.sql.SQLException
 
 @Component
 class MariaDbSystemHealthProvider : SystemHealthProvider {
-    override val engines: Set<DatasourceEngine> = setOf(DatasourceEngine.MARIADB)
+    override val engines: Set<DatasourceEngine> = setOf(DatasourceEngine.MARIADB, DatasourceEngine.MYSQL)
 
     override fun check(
         spec: ConnectionSpec,
@@ -32,6 +32,22 @@ class MariaDbSystemHealthProvider : SystemHealthProvider {
             }.getOrNull()
         if (version != null) {
             details["serverVersion"] = version
+        }
+
+        val uptimeSeconds =
+            runCatching {
+                queryStatusValue(connection, "Uptime")?.toLongOrNull()
+            }.getOrNull()
+        if (uptimeSeconds != null) {
+            details["uptimeSeconds"] = uptimeSeconds
+        }
+
+        val readOnly =
+            runCatching {
+                queryString(connection, "SELECT @@read_only", fallback = null)
+            }.getOrNull()
+        if (readOnly != null) {
+            details["readOnly"] = parseTruth(readOnly)
         }
 
         val clusterSize =
@@ -140,4 +156,12 @@ class MariaDbSystemHealthProvider : SystemHealthProvider {
                 throw exception
             }
         }
+
+    private fun parseTruth(value: String?): Boolean? {
+        val normalized = value?.trim()?.lowercase() ?: return null
+        if (normalized.isBlank()) {
+            return null
+        }
+        return normalized == "true" || normalized == "yes" || normalized == "y" || normalized == "1" || normalized == "on"
+    }
 }

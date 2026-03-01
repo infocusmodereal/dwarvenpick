@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.auth
 
+import jakarta.servlet.http.Cookie
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.not
@@ -9,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
-import org.springframework.mock.web.MockHttpSession
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -65,7 +65,7 @@ class LdapAuthContainerTests {
         val session = loginLdapUser(username = "ldap.user", password = "LdapUser123!")
 
         mockMvc
-            .perform(get("/api/auth/me").session(session))
+            .perform(get("/api/auth/me").cookie(*session))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("ldap.user"))
             .andExpect(jsonPath("$.provider").value("ldap"))
@@ -95,7 +95,7 @@ class LdapAuthContainerTests {
     private fun loginLdapUser(
         username: String,
         password: String,
-    ): MockHttpSession =
+    ): Array<Cookie> =
         mockMvc
             .perform(
                 post("/api/auth/ldap/login")
@@ -111,11 +111,22 @@ class LdapAuthContainerTests {
                     ),
             ).andExpect(status().isOk)
             .andReturn()
-            .toSession()
+            .toSessionCookies()
 
-    private fun MvcResult.toSession(): MockHttpSession =
-        (request.getSession(false) as? MockHttpSession)
-            ?: throw AssertionError("Expected authenticated session.")
+    private fun MvcResult.toSessionCookies(): Array<Cookie> {
+        val sessionCookies =
+            response.cookies
+                .asSequence()
+                .filter { cookie -> cookie.name == "SESSION" || cookie.name == "JSESSIONID" }
+                .toList()
+                .toTypedArray()
+
+        if (sessionCookies.isEmpty()) {
+            throw AssertionError("Expected authenticated session cookie.")
+        }
+
+        return sessionCookies
+    }
 
     companion object {
         private const val LDAP_PORT = 389

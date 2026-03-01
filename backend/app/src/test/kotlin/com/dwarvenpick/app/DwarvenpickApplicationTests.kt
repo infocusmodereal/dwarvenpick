@@ -15,6 +15,7 @@ import com.dwarvenpick.app.rbac.QueryAccessDeniedException
 import com.dwarvenpick.app.rbac.RbacService
 import com.dwarvenpick.app.rbac.UpsertDatasourceAccessRequest
 import com.jayway.jsonpath.JsonPath
+import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.containsStringIgnoringCase
@@ -26,7 +27,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
-import org.springframework.mock.web.MockHttpSession
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
@@ -111,7 +111,7 @@ class DwarvenpickApplicationTests {
         val sessionCookie = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
-            .perform(get("/api/auth/me").session(sessionCookie))
+            .perform(get("/api/auth/me").cookie(*sessionCookie))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("admin"))
             .andExpect(jsonPath("$.provider").value("local"))
@@ -172,7 +172,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/auth/admin/users/analyst/reset-password")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -202,7 +202,7 @@ class DwarvenpickApplicationTests {
 
         val updatedSession = loginLocalUser("analyst", "Updated123!")
         mockMvc
-            .perform(get("/api/auth/me").session(updatedSession))
+            .perform(get("/api/auth/me").cookie(*updatedSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("analyst"))
     }
@@ -226,10 +226,10 @@ class DwarvenpickApplicationTests {
                 ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.provider").value("ldap"))
                 .andReturn()
-                .toSession()
+                .toSessionCookies()
 
         mockMvc
-            .perform(get("/api/auth/me").session(ldapSession))
+            .perform(get("/api/auth/me").cookie(*ldapSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.username").value("ldap.user"))
             .andExpect(jsonPath("$.provider").value("ldap"))
@@ -270,12 +270,12 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/auth/logout")
                     .with(csrf())
-                    .session(adminSession),
+                    .cookie(*adminSession),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("logged_out"))
 
         mockMvc
-            .perform(get("/api/auth/me").session(adminSession))
+            .perform(get("/api/auth/me").cookie(*adminSession))
             .andExpect(status().isUnauthorized)
     }
 
@@ -287,7 +287,7 @@ class DwarvenpickApplicationTests {
 
         val analystSession = loginLocalUser("analyst", "Analyst123!")
         mockMvc
-            .perform(get("/api/admin/groups").session(analystSession))
+            .perform(get("/api/admin/groups").cookie(*analystSession))
             .andExpect(status().isForbidden)
     }
 
@@ -299,7 +299,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/admin/groups")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -316,7 +316,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/admin/groups/incident-responders/members")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -332,14 +332,14 @@ class DwarvenpickApplicationTests {
             .perform(
                 delete("/api/admin/groups/incident-responders/members/analyst")
                     .with(csrf())
-                    .session(adminSession),
+                    .cookie(*adminSession),
             ).andExpect(status().isOk)
 
         mockMvc
             .perform(
                 delete("/api/admin/groups/incident-responders")
                     .with(csrf())
-                    .session(adminSession),
+                    .cookie(*adminSession),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.deleted").value(true))
 
@@ -347,7 +347,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 delete("/api/admin/groups/platform-admins")
                     .with(csrf())
-                    .session(adminSession),
+                    .cookie(*adminSession),
             ).andExpect(status().isBadRequest)
 
         val events = authAuditEventStore.snapshot()
@@ -367,7 +367,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 put("/api/admin/datasource-access/analytics-users/postgresql-core")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -392,7 +392,7 @@ class DwarvenpickApplicationTests {
         val analystSession = loginLocalUser("analyst", "Analyst123!")
 
         mockMvc
-            .perform(get("/api/datasources").session(analystSession))
+            .perform(get("/api/datasources").cookie(*analystSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].id").value("trino-warehouse"))
 
@@ -400,7 +400,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/queries")
                     .with(csrf())
-                    .session(analystSession)
+                    .cookie(*analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -526,7 +526,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/queries")
                     .with(csrf())
-                    .session(analystSession)
+                    .cookie(*analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -550,7 +550,7 @@ class DwarvenpickApplicationTests {
                 .perform(
                     post("/api/queries")
                         .with(csrf())
-                        .session(analystSession)
+                        .cookie(*analystSession)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
@@ -571,7 +571,7 @@ class DwarvenpickApplicationTests {
             mockMvc
                 .perform(
                     get("/api/queries/$executionId/results")
-                        .session(analystSession)
+                        .cookie(*analystSession)
                         .queryParam("pageSize", "10"),
                 ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.rows.length()").value(10))
@@ -582,7 +582,7 @@ class DwarvenpickApplicationTests {
         mockMvc
             .perform(
                 get("/api/queries/$executionId/results")
-                    .session(analystSession)
+                    .cookie(*analystSession)
                     .queryParam("pageSize", "10")
                     .queryParam("pageToken", nextPageToken),
             ).andExpect(status().isOk)
@@ -598,7 +598,7 @@ class DwarvenpickApplicationTests {
                 .perform(
                     post("/api/queries")
                         .with(csrf())
-                        .session(analystSession)
+                        .cookie(*analystSession)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
@@ -616,7 +616,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/queries/$executionId/cancel")
                     .with(csrf())
-                    .session(analystSession),
+                    .cookie(*analystSession),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("CANCELED"))
 
@@ -624,7 +624,7 @@ class DwarvenpickApplicationTests {
         assertThat(finalStatus).isEqualTo("CANCELED")
 
         mockMvc
-            .perform(get("/api/queries/$executionId/results").session(analystSession))
+            .perform(get("/api/queries/$executionId/results").cookie(*analystSession))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.error", containsStringIgnoringCase("canceled")))
     }
@@ -639,7 +639,7 @@ class DwarvenpickApplicationTests {
                     .perform(
                         post("/api/queries")
                             .with(csrf())
-                            .session(analystSession)
+                            .cookie(*analystSession)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(
                                 """
@@ -659,7 +659,7 @@ class DwarvenpickApplicationTests {
                     .perform(
                         post("/api/queries")
                             .with(csrf())
-                            .session(analystSession)
+                            .cookie(*analystSession)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(
                                 """
@@ -678,7 +678,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/queries")
                     .with(csrf())
-                    .session(analystSession)
+                    .cookie(*analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -692,10 +692,10 @@ class DwarvenpickApplicationTests {
             .andExpect(jsonPath("$.error", containsString("Concurrent query limit reached")))
 
         mockMvc
-            .perform(post("/api/queries/$firstExecutionId/cancel").with(csrf()).session(analystSession))
+            .perform(post("/api/queries/$firstExecutionId/cancel").with(csrf()).cookie(*analystSession))
             .andExpect(status().isOk)
         mockMvc
-            .perform(post("/api/queries/$secondExecutionId/cancel").with(csrf()).session(analystSession))
+            .perform(post("/api/queries/$secondExecutionId/cancel").with(csrf()).cookie(*analystSession))
             .andExpect(status().isOk)
     }
 
@@ -704,7 +704,7 @@ class DwarvenpickApplicationTests {
         val analystSession = loginLocalUser("analyst", "Analyst123!")
 
         mockMvc
-            .perform(get("/api/queries/events").session(analystSession))
+            .perform(get("/api/queries/events").cookie(*analystSession))
             .andExpect(status().isOk)
     }
 
@@ -716,7 +716,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/admin/datasource-management")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -748,7 +748,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 put("/api/admin/datasource-management/mysql-sandbox/credentials/admin-ro")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -775,7 +775,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/datasources/postgresql-core/test-connection")
                     .with(csrf())
-                    .session(analystSession)
+                    .cookie(*analystSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -792,7 +792,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/datasources/postgresql-core/test-connection")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -814,7 +814,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/admin/datasource-management")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -837,7 +837,7 @@ class DwarvenpickApplicationTests {
         val adminSession = loginLocalUser("admin", "Admin1234!")
 
         mockMvc
-            .perform(get("/api/admin/drivers").session(adminSession))
+            .perform(get("/api/admin/drivers").cookie(*adminSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].driverId").isString())
             .andExpect(jsonPath("$[0].engine").isString())
@@ -847,7 +847,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/admin/datasource-management/credentials/reencrypt")
                     .with(csrf())
-                    .session(adminSession),
+                    .cookie(*adminSession),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.updatedProfiles").isNumber)
             .andExpect(jsonPath("$.activeKeyId").value("v1"))
@@ -861,7 +861,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 post("/api/admin/datasource-management")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -882,7 +882,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 patch("/api/admin/datasource-management/mariadb-sales")
                     .with(csrf())
-                    .session(adminSession)
+                    .cookie(*adminSession)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -902,7 +902,7 @@ class DwarvenpickApplicationTests {
             .perform(
                 delete("/api/admin/datasource-management/mariadb-sales")
                     .with(csrf())
-                    .session(adminSession),
+                    .cookie(*adminSession),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.deleted").value(true))
     }
@@ -910,7 +910,7 @@ class DwarvenpickApplicationTests {
     private fun loginLocalUser(
         username: String,
         password: String,
-    ): MockHttpSession =
+    ): Array<Cookie> =
         mockMvc
             .perform(
                 post("/api/auth/login")
@@ -926,10 +926,10 @@ class DwarvenpickApplicationTests {
                     ),
             ).andExpect(status().isOk)
             .andReturn()
-            .toSession()
+            .toSessionCookies()
 
     private fun waitForExecutionTerminalStatus(
-        sessionCookie: MockHttpSession,
+        sessionCookie: Array<Cookie>,
         executionId: String,
         timeoutMs: Long = 6000,
     ): String {
@@ -937,7 +937,7 @@ class DwarvenpickApplicationTests {
         while (System.currentTimeMillis() - start < timeoutMs) {
             val result =
                 mockMvc
-                    .perform(get("/api/queries/$executionId").session(sessionCookie))
+                    .perform(get("/api/queries/$executionId").cookie(*sessionCookie))
                     .andExpect(status().isOk)
                     .andReturn()
             val status = jsonPathValue(result, "$.status")
@@ -956,7 +956,18 @@ class DwarvenpickApplicationTests {
         path: String,
     ): String = JsonPath.parse(result.response.contentAsString).read(path)
 
-    private fun MvcResult.toSession(): MockHttpSession =
-        (request.getSession(false) as? MockHttpSession)
-            ?: throw AssertionError("Expected authenticated session.")
+    private fun MvcResult.toSessionCookies(): Array<Cookie> {
+        val sessionCookies =
+            response.cookies
+                .asSequence()
+                .filter { cookie -> cookie.name == "SESSION" || cookie.name == "JSESSIONID" }
+                .toList()
+                .toTypedArray()
+
+        if (sessionCookies.isEmpty()) {
+            throw AssertionError("Expected authenticated session cookie.")
+        }
+
+        return sessionCookies
+    }
 }

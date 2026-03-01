@@ -35,20 +35,28 @@ LDAP authentication is covered by a Testcontainers-based integration test suite 
 ./gradlew :backend:app:test --tests com.dwarvenpick.app.auth.LdapAuthContainerTests
 ```
 
+## Datasource integration tests
+
+Query execution is covered by Testcontainers-based integration tests (Postgres, MySQL, Trino) and requires Docker:
+
+```bash
+./gradlew :backend:app:test --tests com.dwarvenpick.app.QueryExecutionManagerContainerTests
+```
+
 ## Versioning and releases
 
 `dwarvenpick` uses Git tags for release versions.
 
-- Dev builds default to `0.1.0-SNAPSHOT`.
-- Release builds use the pushed tag name (for example `v0.2.0` becomes version `0.2.0`).
+- Dev builds default to `0.2.1-SNAPSHOT`.
+- Release builds use the pushed tag name (for example `v0.2.1` becomes version `0.2.1`).
 
 To cut a release:
 
 1. Create a tag:
 
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.2.1
+   git push origin v0.2.1
    ```
 
 2. GitHub Actions runs the `Release` workflow and publishes a GitHub Release with:
@@ -58,5 +66,5 @@ To cut a release:
 To build a versioned jar locally without tagging:
 
 ```bash
-DWARVENPICK_VERSION=0.2.0 ./gradlew :backend:app:bootJar
+DWARVENPICK_VERSION=0.2.1 ./gradlew :backend:app:bootJar
 ```

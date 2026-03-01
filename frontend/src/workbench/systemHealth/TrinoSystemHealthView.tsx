@@ -1,7 +1,7 @@
 import type { SystemHealthResponse } from '../types';
 import SystemHealthNodeTable from './SystemHealthNodeTable';
 
-type PostgresSystemHealthViewProps = {
+type TrinoSystemHealthViewProps = {
     response: SystemHealthResponse;
 };
 
@@ -16,14 +16,15 @@ const asNumber = (value: unknown): number | null => {
     return null;
 };
 
-export default function PostgresSystemHealthView({ response }: PostgresSystemHealthViewProps) {
+export default function TrinoSystemHealthView({ response }: TrinoSystemHealthViewProps) {
     const serverVersion = response.details?.serverVersion as string | undefined;
-    const uptimeSeconds = asNumber(response.details?.uptimeSeconds);
-    const standbyCount = asNumber(response.details?.standbyCount);
+    const coordinators = asNumber(response.details?.coordinators);
+    const nodes = asNumber(response.details?.nodes);
 
     return (
         <div className="panel-inner">
-            <h3>PostgreSQL Cluster</h3>
+            <h3>Trino Cluster</h3>
+
             <div className="result-stats-grid">
                 {serverVersion ? (
                     <div className="result-stat">
@@ -31,19 +32,20 @@ export default function PostgresSystemHealthView({ response }: PostgresSystemHea
                         <strong>{serverVersion}</strong>
                     </div>
                 ) : null}
-                {typeof uptimeSeconds === 'number' ? (
+                {typeof nodes === 'number' ? (
                     <div className="result-stat">
-                        <span>Uptime (s)</span>
-                        <strong>{Math.max(0, Math.floor(uptimeSeconds)).toLocaleString()}</strong>
+                        <span>Nodes</span>
+                        <strong>{nodes.toLocaleString()}</strong>
                     </div>
                 ) : null}
-                {typeof standbyCount === 'number' ? (
+                {typeof coordinators === 'number' ? (
                     <div className="result-stat">
-                        <span>Standbys</span>
-                        <strong>{standbyCount.toLocaleString()}</strong>
+                        <span>Coordinators</span>
+                        <strong>{coordinators.toLocaleString()}</strong>
                     </div>
                 ) : null}
             </div>
+
             <SystemHealthNodeTable nodes={response.nodes} />
         </div>
     );
