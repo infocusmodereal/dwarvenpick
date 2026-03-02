@@ -15,14 +15,52 @@ The Workbench is the main SQL editor and results viewer.
 
 - Create tabs for multiple queries.
 - Run selection or run the full query.
-- Use **Explain** to request a query plan where supported.
 - Save a query as a snippet from the editor.
+
+### Autocomplete
+
+The editor provides basic autocomplete:
+
+- SQL keywords
+- Schemas/tables/columns discovered by **Explorer** for the active connection
+
+Use `Ctrl+Space` / `Cmd+Space` to open suggestions.
+
+### Validate
+
+Use **Validate** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
+`EXPLAIN` under the hood.
+
+Notes:
+
+- Validation may still require privileges to read metadata.
+- Some engines can return line/column information; when available, the editor shows inline markers.
+
+### Explain vs Analyze
+
+- **Explain** requests a query plan where supported.
+- **Analyze** is a deeper plan mode. Some engines may execute the query (for example PostgreSQL `EXPLAIN ANALYZE` and
+  Trino `EXPLAIN ANALYZE`). Use it deliberately on large tables.
+
+### Run Script (multi-statement)
+
+Use **Run Script** for semicolon-delimited SQL scripts. The backend splits statements and executes them one-by-one.
+
+Options:
+
+- **Stop on error**: stop at the first failing statement (recommended for safe operations).
+- **Transaction mode**:
+  - `AUTOCOMMIT`: each statement commits independently.
+  - `TRANSACTION`: attempt to run the whole script in one transaction and roll back on failure (where supported).
+
+Read-only access rules apply to **every** statement in a script.
 
 ## Results
 
 - Results are shown as a table with paging controls.
 - You can export the current result set to CSV (if your access rules allow export).
 - Drag the horizontal handle above Results to resize the results panel.
+- Script runs include a per-statement summary (succeeded/failed) to make it clear where a script stopped or failed.
 
 ## Explorer
 

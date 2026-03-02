@@ -12,6 +12,10 @@
 ## Features
 
 - Tabbed SQL editor (Monaco) with syntax highlighting and keyboard shortcuts.
+- SQL autocomplete (keywords + explorer objects).
+- Validate SQL with engine-aware `EXPLAIN` (inline editor markers when available).
+- Safe scripting: run semicolon-delimited multi-statement scripts with stop-on-error and transaction options.
+- Explain and analyze query plans (engine-aware).
 - Results grid with pagination, sorting, and CSV export.
 - Connection catalog and connection management UI.
 - Governance:

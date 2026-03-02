@@ -23,9 +23,9 @@ Sample Helm deployments live under `deploy/helm/examples`:
 
 - Java 21 runtime for backend
 - Node/Nginx for frontend static bundle
-- No metadata DB required (catalog, history, and audit data are stored in memory)
+- Metadata DB: embedded H2 by default (ephemeral). For persistence and HA, configure a shared PostgreSQL DB via `SPRING_DATASOURCE_*`.
 - Credential encryption key provided by environment or secret store
-- Optional: a shared session store (Spring Session JDBC) for HA and redeploy-safe logins
+- JDBC-backed sessions (Spring Session). For multi-replica and redeploy-safe logins, use a shared PostgreSQL metadata DB.
 
 ## Seeding sample connections
 
@@ -35,11 +35,12 @@ Disable in production:
 
 - `DWARVENPICK_SEED_ENABLED=false` (default in Helm)
 
-## Session persistence (optional)
+## Session persistence
 
-By default, authentication sessions are stored in memory. A backend restart/redeploy invalidates active sessions.
+Sessions are JDBC-backed via Spring Session. When using the default embedded H2 metadata DB, a backend restart/redeploy
+still invalidates active sessions.
 
-For multi-replica deployments and redeploy-safe logins, configure a shared JDBC-backed session store:
+For multi-replica deployments and redeploy-safe logins, configure a shared PostgreSQL metadata DB:
 
 - `SPRING_SESSION_STORE_TYPE=jdbc`
 - `SPRING_DATASOURCE_URL=jdbc:postgresql://<host>:5432/<db>`
