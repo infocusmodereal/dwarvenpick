@@ -141,6 +141,7 @@ export type QueryExecutionStatusResponse = {
     maxRowsPerQuery: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
+    scriptSummary?: QueryScriptSummary | null;
 };
 
 export type QueryResultColumn = {
@@ -156,6 +157,14 @@ export type QueryResultsResponse = {
     pageSize: number;
     nextPageToken?: string;
     rowLimitReached: boolean;
+};
+
+export type QueryValidationResponse = {
+    valid: boolean;
+    message: string;
+    line?: number;
+    column?: number;
+    position?: number;
 };
 
 export type QueryStatusEventResponse = {
@@ -279,7 +288,7 @@ export type WorkspaceTab = PersistentWorkspaceTab & {
     isExecuting: boolean;
     statusMessage: string;
     errorMessage: string;
-    lastRunKind: 'query' | 'explain';
+    lastRunKind: 'query' | 'explain' | 'analyze' | 'script';
     executionId: string;
     executionStatus: string;
     queryHash: string;
@@ -297,6 +306,7 @@ export type WorkspaceTab = PersistentWorkspaceTab & {
     maxRowsPerQuery: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
+    scriptSummary?: QueryScriptSummary | null;
 };
 
 export type TestConnectionResponse = {
@@ -314,7 +324,23 @@ export type ReencryptCredentialsResponse = {
     message: string;
 };
 
-export type QueryRunMode = 'selection' | 'statement' | 'all' | 'explain';
+export type QueryRunMode = 'selection' | 'statement' | 'all' | 'script' | 'explain' | 'analyze';
+
+export type ScriptTransactionMode = 'AUTOCOMMIT' | 'TRANSACTION';
+
+export type QueryScriptStatementSummary = {
+    index: number;
+    status: string;
+    sqlPreview: string;
+    message: string;
+};
+
+export type QueryScriptSummary = {
+    statementCount: number;
+    stopOnError: boolean;
+    transactionMode: ScriptTransactionMode | string;
+    statements: QueryScriptStatementSummary[];
+};
 export type WorkspaceSection =
     | 'workbench'
     | 'history'

@@ -19,6 +19,8 @@ import com.dwarvenpick.app.query.QueryReadOnlyViolationException
 import com.dwarvenpick.app.query.QueryResultsExpiredException
 import com.dwarvenpick.app.query.QueryResultsNotReadyException
 import com.dwarvenpick.app.query.QueryResultsRequest
+import com.dwarvenpick.app.query.QueryValidationRequest
+import com.dwarvenpick.app.query.QueryValidationService
 import io.micrometer.core.instrument.MeterRegistry
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
@@ -47,6 +49,7 @@ class QueryController(
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
     private val queryExecutionManager: QueryExecutionManager,
     private val queryExecutionProperties: QueryExecutionProperties,
+    private val queryValidationService: QueryValidationService,
     private val meterRegistry: MeterRegistry,
 ) {
     @PostMapping
@@ -97,6 +100,34 @@ class QueryController(
                 ipAddress = httpServletRequest.remoteAddr,
             )
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
+        } catch (ex: IllegalArgumentException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ErrorResponse(ex.message ?: "Bad request."),
+            )
+        }
+    }
+
+    @PostMapping("/validate")
+    fun validateQuery(
+        @Valid @RequestBody request: QueryValidationRequest,
+        authentication: Authentication,
+    ): ResponseEntity<Any> {
+        val principal = authenticatedPrincipalResolver.resolve(authentication)
+        return try {
+            val accessPolicy =
+                rbacService.resolveQueryAccessPolicy(
+                    principal = principal,
+                    datasourceId = request.datasourceId,
+                    requestedCredentialProfile = request.credentialProfile,
+                )
+            val response = queryValidationService.validate(request = request, policy = accessPolicy)
+            ResponseEntity.ok(response)
+        } catch (ex: QueryAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
+        } catch (ex: DatasourceNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
+        } catch (ex: DriverNotAvailableException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse(ex.message ?: "Bad request."),

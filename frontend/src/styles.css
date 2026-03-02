@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
-
 :root {
     color-scheme: light;
     --bg: #dbd0bf;
@@ -2491,10 +2489,153 @@ button:disabled {
     line-height: 1.3;
 }
 
+.editor-diagnostics {
+    border-top: 1px solid rgba(184, 162, 132, 0.55);
+    padding-top: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.editor-diagnostics summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-weight: 650;
+    list-style: none;
+}
+
+.editor-diagnostics summary::-webkit-details-marker {
+    display: none;
+}
+
+.editor-diagnostics dl {
+    margin: 0.4rem 0 0;
+    display: grid;
+    gap: 0.22rem;
+    font-size: 0.68rem;
+}
+
+.editor-diagnostics dl > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.editor-diagnostics dt {
+    font-weight: 650;
+    color: var(--muted);
+}
+
+.editor-diagnostics dd {
+    margin: 0;
+    color: var(--text);
+    text-align: right;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.script-options-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    position: relative;
+}
+
+.script-options-popover {
+    position: absolute;
+    top: calc(100% + 0.32rem);
+    left: 0;
+    z-index: 32;
+    min-width: 220px;
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    background: var(--surface);
+    box-shadow: 0 12px 22px rgba(44, 30, 15, 0.18);
+    padding: 0.5rem 0.55rem;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.script-option-row {
+    display: grid;
+    gap: 0.22rem;
+}
+
+.script-option-row label {
+    font-size: 0.74rem;
+    font-weight: 650;
+    color: var(--muted);
+}
+
+.script-summary {
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    background: var(--surface-alt);
+    padding: 0.45rem 0.55rem;
+}
+
+.script-summary summary {
+    cursor: pointer;
+    list-style: none;
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: var(--text);
+}
+
+.script-summary summary::-webkit-details-marker {
+    display: none;
+}
+
+.script-summary-body {
+    margin-top: 0.45rem;
+    overflow-x: auto;
+}
+
+.script-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+}
+
+.script-summary-table th,
+.script-summary-table td {
+    padding: 0.28rem 0.38rem;
+    border-top: 1px solid var(--border);
+    color: var(--text);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.analysis-plan {
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    background: var(--surface-alt);
+    padding: 0.6rem 0.7rem;
+    display: grid;
+    gap: 0.42rem;
+}
+
+.analysis-plan h3 {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.analysis-plan pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
 .monaco-host {
     border: 0;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
     background: var(--workbench-main-surface);
     min-height: 0;
     height: 100%;
@@ -2517,6 +2658,12 @@ button:disabled {
 .monaco-host .monaco-editor .overflow-guard {
     min-height: 100% !important;
     font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace !important;
+}
+
+.monaco-editor .suggest-widget,
+.monaco-editor .monaco-hover,
+.monaco-editor .parameter-hints-widget {
+    z-index: 1000 !important;
 }
 
 .editor-loading {

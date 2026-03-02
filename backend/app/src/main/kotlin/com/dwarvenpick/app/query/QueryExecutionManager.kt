@@ -78,6 +78,10 @@ private data class QueryExecutionRecord(
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val concurrencyLimit: Int,
+    val scriptStatementCount: Int,
+    val scriptStopOnError: Boolean,
+    val scriptTransactionMode: ScriptTransactionMode,
+    val scriptStatements: MutableList<QueryScriptStatementSummary>,
     @Volatile var status: QueryExecutionStatus,
     @Volatile var message: String,
     @Volatile var errorSummary: String?,
@@ -147,7 +151,22 @@ class QueryExecutionManager(
         policy: QueryAccessPolicy,
     ): QueryExecutionResponse {
         val normalizedSql = request.sql.trim()
-        if (policy.readOnly && !isReadOnlySql(normalizedSql)) {
+        val statementSegments =
+            SqlStatementSplitter
+                .splitSqlStatements(normalizedSql)
+                .filter { segment ->
+                    SqlSafety
+                        .stripLeadingSqlComments(segment.sql)
+                        .trim()
+                        .trimStart(';')
+                        .isNotBlank()
+                }
+
+        if (statementSegments.isEmpty()) {
+            throw IllegalArgumentException("SQL is empty.")
+        }
+
+        if (policy.readOnly && statementSegments.any { segment -> !SqlSafety.isReadOnlySql(segment.sql) }) {
             meterRegistry
                 .counter(
                     "dwarvenpick.query.execute.attempts",
@@ -200,6 +219,10 @@ class QueryExecutionManager(
                     maxRowsPerQuery = maxRows,
                     maxRuntimeSeconds = maxRuntimeSeconds,
                     concurrencyLimit = concurrencyLimit,
+                    scriptStatementCount = statementSegments.size,
+                    scriptStopOnError = request.stopOnError,
+                    scriptTransactionMode = request.transactionMode,
+                    scriptStatements = mutableListOf(),
                     status = QueryExecutionStatus.QUEUED,
                     message = "Query accepted and queued.",
                     errorSummary = null,
@@ -725,53 +748,212 @@ class QueryExecutionManager(
                 queryTimeout = record.maxRuntimeSeconds
             }
         record.activeStatement = statement
+        val statementSegments =
+            SqlStatementSplitter
+                .splitSqlStatements(record.sql)
+                .filter { segment ->
+                    SqlSafety
+                        .stripLeadingSqlComments(segment.sql)
+                        .trim()
+                        .trimStart(';')
+                        .isNotBlank()
+                }
 
-        val hasResultSet = statement.execute(record.sql)
-        if (!hasResultSet) {
-            val affectedRows = statement.updateCount
-            record.columns.clear()
-            record.columns.add(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER"))
-            synchronized(record.rows) {
-                record.rows.add(listOf(affectedRows.toString()))
+        if (statementSegments.isEmpty()) {
+            throw IllegalArgumentException("SQL is empty.")
+        }
+
+        record.scriptStatements.clear()
+        val isScript = statementSegments.size > 1
+
+        if (!isScript) {
+            executeStatementAndBuffer(record, statement, statementSegments[0].sql)
+            return
+        }
+
+        executeScript(record, handle.connection, statement, statementSegments)
+    }
+
+    private fun executeScript(
+        record: QueryExecutionRecord,
+        connection: Connection,
+        statement: Statement,
+        segments: List<SqlStatementSegment>,
+    ) {
+        val failures = mutableListOf<String>()
+        val originalAutoCommit = connection.autoCommit
+        val transactionMode = record.scriptTransactionMode
+
+        if (transactionMode == ScriptTransactionMode.TRANSACTION) {
+            connection.autoCommit = false
+        }
+
+        try {
+            segments.forEachIndexed { index, segment ->
+                throwIfCanceled(record)
+                enforceRuntimeLimit(record)
+
+                val statementNumber = index + 1
+                record.message = "Running statement $statementNumber/${segments.size}..."
+                publishEvent(record, record.message)
+
+                val sqlPreview = buildSqlPreview(segment.sql)
+
+                try {
+                    val bufferResults = index == segments.lastIndex
+                    executeStatement(record, statement, segment.sql, bufferResults)
+                    record.scriptStatements.add(
+                        QueryScriptStatementSummary(
+                            index = statementNumber,
+                            status = "SUCCEEDED",
+                            sqlPreview = sqlPreview,
+                            message = "Succeeded.",
+                        ),
+                    )
+                } catch (ex: Throwable) {
+                    val message = sanitizeErrorMessage(ex.message ?: "Statement failed.")
+                    failures.add("Statement $statementNumber: $message")
+                    record.scriptStatements.add(
+                        QueryScriptStatementSummary(
+                            index = statementNumber,
+                            status = "FAILED",
+                            sqlPreview = sqlPreview,
+                            message = message,
+                        ),
+                    )
+
+                    if (transactionMode == ScriptTransactionMode.TRANSACTION) {
+                        throw ex
+                    }
+                    if (record.scriptStopOnError) {
+                        throw ex
+                    }
+                }
+            }
+
+            if (transactionMode == ScriptTransactionMode.TRANSACTION) {
+                connection.commit()
+            }
+        } catch (ex: Throwable) {
+            if (transactionMode == ScriptTransactionMode.TRANSACTION) {
+                runCatching { connection.rollback() }
+            }
+            throw ex
+        } finally {
+            if (transactionMode == ScriptTransactionMode.TRANSACTION) {
+                runCatching { connection.autoCommit = originalAutoCommit }
+            }
+        }
+
+        if (failures.isNotEmpty()) {
+            throw RuntimeException(
+                "Script completed with ${failures.size} error(s). ${failures.first()}",
+            )
+        }
+    }
+
+    private fun executeStatementAndBuffer(
+        record: QueryExecutionRecord,
+        statement: Statement,
+        sql: String,
+    ) {
+        executeStatement(record, statement, sql, bufferResults = true)
+    }
+
+    private fun executeStatement(
+        record: QueryExecutionRecord,
+        statement: Statement,
+        sql: String,
+        bufferResults: Boolean,
+    ) {
+        if (!bufferResults) {
+            val hasResultSet = statement.execute(sql)
+            if (hasResultSet) {
+                runCatching { statement.resultSet?.close() }
             }
             return
         }
 
+        record.rowLimitReached = false
+        record.columns.clear()
+        synchronized(record.rows) {
+            record.rows.clear()
+        }
+
+        val hasResultSet = statement.execute(sql)
+        if (!hasResultSet) {
+            bufferUpdateCount(record, statement.updateCount)
+            return
+        }
+
         statement.resultSet.use { resultSet ->
-            val metadata = resultSet.metaData
-            val resolvedColumns =
-                (1..metadata.columnCount).map { index ->
-                    QueryResultColumn(
-                        name = metadata.getColumnLabel(index) ?: "col_$index",
-                        jdbcType = metadata.getColumnTypeName(index) ?: "UNKNOWN",
-                    )
+            bufferResultSet(record, resultSet)
+        }
+    }
+
+    private fun bufferUpdateCount(
+        record: QueryExecutionRecord,
+        affectedRows: Int,
+    ) {
+        record.columns.clear()
+        record.columns.add(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER"))
+        synchronized(record.rows) {
+            record.rows.add(listOf(affectedRows.toString()))
+        }
+    }
+
+    private fun bufferResultSet(
+        record: QueryExecutionRecord,
+        resultSet: java.sql.ResultSet,
+    ) {
+        val metadata = resultSet.metaData
+        val resolvedColumns =
+            (1..metadata.columnCount).map { index ->
+                QueryResultColumn(
+                    name = metadata.getColumnLabel(index) ?: "col_$index",
+                    jdbcType = metadata.getColumnTypeName(index) ?: "UNKNOWN",
+                )
+            }
+        record.columns.clear()
+        record.columns.addAll(resolvedColumns)
+
+        while (resultSet.next()) {
+            throwIfCanceled(record)
+            enforceRuntimeLimit(record)
+
+            synchronized(record.rows) {
+                if (record.rows.size >= record.maxRowsPerQuery) {
+                    record.rowLimitReached = true
+                    return
                 }
-            record.columns.clear()
-            record.columns.addAll(resolvedColumns)
 
-            while (resultSet.next()) {
-                throwIfCanceled(record)
-                enforceRuntimeLimit(record)
-
-                synchronized(record.rows) {
-                    if (record.rows.size >= record.maxRowsPerQuery) {
-                        record.rowLimitReached = true
-                        return@use
+                val row =
+                    (1..metadata.columnCount).map { index ->
+                        resultSet.getObject(index)?.toString()
                     }
-
-                    val row =
-                        (1..metadata.columnCount).map { index ->
-                            resultSet.getObject(index)?.toString()
-                        }
-                    record.rows.add(row)
-                }
+                record.rows.add(row)
             }
         }
     }
 
+    private fun buildSqlPreview(sql: String): String {
+        val normalized = SqlSafety.stripLeadingSqlComments(sql).trim()
+        val singleLine =
+            normalized
+                .lineSequence()
+                .firstOrNull()
+                ?.trim()
+                .orEmpty()
+        if (singleLine.isBlank()) {
+            return "(empty statement)"
+        }
+        val clipped = if (singleLine.length > 120) singleLine.take(117) + "..." else singleLine
+        return clipped
+    }
+
     private fun executeSqlInSimulation(record: QueryExecutionRecord) {
         val sql = record.sql.trim()
-        val normalizedSql = sql.lowercase(Locale.getDefault())
+        val normalizedSql = sql.lowercase(Locale.ROOT)
 
         val sleepMatch = Regex("pg_sleep\\((\\d+)\\)").find(normalizedSql)
         if (sleepMatch != null) {
@@ -1021,57 +1203,6 @@ class QueryExecutionManager(
         }
     }
 
-    private fun isReadOnlySql(sql: String): Boolean {
-        val normalizedSql = stripLeadingSqlComments(sql).trimStart().trimStart(';').trimStart()
-        if (normalizedSql.isBlank()) {
-            return true
-        }
-
-        val firstKeyword =
-            Regex("^[a-zA-Z]+")
-                .find(normalizedSql.lowercase(Locale.getDefault()))
-                ?.value
-                ?: return true
-
-        return when (firstKeyword) {
-            "select", "show", "describe", "desc", "explain", "values" -> true
-            "with" ->
-                !Regex(
-                    "\\b(insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|call|copy|refresh|vacuum)\\b",
-                    RegexOption.IGNORE_CASE,
-                ).containsMatchIn(normalizedSql)
-            else -> false
-        }
-    }
-
-    private fun stripLeadingSqlComments(sql: String): String {
-        var working = sql.trimStart()
-        while (working.isNotEmpty()) {
-            when {
-                working.startsWith("--") -> {
-                    val nextLineIndex = working.indexOf('\n')
-                    working =
-                        if (nextLineIndex < 0) {
-                            ""
-                        } else {
-                            working.substring(nextLineIndex + 1).trimStart()
-                        }
-                }
-                working.startsWith("/*") -> {
-                    val commentEndIndex = working.indexOf("*/")
-                    working =
-                        if (commentEndIndex < 0) {
-                            ""
-                        } else {
-                            working.substring(commentEndIndex + 2).trimStart()
-                        }
-                }
-                else -> return working
-            }
-        }
-        return working
-    }
-
     private fun terminalStatuses(): Set<QueryExecutionStatus> =
         setOf(QueryExecutionStatus.SUCCEEDED, QueryExecutionStatus.FAILED, QueryExecutionStatus.CANCELED)
 
@@ -1222,6 +1353,17 @@ class QueryExecutionManager(
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,
             credentialProfile = credentialProfile,
+            scriptSummary =
+                if (scriptStatementCount > 1 || scriptStatements.isNotEmpty()) {
+                    QueryScriptSummary(
+                        statementCount = scriptStatementCount,
+                        stopOnError = scriptStopOnError,
+                        transactionMode = scriptTransactionMode.name,
+                        statements = scriptStatements.toList(),
+                    )
+                } else {
+                    null
+                },
         )
 
     private fun QueryHistoryRecord.toResponse(): QueryHistoryEntryResponse {

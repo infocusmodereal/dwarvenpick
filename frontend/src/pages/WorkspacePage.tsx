@@ -54,6 +54,8 @@ import type {
     QueryHistoryEntryResponse,
     QueryResultsResponse,
     QueryRunMode,
+    QueryValidationResponse,
+    ScriptTransactionMode,
     QueryStatusEventResponse,
     ReencryptCredentialsResponse,
     ResultSortDirection,
@@ -243,7 +245,8 @@ const buildWorkspaceTab = (
     columnCount: 0,
     maxRowsPerQuery: 0,
     maxRuntimeSeconds: 0,
-    credentialProfile: ''
+    credentialProfile: '',
+    scriptSummary: null
 });
 
 const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
@@ -441,7 +444,12 @@ export default function WorkspacePage() {
     const [exportIncludeHeaders, setExportIncludeHeaders] = useState(true);
     const [exportingCsv, setExportingCsv] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [scriptStopOnError, setScriptStopOnError] = useState(true);
+    const [scriptTransactionMode, setScriptTransactionMode] =
+        useState<ScriptTransactionMode>('AUTOCOMMIT');
+    const [showScriptOptions, setShowScriptOptions] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
+    const [validatingSql, setValidatingSql] = useState(false);
     const [resultsPageSize, setResultsPageSize] = useState(500);
     const [resultSortState, setResultSortState] = useState<ResultSortState>(null);
     const [resultGridScrollTop, setResultGridScrollTop] = useState(0);
@@ -530,6 +538,7 @@ export default function WorkspacePage() {
     } | null>(null);
     const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
     const exportMenuRef = useRef<HTMLDivElement | null>(null);
+    const scriptOptionsRef = useRef<HTMLDivElement | null>(null);
     const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
         Record<string, boolean>
     >({});
@@ -542,8 +551,8 @@ export default function WorkspacePage() {
     const [selectedExplorerNode, setSelectedExplorerNode] = useState('');
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
-    const [, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(() =>
-        buildInitialAutocompleteDiagnostics()
+    const [autocompleteDiagnostics, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(
+        () => buildInitialAutocompleteDiagnostics()
     );
     const [editorRenderKey, setEditorRenderKey] = useState(0);
     const [showEditorShortcuts, setShowEditorShortcuts] = useState(false);
@@ -960,9 +969,27 @@ export default function WorkspacePage() {
     }, [showExportMenu]);
 
     useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !scriptOptionsRef.current?.contains(target)) {
+                setShowScriptOptions(false);
+            }
+        };
+
+        if (showScriptOptions) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [showScriptOptions]);
+
+    useEffect(() => {
         setActiveTabMenuOpen(false);
         setActiveTabMenuPosition(null);
         setShowExportMenu(false);
+        setShowScriptOptions(false);
     }, [activeTabId]);
 
     useEffect(() => {
@@ -1078,6 +1105,58 @@ export default function WorkspacePage() {
             .map((row) => row.filter((cell) => cell !== null).join(' | '))
             .join('\n');
     }, [activeTab]);
+
+    const analyzePlan = useMemo(() => {
+        if (
+            !activeTab ||
+            activeTab.lastRunKind !== 'analyze' ||
+            activeTab.resultRows.length === 0
+        ) {
+            return null;
+        }
+
+        const combined = activeTab.resultRows
+            .map((row) => row.filter((cell) => cell !== null).join(' '))
+            .join('\n')
+            .trim();
+        if (!combined) {
+            return null;
+        }
+
+        try {
+            const parsed = JSON.parse(combined) as unknown;
+            return {
+                kind: 'json' as const,
+                raw: combined,
+                json: parsed
+            };
+        } catch {
+            return {
+                kind: 'text' as const,
+                raw: combined
+            };
+        }
+    }, [activeTab]);
+
+    const scriptSummaryLabel = useMemo(() => {
+        const summary = activeTab?.scriptSummary;
+        if (!summary || summary.statementCount <= 1) {
+            return '';
+        }
+
+        const failures = summary.statements.filter(
+            (statement) => statement.status === 'FAILED'
+        ).length;
+        const successes = summary.statements.filter(
+            (statement) => statement.status === 'SUCCEEDED'
+        ).length;
+        const total = summary.statementCount;
+        if (failures > 0) {
+            return `Script: ${total} statements (${successes} succeeded, ${failures} failed)`;
+        }
+
+        return `Script: ${total} statements (${successes} succeeded)`;
+    }, [activeTab?.scriptSummary]);
 
     const executionDurationLabel = useMemo(() => {
         if (!activeTab?.startedAt || !activeTab?.completedAt) {
@@ -1466,7 +1545,8 @@ export default function WorkspacePage() {
                         columnCount: 0,
                         maxRowsPerQuery: 0,
                         maxRuntimeSeconds: 0,
-                        credentialProfile: ''
+                        credentialProfile: '',
+                        scriptSummary: null
                     })) ?? [];
 
             const tabsToUse =
@@ -2663,6 +2743,7 @@ export default function WorkspacePage() {
                     maxRowsPerQuery: payload.maxRowsPerQuery,
                     maxRuntimeSeconds: payload.maxRuntimeSeconds,
                     credentialProfile: payload.credentialProfile,
+                    scriptSummary: payload.scriptSummary ?? null,
                     isExecuting: !terminal
                 };
             });
@@ -2850,12 +2931,22 @@ export default function WorkspacePage() {
         [activeTabId, clearQueryStatusPolling, handleCancelRun, visibleDatasources, workspaceTabs]
     );
 
+    const clearValidationMarkers = useCallback(() => {
+        const monaco = monacoRef.current;
+        const model = editorRef.current?.getModel();
+        if (!monaco || !model) {
+            return;
+        }
+
+        monaco.editor.setModelMarkers(model, 'dwarvenpick-validation', []);
+    }, []);
+
     const executeSqlForTab = useCallback(
         async (
             tabId: string,
             sqlText: string,
             modeLabel: QueryRunMode,
-            runKind: 'query' | 'explain' = 'query'
+            runKind: 'query' | 'explain' | 'analyze' | 'script' = 'query'
         ) => {
             const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
             if (!tab) {
@@ -2899,6 +2990,7 @@ export default function WorkspacePage() {
                 return;
             }
 
+            clearValidationMarkers();
             updateWorkspaceTab(tabId, (currentTab) => ({
                 ...currentTab,
                 isExecuting: true,
@@ -2920,14 +3012,19 @@ export default function WorkspacePage() {
                 maxRowsPerQuery: 0,
                 maxRuntimeSeconds: 0,
                 credentialProfile: '',
+                scriptSummary: null,
                 statusMessage:
                     modeLabel === 'selection'
                         ? 'Running selected SQL...'
                         : modeLabel === 'statement'
                           ? 'Running statement at cursor...'
-                          : modeLabel === 'explain'
-                            ? 'Running EXPLAIN...'
-                            : 'Running full tab SQL...',
+                          : modeLabel === 'script'
+                            ? 'Running script...'
+                            : modeLabel === 'explain'
+                              ? 'Running EXPLAIN...'
+                              : modeLabel === 'analyze'
+                                ? 'Running analysis...'
+                                : 'Running full tab SQL...',
                 errorMessage: ''
             }));
 
@@ -2940,6 +3037,11 @@ export default function WorkspacePage() {
                 const requestedCredentialProfile = tab.requestedCredentialProfile.trim();
                 if (isSystemAdmin && requestedCredentialProfile) {
                     requestPayload.credentialProfile = requestedCredentialProfile;
+                }
+                if (modeLabel === 'script') {
+                    requestPayload.scriptMode = true;
+                    requestPayload.stopOnError = scriptStopOnError;
+                    requestPayload.transactionMode = scriptTransactionMode;
                 }
                 const response = await fetch('/api/queries', {
                     method: 'POST',
@@ -2978,9 +3080,12 @@ export default function WorkspacePage() {
         },
         [
             clearQueryStatusPolling,
+            clearValidationMarkers,
             fetchCsrfToken,
             isSystemAdmin,
             readFriendlyError,
+            scriptStopOnError,
+            scriptTransactionMode,
             startQueryStatusPolling,
             updateWorkspaceTab,
             visibleDatasources
@@ -3019,12 +3124,12 @@ export default function WorkspacePage() {
         };
     }, []);
 
-    const handleRunAll = useCallback(() => {
+    const handleRunScript = useCallback(() => {
         if (!activeTab) {
             return;
         }
 
-        void executeSqlForTab(activeTab.id, activeTab.queryText, 'all');
+        void executeSqlForTab(activeTab.id, activeTab.queryText, 'script', 'script');
     }, [activeTab, executeSqlForTab]);
 
     const handleRunSelection = useCallback(() => {
@@ -3053,6 +3158,34 @@ export default function WorkspacePage() {
             : `EXPLAIN ${sqlToExplain}`;
         void executeSqlForTab(activeTab.id, explainSql, 'explain', 'explain');
     }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab]);
+
+    const handleAnalyze = useCallback(() => {
+        if (!activeTab) {
+            return;
+        }
+
+        const resolvedSql = resolveRunnableSqlForTab(activeTab);
+        const sqlToAnalyze = resolvedSql.sql.trim();
+        if (!sqlToAnalyze) {
+            setCopyFeedback('Select SQL text first, or use Run Selection.');
+            return;
+        }
+
+        const engine = selectedDatasource?.engine ?? '';
+        const normalizedSql = sqlToAnalyze.replace(/;+\s*$/, '').trim();
+        const analyzeSql =
+            /^explain\b/i.test(normalizedSql) || !normalizedSql
+                ? normalizedSql
+                : engine === 'POSTGRESQL'
+                  ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${normalizedSql}`
+                  : engine === 'MYSQL' || engine === 'MARIADB'
+                    ? `EXPLAIN FORMAT=JSON ${normalizedSql}`
+                    : engine === 'TRINO'
+                      ? `EXPLAIN ANALYZE ${normalizedSql}`
+                      : `EXPLAIN ${normalizedSql}`;
+
+        void executeSqlForTab(activeTab.id, analyzeSql, 'analyze', 'analyze');
+    }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, selectedDatasource?.engine]);
 
     const handleLoadNextResults = useCallback(() => {
         if (!activeTab || !activeTab.executionId || !activeTab.nextPageToken) {
@@ -3309,6 +3442,101 @@ export default function WorkspacePage() {
             setCopyFeedback(message);
         }
     }, [activeTab, updateWorkspaceTab]);
+
+    const applyValidationMarkers = useCallback((payload: QueryValidationResponse) => {
+        const monaco = monacoRef.current;
+        const editor = editorRef.current;
+        const model = editor?.getModel();
+        if (!monaco || !editor || !model) {
+            return;
+        }
+
+        if (payload.valid) {
+            monaco.editor.setModelMarkers(model, 'dwarvenpick-validation', []);
+            return;
+        }
+
+        const lineCount = model.getLineCount();
+        const requestedLine = payload.line ?? 1;
+        const requestedColumn = payload.column ?? 1;
+        const line = Math.min(Math.max(1, requestedLine), lineCount);
+        const maxColumn = model.getLineMaxColumn(line);
+        const column = Math.min(Math.max(1, requestedColumn), maxColumn);
+        const endColumn = Math.min(maxColumn, column + 1);
+
+        monaco.editor.setModelMarkers(model, 'dwarvenpick-validation', [
+            {
+                severity: monaco.MarkerSeverity.Error,
+                message: payload.message,
+                startLineNumber: line,
+                startColumn: column,
+                endLineNumber: line,
+                endColumn
+            }
+        ]);
+    }, []);
+
+    const handleValidateSql = useCallback(async () => {
+        if (!activeTab) {
+            return;
+        }
+
+        const datasourceId = activeTab.datasourceId.trim();
+        if (!datasourceId) {
+            setCopyFeedback('Select a connection before validating SQL.');
+            return;
+        }
+
+        const resolvedSql = resolveRunnableSqlForTab(activeTab);
+        const sql = resolvedSql.sql.trim();
+        if (!sql) {
+            setCopyFeedback('Select SQL text first, or use Run Script.');
+            return;
+        }
+
+        setValidatingSql(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const requestPayload: Record<string, unknown> = {
+                datasourceId,
+                sql
+            };
+            const requestedCredentialProfile = activeTab.requestedCredentialProfile.trim();
+            if (isSystemAdmin && requestedCredentialProfile) {
+                requestPayload.credentialProfile = requestedCredentialProfile;
+            }
+
+            const response = await fetch('/api/queries/validate', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    [csrfToken.headerName]: csrfToken.token
+                },
+                body: JSON.stringify(requestPayload)
+            });
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const payload = (await response.json()) as QueryValidationResponse;
+            applyValidationMarkers(payload);
+            setCopyFeedback(payload.valid ? 'Validation succeeded.' : payload.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Validation failed.';
+            setCopyFeedback(message);
+        } finally {
+            setValidatingSql(false);
+        }
+    }, [
+        activeTab,
+        applyValidationMarkers,
+        fetchCsrfToken,
+        isSystemAdmin,
+        readFriendlyError,
+        resolveRunnableSqlForTab
+    ]);
 
     const persistSnippet = useCallback(
         async (title: string, sqlText: string, groupId: string | null) => {
@@ -6289,6 +6517,69 @@ export default function WorkspacePage() {
                                     >
                                         {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
                                     </button>
+                                    <div className="script-options-wrapper" ref={scriptOptionsRef}>
+                                        <button
+                                            type="button"
+                                            disabled={
+                                                !activeTab ||
+                                                activeTab.isExecuting ||
+                                                !selectedDatasource
+                                            }
+                                            onClick={handleRunScript}
+                                        >
+                                            Run Script
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="chip"
+                                            disabled={!activeTab || activeTab.isExecuting}
+                                            onClick={() =>
+                                                setShowScriptOptions((current) => !current)
+                                            }
+                                        >
+                                            Options
+                                        </button>
+                                        {showScriptOptions ? (
+                                            <div className="script-options-popover" role="dialog">
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={scriptStopOnError}
+                                                        onChange={(event) =>
+                                                            setScriptStopOnError(
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Stop on error</span>
+                                                </label>
+                                                <div className="script-option-row">
+                                                    <label htmlFor="script-transaction-mode">
+                                                        Transaction
+                                                    </label>
+                                                    <div className="select-wrap">
+                                                        <select
+                                                            id="script-transaction-mode"
+                                                            value={scriptTransactionMode}
+                                                            onChange={(event) =>
+                                                                setScriptTransactionMode(
+                                                                    event.target
+                                                                        .value as ScriptTransactionMode
+                                                                )
+                                                            }
+                                                        >
+                                                            <option value="AUTOCOMMIT">
+                                                                Autocommit
+                                                            </option>
+                                                            <option value="TRANSACTION">
+                                                                Single transaction
+                                                            </option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
                                     <button
                                         type="button"
                                         disabled={
@@ -6296,9 +6587,9 @@ export default function WorkspacePage() {
                                             activeTab.isExecuting ||
                                             !selectedDatasource
                                         }
-                                        onClick={handleRunAll}
+                                        onClick={handleAnalyze}
                                     >
-                                        Run All
+                                        Analyze
                                     </button>
                                     <button
                                         type="button"
@@ -6310,6 +6601,15 @@ export default function WorkspacePage() {
                                         onClick={handleExplain}
                                     >
                                         Explain
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            !activeTab || validatingSql || !selectedDatasource
+                                        }
+                                        onClick={() => void handleValidateSql()}
+                                    >
+                                        {validatingSql ? 'Validating...' : 'Validate'}
                                     </button>
                                     <button
                                         type="button"
@@ -6365,6 +6665,64 @@ export default function WorkspacePage() {
                                                         execution
                                                     </li>
                                                 </ul>
+                                                {isSystemAdmin ? (
+                                                    <details className="editor-diagnostics">
+                                                        <summary>Autocomplete diagnostics</summary>
+                                                        <dl>
+                                                            <div>
+                                                                <dt>Enabled</dt>
+                                                                <dd>
+                                                                    {autocompleteDiagnostics.enabled
+                                                                        ? 'Yes'
+                                                                        : 'No'}
+                                                                </dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt>Monaco ready</dt>
+                                                                <dd>
+                                                                    {autocompleteDiagnostics.monacoReady
+                                                                        ? 'Yes'
+                                                                        : 'No'}
+                                                                </dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt>Language</dt>
+                                                                <dd>
+                                                                    {autocompleteDiagnostics.modelLanguageId ||
+                                                                        '-'}
+                                                                </dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt>Seeds</dt>
+                                                                <dd>
+                                                                    {autocompleteDiagnostics.suggestionSeedCount.toLocaleString()}
+                                                                </dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt>Triggers</dt>
+                                                                <dd>
+                                                                    {autocompleteDiagnostics.triggerCount.toLocaleString()}
+                                                                </dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt>Invocations</dt>
+                                                                <dd>
+                                                                    {autocompleteDiagnostics.providerInvocationCount.toLocaleString()}
+                                                                </dd>
+                                                            </div>
+                                                            {autocompleteDiagnostics.lastError ? (
+                                                                <div>
+                                                                    <dt>Error</dt>
+                                                                    <dd>
+                                                                        {
+                                                                            autocompleteDiagnostics.lastError
+                                                                        }
+                                                                    </dd>
+                                                                </div>
+                                                            ) : null}
+                                                        </dl>
+                                                    </details>
+                                                ) : null}
                                             </div>
                                         ) : null}
                                     </div>
@@ -6453,6 +6811,37 @@ export default function WorkspacePage() {
                                         </div>
                                     </div>
                                 ) : null}
+                                {scriptSummaryLabel && activeTab?.scriptSummary ? (
+                                    <details className="script-summary">
+                                        <summary>{scriptSummaryLabel}</summary>
+                                        <div className="script-summary-body">
+                                            <table className="script-summary-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>#</th>
+                                                        <th>Status</th>
+                                                        <th>Statement</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {activeTab.scriptSummary.statements.map(
+                                                        (statement) => (
+                                                            <tr key={`stmt-${statement.index}`}>
+                                                                <td>
+                                                                    {statement.index.toLocaleString()}
+                                                                </td>
+                                                                <td>{statement.status}</td>
+                                                                <td title={statement.message}>
+                                                                    {statement.sqlPreview}
+                                                                </td>
+                                                            </tr>
+                                                        )
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </details>
+                                ) : null}
                                 {activeTab?.statusMessage && !hideRedundantResultStatusMessage ? (
                                     <p>{activeTab.statusMessage}</p>
                                 ) : null}
@@ -6473,6 +6862,16 @@ export default function WorkspacePage() {
                                     <div className="explain-plan">
                                         <h3>Explain Plan</h3>
                                         <pre>{explainPlanText}</pre>
+                                    </div>
+                                ) : null}
+                                {analyzePlan ? (
+                                    <div className="analysis-plan">
+                                        <h3>Analysis</h3>
+                                        <pre>
+                                            {analyzePlan.kind === 'json'
+                                                ? JSON.stringify(analyzePlan.json, null, 2)
+                                                : analyzePlan.raw}
+                                        </pre>
                                     </div>
                                 ) : null}
                                 {activeTab?.executionStatus === 'SUCCEEDED' &&

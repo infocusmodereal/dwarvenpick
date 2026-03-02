@@ -12,6 +12,11 @@ enum class QueryExecutionStatus {
     CANCELED,
 }
 
+enum class ScriptTransactionMode {
+    AUTOCOMMIT,
+    TRANSACTION,
+}
+
 data class QueryExecutionRequest(
     @field:NotBlank(message = "datasourceId is required.")
     val datasourceId: String = "",
@@ -23,6 +28,24 @@ data class QueryExecutionRequest(
      * When omitted, the backend resolves the effective credential profile via RBAC rules (or SYSTEM_ADMIN defaults).
      */
     val credentialProfile: String? = null,
+    /**
+     * When true, the backend will split SQL into statements and execute them sequentially.
+     *
+     * Notes:
+     * - The backend may still execute in script mode automatically when multiple statements are detected.
+     * - Read-only RBAC enforcement applies to *every* statement when running in script mode.
+     */
+    val scriptMode: Boolean = false,
+    /**
+     * Script execution behavior: when false, the backend attempts to continue after statement errors.
+     * The overall execution is still marked failed when any statement fails.
+     */
+    val stopOnError: Boolean = true,
+    /**
+     * Script execution behavior: AUTOCOMMIT executes each statement independently; TRANSACTION runs all statements
+     * in one transaction where supported.
+     */
+    val transactionMode: ScriptTransactionMode = ScriptTransactionMode.AUTOCOMMIT,
 )
 
 data class QueryExecutionResponse(
@@ -56,6 +79,7 @@ data class QueryExecutionStatusResponse(
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val credentialProfile: String,
+    val scriptSummary: QueryScriptSummary? = null,
 )
 
 data class QueryResultsRequest(
@@ -118,4 +142,18 @@ data class QueryHistoryEntryResponse(
     val startedAt: String?,
     val completedAt: String?,
     val durationMs: Long?,
+)
+
+data class QueryScriptSummary(
+    val statementCount: Int,
+    val stopOnError: Boolean,
+    val transactionMode: String,
+    val statements: List<QueryScriptStatementSummary>,
+)
+
+data class QueryScriptStatementSummary(
+    val index: Int,
+    val status: String,
+    val sqlPreview: String,
+    val message: String,
 )
