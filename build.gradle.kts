@@ -6,7 +6,7 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2" apply false
 }
 
-val defaultDevVersion = "0.2.2-SNAPSHOT"
+val defaultDevVersion = "0.2.3-SNAPSHOT"
 val computedVersion =
     System.getenv("DWARVENPICK_VERSION")?.trim()?.takeIf { it.isNotBlank() }
         ?: System.getenv("GITHUB_REF_NAME")
