@@ -6567,39 +6567,43 @@ export default function WorkspacePage() {
 
                             <div className="editor-action-row">
                                 <div className="row editor-primary-actions">
-                                    <button
-                                        type="button"
+                                    <IconButton
+                                        icon="play"
+                                        title={
+                                            activeTab?.isExecuting
+                                                ? 'Running selection...'
+                                                : 'Run Selection'
+                                        }
+                                        onClick={handleRunSelection}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !selectedDatasource
                                         }
-                                        onClick={handleRunSelection}
-                                    >
-                                        {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
-                                    </button>
+                                    />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
-                                        <button
-                                            type="button"
+                                        <IconButton
+                                            icon="circle-play"
+                                            title={
+                                                activeTab?.isExecuting
+                                                    ? 'Running script...'
+                                                    : 'Run Script'
+                                            }
+                                            onClick={handleRunScript}
                                             disabled={
                                                 !activeTab ||
                                                 activeTab.isExecuting ||
                                                 !selectedDatasource
                                             }
-                                            onClick={handleRunScript}
-                                        >
-                                            Run Script
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="chip"
-                                            disabled={!activeTab || activeTab.isExecuting}
+                                        />
+                                        <IconButton
+                                            icon="settings"
+                                            title="Options"
                                             onClick={() =>
                                                 setShowScriptOptions((current) => !current)
                                             }
-                                        >
-                                            Options
-                                        </button>
+                                            disabled={!activeTab || activeTab.isExecuting}
+                                        />
                                         {showScriptOptions ? (
                                             <div className="script-options-popover" role="dialog">
                                                 <label className="checkbox-row">
@@ -6641,59 +6645,40 @@ export default function WorkspacePage() {
                                             </div>
                                         ) : null}
                                     </div>
-                                    <button
-                                        type="button"
-                                        disabled={
-                                            !activeTab ||
-                                            activeTab.isExecuting ||
-                                            !selectedDatasource
-                                        }
+                                    <IconButton
+                                        icon="activity"
+                                        title="Analyze"
                                         onClick={handleAnalyze}
-                                    >
-                                        Analyze
-                                    </button>
-                                    <button
-                                        type="button"
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !selectedDatasource
                                         }
+                                    />
+                                    <IconButton
+                                        icon="file-text"
+                                        title="Explain"
                                         onClick={handleExplain}
-                                    >
-                                        Explain
-                                    </button>
-                                    <button
-                                        type="button"
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !selectedDatasource
+                                        }
+                                    />
+                                    <IconButton
+                                        icon="shield-check"
+                                        title={validatingSql ? 'Validating...' : 'Validate'}
+                                        onClick={() => void handleValidateSql()}
                                         disabled={
                                             !activeTab || validatingSql || !selectedDatasource
                                         }
-                                        onClick={() => void handleValidateSql()}
-                                    >
-                                        {validatingSql ? 'Validating...' : 'Validate'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!activeTab || activeTab.isExecuting}
+                                    />
+                                    <IconButton
+                                        icon="align-start-horizontal"
+                                        title="Format SQL"
                                         onClick={handleFormatSql}
-                                    >
-                                        Format SQL
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!activeTab || !activeTab.isExecuting}
-                                        onClick={() => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            void handleCancelRun(activeTab.id);
-                                        }}
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                                <div className="row editor-secondary-actions">
+                                        disabled={!activeTab || activeTab.isExecuting}
+                                    />
                                     <button
                                         type="button"
                                         className="chip"
@@ -6702,6 +6687,20 @@ export default function WorkspacePage() {
                                     >
                                         {savingSnippet ? 'Saving...' : 'Save Snippet'}
                                     </button>
+                                    <IconButton
+                                        icon="close"
+                                        title="Cancel"
+                                        onClick={() => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+
+                                            void handleCancelRun(activeTab.id);
+                                        }}
+                                        disabled={!activeTab || !activeTab.isExecuting}
+                                    />
+                                </div>
+                                <div className="row editor-secondary-actions">
                                     <div
                                         className="editor-shortcuts-wrapper"
                                         ref={editorShortcutsRef}

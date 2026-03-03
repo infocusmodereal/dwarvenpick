@@ -359,7 +359,14 @@ export type IconGlyph =
     | 'copy'
     | 'info'
     | 'delete'
-    | 'download';
+    | 'download'
+    | 'play'
+    | 'circle-play'
+    | 'align-start-horizontal'
+    | 'activity'
+    | 'file-text'
+    | 'shield-check'
+    | 'settings';
 export type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 export type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
 export type DatasourceHealthState = 'active' | 'inactive' | 'unknown';

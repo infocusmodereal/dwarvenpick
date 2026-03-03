@@ -1,9 +1,9 @@
 import railWorkbenchIcon from '../assets/lucide/layout-panel-top.svg?raw';
 import railHistoryIcon from '../assets/lucide/history.svg?raw';
-import railSnippetsIcon from '../assets/lucide/file-text.svg?raw';
-import railAuditIcon from '../assets/lucide/shield-check.svg?raw';
-import railAdminIcon from '../assets/lucide/settings.svg?raw';
-import railHealthIcon from '../assets/lucide/activity.svg?raw';
+import fileTextIcon from '../assets/lucide/file-text.svg?raw';
+import shieldCheckIcon from '../assets/lucide/shield-check.svg?raw';
+import settingsIcon from '../assets/lucide/settings.svg?raw';
+import activityIcon from '../assets/lucide/activity.svg?raw';
 import railConnectionsIcon from '../assets/lucide/database.svg?raw';
 import railCollapseIcon from '../assets/lucide/panel-left-close.svg?raw';
 import railMenuIcon from '../assets/lucide/panel-left-open.svg?raw';
@@ -25,6 +25,9 @@ import trashIcon from '../assets/lucide/trash-2.svg?raw';
 import sortUpIcon from '../assets/lucide/arrow-up.svg?raw';
 import sortDownIcon from '../assets/lucide/arrow-down.svg?raw';
 import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
+import playIcon from '../assets/lucide/play.svg?raw';
+import circlePlayIcon from '../assets/lucide/circle-play.svg?raw';
+import alignStartHorizontalIcon from '../assets/lucide/align-start-horizontal.svg?raw';
 
 import type { DatasourceEngine, ExplorerGlyph, RailGlyph } from './types';
 
@@ -40,10 +43,10 @@ export const datasourceIconByEngine: Record<DatasourceEngine, string> = {
 export const railIconSvgByGlyph: Record<RailGlyph, string> = {
     workbench: railWorkbenchIcon,
     history: railHistoryIcon,
-    snippets: railSnippetsIcon,
-    audit: railAuditIcon,
-    health: railHealthIcon,
-    admin: railAdminIcon,
+    snippets: fileTextIcon,
+    audit: shieldCheckIcon,
+    health: activityIcon,
+    admin: settingsIcon,
     connections: railConnectionsIcon,
     collapse: railCollapseIcon,
     menu: railMenuIcon,
@@ -71,13 +74,20 @@ export const resolveDatasourceIcon = (engine?: string): string => {
 };
 
 export {
+    activityIcon,
+    alignStartHorizontalIcon,
+    circlePlayIcon,
     chevronDownIcon,
     chevronRightIcon,
     downloadIcon,
     explorerInsertIcon,
+    fileTextIcon,
     pencilIcon,
+    playIcon,
     plusIcon,
     refreshCwIcon,
+    settingsIcon,
+    shieldCheckIcon,
     sortDownIcon,
     sortNeutralIcon,
     sortUpIcon,
