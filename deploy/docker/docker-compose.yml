@@ -76,6 +76,12 @@ services:
         echo "StarRocks seeded."
     restart: "no"
 
+  trino:
+    image: trinodb/trino:479
+    container_name: dwarvenpick-trino
+    ports:
+      - "8088:8080"
+
   backend:
     build:
       context: ../../
@@ -100,6 +106,11 @@ services:
       DWARVENPICK_SEED_MARIADB_DATABASE: warehouse
       DWARVENPICK_SEED_MARIADB_USERNAME: readonly
       DWARVENPICK_SEED_MARIADB_PASSWORD: readonly
+      DWARVENPICK_SEED_TRINO_HOST: trino
+      DWARVENPICK_SEED_TRINO_PORT: 8080
+      DWARVENPICK_SEED_TRINO_DATABASE: tpch/sf1
+      DWARVENPICK_SEED_TRINO_USERNAME: trino
+      DWARVENPICK_SEED_TRINO_PASSWORD: trino
       DWARVENPICK_SEED_STARROCKS_HOST: starrocks
       DWARVENPICK_SEED_STARROCKS_PORT: 9030
       DWARVENPICK_SEED_STARROCKS_DATABASE: warehouse
@@ -112,6 +123,7 @@ services:
       - postgres
       - mysql
       - mariadb
+      - trino
       - starrocks
       - starrocks-seed
     volumes:

@@ -197,7 +197,7 @@ class DatasourceRegistryService(
                         port = trino.port,
                         database = trino.database,
                         driverId = "trino-default",
-                        tls = TlsSettings(mode = TlsMode.REQUIRE, verifyServerCertificate = false),
+                        tls = TlsSettings(mode = TlsMode.DISABLE),
                     ),
                 ).id
             upsertCredentialProfile(
