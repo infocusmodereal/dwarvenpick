@@ -52,7 +52,7 @@ data class SeedTrinoProperties(
     val enabled: Boolean = true,
     val host: String = "localhost",
     val port: Int = 8088,
-    val database: String = "hive.default",
+    val database: String = "tpch/sf1",
     val username: String = "trino",
     val password: String = "trino",
 )

@@ -5,13 +5,20 @@ import type {
     RailGlyph
 } from '../types';
 import {
+    activityIcon,
+    alignStartHorizontalIcon,
+    circlePlayIcon,
     downloadIcon,
     explorerIconSvgByGlyph,
     explorerInsertIcon,
+    fileTextIcon,
     pencilIcon,
+    playIcon,
     plusIcon,
     railIconSvgByGlyph,
     refreshCwIcon,
+    settingsIcon,
+    shieldCheckIcon,
     tabCloseIcon,
     tabMenuIcon,
     trashIcon
@@ -63,6 +70,90 @@ export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
         );
     }
 
+    if (icon === 'play') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: playIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'circle-play') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: circlePlayIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'align-start-horizontal') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: alignStartHorizontalIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'activity') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: activityIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'file-text') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: fileTextIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'shield-check') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: shieldCheckIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'settings') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: settingsIcon
+                }}
+            />
+        );
+    }
+
     if (icon === 'copy') {
         return (
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -103,6 +194,18 @@ export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
                 aria-hidden
                 dangerouslySetInnerHTML={{
                     __html: downloadIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'close') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: tabCloseIcon
                 }}
             />
         );

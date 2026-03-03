@@ -22,6 +22,7 @@ import AppShell from '../components/AppShell';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
 import { useTheme } from '../theme/ThemeContext';
+import { createPortal } from 'react-dom';
 import type {
     AccessAdminMode,
     AdminSubsection,
@@ -474,6 +475,7 @@ export default function WorkspacePage() {
         startHeight: number;
         editorMinHeight: number;
         resultsMinHeight: number;
+        resizerHeight: number;
     } | null>(null);
 
     const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
@@ -539,6 +541,12 @@ export default function WorkspacePage() {
     const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
     const exportMenuRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsRef = useRef<HTMLDivElement | null>(null);
+    const scriptOptionsAnchorRef = useRef<HTMLDivElement | null>(null);
+    const scriptOptionsPopoverRef = useRef<HTMLDivElement | null>(null);
+    const [scriptOptionsPosition, setScriptOptionsPosition] = useState<{
+        top: number;
+        left: number;
+    } | null>(null);
     const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
         Record<string, boolean>
     >({});
@@ -586,6 +594,21 @@ export default function WorkspacePage() {
         }
     }, [workbenchResultsSizePx]);
 
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor) {
+            return;
+        }
+
+        const raf = window.requestAnimationFrame(() => {
+            editor.layout();
+        });
+
+        return () => {
+            window.cancelAnimationFrame(raf);
+        };
+    }, [showSchemaBrowser, workbenchResultsSizePx]);
+
     const handleResultsResizerPointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
             if (event.button !== 0) {
@@ -607,6 +630,10 @@ export default function WorkspacePage() {
                 computed.getPropertyValue('--workbench-results-min-height'),
                 220
             );
+            const resizerHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-results-resizer-height'),
+                20
+            );
             const startHeight = results.getBoundingClientRect().height;
 
             resultsResizeStateRef.current = {
@@ -614,7 +641,8 @@ export default function WorkspacePage() {
                 startY: event.clientY,
                 startHeight,
                 editorMinHeight,
-                resultsMinHeight
+                resultsMinHeight,
+                resizerHeight
             };
 
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -638,7 +666,7 @@ export default function WorkspacePage() {
             const containerHeight = grid.getBoundingClientRect().height;
             const maxHeight = Math.max(
                 state.resultsMinHeight,
-                Math.floor(containerHeight - state.editorMinHeight)
+                Math.floor(containerHeight - state.editorMinHeight - state.resizerHeight)
             );
 
             const deltaY = event.clientY - state.startY;
@@ -703,10 +731,14 @@ export default function WorkspacePage() {
                 computed.getPropertyValue('--workbench-results-min-height'),
                 220
             );
+            const resultsResizerHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-results-resizer-height'),
+                20
+            );
             const containerHeight = grid.getBoundingClientRect().height;
             const maxHeight = Math.max(
                 resultsMinHeight,
-                Math.floor(containerHeight - editorMinHeight)
+                Math.floor(containerHeight - editorMinHeight - resultsResizerHeight)
             );
 
             const currentHeight = workbenchResultsSizePx ?? results.getBoundingClientRect().height;
@@ -971,7 +1003,11 @@ export default function WorkspacePage() {
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
             const target = event.target as Node | null;
-            if (!target || !scriptOptionsRef.current?.contains(target)) {
+            if (
+                !target ||
+                (!scriptOptionsRef.current?.contains(target) &&
+                    !scriptOptionsPopoverRef.current?.contains(target))
+            ) {
                 setShowScriptOptions(false);
             }
         };
@@ -985,11 +1021,53 @@ export default function WorkspacePage() {
         };
     }, [showScriptOptions]);
 
+    const updateScriptOptionsPosition = useCallback(() => {
+        const anchor = scriptOptionsAnchorRef.current;
+        if (!anchor) {
+            return;
+        }
+
+        const triggerRect = anchor.getBoundingClientRect();
+        const viewportPadding = 12;
+        const estimatedWidth = 240;
+        const maxLeft = Math.max(
+            viewportPadding,
+            window.innerWidth - estimatedWidth - viewportPadding
+        );
+        const left = Math.min(Math.max(viewportPadding, triggerRect.left), maxLeft);
+
+        setScriptOptionsPosition({
+            top: triggerRect.bottom + 6,
+            left
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!showScriptOptions) {
+            setScriptOptionsPosition(null);
+            return;
+        }
+
+        updateScriptOptionsPosition();
+
+        const handleViewportChange = () => {
+            updateScriptOptionsPosition();
+        };
+
+        window.addEventListener('resize', handleViewportChange);
+        window.addEventListener('scroll', handleViewportChange, true);
+        return () => {
+            window.removeEventListener('resize', handleViewportChange);
+            window.removeEventListener('scroll', handleViewportChange, true);
+        };
+    }, [showScriptOptions, updateScriptOptionsPosition]);
+
     useEffect(() => {
         setActiveTabMenuOpen(false);
         setActiveTabMenuPosition(null);
         setShowExportMenu(false);
         setShowScriptOptions(false);
+        setScriptOptionsPosition(null);
     }, [activeTabId]);
 
     useEffect(() => {
@@ -2468,6 +2546,19 @@ export default function WorkspacePage() {
         }
 
         const completionItems = Array.from(suggestions.values());
+        const labelToString = (label: CompletionSeed['label']): string =>
+            typeof label === 'string' ? label : label.label;
+        completionItems.sort((left, right) => {
+            const leftSortKey = left.sortText ?? '';
+            const rightSortKey = right.sortText ?? '';
+            if (leftSortKey !== rightSortKey) {
+                return leftSortKey.localeCompare(rightSortKey);
+            }
+
+            return labelToString(left.label)
+                .toLowerCase()
+                .localeCompare(labelToString(right.label).toLowerCase());
+        });
         const availableLanguageIds = new Set(
             monaco.languages.getLanguages().map((language) => language.id)
         );
@@ -2505,17 +2596,40 @@ export default function WorkspacePage() {
                                 endColumn: word.endColumn
                             };
                             const normalizedWord = word.word.trim().toLowerCase();
-                            const filteredSuggestions = (
-                                normalizedWord
+
+                            const linePrefix = model.getValueInRange({
+                                startLineNumber: position.lineNumber,
+                                startColumn: 1,
+                                endLineNumber: position.lineNumber,
+                                endColumn: position.column
+                            });
+                            const lastTypedChar = linePrefix.slice(-1);
+                            const inDotContext = lastTypedChar === '.';
+                            const inFromContext = /\b(from|join)\s+$/i.test(linePrefix);
+
+                            const contextualPool =
+                                inDotContext || inFromContext
                                     ? completionItems.filter((candidate) => {
-                                          const label =
-                                              typeof candidate.label === 'string'
-                                                  ? candidate.label
-                                                  : candidate.label.label;
-                                          return label.toLowerCase().includes(normalizedWord);
+                                          const sortKey = candidate.sortText ?? '';
+                                          if (inDotContext) {
+                                              return (
+                                                  sortKey.startsWith('1-') ||
+                                                  sortKey.startsWith('2-')
+                                              );
+                                          }
+
+                                          return sortKey.startsWith('1-');
                                       })
-                                    : completionItems
-                            ).slice(0, 250);
+                                    : completionItems;
+
+                            const candidates = normalizedWord
+                                ? contextualPool.filter((candidate) =>
+                                      labelToString(candidate.label)
+                                          .toLowerCase()
+                                          .includes(normalizedWord)
+                                  )
+                                : contextualPool;
+                            const filteredSuggestions = candidates.slice(0, 500);
                             const occurredAt = new Date().toISOString();
                             setAutocompleteDiagnostics((current) => ({
                                 ...current,
@@ -6506,133 +6620,142 @@ export default function WorkspacePage() {
 
                             <div className="editor-action-row">
                                 <div className="row editor-primary-actions">
-                                    <button
-                                        type="button"
+                                    <IconButton
+                                        icon="play"
+                                        title={
+                                            activeTab?.isExecuting
+                                                ? 'Running selection...'
+                                                : 'Run Selection'
+                                        }
+                                        onClick={handleRunSelection}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !selectedDatasource
                                         }
-                                        onClick={handleRunSelection}
-                                    >
-                                        {activeTab?.isExecuting ? 'Running...' : 'Run Selection'}
-                                    </button>
+                                    />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
-                                        <button
-                                            type="button"
+                                        <IconButton
+                                            icon="circle-play"
+                                            title={
+                                                activeTab?.isExecuting
+                                                    ? 'Running script...'
+                                                    : 'Run Script'
+                                            }
+                                            onClick={handleRunScript}
                                             disabled={
                                                 !activeTab ||
                                                 activeTab.isExecuting ||
                                                 !selectedDatasource
                                             }
-                                            onClick={handleRunScript}
+                                        />
+                                        <div
+                                            className="script-options-anchor"
+                                            ref={scriptOptionsAnchorRef}
                                         >
-                                            Run Script
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="chip"
-                                            disabled={!activeTab || activeTab.isExecuting}
-                                            onClick={() =>
-                                                setShowScriptOptions((current) => !current)
-                                            }
-                                        >
-                                            Options
-                                        </button>
-                                        {showScriptOptions ? (
-                                            <div className="script-options-popover" role="dialog">
-                                                <label className="checkbox-row">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={scriptStopOnError}
-                                                        onChange={(event) =>
-                                                            setScriptStopOnError(
-                                                                event.target.checked
-                                                            )
+                                            <IconButton
+                                                icon="settings"
+                                                title="Options"
+                                                onClick={() =>
+                                                    setShowScriptOptions((current) => {
+                                                        const next = !current;
+                                                        if (next) {
+                                                            updateScriptOptionsPosition();
+                                                        } else {
+                                                            setScriptOptionsPosition(null);
                                                         }
-                                                    />
-                                                    <span>Stop on error</span>
-                                                </label>
-                                                <div className="script-option-row">
-                                                    <label htmlFor="script-transaction-mode">
-                                                        Transaction
-                                                    </label>
-                                                    <div className="select-wrap">
-                                                        <select
-                                                            id="script-transaction-mode"
-                                                            value={scriptTransactionMode}
-                                                            onChange={(event) =>
-                                                                setScriptTransactionMode(
-                                                                    event.target
-                                                                        .value as ScriptTransactionMode
-                                                                )
-                                                            }
-                                                        >
-                                                            <option value="AUTOCOMMIT">
-                                                                Autocommit
-                                                            </option>
-                                                            <option value="TRANSACTION">
-                                                                Single transaction
-                                                            </option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : null}
+                                                        return next;
+                                                    })
+                                                }
+                                                disabled={!activeTab || activeTab.isExecuting}
+                                            />
+                                        </div>
+                                        {showScriptOptions && scriptOptionsPosition
+                                            ? createPortal(
+                                                  <div
+                                                      className="script-options-popover is-floating"
+                                                      role="dialog"
+                                                      ref={scriptOptionsPopoverRef}
+                                                      style={{
+                                                          top: `${scriptOptionsPosition.top}px`,
+                                                          left: `${scriptOptionsPosition.left}px`
+                                                      }}
+                                                  >
+                                                      <label className="checkbox-row">
+                                                          <input
+                                                              type="checkbox"
+                                                              checked={scriptStopOnError}
+                                                              onChange={(event) =>
+                                                                  setScriptStopOnError(
+                                                                      event.target.checked
+                                                                  )
+                                                              }
+                                                          />
+                                                          <span>Stop on error</span>
+                                                      </label>
+                                                      <div className="script-option-row">
+                                                          <label htmlFor="script-transaction-mode">
+                                                              Transaction
+                                                          </label>
+                                                          <div className="select-wrap">
+                                                              <select
+                                                                  id="script-transaction-mode"
+                                                                  value={scriptTransactionMode}
+                                                                  onChange={(event) =>
+                                                                      setScriptTransactionMode(
+                                                                          event.target
+                                                                              .value as ScriptTransactionMode
+                                                                      )
+                                                                  }
+                                                              >
+                                                                  <option value="AUTOCOMMIT">
+                                                                      Autocommit
+                                                                  </option>
+                                                                  <option value="TRANSACTION">
+                                                                      Single transaction
+                                                                  </option>
+                                                              </select>
+                                                          </div>
+                                                      </div>
+                                                  </div>,
+                                                  document.body
+                                              )
+                                            : null}
                                     </div>
-                                    <button
-                                        type="button"
-                                        disabled={
-                                            !activeTab ||
-                                            activeTab.isExecuting ||
-                                            !selectedDatasource
-                                        }
+                                    <IconButton
+                                        icon="activity"
+                                        title="Analyze"
                                         onClick={handleAnalyze}
-                                    >
-                                        Analyze
-                                    </button>
-                                    <button
-                                        type="button"
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !selectedDatasource
                                         }
+                                    />
+                                    <IconButton
+                                        icon="file-text"
+                                        title="Explain"
                                         onClick={handleExplain}
-                                    >
-                                        Explain
-                                    </button>
-                                    <button
-                                        type="button"
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !selectedDatasource
+                                        }
+                                    />
+                                    <IconButton
+                                        icon="shield-check"
+                                        title={validatingSql ? 'Validating...' : 'Validate'}
+                                        onClick={() => void handleValidateSql()}
                                         disabled={
                                             !activeTab || validatingSql || !selectedDatasource
                                         }
-                                        onClick={() => void handleValidateSql()}
-                                    >
-                                        {validatingSql ? 'Validating...' : 'Validate'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!activeTab || activeTab.isExecuting}
+                                    />
+                                    <IconButton
+                                        icon="align-start-horizontal"
+                                        title="Format SQL"
                                         onClick={handleFormatSql}
-                                    >
-                                        Format SQL
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!activeTab || !activeTab.isExecuting}
-                                        onClick={() => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            void handleCancelRun(activeTab.id);
-                                        }}
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                                <div className="row editor-secondary-actions">
+                                        disabled={!activeTab || activeTab.isExecuting}
+                                    />
                                     <button
                                         type="button"
                                         className="chip"
@@ -6641,6 +6764,20 @@ export default function WorkspacePage() {
                                     >
                                         {savingSnippet ? 'Saving...' : 'Save Snippet'}
                                     </button>
+                                    <IconButton
+                                        icon="close"
+                                        title="Cancel"
+                                        onClick={() => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+
+                                            void handleCancelRun(activeTab.id);
+                                        }}
+                                        disabled={!activeTab || !activeTab.isExecuting}
+                                    />
+                                </div>
+                                <div className="row editor-secondary-actions">
                                     <div
                                         className="editor-shortcuts-wrapper"
                                         ref={editorShortcutsRef}
@@ -6743,21 +6880,22 @@ export default function WorkspacePage() {
                             </div>
                         </section>
 
+                        <div
+                            className="workbench-results-resizer"
+                            role="separator"
+                            aria-label="Resize results panel"
+                            aria-orientation="horizontal"
+                            title="Drag to resize results panel (double-click to reset)"
+                            tabIndex={0}
+                            onPointerDown={handleResultsResizerPointerDown}
+                            onPointerMove={handleResultsResizerPointerMove}
+                            onPointerUp={handleResultsResizerPointerUp}
+                            onPointerCancel={handleResultsResizerPointerCancel}
+                            onDoubleClick={handleResultsResizerReset}
+                            onKeyDown={handleResultsResizerKeyDown}
+                        />
+
                         <section className="results" ref={resultsSectionRef}>
-                            <div
-                                className="workbench-results-resizer"
-                                role="separator"
-                                aria-label="Resize results panel"
-                                aria-orientation="horizontal"
-                                title="Drag to resize results panel (double-click to reset)"
-                                tabIndex={0}
-                                onPointerDown={handleResultsResizerPointerDown}
-                                onPointerMove={handleResultsResizerPointerMove}
-                                onPointerUp={handleResultsResizerPointerUp}
-                                onPointerCancel={handleResultsResizerPointerCancel}
-                                onDoubleClick={handleResultsResizerReset}
-                                onKeyDown={handleResultsResizerKeyDown}
-                            />
                             <div className="results-head">
                                 {activeTab?.executionId ? (
                                     <div className="result-stats-grid">

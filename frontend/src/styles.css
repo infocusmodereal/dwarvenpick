@@ -1712,11 +1712,13 @@ button:disabled {
 .workspace-grid {
     --workbench-editor-min-height: 340px;
     --workbench-results-min-height: 220px;
+    --workbench-results-resizer-height: 20px;
     --workbench-main-surface: var(--workbench-surface);
     display: grid;
-    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+    grid-template-columns: minmax(240px, 272px) minmax(0, 1fr);
     grid-template-rows:
         minmax(var(--workbench-editor-min-height), 1.7fr)
+        var(--workbench-results-resizer-height)
         minmax(var(--workbench-results-min-height), var(--workbench-results-size, 1fr));
     column-gap: 0;
     row-gap: 0;
@@ -1724,7 +1726,10 @@ button:disabled {
     align-content: stretch;
     min-height: max(
         100%,
-        calc(var(--workbench-editor-min-height) + var(--workbench-results-min-height))
+        calc(
+            var(--workbench-editor-min-height) + var(--workbench-results-min-height) +
+                var(--workbench-results-resizer-height)
+        )
     );
     height: 100%;
     overflow: visible;
@@ -1748,7 +1753,7 @@ button:disabled {
     grid-template-rows: minmax(0, 1fr);
     gap: 0;
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1 / span 3;
     border-right: 1px solid var(--border);
     padding: 0;
     margin-right: 0;
@@ -2443,17 +2448,34 @@ button:disabled {
     justify-content: space-between;
     gap: 0.55rem;
     border-top: 1px solid rgba(184, 162, 132, 0.8);
+    background: var(--workbench-main-surface);
+    position: relative;
+    z-index: 6;
     padding: 0.48rem 0.85rem 0;
     margin-top: 0.18rem;
 }
 
 .editor-primary-actions {
     flex: 1 1 auto;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.12rem;
+}
+
+.editor-primary-actions > * {
+    flex: 0 0 auto;
 }
 
 .editor-secondary-actions {
     justify-content: flex-end;
     align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.12rem;
+}
+
+.editor-secondary-actions > * {
+    flex: 0 0 auto;
 }
 
 .editor-shortcuts-wrapper {
@@ -2543,6 +2565,11 @@ button:disabled {
     position: relative;
 }
 
+.script-options-anchor {
+    display: inline-flex;
+    align-items: center;
+}
+
 .script-options-popover {
     position: absolute;
     top: calc(100% + 0.32rem);
@@ -2556,6 +2583,13 @@ button:disabled {
     padding: 0.5rem 0.55rem;
     display: grid;
     gap: 0.4rem;
+}
+
+.script-options-popover.is-floating {
+    position: fixed;
+    z-index: 90;
+    top: auto;
+    left: auto;
 }
 
 .script-option-row {
@@ -2635,11 +2669,13 @@ button:disabled {
 .monaco-host {
     border: 0;
     border-radius: 0;
-    overflow: visible;
+    overflow: hidden;
     background: var(--workbench-main-surface);
     min-height: 0;
     height: 100%;
     display: grid;
+    position: relative;
+    z-index: 1;
 }
 
 .monaco-frame {
@@ -2647,6 +2683,7 @@ button:disabled {
     height: 100%;
     padding: 0.2rem 0.85rem 0.38rem;
     display: grid;
+    overflow: hidden;
 }
 
 .monaco-frame .monaco-editor,
@@ -2676,7 +2713,7 @@ button:disabled {
 
 .results {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 3;
     position: relative;
     display: grid;
     gap: 0.72rem;
@@ -2685,7 +2722,6 @@ button:disabled {
     align-content: stretch;
     grid-template-rows: auto minmax(0, 1fr);
     border: 0;
-    border-top: 1px solid rgba(184, 162, 132, 0.8);
     border-radius: 0;
     background: var(--workbench-main-surface);
     box-shadow: none;
@@ -2693,17 +2729,17 @@ button:disabled {
 }
 
 .workbench-results-resizer {
-    position: absolute;
-    top: -10px;
-    left: 0;
-    right: 0;
-    height: 20px;
+    grid-column: 2;
+    grid-row: 2;
+    height: var(--workbench-results-resizer-height);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: row-resize;
     touch-action: none;
+    background: var(--workbench-main-surface);
     z-index: 4;
+    position: relative;
 }
 
 .workbench-results-resizer::before {
@@ -3605,17 +3641,24 @@ select {
 @media (max-width: 960px) {
     .workspace-shell {
         grid-template-columns: 1fr;
-        min-height: auto;
-        height: auto;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 100dvh;
+        height: 100dvh;
     }
 
     .workspace-left-rail,
     .workspace-left-rail.is-collapsed {
         position: static;
         width: 100%;
-        min-height: auto;
+        min-height: 0;
+        height: auto;
         border-right: 0;
         border-bottom: 1px solid #4e3f2c;
+    }
+
+    .workspace-main {
+        height: 100%;
+        min-height: 0;
     }
 
     .workspace-left-footer {
@@ -3635,6 +3678,10 @@ select {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto auto;
         row-gap: 0.7rem;
+    }
+
+    .workbench-results-resizer {
+        display: none;
     }
 
     .editor-toolbar-fields {
