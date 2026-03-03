@@ -2037,26 +2037,30 @@ export default function WorkspacePage() {
         setCredentialPasswordInput('');
     }, [credentialProfileIdInput, selectedManagedDatasource]);
 
-    const readFriendlyError = useCallback(async (response: Response): Promise<string> => {
-        try {
-            const payload = (await response.json()) as ApiErrorResponse;
-            if (payload.error?.trim()) {
-                return payload.error;
+    const readFriendlyError = useCallback(
+        async (response: Response): Promise<string> => {
+            if (response.status === 401) {
+                navigate('/login', { replace: true });
+                return 'Session expired. Please sign in again.';
             }
-        } catch {
-            // Use fallback friendly messages below when payload parsing fails.
-        }
 
-        if (response.status === 401) {
-            return 'Authentication is required. Please sign in again.';
-        }
+            if (response.status === 403) {
+                return 'You do not have permission for this action.';
+            }
 
-        if (response.status === 403) {
-            return 'You do not have permission for this action.';
-        }
+            try {
+                const payload = (await response.json()) as ApiErrorResponse;
+                if (payload.error?.trim()) {
+                    return payload.error;
+                }
+            } catch {
+                // Use fallback friendly messages below when payload parsing fails.
+            }
 
-        return 'Request failed. Please try again.';
-    }, []);
+            return 'Request failed. Please try again.';
+        },
+        [navigate]
+    );
 
     const fetchCsrfToken = useCallback(async (): Promise<CsrfTokenResponse> => {
         const response = await fetch('/api/auth/csrf', {

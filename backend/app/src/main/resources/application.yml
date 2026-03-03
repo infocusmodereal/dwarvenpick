@@ -28,6 +28,7 @@ server:
   shutdown: graceful
   servlet:
     session:
+      timeout: ${DWARVENPICK_SESSION_TIMEOUT:8h}
       cookie:
         http-only: true
         secure: ${DWARVENPICK_SESSION_COOKIE_SECURE:false}
