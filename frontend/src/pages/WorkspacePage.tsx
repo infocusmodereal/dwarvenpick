@@ -22,6 +22,7 @@ import AppShell from '../components/AppShell';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
 import { useTheme } from '../theme/ThemeContext';
+import { createPortal } from 'react-dom';
 import type {
     AccessAdminMode,
     AdminSubsection,
@@ -540,6 +541,12 @@ export default function WorkspacePage() {
     const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
     const exportMenuRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsRef = useRef<HTMLDivElement | null>(null);
+    const scriptOptionsAnchorRef = useRef<HTMLDivElement | null>(null);
+    const scriptOptionsPopoverRef = useRef<HTMLDivElement | null>(null);
+    const [scriptOptionsPosition, setScriptOptionsPosition] = useState<{
+        top: number;
+        left: number;
+    } | null>(null);
     const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
         Record<string, boolean>
     >({});
@@ -996,7 +1003,11 @@ export default function WorkspacePage() {
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
             const target = event.target as Node | null;
-            if (!target || !scriptOptionsRef.current?.contains(target)) {
+            if (
+                !target ||
+                (!scriptOptionsRef.current?.contains(target) &&
+                    !scriptOptionsPopoverRef.current?.contains(target))
+            ) {
                 setShowScriptOptions(false);
             }
         };
@@ -1010,11 +1021,53 @@ export default function WorkspacePage() {
         };
     }, [showScriptOptions]);
 
+    const updateScriptOptionsPosition = useCallback(() => {
+        const anchor = scriptOptionsAnchorRef.current;
+        if (!anchor) {
+            return;
+        }
+
+        const triggerRect = anchor.getBoundingClientRect();
+        const viewportPadding = 12;
+        const estimatedWidth = 240;
+        const maxLeft = Math.max(
+            viewportPadding,
+            window.innerWidth - estimatedWidth - viewportPadding
+        );
+        const left = Math.min(Math.max(viewportPadding, triggerRect.left), maxLeft);
+
+        setScriptOptionsPosition({
+            top: triggerRect.bottom + 6,
+            left
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!showScriptOptions) {
+            setScriptOptionsPosition(null);
+            return;
+        }
+
+        updateScriptOptionsPosition();
+
+        const handleViewportChange = () => {
+            updateScriptOptionsPosition();
+        };
+
+        window.addEventListener('resize', handleViewportChange);
+        window.addEventListener('scroll', handleViewportChange, true);
+        return () => {
+            window.removeEventListener('resize', handleViewportChange);
+            window.removeEventListener('scroll', handleViewportChange, true);
+        };
+    }, [showScriptOptions, updateScriptOptionsPosition]);
+
     useEffect(() => {
         setActiveTabMenuOpen(false);
         setActiveTabMenuPosition(null);
         setShowExportMenu(false);
         setShowScriptOptions(false);
+        setScriptOptionsPosition(null);
     }, [activeTabId]);
 
     useEffect(() => {
@@ -6596,54 +6649,78 @@ export default function WorkspacePage() {
                                                 !selectedDatasource
                                             }
                                         />
-                                        <IconButton
-                                            icon="settings"
-                                            title="Options"
-                                            onClick={() =>
-                                                setShowScriptOptions((current) => !current)
-                                            }
-                                            disabled={!activeTab || activeTab.isExecuting}
-                                        />
-                                        {showScriptOptions ? (
-                                            <div className="script-options-popover" role="dialog">
-                                                <label className="checkbox-row">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={scriptStopOnError}
-                                                        onChange={(event) =>
-                                                            setScriptStopOnError(
-                                                                event.target.checked
-                                                            )
+                                        <div
+                                            className="script-options-anchor"
+                                            ref={scriptOptionsAnchorRef}
+                                        >
+                                            <IconButton
+                                                icon="settings"
+                                                title="Options"
+                                                onClick={() =>
+                                                    setShowScriptOptions((current) => {
+                                                        const next = !current;
+                                                        if (next) {
+                                                            updateScriptOptionsPosition();
+                                                        } else {
+                                                            setScriptOptionsPosition(null);
                                                         }
-                                                    />
-                                                    <span>Stop on error</span>
-                                                </label>
-                                                <div className="script-option-row">
-                                                    <label htmlFor="script-transaction-mode">
-                                                        Transaction
-                                                    </label>
-                                                    <div className="select-wrap">
-                                                        <select
-                                                            id="script-transaction-mode"
-                                                            value={scriptTransactionMode}
-                                                            onChange={(event) =>
-                                                                setScriptTransactionMode(
-                                                                    event.target
-                                                                        .value as ScriptTransactionMode
-                                                                )
-                                                            }
-                                                        >
-                                                            <option value="AUTOCOMMIT">
-                                                                Autocommit
-                                                            </option>
-                                                            <option value="TRANSACTION">
-                                                                Single transaction
-                                                            </option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : null}
+                                                        return next;
+                                                    })
+                                                }
+                                                disabled={!activeTab || activeTab.isExecuting}
+                                            />
+                                        </div>
+                                        {showScriptOptions && scriptOptionsPosition
+                                            ? createPortal(
+                                                  <div
+                                                      className="script-options-popover is-floating"
+                                                      role="dialog"
+                                                      ref={scriptOptionsPopoverRef}
+                                                      style={{
+                                                          top: `${scriptOptionsPosition.top}px`,
+                                                          left: `${scriptOptionsPosition.left}px`
+                                                      }}
+                                                  >
+                                                      <label className="checkbox-row">
+                                                          <input
+                                                              type="checkbox"
+                                                              checked={scriptStopOnError}
+                                                              onChange={(event) =>
+                                                                  setScriptStopOnError(
+                                                                      event.target.checked
+                                                                  )
+                                                              }
+                                                          />
+                                                          <span>Stop on error</span>
+                                                      </label>
+                                                      <div className="script-option-row">
+                                                          <label htmlFor="script-transaction-mode">
+                                                              Transaction
+                                                          </label>
+                                                          <div className="select-wrap">
+                                                              <select
+                                                                  id="script-transaction-mode"
+                                                                  value={scriptTransactionMode}
+                                                                  onChange={(event) =>
+                                                                      setScriptTransactionMode(
+                                                                          event.target
+                                                                              .value as ScriptTransactionMode
+                                                                      )
+                                                                  }
+                                                              >
+                                                                  <option value="AUTOCOMMIT">
+                                                                      Autocommit
+                                                                  </option>
+                                                                  <option value="TRANSACTION">
+                                                                      Single transaction
+                                                                  </option>
+                                                              </select>
+                                                          </div>
+                                                      </div>
+                                                  </div>,
+                                                  document.body
+                                              )
+                                            : null}
                                     </div>
                                     <IconButton
                                         icon="activity"

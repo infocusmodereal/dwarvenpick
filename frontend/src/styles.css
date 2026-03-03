@@ -2565,6 +2565,11 @@ button:disabled {
     position: relative;
 }
 
+.script-options-anchor {
+    display: inline-flex;
+    align-items: center;
+}
+
 .script-options-popover {
     position: absolute;
     top: calc(100% + 0.32rem);
@@ -2578,6 +2583,13 @@ button:disabled {
     padding: 0.5rem 0.55rem;
     display: grid;
     gap: 0.4rem;
+}
+
+.script-options-popover.is-floating {
+    position: fixed;
+    z-index: 90;
+    top: auto;
+    left: auto;
 }
 
 .script-option-row {
