@@ -537,16 +537,28 @@ class QueryExecutionManager(
 
         emitter.onCompletion { actorSubscribers.remove(emitter) }
         emitter.onTimeout {
-            emitter.complete()
             actorSubscribers.remove(emitter)
+            runCatching { emitter.complete() }
         }
-        emitter.onError {
-            emitter.complete()
+        emitter.onError { _ ->
             actorSubscribers.remove(emitter)
+            runCatching { emitter.complete() }
         }
 
         sendInFlightSnapshot(actor, isSystemAdmin, emitter)
         return emitter
+    }
+
+    @Scheduled(fixedDelayString = "\${dwarvenpick.query.sse-heartbeat-interval-ms:30000}")
+    fun sendSseHeartbeat() {
+        subscribers.entries.forEach { (actor, emitters) ->
+            if (emitters.isEmpty()) {
+                return@forEach
+            }
+            emitters.toList().forEach { emitter ->
+                sendHeartbeat(emitter, actor)
+            }
+        }
     }
 
     @Scheduled(fixedDelayString = "\${dwarvenpick.query.cleanup-interval-ms:30000}")
@@ -1268,9 +1280,30 @@ class QueryExecutionManager(
                     .name("query-status")
                     .data(event),
             )
-        }.onFailure {
-            emitter.complete()
+        }.onFailure { exception ->
             subscribers[actor]?.remove(emitter)
+            runCatching { emitter.complete() }
+            logger.debug("Dropping query status SSE emitter for actor={}", actor, exception)
+        }
+    }
+
+    private fun sendHeartbeat(
+        emitter: SseEmitter,
+        actor: String,
+    ) {
+        val eventId = eventCounter.incrementAndGet().toString()
+        runCatching {
+            emitter.send(
+                SseEmitter
+                    .event()
+                    .id(eventId)
+                    .name("heartbeat")
+                    .data("ping"),
+            )
+        }.onFailure { exception ->
+            subscribers[actor]?.remove(emitter)
+            runCatching { emitter.complete() }
+            logger.debug("Dropping heartbeat SSE emitter for actor={}", actor, exception)
         }
     }
 
