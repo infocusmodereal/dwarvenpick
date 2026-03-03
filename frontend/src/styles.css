@@ -1712,11 +1712,13 @@ button:disabled {
 .workspace-grid {
     --workbench-editor-min-height: 340px;
     --workbench-results-min-height: 220px;
+    --workbench-results-resizer-height: 20px;
     --workbench-main-surface: var(--workbench-surface);
     display: grid;
     grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
     grid-template-rows:
         minmax(var(--workbench-editor-min-height), 1.7fr)
+        var(--workbench-results-resizer-height)
         minmax(var(--workbench-results-min-height), var(--workbench-results-size, 1fr));
     column-gap: 0;
     row-gap: 0;
@@ -1724,7 +1726,10 @@ button:disabled {
     align-content: stretch;
     min-height: max(
         100%,
-        calc(var(--workbench-editor-min-height) + var(--workbench-results-min-height))
+        calc(
+            var(--workbench-editor-min-height) + var(--workbench-results-min-height) +
+                var(--workbench-results-resizer-height)
+        )
     );
     height: 100%;
     overflow: visible;
@@ -1748,7 +1753,7 @@ button:disabled {
     grid-template-rows: minmax(0, 1fr);
     gap: 0;
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1 / span 3;
     border-right: 1px solid var(--border);
     padding: 0;
     margin-right: 0;
@@ -2449,11 +2454,25 @@ button:disabled {
 
 .editor-primary-actions {
     flex: 1 1 auto;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.12rem;
+}
+
+.editor-primary-actions > * {
+    flex: 0 0 auto;
 }
 
 .editor-secondary-actions {
     justify-content: flex-end;
     align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.12rem;
+}
+
+.editor-secondary-actions > * {
+    flex: 0 0 auto;
 }
 
 .editor-shortcuts-wrapper {
@@ -2676,7 +2695,7 @@ button:disabled {
 
 .results {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 3;
     position: relative;
     display: grid;
     gap: 0.72rem;
@@ -2685,7 +2704,6 @@ button:disabled {
     align-content: stretch;
     grid-template-rows: auto minmax(0, 1fr);
     border: 0;
-    border-top: 1px solid rgba(184, 162, 132, 0.8);
     border-radius: 0;
     background: var(--workbench-main-surface);
     box-shadow: none;
@@ -2693,17 +2711,17 @@ button:disabled {
 }
 
 .workbench-results-resizer {
-    position: absolute;
-    top: -10px;
-    left: 0;
-    right: 0;
-    height: 20px;
+    grid-column: 2;
+    grid-row: 2;
+    height: var(--workbench-results-resizer-height);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: row-resize;
     touch-action: none;
+    background: var(--workbench-main-surface);
     z-index: 4;
+    position: relative;
 }
 
 .workbench-results-resizer::before {

@@ -474,6 +474,7 @@ export default function WorkspacePage() {
         startHeight: number;
         editorMinHeight: number;
         resultsMinHeight: number;
+        resizerHeight: number;
     } | null>(null);
 
     const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
@@ -586,6 +587,21 @@ export default function WorkspacePage() {
         }
     }, [workbenchResultsSizePx]);
 
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor) {
+            return;
+        }
+
+        const raf = window.requestAnimationFrame(() => {
+            editor.layout();
+        });
+
+        return () => {
+            window.cancelAnimationFrame(raf);
+        };
+    }, [showSchemaBrowser, workbenchResultsSizePx]);
+
     const handleResultsResizerPointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
             if (event.button !== 0) {
@@ -607,6 +623,10 @@ export default function WorkspacePage() {
                 computed.getPropertyValue('--workbench-results-min-height'),
                 220
             );
+            const resizerHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-results-resizer-height'),
+                20
+            );
             const startHeight = results.getBoundingClientRect().height;
 
             resultsResizeStateRef.current = {
@@ -614,7 +634,8 @@ export default function WorkspacePage() {
                 startY: event.clientY,
                 startHeight,
                 editorMinHeight,
-                resultsMinHeight
+                resultsMinHeight,
+                resizerHeight
             };
 
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -638,7 +659,7 @@ export default function WorkspacePage() {
             const containerHeight = grid.getBoundingClientRect().height;
             const maxHeight = Math.max(
                 state.resultsMinHeight,
-                Math.floor(containerHeight - state.editorMinHeight)
+                Math.floor(containerHeight - state.editorMinHeight - state.resizerHeight)
             );
 
             const deltaY = event.clientY - state.startY;
@@ -703,10 +724,14 @@ export default function WorkspacePage() {
                 computed.getPropertyValue('--workbench-results-min-height'),
                 220
             );
+            const resultsResizerHeight = parsePxValue(
+                computed.getPropertyValue('--workbench-results-resizer-height'),
+                20
+            );
             const containerHeight = grid.getBoundingClientRect().height;
             const maxHeight = Math.max(
                 resultsMinHeight,
-                Math.floor(containerHeight - editorMinHeight)
+                Math.floor(containerHeight - editorMinHeight - resultsResizerHeight)
             );
 
             const currentHeight = workbenchResultsSizePx ?? results.getBoundingClientRect().height;
@@ -2468,6 +2493,19 @@ export default function WorkspacePage() {
         }
 
         const completionItems = Array.from(suggestions.values());
+        const labelToString = (label: CompletionSeed['label']): string =>
+            typeof label === 'string' ? label : label.label;
+        completionItems.sort((left, right) => {
+            const leftSortKey = left.sortText ?? '';
+            const rightSortKey = right.sortText ?? '';
+            if (leftSortKey !== rightSortKey) {
+                return leftSortKey.localeCompare(rightSortKey);
+            }
+
+            return labelToString(left.label)
+                .toLowerCase()
+                .localeCompare(labelToString(right.label).toLowerCase());
+        });
         const availableLanguageIds = new Set(
             monaco.languages.getLanguages().map((language) => language.id)
         );
@@ -2505,17 +2543,40 @@ export default function WorkspacePage() {
                                 endColumn: word.endColumn
                             };
                             const normalizedWord = word.word.trim().toLowerCase();
-                            const filteredSuggestions = (
-                                normalizedWord
+
+                            const linePrefix = model.getValueInRange({
+                                startLineNumber: position.lineNumber,
+                                startColumn: 1,
+                                endLineNumber: position.lineNumber,
+                                endColumn: position.column
+                            });
+                            const lastTypedChar = linePrefix.slice(-1);
+                            const inDotContext = lastTypedChar === '.';
+                            const inFromContext = /\b(from|join)\s+$/i.test(linePrefix);
+
+                            const contextualPool =
+                                inDotContext || inFromContext
                                     ? completionItems.filter((candidate) => {
-                                          const label =
-                                              typeof candidate.label === 'string'
-                                                  ? candidate.label
-                                                  : candidate.label.label;
-                                          return label.toLowerCase().includes(normalizedWord);
+                                          const sortKey = candidate.sortText ?? '';
+                                          if (inDotContext) {
+                                              return (
+                                                  sortKey.startsWith('1-') ||
+                                                  sortKey.startsWith('2-')
+                                              );
+                                          }
+
+                                          return sortKey.startsWith('1-');
                                       })
-                                    : completionItems
-                            ).slice(0, 250);
+                                    : completionItems;
+
+                            const candidates = normalizedWord
+                                ? contextualPool.filter((candidate) =>
+                                      labelToString(candidate.label)
+                                          .toLowerCase()
+                                          .includes(normalizedWord)
+                                  )
+                                : contextualPool;
+                            const filteredSuggestions = candidates.slice(0, 500);
                             const occurredAt = new Date().toISOString();
                             setAutocompleteDiagnostics((current) => ({
                                 ...current,
@@ -6743,21 +6804,22 @@ export default function WorkspacePage() {
                             </div>
                         </section>
 
+                        <div
+                            className="workbench-results-resizer"
+                            role="separator"
+                            aria-label="Resize results panel"
+                            aria-orientation="horizontal"
+                            title="Drag to resize results panel (double-click to reset)"
+                            tabIndex={0}
+                            onPointerDown={handleResultsResizerPointerDown}
+                            onPointerMove={handleResultsResizerPointerMove}
+                            onPointerUp={handleResultsResizerPointerUp}
+                            onPointerCancel={handleResultsResizerPointerCancel}
+                            onDoubleClick={handleResultsResizerReset}
+                            onKeyDown={handleResultsResizerKeyDown}
+                        />
+
                         <section className="results" ref={resultsSectionRef}>
-                            <div
-                                className="workbench-results-resizer"
-                                role="separator"
-                                aria-label="Resize results panel"
-                                aria-orientation="horizontal"
-                                title="Drag to resize results panel (double-click to reset)"
-                                tabIndex={0}
-                                onPointerDown={handleResultsResizerPointerDown}
-                                onPointerMove={handleResultsResizerPointerMove}
-                                onPointerUp={handleResultsResizerPointerUp}
-                                onPointerCancel={handleResultsResizerPointerCancel}
-                                onDoubleClick={handleResultsResizerReset}
-                                onKeyDown={handleResultsResizerKeyDown}
-                            />
                             <div className="results-head">
                                 {activeTab?.executionId ? (
                                     <div className="result-stats-grid">
