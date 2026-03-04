@@ -36,6 +36,7 @@ internal data class ConnectionBootstrapCredentialProfile(
     val username: String = "",
     val password: String = "",
     val description: String? = null,
+    val sysadmin: Boolean = false,
 )
 
 internal data class ConnectionBootstrapAccessRule(

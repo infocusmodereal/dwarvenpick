@@ -19,6 +19,7 @@ data class CatalogDatasourceEntry(
     val name: String,
     val engine: DatasourceEngine,
     val credentialProfiles: Set<String>,
+    val sysadminCredentialProfiles: Set<String>,
 )
 
 data class ConnectionSpec(
@@ -39,6 +40,7 @@ private data class CredentialProfileRecord(
     val profileId: String,
     var username: String,
     var description: String?,
+    var sysadmin: Boolean,
     var encryptedCredential: EncryptedCredential,
     var updatedAt: Instant,
 )
@@ -101,6 +103,7 @@ class DatasourceRegistryService(
                 username = postgres.username,
                 password = postgres.password,
                 description = "Admin readonly profile for local compose.",
+                sysadmin = true,
             ),
         )
         upsertCredentialProfile(
@@ -138,6 +141,7 @@ class DatasourceRegistryService(
                 username = mysql.username,
                 password = mysql.password,
                 description = "Admin readonly profile.",
+                sysadmin = true,
             ),
         )
         upsertCredentialProfile(
@@ -174,6 +178,7 @@ class DatasourceRegistryService(
                 username = mariadb.username,
                 password = mariadb.password,
                 description = "Admin readonly profile.",
+                sysadmin = true,
             ),
         )
         upsertCredentialProfile(
@@ -207,6 +212,7 @@ class DatasourceRegistryService(
                     username = trino.username,
                     password = trino.password,
                     description = "Admin readonly profile.",
+                    sysadmin = true,
                 ),
             )
             upsertCredentialProfile(
@@ -245,6 +251,7 @@ class DatasourceRegistryService(
                 username = starrocks.username,
                 password = starrocks.password,
                 description = "Admin readonly profile.",
+                sysadmin = true,
             ),
         )
         upsertCredentialProfile(
@@ -267,11 +274,17 @@ class DatasourceRegistryService(
         datasources.values
             .sortedBy { it.name.lowercase(Locale.getDefault()) }
             .map { datasource ->
+                val sysadminProfiles =
+                    datasource.credentialProfiles.values
+                        .filter { profile -> profile.sysadmin }
+                        .map { profile -> profile.profileId }
+                        .toSet()
                 CatalogDatasourceEntry(
                     id = datasource.id,
                     name = datasource.name,
                     engine = datasource.engine,
                     credentialProfiles = datasource.credentialProfiles.keys.toSet(),
+                    sysadminCredentialProfiles = sysadminProfiles,
                 )
             }
 
@@ -396,6 +409,7 @@ class DatasourceRegistryService(
                     profileId = normalizedProfileId,
                     username = request.username.trim(),
                     description = request.description?.trim()?.ifBlank { null },
+                    sysadmin = request.sysadmin,
                     encryptedCredential = encrypted ?: datasourceCredentialCryptoService.encryptPassword(""),
                     updatedAt = now,
                 ).also { created ->
@@ -404,6 +418,7 @@ class DatasourceRegistryService(
 
         record.username = request.username.trim()
         record.description = request.description?.trim()?.ifBlank { null }
+        record.sysadmin = request.sysadmin
         if (encrypted != null) {
             record.encryptedCredential = encrypted
         }
@@ -725,6 +740,7 @@ class DatasourceRegistryService(
             profileId = profileId,
             username = username,
             description = description,
+            sysadmin = sysadmin,
             encryptionKeyId = encryptedCredential.keyId,
             updatedAt = updatedAt.toString(),
         )

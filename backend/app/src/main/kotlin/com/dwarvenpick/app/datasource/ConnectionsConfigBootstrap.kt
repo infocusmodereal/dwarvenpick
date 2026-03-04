@@ -66,6 +66,7 @@ class ConnectionsConfigBootstrap(
                             username = credential.username.trim(),
                             password = credential.password,
                             description = credential.description?.trim()?.ifBlank { null },
+                            sysadmin = credential.sysadmin,
                         ),
                 )
             }

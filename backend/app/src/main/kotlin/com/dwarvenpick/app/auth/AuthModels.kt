@@ -9,6 +9,7 @@ import java.security.Principal
 enum class AuthProvider {
     LOCAL,
     LDAP,
+    OIDC,
 }
 
 data class LoginRequest(

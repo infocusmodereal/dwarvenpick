@@ -1,7 +1,11 @@
 package com.dwarvenpick.app
 
+import com.dwarvenpick.app.auth.AuthProperties
+import com.dwarvenpick.app.auth.OidcAuthenticationFailureHandler
+import com.dwarvenpick.app.auth.OidcAuthenticationSuccessHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -20,6 +24,9 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 @Configuration
 class SecurityConfig(
     private val objectMapper: ObjectMapper,
+    private val authProperties: AuthProperties,
+    private val oidcSuccessHandlerProvider: ObjectProvider<OidcAuthenticationSuccessHandler>,
+    private val oidcFailureHandlerProvider: ObjectProvider<OidcAuthenticationFailureHandler>,
     @Value("\${management.endpoint.prometheus.enabled:true}")
     private val prometheusEndpointEnabled: Boolean,
 ) {
@@ -46,6 +53,10 @@ class SecurityConfig(
                 "/api/auth/csrf",
                 "/api/auth/methods",
             )
+        if (authProperties.isOidcAuthEnabled()) {
+            publicMatchers.add("/oauth2/**")
+            publicMatchers.add("/login/oauth2/**")
+        }
         if (prometheusEndpointEnabled) {
             publicMatchers.add("/actuator/prometheus")
         }
@@ -93,6 +104,13 @@ class SecurityConfig(
             }.httpBasic { basic -> basic.disable() }
             .formLogin { form -> form.disable() }
             .logout { logout -> logout.disable() }
+
+        if (authProperties.isOidcAuthEnabled()) {
+            http.oauth2Login { oauth ->
+                oauth.successHandler(oidcSuccessHandlerProvider.getObject())
+                oauth.failureHandler(oidcFailureHandlerProvider.getObject())
+            }
+        }
 
         return http.build()
     }

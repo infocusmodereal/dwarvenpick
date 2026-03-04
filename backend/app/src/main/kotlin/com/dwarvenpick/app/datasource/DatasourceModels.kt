@@ -80,6 +80,7 @@ data class CredentialProfileResponse(
     val profileId: String,
     val username: String,
     val description: String?,
+    val sysadmin: Boolean,
     val encryptionKeyId: String,
     val updatedAt: String,
 )
@@ -119,6 +120,7 @@ data class UpsertCredentialProfileRequest(
     val username: String = "",
     val password: String? = null,
     val description: String? = null,
+    val sysadmin: Boolean = false,
 )
 
 data class TestConnectionRequest(

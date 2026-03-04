@@ -57,6 +57,10 @@ spec:
               value: {{ .Values.env.DWARVENPICK_SEED_ENABLED | quote }}
             - name: DWARVENPICK_AUTH_LOCAL_ENABLED
               value: {{ .Values.env.DWARVENPICK_AUTH_LOCAL_ENABLED | quote }}
+            - name: DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_LDAP
+              value: {{ .Values.env.DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_LDAP | quote }}
+            - name: DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_OIDC
+              value: {{ .Values.env.DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_OIDC | quote }}
             - name: DWARVENPICK_AUTH_LDAP_ENABLED
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_ENABLED | quote }}
             - name: DWARVENPICK_AUTH_LDAP_URL
@@ -69,6 +73,28 @@ spec:
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_USER_SEARCH_BASE | quote }}
             - name: DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_ENABLED
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_ENABLED | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_ISSUER_URI
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_ISSUER_URI | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_AUTHORIZATION_URI
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_AUTHORIZATION_URI | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_TOKEN_URI
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_TOKEN_URI | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_JWK_SET_URI
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_JWK_SET_URI | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_USER_INFO_URI
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_USER_INFO_URI | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_CLIENT_ID
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_CLIENT_ID | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_CLIENT_SECRET
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_CLIENT_SECRET | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_SCOPES
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_SCOPES | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_REDIRECT_URI_TEMPLATE
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_REDIRECT_URI_TEMPLATE | quote }}
+            - name: DWARVENPICK_AUTH_OIDC_SYSTEM_ADMIN_GROUPS
+              value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_SYSTEM_ADMIN_GROUPS | quote }}
             - name: DWARVENPICK_METRICS_PROMETHEUS_ENABLED
               value: {{ .Values.metrics.prometheus.enabled | quote }}
             {{- range $key, $value := .Values.extraEnv }}

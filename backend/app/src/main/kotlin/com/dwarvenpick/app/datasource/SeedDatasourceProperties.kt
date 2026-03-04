@@ -54,5 +54,5 @@ data class SeedTrinoProperties(
     val port: Int = 8088,
     val database: String = "tpch/sf1",
     val username: String = "trino",
-    val password: String = "trino",
+    val password: String = "",
 )

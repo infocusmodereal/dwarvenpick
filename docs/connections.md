@@ -82,3 +82,11 @@ openssl pkcs8 -topk8 -nocrypt -in client.key -out client.pkcs8.key
 ## Pooling
 
 Connections can use pooled JDBC connections for better concurrency. Pool sizing and timeouts are configurable per connection.
+
+## Credential profiles
+
+Each connection can have one or more **credential profiles** (username/password pairs).
+
+System admins can mark a credential profile as **sysadmin**. Only sysadmin profiles are available in **System Health**,
+so operators can restrict health checks to high-privilege read-only users without granting those credentials to every
+group.

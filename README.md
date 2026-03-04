@@ -34,6 +34,7 @@ Current focus is JDBC-backed SQL engines:
 - PostgreSQL
 - MySQL
 - MariaDB
+- Trino
 - StarRocks (via MySQL protocol)
 
 ## Quick start (local, Docker Compose)
@@ -58,12 +59,19 @@ Seeded local development users (dev only, do not reuse in production):
 - `admin / Admin1234!` (roles: `SYSTEM_ADMIN`, `USER`)
 - `analyst / Analyst123!` (role: `USER`)
 
+Seeded OIDC (Keycloak) user for local SSO:
+
+- Keycloak: `http://localhost:8081` (`admin / admin`)
+- Realm: `dwarvenpick`
+- User: `oidc-admin / Admin1234!`
+
 Seeded databases in local compose:
 
 - PostgreSQL sample source: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
 - MySQL sample source: `localhost:3306`, db `orders`, user `readonly`, password `readonly`
 - MariaDB sample source: `localhost:3307`, db `warehouse`, user `readonly`, password `readonly`
 - StarRocks sample source: `localhost:9030`, db `warehouse`, user `readonly`, password `readonly`
+- Trino sample source: `localhost:8088`, catalog/schema `tpch/sf1`, user `trino` (no password)
 
 The sample datasets include both transactional-style tables and analytical-style tables/views to exercise query/explain behavior.
 

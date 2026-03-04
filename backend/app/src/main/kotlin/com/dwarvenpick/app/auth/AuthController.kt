@@ -6,11 +6,8 @@ import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.Authentication
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository
 import org.springframework.security.web.context.SecurityContextRepository
 import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.validation.annotation.Validated
@@ -32,6 +29,7 @@ class AuthController(
     private val meterRegistry: MeterRegistry,
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
     private val authAuditLogger: AuthAuditLogger,
+    private val sessionAuthenticationService: SessionAuthenticationService,
     private val securityContextRepository: SecurityContextRepository,
 ) {
     @GetMapping("/csrf")
@@ -50,6 +48,9 @@ class AuthController(
         }
         if (authProperties.isLdapAuthEnabled()) {
             methods.add("ldap")
+        }
+        if (authProperties.isOidcAuthEnabled()) {
+            methods.add("oidc")
         }
         return AuthMethodsResponse(methods = methods)
     }
@@ -81,7 +82,7 @@ class AuthController(
                 recordAuthAttempt(provider = "local", outcome = "failed")
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse("Invalid username or password."))
             } else {
-                establishSession(principal, httpServletRequest, httpServletResponse)
+                sessionAuthenticationService.establishSession(principal, httpServletRequest, httpServletResponse)
 
                 audit(
                     type = "auth.local.login",
@@ -145,7 +146,7 @@ class AuthController(
                     roles = ldapResult.roles,
                 )
 
-            establishSession(principal, httpServletRequest, httpServletResponse)
+            sessionAuthenticationService.establishSession(principal, httpServletRequest, httpServletResponse)
 
             val addedGroups = ldapResult.mappedGroups - previousGroups
             val removedGroups = previousGroups - ldapResult.mappedGroups
@@ -393,27 +394,6 @@ class AuthController(
         } catch (ex: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
         }
-    }
-
-    private fun establishSession(
-        principal: AuthenticatedUserPrincipal,
-        httpServletRequest: HttpServletRequest,
-        httpServletResponse: HttpServletResponse,
-    ) {
-        val authorities = principal.roles.map { SimpleGrantedAuthority("ROLE_${it.uppercase()}") }
-        val authenticationToken =
-            UsernamePasswordAuthenticationToken(
-                principal,
-                null,
-                authorities,
-            )
-
-        val context = SecurityContextHolder.createEmptyContext()
-        context.authentication = authenticationToken
-        SecurityContextHolder.setContext(context)
-        val session = httpServletRequest.getSession(true)
-        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
-        securityContextRepository.saveContext(context, httpServletRequest, httpServletResponse)
     }
 
     private fun audit(

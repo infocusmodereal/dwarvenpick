@@ -1,0 +1,61 @@
+{
+  "realm": "dwarvenpick",
+  "enabled": true,
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "dwarvenpick",
+      "name": "dwarvenpick",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:3000/login/oauth2/code/oidc",
+        "http://localhost:3000/login/oauth2/code/oidc"
+      ],
+      "webOrigins": ["http://127.0.0.1:3000", "http://localhost:3000"],
+      "secret": "dwarvenpick-local-secret",
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "name": "dwarvenpick-admins"
+    }
+  ],
+  "users": [
+    {
+      "username": "oidc-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "oidc-admin@dwarvenpick.local",
+      "firstName": "OIDC",
+      "lastName": "Admin",
+      "groups": ["dwarvenpick-admins"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin1234!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

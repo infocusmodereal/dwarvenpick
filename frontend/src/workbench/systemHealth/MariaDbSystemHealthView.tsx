@@ -22,6 +22,9 @@ export default function MariaDbSystemHealthView({ response }: MariaDbSystemHealt
     const uptimeSeconds = asNumber(response.details?.uptimeSeconds);
     const wsrepClusterSize = asNumber(response.details?.wsrepClusterSize);
     const wsrepClusterStatus = response.details?.wsrepClusterStatus as string | undefined;
+    const wsrepReady = response.details?.wsrepReady as string | undefined;
+    const wsrepConnected = response.details?.wsrepConnected as string | undefined;
+    const wsrepLocalStateComment = response.details?.wsrepLocalStateComment as string | undefined;
     const readOnly = response.details?.readOnly as boolean | undefined;
 
     return (
@@ -50,6 +53,24 @@ export default function MariaDbSystemHealthView({ response }: MariaDbSystemHealt
                     <div className="result-stat">
                         <span>Cluster Status</span>
                         <strong>{wsrepClusterStatus}</strong>
+                    </div>
+                ) : null}
+                {wsrepReady ? (
+                    <div className="result-stat">
+                        <span>Galera Ready</span>
+                        <strong>{wsrepReady}</strong>
+                    </div>
+                ) : null}
+                {wsrepConnected ? (
+                    <div className="result-stat">
+                        <span>Galera Connected</span>
+                        <strong>{wsrepConnected}</strong>
+                    </div>
+                ) : null}
+                {wsrepLocalStateComment ? (
+                    <div className="result-stat">
+                        <span>Galera State</span>
+                        <strong>{wsrepLocalStateComment}</strong>
                     </div>
                 ) : null}
                 {typeof readOnly === 'boolean' ? (

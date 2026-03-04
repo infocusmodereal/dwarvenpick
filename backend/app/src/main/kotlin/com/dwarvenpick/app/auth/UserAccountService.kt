@@ -144,7 +144,7 @@ class UserAccountService(
             throw DisabledUserException()
         }
         if (user.provider != AuthProvider.LOCAL) {
-            throw IllegalArgumentException("User '$normalizedUsername' is LDAP managed.")
+            throw IllegalArgumentException("User '$normalizedUsername' is not locally managed.")
         }
 
         val resolvedDisplayName = displayName?.trim()?.ifBlank { null } ?: user.username
@@ -236,6 +236,57 @@ class UserAccountService(
         existingUser.provider = AuthProvider.LDAP
         existingUser.displayName = profile.displayName
         existingUser.email = profile.email
+        existingUser.temporaryPassword = false
+        existingUser.groups.clear()
+        existingUser.groups.addAll(internalGroups)
+        existingUser.roles.clear()
+        existingUser.roles.addAll(normalizedRoles)
+
+        return toPrincipal(existingUser)
+    }
+
+    fun provisionOrUpdateOidcUser(
+        username: String,
+        displayName: String,
+        email: String?,
+        internalGroups: Set<String>,
+        roles: Set<String>,
+    ): AuthenticatedUserPrincipal {
+        val normalizedUsername = normalizeUsername(username)
+        val existingUser = users[normalizedUsername]
+
+        val normalizedRoles =
+            roles
+                .asSequence()
+                .map { it.trim().uppercase() }
+                .filter { it.isNotBlank() }
+                .toMutableSet()
+                .apply { add("USER") }
+
+        if (existingUser == null) {
+            users[normalizedUsername] =
+                UserAccount(
+                    username = normalizedUsername,
+                    displayName = displayName,
+                    email = email,
+                    passwordHash = null,
+                    provider = AuthProvider.OIDC,
+                    enabled = true,
+                    temporaryPassword = false,
+                    roles = normalizedRoles,
+                    groups = internalGroups.toMutableSet(),
+                )
+
+            return toPrincipal(users[normalizedUsername]!!)
+        }
+
+        if (!existingUser.enabled) {
+            throw DisabledUserException()
+        }
+
+        existingUser.provider = AuthProvider.OIDC
+        existingUser.displayName = displayName
+        existingUser.email = email
         existingUser.temporaryPassword = false
         existingUser.groups.clear()
         existingUser.groups.addAll(internalGroups)

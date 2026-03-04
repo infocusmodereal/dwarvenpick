@@ -97,7 +97,9 @@ class DatasourcePoolManager(
             HikariConfig().apply {
                 jdbcUrl = spec.jdbcUrl
                 username = spec.username
-                password = spec.password
+                if (spec.engine != DatasourceEngine.TRINO || spec.password.isNotBlank()) {
+                    password = spec.password
+                }
                 if (spec.driverSource == "built-in") {
                     driverClassName = spec.driverClass
                 }

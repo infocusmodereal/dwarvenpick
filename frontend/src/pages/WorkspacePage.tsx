@@ -424,6 +424,7 @@ export default function WorkspacePage() {
     const [credentialUsernameInput, setCredentialUsernameInput] = useState('');
     const [credentialPasswordInput, setCredentialPasswordInput] = useState('');
     const [credentialDescriptionInput, setCredentialDescriptionInput] = useState('');
+    const [credentialSysadminInput, setCredentialSysadminInput] = useState(false);
     const [savingCredentialProfile, setSavingCredentialProfile] = useState(false);
     const [reencryptingCredentials, setReencryptingCredentials] = useState(false);
     const [selectedCredentialProfileForTest, setSelectedCredentialProfileForTest] = useState('');
@@ -580,6 +581,12 @@ export default function WorkspacePage() {
     );
     const [editorRenderKey, setEditorRenderKey] = useState(0);
     const [showEditorShortcuts, setShowEditorShortcuts] = useState(false);
+    const editorShortcutsPopoverRef = useRef<HTMLDivElement | null>(null);
+    const [editorShortcutsPosition, setEditorShortcutsPosition] = useState<{
+        top: number;
+        left: number;
+        placement: 'above' | 'below';
+    } | null>(null);
     const [datasourceHealthById, setDatasourceHealthById] = useState<
         Record<string, DatasourceHealthState>
     >({});
@@ -985,8 +992,13 @@ export default function WorkspacePage() {
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
             const target = event.target as Node | null;
-            if (!target || !editorShortcutsRef.current?.contains(target)) {
+            if (
+                !target ||
+                (!editorShortcutsRef.current?.contains(target) &&
+                    !editorShortcutsPopoverRef.current?.contains(target))
+            ) {
                 setShowEditorShortcuts(false);
+                setEditorShortcutsPosition(null);
             }
         };
 
@@ -2057,6 +2069,7 @@ export default function WorkspacePage() {
             setCredentialUsernameInput('');
             setCredentialPasswordInput('');
             setCredentialDescriptionInput('');
+            setCredentialSysadminInput(false);
             setTestConnectionMessage('');
             setTestConnectionOutcome('');
             setTlsCaCertificatePemInput(null);
@@ -2084,6 +2097,9 @@ export default function WorkspacePage() {
         setCredentialPasswordInput('');
         setCredentialDescriptionInput(
             selectedManagedDatasource.credentialProfiles[0]?.description ?? ''
+        );
+        setCredentialSysadminInput(
+            selectedManagedDatasource.credentialProfiles[0]?.sysadmin ?? false
         );
         setTestConnectionMessage('');
         setTestConnectionOutcome('');
@@ -2141,6 +2157,7 @@ export default function WorkspacePage() {
 
         setCredentialUsernameInput(selectedProfile.username);
         setCredentialDescriptionInput(selectedProfile.description ?? '');
+        setCredentialSysadminInput(selectedProfile.sysadmin);
         setCredentialPasswordInput('');
     }, [credentialProfileIdInput, selectedManagedDatasource]);
 
@@ -2554,6 +2571,59 @@ export default function WorkspacePage() {
 
         void loadSystemHealth();
     }, [activeSection, isSystemAdmin, loadSystemHealth]);
+
+    useEffect(() => {
+        if (!isSystemAdmin || activeSection !== 'health') {
+            return;
+        }
+
+        const datasourcesWithSysadminProfiles = visibleDatasources.filter(
+            (datasource) => (datasource.sysadminCredentialProfiles ?? []).length > 0
+        );
+
+        if (datasourcesWithSysadminProfiles.length === 0) {
+            if (systemHealthDatasourceId || systemHealthCredentialProfile) {
+                setSystemHealthDatasourceId('');
+                setSystemHealthCredentialProfile('');
+                setSystemHealthResponse(null);
+                setSystemHealthError('');
+            }
+            return;
+        }
+
+        const matchedDatasource = datasourcesWithSysadminProfiles.find(
+            (datasource) => datasource.id === systemHealthDatasourceId
+        );
+
+        if (!matchedDatasource) {
+            const fallbackDatasource = datasourcesWithSysadminProfiles[0];
+            setSystemHealthDatasourceId(fallbackDatasource.id);
+            setSystemHealthCredentialProfile(
+                fallbackDatasource.sysadminCredentialProfiles?.[0] ?? ''
+            );
+            setSystemHealthResponse(null);
+            setSystemHealthError('');
+            return;
+        }
+
+        const availableProfiles = matchedDatasource.sysadminCredentialProfiles ?? [];
+        if (availableProfiles.length === 0) {
+            if (systemHealthCredentialProfile) {
+                setSystemHealthCredentialProfile('');
+            }
+            return;
+        }
+
+        if (!availableProfiles.includes(systemHealthCredentialProfile)) {
+            setSystemHealthCredentialProfile(availableProfiles[0]);
+        }
+    }, [
+        activeSection,
+        isSystemAdmin,
+        systemHealthCredentialProfile,
+        systemHealthDatasourceId,
+        visibleDatasources
+    ]);
 
     useEffect(() => {
         if (!isSystemAdmin || !adminSuccess) {
@@ -5400,7 +5470,8 @@ export default function WorkspacePage() {
                         password: credentialPasswordInput,
                         description: credentialDescriptionInput.trim()
                             ? credentialDescriptionInput.trim()
-                            : null
+                            : null,
+                        sysadmin: credentialSysadminInput
                     })
                 }
             );
@@ -7080,83 +7151,130 @@ export default function WorkspacePage() {
                                         <IconButton
                                             icon="info"
                                             title="Editor shortcuts"
-                                            onClick={() =>
-                                                setShowEditorShortcuts((current) => !current)
-                                            }
+                                            onClick={() => {
+                                                const triggerRect =
+                                                    editorShortcutsRef.current?.getBoundingClientRect();
+                                                if (!triggerRect) {
+                                                    return;
+                                                }
+
+                                                setShowEditorShortcuts((current) => {
+                                                    const next = !current;
+                                                    if (next) {
+                                                        const placement =
+                                                            triggerRect.top > 340
+                                                                ? 'above'
+                                                                : 'below';
+                                                        setEditorShortcutsPosition({
+                                                            top:
+                                                                placement === 'above'
+                                                                    ? triggerRect.top - 10
+                                                                    : triggerRect.bottom + 8,
+                                                            left: Math.max(
+                                                                12,
+                                                                triggerRect.right - 360
+                                                            ),
+                                                            placement
+                                                        });
+                                                    } else {
+                                                        setEditorShortcutsPosition(null);
+                                                    }
+                                                    return next;
+                                                });
+                                            }}
                                         />
-                                        {showEditorShortcuts ? (
-                                            <div className="editor-shortcuts-popover" role="dialog">
-                                                <h4>Editor Shortcuts</h4>
-                                                <ul>
-                                                    <li>
-                                                        <kbd>Ctrl/Cmd + Enter</kbd>: Run selection
-                                                        (or full tab if no selection)
-                                                    </li>
-                                                    <li>
-                                                        <kbd>Esc</kbd>: Cancel currently running
-                                                        execution
-                                                    </li>
-                                                </ul>
-                                                {isSystemAdmin ? (
-                                                    <details className="editor-diagnostics">
-                                                        <summary>Autocomplete diagnostics</summary>
-                                                        <dl>
-                                                            <div>
-                                                                <dt>Enabled</dt>
-                                                                <dd>
-                                                                    {autocompleteDiagnostics.enabled
-                                                                        ? 'Yes'
-                                                                        : 'No'}
-                                                                </dd>
-                                                            </div>
-                                                            <div>
-                                                                <dt>Monaco ready</dt>
-                                                                <dd>
-                                                                    {autocompleteDiagnostics.monacoReady
-                                                                        ? 'Yes'
-                                                                        : 'No'}
-                                                                </dd>
-                                                            </div>
-                                                            <div>
-                                                                <dt>Language</dt>
-                                                                <dd>
-                                                                    {autocompleteDiagnostics.modelLanguageId ||
-                                                                        '-'}
-                                                                </dd>
-                                                            </div>
-                                                            <div>
-                                                                <dt>Seeds</dt>
-                                                                <dd>
-                                                                    {autocompleteDiagnostics.suggestionSeedCount.toLocaleString()}
-                                                                </dd>
-                                                            </div>
-                                                            <div>
-                                                                <dt>Triggers</dt>
-                                                                <dd>
-                                                                    {autocompleteDiagnostics.triggerCount.toLocaleString()}
-                                                                </dd>
-                                                            </div>
-                                                            <div>
-                                                                <dt>Invocations</dt>
-                                                                <dd>
-                                                                    {autocompleteDiagnostics.providerInvocationCount.toLocaleString()}
-                                                                </dd>
-                                                            </div>
-                                                            {autocompleteDiagnostics.lastError ? (
-                                                                <div>
-                                                                    <dt>Error</dt>
-                                                                    <dd>
-                                                                        {
-                                                                            autocompleteDiagnostics.lastError
-                                                                        }
-                                                                    </dd>
-                                                                </div>
-                                                            ) : null}
-                                                        </dl>
-                                                    </details>
-                                                ) : null}
-                                            </div>
-                                        ) : null}
+                                        {showEditorShortcuts && editorShortcutsPosition
+                                            ? createPortal(
+                                                  <div
+                                                      className="editor-shortcuts-popover is-floating"
+                                                      role="dialog"
+                                                      ref={editorShortcutsPopoverRef}
+                                                      style={{
+                                                          top: `${editorShortcutsPosition.top}px`,
+                                                          left: `${editorShortcutsPosition.left}px`,
+                                                          transform:
+                                                              editorShortcutsPosition.placement ===
+                                                              'above'
+                                                                  ? 'translateY(-100%)'
+                                                                  : undefined
+                                                      }}
+                                                  >
+                                                      <h4>Editor Shortcuts</h4>
+                                                      <ul>
+                                                          <li>
+                                                              <kbd>Ctrl/Cmd + Enter</kbd>: Run
+                                                              selection (or full tab if no
+                                                              selection)
+                                                          </li>
+                                                          <li>
+                                                              <kbd>Esc</kbd>: Cancel currently
+                                                              running execution
+                                                          </li>
+                                                      </ul>
+                                                      {isSystemAdmin ? (
+                                                          <details className="editor-diagnostics">
+                                                              <summary>
+                                                                  Autocomplete diagnostics
+                                                              </summary>
+                                                              <dl>
+                                                                  <div>
+                                                                      <dt>Enabled</dt>
+                                                                      <dd>
+                                                                          {autocompleteDiagnostics.enabled
+                                                                              ? 'Yes'
+                                                                              : 'No'}
+                                                                      </dd>
+                                                                  </div>
+                                                                  <div>
+                                                                      <dt>Monaco ready</dt>
+                                                                      <dd>
+                                                                          {autocompleteDiagnostics.monacoReady
+                                                                              ? 'Yes'
+                                                                              : 'No'}
+                                                                      </dd>
+                                                                  </div>
+                                                                  <div>
+                                                                      <dt>Language</dt>
+                                                                      <dd>
+                                                                          {autocompleteDiagnostics.modelLanguageId ||
+                                                                              '-'}
+                                                                      </dd>
+                                                                  </div>
+                                                                  <div>
+                                                                      <dt>Seeds</dt>
+                                                                      <dd>
+                                                                          {autocompleteDiagnostics.suggestionSeedCount.toLocaleString()}
+                                                                      </dd>
+                                                                  </div>
+                                                                  <div>
+                                                                      <dt>Triggers</dt>
+                                                                      <dd>
+                                                                          {autocompleteDiagnostics.triggerCount.toLocaleString()}
+                                                                      </dd>
+                                                                  </div>
+                                                                  <div>
+                                                                      <dt>Invocations</dt>
+                                                                      <dd>
+                                                                          {autocompleteDiagnostics.providerInvocationCount.toLocaleString()}
+                                                                      </dd>
+                                                                  </div>
+                                                                  {autocompleteDiagnostics.lastError ? (
+                                                                      <div>
+                                                                          <dt>Error</dt>
+                                                                          <dd>
+                                                                              {
+                                                                                  autocompleteDiagnostics.lastError
+                                                                              }
+                                                                          </dd>
+                                                                      </div>
+                                                                  ) : null}
+                                                              </dl>
+                                                          </details>
+                                                      ) : null}
+                                                  </div>,
+                                                  document.body
+                                              )
+                                            : null}
                                     </div>
                                     <div className="editor-cursor-legend" aria-live="polite">
                                         <span>
@@ -7582,7 +7700,8 @@ export default function WorkspacePage() {
                                     const selected = visibleDatasources.find(
                                         (datasource) => datasource.id === value
                                     );
-                                    const defaultProfile = selected?.credentialProfiles[0] ?? '';
+                                    const defaultProfile =
+                                        selected?.sysadminCredentialProfiles?.[0] ?? '';
                                     setSystemHealthCredentialProfile(defaultProfile);
                                 }}
                                 credentialProfile={systemHealthCredentialProfile}
@@ -10133,6 +10252,9 @@ export default function WorkspacePage() {
                                                                                         {
                                                                                             profile.username
                                                                                         }
+                                                                                        {profile.sysadmin
+                                                                                            ? ', sysadmin'
+                                                                                            : ''}
                                                                                         ) key:{' '}
                                                                                         {
                                                                                             profile.encryptionKeyId
@@ -10273,6 +10395,25 @@ export default function WorkspacePage() {
                                                                                 }
                                                                                 placeholder="Readonly profile for analysts"
                                                                             />
+
+                                                                            <label className="checkbox-row">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={
+                                                                                        credentialSysadminInput
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        event
+                                                                                    ) =>
+                                                                                        setCredentialSysadminInput(
+                                                                                            event
+                                                                                                .target
+                                                                                                .checked
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                                Sysadmin profile
+                                                                            </label>
 
                                                                             <button
                                                                                 type="submit"

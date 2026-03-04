@@ -25,6 +25,7 @@ management:
       enabled: false
 
 server:
+  forward-headers-strategy: framework
   shutdown: graceful
   servlet:
     session:
@@ -101,3 +102,23 @@ dwarvenpick:
       mock:
         enabled: false
         users: []
+    oidc:
+      enabled: false
+      issuer-uri: ""
+      authorization-uri: ""
+      token-uri: ""
+      jwk-set-uri: ""
+      user-info-uri: ""
+      client-id: ""
+      client-secret: ""
+      scopes: ["openid", "profile", "email"]
+      redirect-uri-template: "{baseUrl}/login/oauth2/code/{registrationId}"
+      claim-mapping:
+        username: preferred_username
+        display-name: name
+        email: email
+        groups: groups
+      group-sync:
+        enabled: true
+        mapping-rules: {}
+      system-admin-groups: []

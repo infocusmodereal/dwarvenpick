@@ -35,6 +35,7 @@ data class DatasourceResponse(
     val name: String,
     val engine: String,
     val credentialProfiles: Set<String>,
+    val sysadminCredentialProfiles: Set<String>,
 )
 
 data class DatasourceAccessResponse(

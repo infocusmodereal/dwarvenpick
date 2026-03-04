@@ -18,6 +18,39 @@ nav_order: 6
 - Directory-backed authentication.
 - User creation/reset is not supported in the UI when LDAP-only mode is enabled.
 
+## OIDC (Keycloak / JumpCloud)
+
+- OIDC-based single sign-on (SSO) using Spring Security OAuth2 login.
+- Intended for enterprise identity providers (Keycloak, JumpCloud, Okta, etc).
+- When OIDC is enabled, Local auth is disabled by default to avoid accidental backdoor access via seeded users.
+
+Minimal settings:
+
+- `DWARVENPICK_AUTH_OIDC_ENABLED=true`
+- `DWARVENPICK_AUTH_OIDC_ISSUER_URI=https://<idp>/realms/<realm>` (Keycloak example)
+- `DWARVENPICK_AUTH_OIDC_CLIENT_ID=<client-id>`
+- `DWARVENPICK_AUTH_OIDC_CLIENT_SECRET=<client-secret>`
+
+Optional settings:
+
+- `DWARVENPICK_AUTH_OIDC_REDIRECT_URI_TEMPLATE={baseUrl}/login/oauth2/code/{registrationId}`
+- `DWARVENPICK_AUTH_OIDC_SCOPES=openid,profile,email`
+- `DWARVENPICK_AUTH_OIDC_SYSTEM_ADMIN_GROUPS=<group1>,<group2>` (comma-separated)
+- `DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_OIDC=true` (recommended only for local dev / break-glass)
+
+Notes:
+
+- By default, `dwarvenpick` auto-derives the `authorization`, `token`, and `jwk-set` endpoints for Keycloak issuers
+  (issuer URLs containing `/realms/`).
+- `DWARVENPICK_AUTH_OIDC_USER_INFO_URI` is optional. If omitted, `dwarvenpick` will not call the UserInfo endpoint and
+  will rely on ID token claims instead. Ensure your IdP includes any required claims (for example `groups`) in the ID
+  token.
+- For non-Keycloak issuers (or custom setups), you can override endpoints via:
+  - `DWARVENPICK_AUTH_OIDC_AUTHORIZATION_URI`
+  - `DWARVENPICK_AUTH_OIDC_TOKEN_URI`
+  - `DWARVENPICK_AUTH_OIDC_JWK_SET_URI`
+  - `DWARVENPICK_AUTH_OIDC_USER_INFO_URI`
+
 ## Choosing methods
 
 The backend exposes enabled methods via:
@@ -56,5 +89,6 @@ In Helm deployments, auth methods are controlled via environment variables (or `
 
 - `DWARVENPICK_AUTH_LOCAL_ENABLED=true|false`
 - `DWARVENPICK_AUTH_LDAP_ENABLED=true|false`
+- `DWARVENPICK_AUTH_OIDC_ENABLED=true|false`
 
 See sample Helm values under `deploy/helm/examples`.

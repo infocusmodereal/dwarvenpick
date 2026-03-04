@@ -27,6 +27,19 @@ npm run test
 npm run build
 ```
 
+## Local stack (Docker Compose)
+
+For UI + integration smoke tests (including OIDC SSO via Keycloak):
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml up -d --build
+```
+
+Open:
+
+- UI: `http://localhost:3000`
+- Keycloak admin: `http://localhost:8081` (`admin / admin`)
+
 ## LDAP integration tests
 
 LDAP authentication is covered by a Testcontainers-based integration test suite and requires Docker:

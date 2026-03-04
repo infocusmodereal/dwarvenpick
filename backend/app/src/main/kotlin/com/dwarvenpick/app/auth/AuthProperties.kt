@@ -7,8 +7,11 @@ data class AuthProperties(
     val local: LocalAuthProperties = LocalAuthProperties(),
     val passwordPolicy: PasswordPolicyProperties = PasswordPolicyProperties(),
     val ldap: LdapAuthProperties = LdapAuthProperties(),
+    val oidc: OidcAuthProperties = OidcAuthProperties(),
 ) {
     fun isLdapAuthEnabled(): Boolean = ldap.enabled || ldap.mock.enabled
+
+    fun isOidcAuthEnabled(): Boolean = oidc.enabled
 
     fun isLocalAuthEnabled(): Boolean {
         if (!local.enabled) {
@@ -16,6 +19,10 @@ data class AuthProperties(
         }
 
         if (isLdapAuthEnabled() && !local.allowWithLdap) {
+            return false
+        }
+
+        if (isOidcAuthEnabled() && !local.allowWithOidc) {
             return false
         }
 
@@ -30,6 +37,11 @@ data class LocalAuthProperties(
      * users. Set this to true to keep local authentication enabled alongside LDAP (useful for local development).
      */
     val allowWithLdap: Boolean = false,
+    /**
+     * When OIDC is enabled, local authentication is disabled by default (same principle as LDAP). Set this to true to
+     * keep local authentication enabled alongside OIDC (useful for local development / break-glass access).
+     */
+    val allowWithOidc: Boolean = false,
     val seedUsers: List<SeedUserProperties> =
         listOf(
             SeedUserProperties(
@@ -113,4 +125,50 @@ data class LdapMockUserProperties(
     val displayName: String = username,
     val email: String? = null,
     val groups: Set<String> = emptySet(),
+)
+
+data class OidcAuthProperties(
+    val enabled: Boolean = false,
+    /**
+     * OIDC issuer URI (ex: Keycloak realm URL): https://<host>/realms/<realm>
+     */
+    val issuerUri: String = "",
+    /**
+     * Optional override for the authorization endpoint. Leave blank to auto-derive for Keycloak issuers.
+     */
+    val authorizationUri: String = "",
+    /**
+     * Optional override for the token endpoint. Leave blank to auto-derive for Keycloak issuers.
+     */
+    val tokenUri: String = "",
+    /**
+     * Optional override for the JWK set endpoint. Leave blank to auto-derive for Keycloak issuers.
+     */
+    val jwkSetUri: String = "",
+    /**
+     * Optional override for the userinfo endpoint. Leave blank to skip calling userinfo and rely on ID token claims.
+     */
+    val userInfoUri: String = "",
+    val clientId: String = "",
+    val clientSecret: String = "",
+    val scopes: Set<String> = setOf("openid", "profile", "email"),
+    /**
+     * Spring Security redirect URI template. Keep the default unless you need a custom callback path.
+     */
+    val redirectUriTemplate: String = "{baseUrl}/login/oauth2/code/{registrationId}",
+    val claimMapping: OidcClaimMappingProperties = OidcClaimMappingProperties(),
+    val groupSync: OidcGroupSyncProperties = OidcGroupSyncProperties(),
+    val systemAdminGroups: Set<String> = emptySet(),
+)
+
+data class OidcClaimMappingProperties(
+    val username: String = "preferred_username",
+    val displayName: String = "name",
+    val email: String = "email",
+    val groups: String = "groups",
+)
+
+data class OidcGroupSyncProperties(
+    val enabled: Boolean = true,
+    val mappingRules: Map<String, String> = emptyMap(),
 )

@@ -30,13 +30,24 @@ export default function SystemHealthSection({
     response,
     onRefresh
 }: SystemHealthSectionProps) {
+    const datasourcesWithSysadminProfiles = visibleDatasources.filter(
+        (datasource) => (datasource.sysadminCredentialProfiles ?? []).length > 0
+    );
+    const hasSysadminConnections = datasourcesWithSysadminProfiles.length > 0;
     const selectedDatasource = visibleDatasources.find(
         (datasource) => datasource.id === datasourceId
     );
-    const availableProfiles = selectedDatasource?.credentialProfiles ?? [];
+    const availableProfiles = selectedDatasource?.sysadminCredentialProfiles ?? [];
 
     return (
         <section className="panel system-health-panel" hidden={hidden}>
+            {!hasSysadminConnections ? (
+                <p className="form-error" role="alert">
+                    No connections have a sysadmin credential profile. Mark a credential profile as
+                    sysadmin in the Connections admin page to enable health checks.
+                </p>
+            ) : null}
+
             <div className="history-filters">
                 <div className="filter-field">
                     <label htmlFor="system-health-datasource">Connection</label>
@@ -45,13 +56,23 @@ export default function SystemHealthSection({
                             id="system-health-datasource"
                             value={datasourceId}
                             onChange={(event) => onDatasourceChange(event.target.value)}
+                            disabled={!hasSysadminConnections}
                         >
-                            <option value="">Select a connection</option>
-                            {visibleDatasources.map((datasource) => (
-                                <option key={`health-${datasource.id}`} value={datasource.id}>
-                                    {datasource.name}
-                                </option>
-                            ))}
+                            {hasSysadminConnections ? (
+                                <>
+                                    <option value="">Select a connection</option>
+                                    {datasourcesWithSysadminProfiles.map((datasource) => (
+                                        <option
+                                            key={`health-${datasource.id}`}
+                                            value={datasource.id}
+                                        >
+                                            {datasource.name}
+                                        </option>
+                                    ))}
+                                </>
+                            ) : (
+                                <option value="">No sysadmin connections</option>
+                            )}
                         </select>
                     </div>
                 </div>
@@ -66,7 +87,11 @@ export default function SystemHealthSection({
                             disabled={!datasourceId || availableProfiles.length === 0}
                         >
                             {availableProfiles.length === 0 ? (
-                                <option value="">Select a connection first</option>
+                                <option value="">
+                                    {datasourceId
+                                        ? 'No sysadmin credential profiles'
+                                        : 'Select a connection first'}
+                                </option>
                             ) : (
                                 availableProfiles.map((profile) => (
                                     <option

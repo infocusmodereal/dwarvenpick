@@ -16,6 +16,17 @@ Then open:
 - UI: `http://localhost:3000`
 - Backend health: `http://localhost:3000/api/health`
 
+Seeded local development users (dev only, do not reuse in production):
+
+- `admin / Admin1234!` (roles: `SYSTEM_ADMIN`, `USER`)
+- `analyst / Analyst123!` (role: `USER`)
+
+The local stack also includes a Keycloak instance for OIDC SSO:
+
+- Keycloak admin: `http://localhost:8081` (`admin / admin`)
+- Realm: `dwarvenpick`
+- Seeded SSO user: `oidc-admin / Admin1234!`
+
 ## First query
 
 1. Go to **Workbench**
@@ -34,6 +45,7 @@ The default local stack includes:
 - MySQL sample source: `localhost:3306` (`readonly` / `readonly`)
 - MariaDB sample source: `localhost:3307` (`readonly` / `readonly`)
 - StarRocks sample source: `localhost:9030` (`readonly` / `readonly`)
+- Trino sample source: `localhost:8088` (user `trino`, no password)
 
 ## Stop
 

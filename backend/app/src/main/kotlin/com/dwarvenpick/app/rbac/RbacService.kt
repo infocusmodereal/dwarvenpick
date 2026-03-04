@@ -547,5 +547,6 @@ class RbacService(
             name = name,
             engine = engine.name,
             credentialProfiles = credentialProfiles,
+            sysadminCredentialProfiles = sysadminCredentialProfiles,
         )
 }

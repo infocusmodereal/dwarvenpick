@@ -24,6 +24,7 @@ export type CatalogDatasourceResponse = {
     name: string;
     engine: string;
     credentialProfiles: string[];
+    sysadminCredentialProfiles?: string[];
 };
 
 export type DatasourceEngine =
@@ -78,6 +79,7 @@ export type ManagedCredentialProfileResponse = {
     profileId: string;
     username: string;
     description?: string;
+    sysadmin: boolean;
     encryptionKeyId: string;
     updatedAt: string;
 };

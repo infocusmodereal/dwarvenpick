@@ -85,5 +85,7 @@ Read-only access rules apply to **every** statement in a script.
 
 ## System Health (SYSTEM_ADMIN)
 
-- Select a connection (and credential profile) to run engine-specific health checks.
+- Select a connection and a **sysadmin credential profile** to run engine-specific health checks.
+- Only credential profiles marked as **sysadmin** are shown in the picker.
+- If no connections have a sysadmin credential profile, the page shows an explicit message.
 - If the selected credentials do not have the required privileges, the page shows an explicit message.

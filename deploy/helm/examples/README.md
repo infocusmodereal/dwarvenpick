@@ -47,3 +47,11 @@ helm upgrade --install dwarvenpick deploy/helm/dwarvenpick \
   --namespace dwarvenpick --create-namespace \
   -f deploy/helm/examples/values-ldap-auth.yaml
 ```
+
+OIDC (Keycloak) auth example:
+
+```bash
+helm upgrade --install dwarvenpick deploy/helm/dwarvenpick \
+  --namespace dwarvenpick --create-namespace \
+  -f deploy/helm/examples/values-oidc-keycloak.yaml
+```

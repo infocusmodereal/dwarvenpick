@@ -1,10 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { useTheme } from '../theme/ThemeContext';
 
-type AuthMethod = 'local' | 'ldap';
+type AuthMethod = 'local' | 'ldap' | 'oidc';
 
 type CsrfTokenResponse = {
     token: string;
@@ -20,16 +20,31 @@ type AuthMethodsResponse = {
     methods?: string[];
 };
 
-const authMethodPriority: AuthMethod[] = ['local', 'ldap'];
+const authMethodPriority: AuthMethod[] = ['oidc', 'local', 'ldap'];
+const authMethodFallback: AuthMethod[] = ['local', 'ldap'];
 
 export default function LoginPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { theme, toggleTheme } = useTheme();
-    const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>(authMethodPriority);
+    const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>(authMethodFallback);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+
+    const supportsOidc = supportedMethods.includes('oidc');
+    const passwordMethods = supportedMethods.filter(
+        (method): method is Exclude<AuthMethod, 'oidc'> => method === 'local' || method === 'ldap'
+    );
+    const showPasswordForm = passwordMethods.length > 0;
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('error') === 'oidc') {
+            setErrorMessage('SSO sign in failed. Please try again.');
+        }
+    }, [location.search]);
 
     useEffect(() => {
         let active = true;
@@ -47,7 +62,8 @@ export default function LoginPage() {
 
                 const payload = (await response.json()) as AuthMethodsResponse;
                 const methods = (payload.methods ?? []).filter(
-                    (method): method is AuthMethod => method === 'local' || method === 'ldap'
+                    (method): method is AuthMethod =>
+                        method === 'local' || method === 'ldap' || method === 'oidc'
                 );
 
                 if (!active) {
@@ -68,7 +84,7 @@ export default function LoginPage() {
                 }
 
                 // Fall back to trying local then LDAP when capability discovery is unavailable.
-                setSupportedMethods(authMethodPriority);
+                setSupportedMethods(authMethodFallback);
             }
         };
 
@@ -133,13 +149,18 @@ export default function LoginPage() {
             return;
         }
 
+        if (passwordMethods.length === 0) {
+            setErrorMessage('Use SSO to sign in.');
+            return;
+        }
+
         setIsSubmitting(true);
 
         try {
             const csrfToken = await fetchCsrfToken();
             let lastErrorMessage = 'Invalid credentials. Please try again.';
 
-            for (const method of supportedMethods) {
+            for (const method of passwordMethods) {
                 const endpoint = method === 'local' ? '/api/auth/login' : '/api/auth/ldap/login';
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -208,38 +229,58 @@ export default function LoginPage() {
                     />
                     <strong>dwarvenpick</strong>
                 </div>
-                <form className="login-form" onSubmit={handleSubmit}>
-                    <label htmlFor="username">Username</label>
-                    <input
-                        id="username"
-                        name="username"
-                        autoComplete="username"
-                        value={username}
-                        onChange={(event) => setUsername(event.target.value)}
-                        required
-                    />
+                <div className="login-form">
+                    {supportsOidc ? (
+                        <button
+                            type="button"
+                            className="chip login-sso-button"
+                            onClick={() => {
+                                window.location.assign('/oauth2/authorization/oidc');
+                            }}
+                            disabled={isSubmitting}
+                        >
+                            Continue with SSO
+                        </button>
+                    ) : null}
 
-                    <label htmlFor="password">Password</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                    />
+                    {showPasswordForm ? (
+                        <form onSubmit={handleSubmit}>
+                            <label htmlFor="username">Username</label>
+                            <input
+                                id="username"
+                                name="username"
+                                autoComplete="username"
+                                value={username}
+                                onChange={(event) => setUsername(event.target.value)}
+                                required
+                            />
+
+                            <label htmlFor="password">Password</label>
+                            <input
+                                id="password"
+                                name="password"
+                                type="password"
+                                autoComplete="current-password"
+                                value={password}
+                                onChange={(event) => setPassword(event.target.value)}
+                                required
+                            />
+
+                            <button
+                                type="submit"
+                                disabled={isSubmitting || passwordMethods.length === 0}
+                            >
+                                {isSubmitting ? 'Signing In...' : 'Sign In'}
+                            </button>
+                        </form>
+                    ) : null}
 
                     {errorMessage ? (
                         <p className="form-error" role="alert">
                             {errorMessage}
                         </p>
                     ) : null}
-
-                    <button type="submit" disabled={isSubmitting || supportedMethods.length === 0}>
-                        {isSubmitting ? 'Signing In...' : 'Sign In'}
-                    </button>
-                </form>
+                </div>
             </section>
         </AppShell>
     );
