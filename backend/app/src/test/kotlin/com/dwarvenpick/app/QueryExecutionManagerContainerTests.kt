@@ -6,6 +6,10 @@ import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
 import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
+import com.dwarvenpick.app.inspector.InspectedObjectType
+import com.dwarvenpick.app.inspector.ObjectInspectorObjectRef
+import com.dwarvenpick.app.inspector.ObjectInspectorSectionStatus
+import com.dwarvenpick.app.inspector.ObjectInspectorService
 import com.dwarvenpick.app.query.QueryExecutionManager
 import com.dwarvenpick.app.query.QueryExecutionRequest
 import com.dwarvenpick.app.query.QueryExecutionStatusResponse
@@ -48,6 +52,9 @@ class QueryExecutionManagerContainerTests {
 
     @Autowired
     private lateinit var rbacService: RbacService
+
+    @Autowired
+    private lateinit var objectInspectorService: ObjectInspectorService
 
     @BeforeEach
     fun resetState() {
@@ -215,6 +222,107 @@ class QueryExecutionManagerContainerTests {
             )
         assertThat(results.rows).hasSize(1)
         assertThat(results.rows[0][0]).isEqualTo("25")
+    }
+
+    @Test
+    fun `object inspector returns ddl for postgres table`() {
+        val datasourceId = registerPostgresDatasource()
+
+        datasourcePoolManager.openConnection(datasourceId, "admin-ro").connection.use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute("CREATE SCHEMA IF NOT EXISTS warehouse")
+                statement.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS warehouse.customers (
+                        id integer primary key,
+                        name text not null
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val response =
+            objectInspectorService.inspect(
+                datasourceId = datasourceId,
+                credentialProfile = "admin-ro",
+                objectRef =
+                    ObjectInspectorObjectRef(
+                        type = InspectedObjectType.TABLE,
+                        schema = "warehouse",
+                        name = "customers",
+                    ),
+            )
+
+        val ddlSection = response.sections.firstOrNull { section -> section.id == "ddl" }
+        assertThat(ddlSection?.status).isEqualTo(ObjectInspectorSectionStatus.OK)
+        assertThat(ddlSection?.text).contains("CREATE TABLE")
+        assertThat(ddlSection?.text).contains("customers")
+    }
+
+    @Test
+    fun `object inspector returns ddl for mysql table`() {
+        val datasourceId = registerMysqlDatasource()
+
+        DriverManager
+            .getConnection(
+                mysqlContainer.jdbcUrl,
+                mysqlContainer.username,
+                mysqlContainer.password,
+            ).use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS customers (
+                            id int primary key,
+                            name varchar(32) not null
+                        )
+                        """.trimIndent(),
+                    )
+                }
+            }
+
+        val response =
+            objectInspectorService.inspect(
+                datasourceId = datasourceId,
+                credentialProfile = "admin-ro",
+                objectRef =
+                    ObjectInspectorObjectRef(
+                        type = InspectedObjectType.TABLE,
+                        schema = mysqlContainer.databaseName,
+                        name = "customers",
+                    ),
+            )
+
+        val ddlSection = response.sections.firstOrNull { section -> section.id == "ddl" }
+        assertThat(ddlSection?.status).isEqualTo(ObjectInspectorSectionStatus.OK)
+        assertThat(ddlSection?.text).contains("CREATE TABLE")
+        assertThat(ddlSection?.text).contains("customers")
+    }
+
+    @Test
+    fun `object inspector returns stats for trino table`() {
+        val datasourceId = registerTrinoDatasource()
+
+        val response =
+            objectInspectorService.inspect(
+                datasourceId = datasourceId,
+                credentialProfile = "admin-ro",
+                objectRef =
+                    ObjectInspectorObjectRef(
+                        type = InspectedObjectType.TABLE,
+                        schema = "sf1",
+                        name = "nation",
+                    ),
+            )
+
+        val ddlSection = response.sections.firstOrNull { section -> section.id == "ddl" }
+        assertThat(ddlSection?.status).isEqualTo(ObjectInspectorSectionStatus.OK)
+        assertThat(ddlSection?.text).contains("CREATE TABLE")
+
+        val statsSection = response.sections.firstOrNull { section -> section.id == "stats" }
+        assertThat(statsSection?.status).isEqualTo(ObjectInspectorSectionStatus.OK)
+        assertThat(statsSection?.table?.rows).isNotEmpty
     }
 
     private fun registerPostgresDatasource(): String {

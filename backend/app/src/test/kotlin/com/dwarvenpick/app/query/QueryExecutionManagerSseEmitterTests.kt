@@ -25,13 +25,9 @@ class QueryExecutionManagerSseEmitterTests {
 
         val failingEmitter =
             object : SseEmitter(0L) {
-                override fun send(builder: SseEmitter.SseEventBuilder) {
-                    throw IllegalStateException("send failed")
-                }
+                override fun send(builder: SseEmitter.SseEventBuilder) = throw IllegalStateException("send failed")
 
-                override fun complete() {
-                    throw IllegalStateException("complete failed")
-                }
+                override fun complete() = throw IllegalStateException("complete failed")
             }
 
         subscribers[actor] = CopyOnWriteArrayList(listOf(failingEmitter))
@@ -68,19 +64,26 @@ class QueryExecutionManagerSseEmitterTests {
     ): QueryExecutionStatusResponse {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            val status = queryExecutionManager.getExecutionStatus(actor = actor, isSystemAdmin = false, executionId = executionId)
+            val status =
+                queryExecutionManager.getExecutionStatus(
+                    actor = actor,
+                    isSystemAdmin = false,
+                    executionId = executionId,
+                )
             if (status.status in setOf("SUCCEEDED", "FAILED", "CANCELED")) {
                 return status
             }
             Thread.sleep(25)
         }
-        return queryExecutionManager.getExecutionStatus(actor = actor, isSystemAdmin = false, executionId = executionId)
+        return queryExecutionManager.getExecutionStatus(
+            actor = actor,
+            isSystemAdmin = false,
+            executionId = executionId,
+        )
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun reflectSubscribers(
-        manager: QueryExecutionManager,
-    ): ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>> {
+    private fun reflectSubscribers(manager: QueryExecutionManager): ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>> {
         val field = QueryExecutionManager::class.java.getDeclaredField("subscribers")
         field.isAccessible = true
         return field.get(manager) as ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>

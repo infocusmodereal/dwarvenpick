@@ -9,6 +9,7 @@ import {
     alignStartHorizontalIcon,
     circlePlayIcon,
     downloadIcon,
+    explorerInspectIcon,
     explorerIconSvgByGlyph,
     explorerInsertIcon,
     fileTextIcon,
@@ -266,6 +267,16 @@ export const ExplorerInsertIcon = () => (
         aria-hidden
         dangerouslySetInnerHTML={{
             __html: explorerInsertIcon
+        }}
+    />
+);
+
+export const ExplorerInspectIcon = () => (
+    <span
+        className="explorer-insert-glyph"
+        aria-hidden
+        dangerouslySetInnerHTML={{
+            __html: explorerInspectIcon
         }}
     />
 );

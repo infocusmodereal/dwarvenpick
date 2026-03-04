@@ -13,6 +13,8 @@ import explorerSchemaIcon from '../assets/lucide/folder-tree.svg?raw';
 import explorerTableIcon from '../assets/lucide/table-properties.svg?raw';
 import explorerColumnIcon from '../assets/lucide/columns-3.svg?raw';
 import explorerInsertIcon from '../assets/lucide/arrow-up-right.svg?raw';
+import explorerInspectIcon from '../assets/lucide/file-search.svg?raw';
+import searchIcon from '../assets/lucide/search.svg?raw';
 import chevronRightIcon from '../assets/lucide/chevron-right.svg?raw';
 import chevronDownIcon from '../assets/lucide/chevron-down.svg?raw';
 import refreshCwIcon from '../assets/lucide/refresh-cw.svg?raw';
@@ -81,11 +83,13 @@ export {
     chevronRightIcon,
     downloadIcon,
     explorerInsertIcon,
+    explorerInspectIcon,
     fileTextIcon,
     pencilIcon,
     playIcon,
     plusIcon,
     refreshCwIcon,
+    searchIcon,
     settingsIcon,
     shieldCheckIcon,
     sortDownIcon,
