@@ -1737,21 +1737,12 @@ button:disabled {
     --workbench-main-surface: var(--workbench-surface);
     display: grid;
     grid-template-columns: minmax(240px, 272px) minmax(0, 1fr);
-    grid-template-rows:
-        minmax(var(--workbench-editor-min-height), 1.7fr)
-        var(--workbench-results-resizer-height)
-        minmax(var(--workbench-results-min-height), var(--workbench-results-size, 1fr));
+    grid-template-rows: minmax(0, 1fr);
     column-gap: 0;
     row-gap: 0;
     align-items: stretch;
     align-content: stretch;
-    min-height: max(
-        100%,
-        calc(
-            var(--workbench-editor-min-height) + var(--workbench-results-min-height) +
-                var(--workbench-results-resizer-height)
-        )
-    );
+    min-height: 0;
     height: 100%;
     overflow: visible;
     background: var(--workspace-surface);
@@ -1774,7 +1765,7 @@ button:disabled {
     grid-template-rows: minmax(0, 1fr);
     gap: 0;
     grid-column: 1;
-    grid-row: 1 / span 3;
+    grid-row: 1;
     border-right: 1px solid var(--border);
     padding: 0;
     margin-right: 0;
@@ -2427,22 +2418,24 @@ button:disabled {
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows:
+        auto
+        minmax(var(--workbench-editor-min-height), 1.7fr)
+        var(--workbench-results-resizer-height)
+        auto
+        minmax(var(--workbench-results-min-height), var(--workbench-results-size, 1fr));
     height: 100%;
     align-self: stretch;
     border: 0;
     border-radius: 0;
     background: var(--workbench-main-surface);
     box-shadow: none;
-    padding: 0 0 0.7rem;
+    padding: 0;
 }
 
 .editor-toolbar {
-    display: grid;
-    gap: 0.52rem;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    min-height: 0;
-    height: 100%;
+    display: block;
+    min-width: 0;
 }
 
 .editor-tabs-row {
@@ -2696,12 +2689,11 @@ button:disabled {
     align-items: flex-end;
     justify-content: space-between;
     gap: 0.55rem;
-    border-top: 1px solid rgba(184, 162, 132, 0.8);
     background: var(--workbench-main-surface);
     position: relative;
     z-index: 6;
-    padding: 0.48rem 0.85rem 0;
-    margin-top: 0.18rem;
+    padding: 0.48rem 0.85rem;
+    margin-top: 0;
 }
 
 .editor-primary-actions {
@@ -2925,7 +2917,7 @@ button:disabled {
 .monaco-host {
     border: 0;
     border-radius: 0;
-    overflow: visible;
+    overflow: hidden;
     background: var(--workbench-main-surface);
     min-height: 0;
     height: 100%;
@@ -2938,7 +2930,7 @@ button:disabled {
     height: 100%;
     padding: 0.2rem 0.85rem 0.38rem;
     display: grid;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .monaco-frame .monaco-editor,
@@ -2967,8 +2959,6 @@ button:disabled {
 }
 
 .results {
-    grid-column: 2;
-    grid-row: 3;
     position: relative;
     display: grid;
     gap: 0.72rem;
@@ -2984,8 +2974,6 @@ button:disabled {
 }
 
 .workbench-results-resizer {
-    grid-column: 2;
-    grid-row: 2;
     height: var(--workbench-results-resizer-height);
     display: flex;
     align-items: center;
@@ -3934,8 +3922,9 @@ select {
     }
 
     .workspace-grid {
+        --workbench-results-resizer-height: 0px;
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto;
+        grid-template-rows: auto minmax(0, 1fr);
         row-gap: 0.7rem;
     }
 
@@ -3968,8 +3957,6 @@ select {
     }
 
     .results {
-        grid-column: 1;
-        grid-row: auto;
         border-top: 1px solid rgba(184, 162, 132, 0.8);
     }
 }

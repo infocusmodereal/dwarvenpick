@@ -472,12 +472,17 @@ export default function WorkspacePage() {
         }
     });
     const workbenchGridRef = useRef<HTMLDivElement | null>(null);
+    const editorSectionRef = useRef<HTMLElement | null>(null);
+    const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
+    const editorActionRowRef = useRef<HTMLDivElement | null>(null);
     const resultsSectionRef = useRef<HTMLElement | null>(null);
     const resultsResizeStateRef = useRef<{
         pointerId: number;
         startY: number;
         startHeight: number;
         editorMinHeight: number;
+        tabsHeight: number;
+        actionRowHeight: number;
         resultsMinHeight: number;
         resizerHeight: number;
     } | null>(null);
@@ -639,8 +644,11 @@ export default function WorkspacePage() {
             }
 
             const grid = workbenchGridRef.current;
+            const editorSection = editorSectionRef.current;
+            const tabsRow = editorTabsRowRef.current;
+            const actionRow = editorActionRowRef.current;
             const results = resultsSectionRef.current;
-            if (!grid || !results) {
+            if (!grid || !editorSection || !tabsRow || !actionRow || !results) {
                 return;
             }
 
@@ -658,12 +666,16 @@ export default function WorkspacePage() {
                 20
             );
             const startHeight = results.getBoundingClientRect().height;
+            const tabsHeight = tabsRow.getBoundingClientRect().height;
+            const actionRowHeight = actionRow.getBoundingClientRect().height;
 
             resultsResizeStateRef.current = {
                 pointerId: event.pointerId,
                 startY: event.clientY,
                 startHeight,
                 editorMinHeight,
+                tabsHeight,
+                actionRowHeight,
                 resultsMinHeight,
                 resizerHeight
             };
@@ -681,20 +693,29 @@ export default function WorkspacePage() {
                 return;
             }
 
-            const grid = workbenchGridRef.current;
-            if (!grid) {
+            const editorSection = editorSectionRef.current;
+            if (!editorSection) {
                 return;
             }
 
-            const containerHeight = grid.getBoundingClientRect().height;
-            const maxHeight = Math.max(
+            const containerHeight = editorSection.getBoundingClientRect().height;
+            const contentMaxHeight = Math.max(
                 state.resultsMinHeight,
-                Math.floor(containerHeight - state.editorMinHeight - state.resizerHeight)
+                Math.floor(
+                    containerHeight -
+                        state.tabsHeight -
+                        state.actionRowHeight -
+                        state.editorMinHeight -
+                        state.resizerHeight
+                )
             );
 
             const deltaY = event.clientY - state.startY;
             const nextHeight = Math.round(state.startHeight - deltaY);
-            const clamped = Math.min(maxHeight, Math.max(state.resultsMinHeight, nextHeight));
+            const clamped = Math.min(
+                contentMaxHeight,
+                Math.max(state.resultsMinHeight, nextHeight)
+            );
             setWorkbenchResultsSizePx(clamped);
         },
         []
@@ -740,8 +761,11 @@ export default function WorkspacePage() {
             }
 
             const grid = workbenchGridRef.current;
+            const editorSection = editorSectionRef.current;
+            const tabsRow = editorTabsRowRef.current;
+            const actionRow = editorActionRowRef.current;
             const results = resultsSectionRef.current;
-            if (!grid || !results) {
+            if (!grid || !editorSection || !tabsRow || !actionRow || !results) {
                 return;
             }
 
@@ -758,10 +782,18 @@ export default function WorkspacePage() {
                 computed.getPropertyValue('--workbench-results-resizer-height'),
                 20
             );
-            const containerHeight = grid.getBoundingClientRect().height;
+            const tabsHeight = tabsRow.getBoundingClientRect().height;
+            const actionRowHeight = actionRow.getBoundingClientRect().height;
+            const containerHeight = editorSection.getBoundingClientRect().height;
             const maxHeight = Math.max(
                 resultsMinHeight,
-                Math.floor(containerHeight - editorMinHeight - resultsResizerHeight)
+                Math.floor(
+                    containerHeight -
+                        tabsHeight -
+                        actionRowHeight -
+                        editorMinHeight -
+                        resultsResizerHeight
+                )
             );
 
             const currentHeight = workbenchResultsSizePx ?? results.getBoundingClientRect().height;
@@ -4199,7 +4231,12 @@ export default function WorkspacePage() {
             }),
             editorInstance.onKeyUp((event) => {
                 const key = event.browserEvent.key;
-                if (!/^[A-Za-z0-9]$/.test(key)) {
+                if (
+                    !/^[A-Za-z0-9]$/.test(key) ||
+                    event.browserEvent.metaKey ||
+                    event.browserEvent.ctrlKey ||
+                    event.browserEvent.altKey
+                ) {
                     return;
                 }
 
@@ -4215,14 +4252,6 @@ export default function WorkspacePage() {
                     ...current,
                     modelLanguageId: editorInstance.getModel()?.getLanguageId() ?? ''
                 }));
-            }),
-            editorInstance.onDidPaste(() => {
-                window.requestAnimationFrame(() => {
-                    if (editorRef.current !== editorInstance) {
-                        return;
-                    }
-                    triggerAutocompleteSuggest('manual-retry', editorInstance);
-                });
             })
         ];
 
@@ -6731,9 +6760,9 @@ export default function WorkspacePage() {
                             </section>
                         </aside>
 
-                        <section className="editor">
+                        <section className="editor" ref={editorSectionRef}>
                             <div className="editor-toolbar">
-                                <div className="editor-tabs-row">
+                                <div className="editor-tabs-row" ref={editorTabsRowRef}>
                                     <div
                                         className="editor-tabs"
                                         role="tablist"
@@ -6984,7 +7013,22 @@ export default function WorkspacePage() {
                                 </div>
                             </div>
 
-                            <div className="editor-action-row">
+                            <div
+                                className="workbench-results-resizer"
+                                role="separator"
+                                aria-label="Resize results panel"
+                                aria-orientation="horizontal"
+                                title="Drag to resize results panel (double-click to reset)"
+                                tabIndex={0}
+                                onPointerDown={handleResultsResizerPointerDown}
+                                onPointerMove={handleResultsResizerPointerMove}
+                                onPointerUp={handleResultsResizerPointerUp}
+                                onPointerCancel={handleResultsResizerPointerCancel}
+                                onDoubleClick={handleResultsResizerReset}
+                                onKeyDown={handleResultsResizerKeyDown}
+                            />
+
+                            <div className="editor-action-row" ref={editorActionRowRef}>
                                 <div className="row editor-primary-actions">
                                     <IconButton
                                         icon="play"
@@ -7291,349 +7335,356 @@ export default function WorkspacePage() {
                                     </div>
                                 </div>
                             </div>
-                        </section>
 
-                        <div
-                            className="workbench-results-resizer"
-                            role="separator"
-                            aria-label="Resize results panel"
-                            aria-orientation="horizontal"
-                            title="Drag to resize results panel (double-click to reset)"
-                            tabIndex={0}
-                            onPointerDown={handleResultsResizerPointerDown}
-                            onPointerMove={handleResultsResizerPointerMove}
-                            onPointerUp={handleResultsResizerPointerUp}
-                            onPointerCancel={handleResultsResizerPointerCancel}
-                            onDoubleClick={handleResultsResizerReset}
-                            onKeyDown={handleResultsResizerKeyDown}
-                        />
+                            <section className="results" ref={resultsSectionRef}>
+                                <div className="results-head">
+                                    {activeTab?.executionId ? (
+                                        <div className="result-stats-grid">
+                                            <div className="result-stat">
+                                                <span>Status</span>
+                                                <strong>
+                                                    {activeTab.executionStatus ||
+                                                        'PENDING_SUBMISSION'}
+                                                </strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Rows</span>
+                                                <strong>
+                                                    {activeTab.rowCount.toLocaleString()}
+                                                </strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Columns</span>
+                                                <strong>
+                                                    {activeTab.columnCount.toLocaleString()}
+                                                </strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Duration</span>
+                                                <strong>{executionDurationLabel}</strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Submitted</span>
+                                                <strong title={executionSubmittedAtLabel}>
+                                                    {executionSubmittedAtLabel}
+                                                </strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Completed</span>
+                                                <strong title={executionCompletedAtLabel}>
+                                                    {executionCompletedAtLabel}
+                                                </strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Row Limit</span>
+                                                <strong>
+                                                    {activeTab.maxRowsPerQuery > 0
+                                                        ? activeTab.maxRowsPerQuery.toLocaleString()
+                                                        : '-'}
+                                                </strong>
+                                            </div>
+                                            <div className="result-stat">
+                                                <span>Runtime Limit</span>
+                                                <strong>
+                                                    {activeTab.maxRuntimeSeconds > 0
+                                                        ? `${activeTab.maxRuntimeSeconds}s`
+                                                        : '-'}
+                                                </strong>
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                    {scriptSummaryLabel && activeTab?.scriptSummary ? (
+                                        <details className="script-summary">
+                                            <summary>{scriptSummaryLabel}</summary>
+                                            <div className="script-summary-body">
+                                                <table className="script-summary-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>#</th>
+                                                            <th>Status</th>
+                                                            <th>Statement</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {activeTab.scriptSummary.statements.map(
+                                                            (statement) => (
+                                                                <tr key={`stmt-${statement.index}`}>
+                                                                    <td>
+                                                                        {statement.index.toLocaleString()}
+                                                                    </td>
+                                                                    <td>{statement.status}</td>
+                                                                    <td title={statement.message}>
+                                                                        {statement.sqlPreview}
+                                                                    </td>
+                                                                </tr>
+                                                            )
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </details>
+                                    ) : null}
+                                    {activeTab?.statusMessage &&
+                                    !hideRedundantResultStatusMessage ? (
+                                        <p>{activeTab.statusMessage}</p>
+                                    ) : null}
+                                    {activeTab?.errorMessage ? (
+                                        <p className="form-error" role="alert">
+                                            {activeTab.errorMessage}
+                                        </p>
+                                    ) : null}
+                                    {activeTab?.rowLimitReached ? (
+                                        <p className="form-error" role="alert">
+                                            Result row limit reached for this execution.
+                                        </p>
+                                    ) : null}
+                                    {copyFeedback ? (
+                                        <p className="form-success">{copyFeedback}</p>
+                                    ) : null}
+                                    {explainPlanText ? (
+                                        <div className="explain-plan">
+                                            <h3>Explain Plan</h3>
+                                            <pre>{explainPlanText}</pre>
+                                        </div>
+                                    ) : null}
+                                    {analyzePlan ? (
+                                        <div className="analysis-plan">
+                                            <h3>Analysis</h3>
+                                            <pre>
+                                                {analyzePlan.kind === 'json'
+                                                    ? JSON.stringify(analyzePlan.json, null, 2)
+                                                    : analyzePlan.raw}
+                                            </pre>
+                                        </div>
+                                    ) : null}
+                                    {activeTab?.executionStatus === 'SUCCEEDED' &&
+                                    activeTab.resultColumns.length === 0 &&
+                                    !activeTab.errorMessage ? (
+                                        <p>Query completed successfully and returned no rows.</p>
+                                    ) : null}
+                                    {!activeTab?.executionId &&
+                                    !activeTab?.statusMessage &&
+                                    !activeTab?.errorMessage ? (
+                                        <p className="results-empty">Results</p>
+                                    ) : null}
+                                </div>
 
-                        <section className="results" ref={resultsSectionRef}>
-                            <div className="results-head">
-                                {activeTab?.executionId ? (
-                                    <div className="result-stats-grid">
-                                        <div className="result-stat">
-                                            <span>Status</span>
-                                            <strong>
-                                                {activeTab.executionStatus || 'PENDING_SUBMISSION'}
-                                            </strong>
+                                {activeTab?.resultColumns.length ? (
+                                    <div className="results-body">
+                                        <div className="result-actions row">
+                                            <div className="result-pagination-controls row">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleLoadPreviousResults}
+                                                    disabled={
+                                                        activeTab.previousPageTokens.length === 0
+                                                    }
+                                                >
+                                                    Previous Page
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleLoadNextResults}
+                                                    disabled={!activeTab.nextPageToken}
+                                                >
+                                                    Next Page
+                                                </button>
+                                                <div
+                                                    className="result-export-wrapper"
+                                                    ref={exportMenuRef}
+                                                >
+                                                    <IconButton
+                                                        icon="download"
+                                                        title="Export CSV"
+                                                        onClick={() =>
+                                                            setShowExportMenu((current) => !current)
+                                                        }
+                                                        disabled={exportingCsv}
+                                                    />
+                                                    {showExportMenu ? (
+                                                        <div
+                                                            className="result-export-popover"
+                                                            role="dialog"
+                                                        >
+                                                            <label className="checkbox-row">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={exportIncludeHeaders}
+                                                                    onChange={(event) =>
+                                                                        setExportIncludeHeaders(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                />
+                                                                <span>Include headers</span>
+                                                            </label>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    void handleExportCsv()
+                                                                }
+                                                                disabled={exportingCsv}
+                                                            >
+                                                                {exportingCsv
+                                                                    ? 'Exporting...'
+                                                                    : 'Download CSV'}
+                                                            </button>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                            <div className="result-page-size-inline">
+                                                <label htmlFor="result-page-size">
+                                                    Rows per page
+                                                </label>
+                                                <div className="select-wrap">
+                                                    <select
+                                                        id="result-page-size"
+                                                        value={resultsPageSize}
+                                                        onChange={(event) => {
+                                                            setResultsPageSize(
+                                                                Number(event.target.value)
+                                                            );
+                                                            setResultGridScrollTop(0);
+                                                        }}
+                                                    >
+                                                        <option value={10}>10</option>
+                                                        <option value={100}>100</option>
+                                                        <option value={250}>250</option>
+                                                        <option value={500}>500</option>
+                                                        <option value={1000}>1000</option>
+                                                    </select>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="result-stat">
-                                            <span>Rows</span>
-                                            <strong>{activeTab.rowCount.toLocaleString()}</strong>
-                                        </div>
-                                        <div className="result-stat">
-                                            <span>Columns</span>
-                                            <strong>
-                                                {activeTab.columnCount.toLocaleString()}
-                                            </strong>
-                                        </div>
-                                        <div className="result-stat">
-                                            <span>Duration</span>
-                                            <strong>{executionDurationLabel}</strong>
-                                        </div>
-                                        <div className="result-stat">
-                                            <span>Submitted</span>
-                                            <strong title={executionSubmittedAtLabel}>
-                                                {executionSubmittedAtLabel}
-                                            </strong>
-                                        </div>
-                                        <div className="result-stat">
-                                            <span>Completed</span>
-                                            <strong title={executionCompletedAtLabel}>
-                                                {executionCompletedAtLabel}
-                                            </strong>
-                                        </div>
-                                        <div className="result-stat">
-                                            <span>Row Limit</span>
-                                            <strong>
-                                                {activeTab.maxRowsPerQuery > 0
-                                                    ? activeTab.maxRowsPerQuery.toLocaleString()
-                                                    : '-'}
-                                            </strong>
-                                        </div>
-                                        <div className="result-stat">
-                                            <span>Runtime Limit</span>
-                                            <strong>
-                                                {activeTab.maxRuntimeSeconds > 0
-                                                    ? `${activeTab.maxRuntimeSeconds}s`
-                                                    : '-'}
-                                            </strong>
-                                        </div>
-                                    </div>
-                                ) : null}
-                                {scriptSummaryLabel && activeTab?.scriptSummary ? (
-                                    <details className="script-summary">
-                                        <summary>{scriptSummaryLabel}</summary>
-                                        <div className="script-summary-body">
-                                            <table className="script-summary-table">
+                                        <div
+                                            className="result-table-wrap"
+                                            onScroll={(event) =>
+                                                setResultGridScrollTop(
+                                                    event.currentTarget.scrollTop
+                                                )
+                                            }
+                                        >
+                                            <table className="result-table">
                                                 <thead>
                                                     <tr>
-                                                        <th>#</th>
-                                                        <th>Status</th>
-                                                        <th>Statement</th>
+                                                        <th className="result-meta-heading">Row</th>
+                                                        {activeTab.resultColumns.map(
+                                                            (column, columnIndex) => {
+                                                                const direction =
+                                                                    resultSortState?.columnIndex ===
+                                                                    columnIndex
+                                                                        ? resultSortState.direction
+                                                                        : null;
+
+                                                                return (
+                                                                    <th
+                                                                        key={`${column.name}-${column.jdbcType}-${columnIndex}`}
+                                                                    >
+                                                                        <button
+                                                                            type="button"
+                                                                            className="result-sort-trigger"
+                                                                            onClick={() =>
+                                                                                handleToggleResultSort(
+                                                                                    columnIndex
+                                                                                )
+                                                                            }
+                                                                            title={`Sort by ${column.name}`}
+                                                                            aria-label={`Sort by ${column.name}`}
+                                                                        >
+                                                                            <span>
+                                                                                {column.name}
+                                                                            </span>
+                                                                            <ResultSortIcon
+                                                                                direction={
+                                                                                    direction
+                                                                                }
+                                                                            />
+                                                                        </button>
+                                                                    </th>
+                                                                );
+                                                            }
+                                                        )}
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {activeTab.scriptSummary.statements.map(
-                                                        (statement) => (
-                                                            <tr key={`stmt-${statement.index}`}>
-                                                                <td>
-                                                                    {statement.index.toLocaleString()}
-                                                                </td>
-                                                                <td>{statement.status}</td>
-                                                                <td title={statement.message}>
-                                                                    {statement.sqlPreview}
-                                                                </td>
-                                                            </tr>
-                                                        )
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </details>
-                                ) : null}
-                                {activeTab?.statusMessage && !hideRedundantResultStatusMessage ? (
-                                    <p>{activeTab.statusMessage}</p>
-                                ) : null}
-                                {activeTab?.errorMessage ? (
-                                    <p className="form-error" role="alert">
-                                        {activeTab.errorMessage}
-                                    </p>
-                                ) : null}
-                                {activeTab?.rowLimitReached ? (
-                                    <p className="form-error" role="alert">
-                                        Result row limit reached for this execution.
-                                    </p>
-                                ) : null}
-                                {copyFeedback ? (
-                                    <p className="form-success">{copyFeedback}</p>
-                                ) : null}
-                                {explainPlanText ? (
-                                    <div className="explain-plan">
-                                        <h3>Explain Plan</h3>
-                                        <pre>{explainPlanText}</pre>
-                                    </div>
-                                ) : null}
-                                {analyzePlan ? (
-                                    <div className="analysis-plan">
-                                        <h3>Analysis</h3>
-                                        <pre>
-                                            {analyzePlan.kind === 'json'
-                                                ? JSON.stringify(analyzePlan.json, null, 2)
-                                                : analyzePlan.raw}
-                                        </pre>
-                                    </div>
-                                ) : null}
-                                {activeTab?.executionStatus === 'SUCCEEDED' &&
-                                activeTab.resultColumns.length === 0 &&
-                                !activeTab.errorMessage ? (
-                                    <p>Query completed successfully and returned no rows.</p>
-                                ) : null}
-                                {!activeTab?.executionId &&
-                                !activeTab?.statusMessage &&
-                                !activeTab?.errorMessage ? (
-                                    <p className="results-empty">Results</p>
-                                ) : null}
-                            </div>
-
-                            {activeTab?.resultColumns.length ? (
-                                <div className="results-body">
-                                    <div className="result-actions row">
-                                        <div className="result-pagination-controls row">
-                                            <button
-                                                type="button"
-                                                onClick={handleLoadPreviousResults}
-                                                disabled={activeTab.previousPageTokens.length === 0}
-                                            >
-                                                Previous Page
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleLoadNextResults}
-                                                disabled={!activeTab.nextPageToken}
-                                            >
-                                                Next Page
-                                            </button>
-                                            <div
-                                                className="result-export-wrapper"
-                                                ref={exportMenuRef}
-                                            >
-                                                <IconButton
-                                                    icon="download"
-                                                    title="Export CSV"
-                                                    onClick={() =>
-                                                        setShowExportMenu((current) => !current)
-                                                    }
-                                                    disabled={exportingCsv}
-                                                />
-                                                {showExportMenu ? (
-                                                    <div
-                                                        className="result-export-popover"
-                                                        role="dialog"
-                                                    >
-                                                        <label className="checkbox-row">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={exportIncludeHeaders}
-                                                                onChange={(event) =>
-                                                                    setExportIncludeHeaders(
-                                                                        event.target.checked
-                                                                    )
+                                                    {visibleResultRows.topSpacerPx > 0 ? (
+                                                        <tr>
+                                                            <td
+                                                                colSpan={
+                                                                    activeTab.resultColumns.length +
+                                                                    1
                                                                 }
+                                                                style={{
+                                                                    height: `${visibleResultRows.topSpacerPx}px`,
+                                                                    padding: 0,
+                                                                    border: 'none'
+                                                                }}
                                                             />
-                                                            <span>Include headers</span>
-                                                        </label>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => void handleExportCsv()}
-                                                            disabled={exportingCsv}
-                                                        >
-                                                            {exportingCsv
-                                                                ? 'Exporting...'
-                                                                : 'Download CSV'}
-                                                        </button>
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                        <div className="result-page-size-inline">
-                                            <label htmlFor="result-page-size">Rows per page</label>
-                                            <div className="select-wrap">
-                                                <select
-                                                    id="result-page-size"
-                                                    value={resultsPageSize}
-                                                    onChange={(event) => {
-                                                        setResultsPageSize(
-                                                            Number(event.target.value)
-                                                        );
-                                                        setResultGridScrollTop(0);
-                                                    }}
-                                                >
-                                                    <option value={10}>10</option>
-                                                    <option value={100}>100</option>
-                                                    <option value={250}>250</option>
-                                                    <option value={500}>500</option>
-                                                    <option value={1000}>1000</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div
-                                        className="result-table-wrap"
-                                        onScroll={(event) =>
-                                            setResultGridScrollTop(event.currentTarget.scrollTop)
-                                        }
-                                    >
-                                        <table className="result-table">
-                                            <thead>
-                                                <tr>
-                                                    <th className="result-meta-heading">Row</th>
-                                                    {activeTab.resultColumns.map(
-                                                        (column, columnIndex) => {
-                                                            const direction =
-                                                                resultSortState?.columnIndex ===
-                                                                columnIndex
-                                                                    ? resultSortState.direction
-                                                                    : null;
-
+                                                        </tr>
+                                                    ) : null}
+                                                    {visibleResultRows.rows.map(
+                                                        (row, relativeIndex) => {
+                                                            const absoluteIndex =
+                                                                visibleResultRows.start +
+                                                                relativeIndex;
                                                             return (
-                                                                <th
-                                                                    key={`${column.name}-${column.jdbcType}-${columnIndex}`}
-                                                                >
-                                                                    <button
-                                                                        type="button"
-                                                                        className="result-sort-trigger"
-                                                                        onClick={() =>
-                                                                            handleToggleResultSort(
-                                                                                columnIndex
-                                                                            )
-                                                                        }
-                                                                        title={`Sort by ${column.name}`}
-                                                                        aria-label={`Sort by ${column.name}`}
-                                                                    >
-                                                                        <span>{column.name}</span>
-                                                                        <ResultSortIcon
-                                                                            direction={direction}
-                                                                        />
-                                                                    </button>
-                                                                </th>
+                                                                <tr key={`row-${absoluteIndex}`}>
+                                                                    <td className="result-row-index">
+                                                                        {absoluteIndex + 1}
+                                                                    </td>
+                                                                    {row.map(
+                                                                        (value, columnIndex) => (
+                                                                            <td
+                                                                                key={`cell-${absoluteIndex}-${columnIndex}`}
+                                                                            >
+                                                                                <div className="result-cell">
+                                                                                    <span>
+                                                                                        {value ??
+                                                                                            'NULL'}
+                                                                                    </span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="result-copy-icon"
+                                                                                        onClick={() =>
+                                                                                            void handleCopyCell(
+                                                                                                value
+                                                                                            )
+                                                                                        }
+                                                                                        title="Copy cell value"
+                                                                                        aria-label="Copy cell value"
+                                                                                    >
+                                                                                        <IconGlyph icon="copy" />
+                                                                                    </button>
+                                                                                </div>
+                                                                            </td>
+                                                                        )
+                                                                    )}
+                                                                </tr>
                                                             );
                                                         }
                                                     )}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {visibleResultRows.topSpacerPx > 0 ? (
-                                                    <tr>
-                                                        <td
-                                                            colSpan={
-                                                                activeTab.resultColumns.length + 1
-                                                            }
-                                                            style={{
-                                                                height: `${visibleResultRows.topSpacerPx}px`,
-                                                                padding: 0,
-                                                                border: 'none'
-                                                            }}
-                                                        />
-                                                    </tr>
-                                                ) : null}
-                                                {visibleResultRows.rows.map(
-                                                    (row, relativeIndex) => {
-                                                        const absoluteIndex =
-                                                            visibleResultRows.start + relativeIndex;
-                                                        return (
-                                                            <tr key={`row-${absoluteIndex}`}>
-                                                                <td className="result-row-index">
-                                                                    {absoluteIndex + 1}
-                                                                </td>
-                                                                {row.map((value, columnIndex) => (
-                                                                    <td
-                                                                        key={`cell-${absoluteIndex}-${columnIndex}`}
-                                                                    >
-                                                                        <div className="result-cell">
-                                                                            <span>
-                                                                                {value ?? 'NULL'}
-                                                                            </span>
-                                                                            <button
-                                                                                type="button"
-                                                                                className="result-copy-icon"
-                                                                                onClick={() =>
-                                                                                    void handleCopyCell(
-                                                                                        value
-                                                                                    )
-                                                                                }
-                                                                                title="Copy cell value"
-                                                                                aria-label="Copy cell value"
-                                                                            >
-                                                                                <IconGlyph icon="copy" />
-                                                                            </button>
-                                                                        </div>
-                                                                    </td>
-                                                                ))}
-                                                            </tr>
-                                                        );
-                                                    }
-                                                )}
-                                                {visibleResultRows.bottomSpacerPx > 0 ? (
-                                                    <tr>
-                                                        <td
-                                                            colSpan={
-                                                                activeTab.resultColumns.length + 1
-                                                            }
-                                                            style={{
-                                                                height: `${visibleResultRows.bottomSpacerPx}px`,
-                                                                padding: 0,
-                                                                border: 'none'
-                                                            }}
-                                                        />
-                                                    </tr>
-                                                ) : null}
-                                            </tbody>
-                                        </table>
+                                                    {visibleResultRows.bottomSpacerPx > 0 ? (
+                                                        <tr>
+                                                            <td
+                                                                colSpan={
+                                                                    activeTab.resultColumns.length +
+                                                                    1
+                                                                }
+                                                                style={{
+                                                                    height: `${visibleResultRows.bottomSpacerPx}px`,
+                                                                    padding: 0,
+                                                                    border: 'none'
+                                                                }}
+                                                            />
+                                                        </tr>
+                                                    ) : null}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
-                            ) : null}
+                                ) : null}
+                            </section>
                         </section>
                     </div>
 
