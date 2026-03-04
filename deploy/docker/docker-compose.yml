@@ -132,8 +132,8 @@ services:
       DWARVENPICK_SEED_STARROCKS_HOST: starrocks
       DWARVENPICK_SEED_STARROCKS_PORT: 9030
       DWARVENPICK_SEED_STARROCKS_DATABASE: warehouse
-      DWARVENPICK_SEED_STARROCKS_USERNAME: readonly
-      DWARVENPICK_SEED_STARROCKS_PASSWORD: readonly
+      DWARVENPICK_SEED_STARROCKS_USERNAME: root
+      DWARVENPICK_SEED_STARROCKS_PASSWORD: ""
       DWARVENPICK_AUTH_OIDC_ENABLED: "true"
       # Use the host-reachable issuer so ID token `iss` validation matches what the browser sees.
       DWARVENPICK_AUTH_OIDC_ISSUER_URI: "http://localhost:8081/realms/dwarvenpick"
