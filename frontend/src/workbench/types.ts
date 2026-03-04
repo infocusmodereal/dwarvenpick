@@ -265,6 +265,53 @@ export type DatasourceSchemaBrowserResponse = {
     schemas: DatasourceSchemaEntryResponse[];
 };
 
+export type InspectedObjectType = 'TABLE' | 'VIEW';
+
+export type ObjectInspectorSectionStatus =
+    | 'OK'
+    | 'UNSUPPORTED'
+    | 'INSUFFICIENT_PRIVILEGES'
+    | 'ERROR';
+
+export type ObjectInspectorSectionKind = 'TEXT' | 'TABLE' | 'KEY_VALUES';
+
+export type ObjectInspectorKeyValueResponse = {
+    key: string;
+    value: string | null;
+};
+
+export type ObjectInspectorTableResponse = {
+    columns: string[];
+    rows: Array<Array<string | null>>;
+};
+
+export type ObjectInspectorObjectRefResponse = {
+    type: InspectedObjectType;
+    schema: string;
+    name: string;
+};
+
+export type ObjectInspectorSectionResponse = {
+    id: string;
+    title: string;
+    status: ObjectInspectorSectionStatus;
+    message?: string | null;
+    kind?: ObjectInspectorSectionKind | null;
+    text?: string | null;
+    table?: ObjectInspectorTableResponse | null;
+    keyValues?: ObjectInspectorKeyValueResponse[] | null;
+};
+
+export type ObjectInspectorResponse = {
+    datasourceId: string;
+    datasourceName: string;
+    engine: DatasourceEngine;
+    credentialProfile: string;
+    inspectedAt: string;
+    objectRef: ObjectInspectorObjectRefResponse;
+    sections: ObjectInspectorSectionResponse[];
+};
+
 export type SnippetResponse = {
     snippetId: string;
     title: string;

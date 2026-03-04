@@ -45,10 +45,12 @@ import type {
     EditorCursorLegend,
     GroupAdminMode,
     GroupResponse,
+    InspectedObjectType,
     ManagedDatasourceFormState,
     ManagedCredentialProfileResponse,
     ManagedDatasourceResponse,
     MavenDriverPreset,
+    ObjectInspectorResponse,
     PersistentWorkspaceTab,
     QueryExecutionResponse,
     QueryExecutionStatusResponse,
@@ -103,6 +105,7 @@ import {
     EditorTabCloseIcon,
     EditorTabMenuIcon,
     ExplorerIcon,
+    ExplorerInspectIcon,
     ExplorerInsertIcon,
     ExplorerRefreshIcon,
     IconButton,
@@ -557,6 +560,19 @@ export default function WorkspacePage() {
         {}
     );
     const [selectedExplorerNode, setSelectedExplorerNode] = useState('');
+    const [explorerSearchQuery, setExplorerSearchQuery] = useState('');
+    const [objectInspectorTarget, setObjectInspectorTarget] = useState<{
+        datasourceId: string;
+        schema: string;
+        name: string;
+        type: InspectedObjectType;
+    } | null>(null);
+    const [objectInspectorResponse, setObjectInspectorResponse] =
+        useState<ObjectInspectorResponse | null>(null);
+    const [loadingObjectInspector, setLoadingObjectInspector] = useState(false);
+    const [objectInspectorError, setObjectInspectorError] = useState('');
+    const [objectInspectorOpen, setObjectInspectorOpen] = useState(false);
+    const [objectInspectorActiveSectionId, setObjectInspectorActiveSectionId] = useState('ddl');
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
     const [autocompleteDiagnostics, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(
@@ -1304,6 +1320,97 @@ export default function WorkspacePage() {
 
         return Array.from(uniqueSchemas).sort((left, right) => left.localeCompare(right));
     }, [schemaBrowser]);
+    const explorerSearchNormalized = useMemo(
+        () => explorerSearchQuery.trim().toLowerCase(),
+        [explorerSearchQuery]
+    );
+    const filteredSchemaBrowser = useMemo(() => {
+        if (!schemaBrowser || !explorerSearchNormalized) {
+            return schemaBrowser;
+        }
+
+        const filteredSchemas = schemaBrowser.schemas.flatMap((schemaEntry) => {
+            const schemaName = schemaEntry.schema ?? '';
+            const schemaMatches = schemaName.toLowerCase().includes(explorerSearchNormalized);
+            if (schemaMatches) {
+                return [
+                    {
+                        ...schemaEntry
+                    }
+                ];
+            }
+
+            const filteredTables = schemaEntry.tables.flatMap((tableEntry) => {
+                const tableMatches = tableEntry.table
+                    .toLowerCase()
+                    .includes(explorerSearchNormalized);
+
+                if (tableMatches) {
+                    return [
+                        {
+                            ...tableEntry
+                        }
+                    ];
+                }
+
+                const filteredColumns = tableEntry.columns.filter((column) =>
+                    column.name.toLowerCase().includes(explorerSearchNormalized)
+                );
+                if (filteredColumns.length === 0) {
+                    return [];
+                }
+
+                return [
+                    {
+                        ...tableEntry,
+                        columns: filteredColumns
+                    }
+                ];
+            });
+
+            if (filteredTables.length === 0) {
+                return [];
+            }
+
+            return [
+                {
+                    ...schemaEntry,
+                    tables: filteredTables
+                }
+            ];
+        });
+
+        return {
+            ...schemaBrowser,
+            schemas: filteredSchemas
+        };
+    }, [explorerSearchNormalized, schemaBrowser]);
+    const renderExplorerMatch = useCallback(
+        (label: string): ReactNode => {
+            if (!explorerSearchNormalized) {
+                return label;
+            }
+
+            const normalizedLabel = label.toLowerCase();
+            const matchIndex = normalizedLabel.indexOf(explorerSearchNormalized);
+            if (matchIndex < 0) {
+                return label;
+            }
+
+            const before = label.slice(0, matchIndex);
+            const match = label.slice(matchIndex, matchIndex + explorerSearchNormalized.length);
+            const after = label.slice(matchIndex + explorerSearchNormalized.length);
+
+            return (
+                <>
+                    {before}
+                    <span className="explorer-highlight">{match}</span>
+                    {after}
+                </>
+            );
+        },
+        [explorerSearchNormalized]
+    );
     const appVersionLabel = useMemo(() => {
         const normalized = appVersion.trim();
         if (!normalized || normalized === 'unknown') {
@@ -2037,26 +2144,30 @@ export default function WorkspacePage() {
         setCredentialPasswordInput('');
     }, [credentialProfileIdInput, selectedManagedDatasource]);
 
-    const readFriendlyError = useCallback(async (response: Response): Promise<string> => {
-        try {
-            const payload = (await response.json()) as ApiErrorResponse;
-            if (payload.error?.trim()) {
-                return payload.error;
+    const readFriendlyError = useCallback(
+        async (response: Response): Promise<string> => {
+            if (response.status === 401) {
+                navigate('/login', { replace: true });
+                return 'Session expired. Please sign in again.';
             }
-        } catch {
-            // Use fallback friendly messages below when payload parsing fails.
-        }
 
-        if (response.status === 401) {
-            return 'Authentication is required. Please sign in again.';
-        }
+            if (response.status === 403) {
+                return 'You do not have permission for this action.';
+            }
 
-        if (response.status === 403) {
-            return 'You do not have permission for this action.';
-        }
+            try {
+                const payload = (await response.json()) as ApiErrorResponse;
+                if (payload.error?.trim()) {
+                    return payload.error;
+                }
+            } catch {
+                // Use fallback friendly messages below when payload parsing fails.
+            }
 
-        return 'Request failed. Please try again.';
-    }, []);
+            return 'Request failed. Please try again.';
+        },
+        [navigate]
+    );
 
     const fetchCsrfToken = useCallback(async (): Promise<CsrfTokenResponse> => {
         const response = await fetch('/api/auth/csrf', {
@@ -2160,6 +2271,88 @@ export default function WorkspacePage() {
         },
         [readFriendlyError]
     );
+
+    const loadObjectInspector = useCallback(
+        async (
+            target: {
+                datasourceId: string;
+                schema: string;
+                name: string;
+                type: InspectedObjectType;
+            },
+            signal?: AbortSignal
+        ) => {
+            const normalizedDatasourceId = target.datasourceId.trim();
+            if (!normalizedDatasourceId) {
+                setObjectInspectorResponse(null);
+                setObjectInspectorError('No connection selected for inspection.');
+                return;
+            }
+
+            try {
+                const queryParams = new URLSearchParams();
+                queryParams.set('type', target.type);
+                queryParams.set('schema', target.schema);
+                queryParams.set('name', target.name);
+
+                const response = await fetch(
+                    `/api/datasources/${encodeURIComponent(normalizedDatasourceId)}/inspector?${queryParams.toString()}`,
+                    {
+                        method: 'GET',
+                        credentials: 'include',
+                        signal,
+                        headers: {
+                            Accept: 'application/json'
+                        }
+                    }
+                );
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const payload = (await response.json()) as ObjectInspectorResponse;
+                if (signal?.aborted) {
+                    return;
+                }
+                setObjectInspectorResponse(payload);
+                setObjectInspectorActiveSectionId((current) => {
+                    const preferred = current.trim();
+                    const available = payload.sections.map((section) => section.id);
+                    if (preferred && available.includes(preferred)) {
+                        return preferred;
+                    }
+                    return available[0] ?? 'ddl';
+                });
+            } catch (error) {
+                if (signal?.aborted) {
+                    return;
+                }
+                const message =
+                    error instanceof Error ? error.message : 'Failed to inspect object.';
+                setObjectInspectorResponse(null);
+                setObjectInspectorError(message);
+            }
+        },
+        [readFriendlyError]
+    );
+
+    useEffect(() => {
+        if (!objectInspectorOpen || !objectInspectorTarget) {
+            return;
+        }
+
+        const controller = new AbortController();
+        setLoadingObjectInspector(true);
+        setObjectInspectorError('');
+
+        void loadObjectInspector(objectInspectorTarget, controller.signal).finally(() => {
+            if (!controller.signal.aborted) {
+                setLoadingObjectInspector(false);
+            }
+        });
+
+        return () => controller.abort();
+    }, [loadObjectInspector, objectInspectorOpen, objectInspectorTarget]);
 
     const loadSnippets = useCallback(async () => {
         if (!currentUser) {
@@ -3511,6 +3704,28 @@ export default function WorkspacePage() {
             }));
         },
         [activeTab, updateWorkspaceTab]
+    );
+
+    const handleInspectExplorerObject = useCallback(
+        (schema: string, name: string, rawType: string) => {
+            if (!schemaBrowser) {
+                return;
+            }
+
+            const type: InspectedObjectType = rawType.toLowerCase().includes('view')
+                ? 'VIEW'
+                : 'TABLE';
+
+            setObjectInspectorActiveSectionId('ddl');
+            setObjectInspectorTarget({
+                datasourceId: schemaBrowser.datasourceId,
+                schema,
+                name,
+                type
+            });
+            setObjectInspectorOpen(true);
+        },
+        [schemaBrowser]
     );
 
     const handleFormatSql = useCallback(() => {
@@ -5953,6 +6168,41 @@ export default function WorkspacePage() {
                                                 </select>
                                             </div>
                                         </div>
+                                        <div className="explorer-toolbar-label-row">
+                                            <span className="tile-heading-icon" aria-hidden>
+                                                <ExplorerIcon glyph="table" />
+                                            </span>
+                                            <label
+                                                htmlFor="explorer-search"
+                                                className="explorer-toolbar-label-text"
+                                            >
+                                                Search
+                                            </label>
+                                        </div>
+                                        <div className="explorer-toolbar-control-row">
+                                            <div className="explorer-search-wrap">
+                                                <input
+                                                    id="explorer-search"
+                                                    aria-label="Search explorer objects"
+                                                    placeholder="Filter schemas, tables, columns"
+                                                    value={explorerSearchQuery}
+                                                    onChange={(event) =>
+                                                        setExplorerSearchQuery(event.target.value)
+                                                    }
+                                                />
+                                                {explorerSearchQuery.trim() ? (
+                                                    <button
+                                                        type="button"
+                                                        className="explorer-search-clear"
+                                                        aria-label="Clear explorer search"
+                                                        title="Clear search"
+                                                        onClick={() => setExplorerSearchQuery('')}
+                                                    >
+                                                        <IconGlyph icon="close" />
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                        </div>
                                     </div>
                                     {schemaBrowserError ? (
                                         <p className="form-error">{schemaBrowserError}</p>
@@ -5960,18 +6210,25 @@ export default function WorkspacePage() {
                                     {loadingSchemaBrowser && !schemaBrowser ? (
                                         <p className="explorer-empty">Loading explorer...</p>
                                     ) : null}
-                                    {schemaBrowser ? (
+                                    {filteredSchemaBrowser ? (
                                         <ul className="explorer-tree explorer-root" role="tree">
                                             {(() => {
-                                                const datasourceKey = `datasource:${schemaBrowser.datasourceId}`;
-                                                const datasourceExpanded =
-                                                    expandedExplorerDatasources[datasourceKey] ??
-                                                    true;
+                                                const browser = filteredSchemaBrowser;
+                                                if (!browser) {
+                                                    return null;
+                                                }
+
+                                                const filterActive =
+                                                    explorerSearchNormalized.length > 0;
+                                                const datasourceKey = `datasource:${browser.datasourceId}`;
+                                                const datasourceExpanded = filterActive
+                                                    ? true
+                                                    : (expandedExplorerDatasources[datasourceKey] ??
+                                                      true);
                                                 const activeDatasource =
                                                     visibleDatasources.find(
                                                         (datasource) =>
-                                                            datasource.id ===
-                                                            schemaBrowser.datasourceId
+                                                            datasource.id === browser.datasourceId
                                                     ) ?? null;
                                                 return (
                                                     <li className="explorer-node explorer-depth-0">
@@ -6016,7 +6273,7 @@ export default function WorkspacePage() {
                                                                     }
                                                                     title={
                                                                         activeDatasource?.name ??
-                                                                        schemaBrowser.datasourceId
+                                                                        browser.datasourceId
                                                                     }
                                                                 >
                                                                     <span className="explorer-item-icon">
@@ -6024,7 +6281,7 @@ export default function WorkspacePage() {
                                                                     </span>
                                                                     <span className="explorer-item-title">
                                                                         {activeDatasource?.name ??
-                                                                            schemaBrowser.datasourceId}
+                                                                            browser.datasourceId}
                                                                     </span>
                                                                 </button>
                                                                 <span className="explorer-item-tail">
@@ -6039,29 +6296,29 @@ export default function WorkspacePage() {
                                                                         className="explorer-item-count"
                                                                         title="Schema count"
                                                                     >
-                                                                        {
-                                                                            schemaBrowser.schemas
-                                                                                .length
-                                                                        }
+                                                                        {browser.schemas.length}
                                                                     </span>
                                                                 </span>
                                                             </div>
                                                         </div>
                                                         {datasourceExpanded ? (
                                                             <ul className="explorer-children">
-                                                                {schemaBrowser.schemas.length ===
-                                                                0 ? (
+                                                                {browser.schemas.length === 0 ? (
                                                                     <li className="explorer-empty">
-                                                                        No schemas discovered.
+                                                                        {filterActive
+                                                                            ? 'No matching objects.'
+                                                                            : 'No schemas discovered.'}
                                                                     </li>
                                                                 ) : (
-                                                                    schemaBrowser.schemas.map(
+                                                                    browser.schemas.map(
                                                                         (schemaEntry) => {
                                                                             const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
                                                                             const schemaExpanded =
-                                                                                expandedExplorerSchemas[
-                                                                                    schemaKey
-                                                                                ] ?? false;
+                                                                                filterActive
+                                                                                    ? true
+                                                                                    : (expandedExplorerSchemas[
+                                                                                          schemaKey
+                                                                                      ] ?? false);
                                                                             return (
                                                                                 <li
                                                                                     key={schemaKey}
@@ -6115,9 +6372,9 @@ export default function WorkspacePage() {
                                                                                                     <ExplorerIcon glyph="schema" />
                                                                                                 </span>
                                                                                                 <span className="explorer-item-title">
-                                                                                                    {
+                                                                                                    {renderExplorerMatch(
                                                                                                         schemaEntry.schema
-                                                                                                    }
+                                                                                                    )}
                                                                                                 </span>
                                                                                             </button>
                                                                                             <span className="explorer-item-tail">
@@ -6157,11 +6414,28 @@ export default function WorkspacePage() {
                                                                                                     tableEntry
                                                                                                 ) => {
                                                                                                     const tableKey = `${schemaKey}:table:${tableEntry.table}`;
+                                                                                                    const autoExpandTable =
+                                                                                                        filterActive &&
+                                                                                                        tableEntry.columns.some(
+                                                                                                            (
+                                                                                                                columnEntry
+                                                                                                            ) =>
+                                                                                                                columnEntry.name
+                                                                                                                    .toLowerCase()
+                                                                                                                    .includes(
+                                                                                                                        explorerSearchNormalized
+                                                                                                                    )
+                                                                                                        );
                                                                                                     const tableExpanded =
-                                                                                                        expandedExplorerTables[
-                                                                                                            tableKey
-                                                                                                        ] ??
-                                                                                                        false;
+                                                                                                        filterActive
+                                                                                                            ? (expandedExplorerTables[
+                                                                                                                  tableKey
+                                                                                                              ] ??
+                                                                                                              autoExpandTable)
+                                                                                                            : (expandedExplorerTables[
+                                                                                                                  tableKey
+                                                                                                              ] ??
+                                                                                                              false);
                                                                                                     return (
                                                                                                         <li
                                                                                                             key={
@@ -6224,9 +6498,9 @@ export default function WorkspacePage() {
                                                                                                                             <ExplorerIcon glyph="table" />
                                                                                                                         </span>
                                                                                                                         <span className="explorer-item-title">
-                                                                                                                            {
+                                                                                                                            {renderExplorerMatch(
                                                                                                                                 tableEntry.table
-                                                                                                                            }
+                                                                                                                            )}
                                                                                                                         </span>
                                                                                                                     </button>
                                                                                                                     <span className="explorer-item-tail">
@@ -6240,6 +6514,27 @@ export default function WorkspacePage() {
                                                                                                                                     .length
                                                                                                                             }
                                                                                                                         </span>
+                                                                                                                        <button
+                                                                                                                            type="button"
+                                                                                                                            className="explorer-inspect-button"
+                                                                                                                            title="Inspect object details"
+                                                                                                                            aria-label={`Inspect ${schemaEntry.schema}.${tableEntry.table}`}
+                                                                                                                            onClick={(
+                                                                                                                                event
+                                                                                                                            ) => {
+                                                                                                                                event.stopPropagation();
+                                                                                                                                setSelectedExplorerNode(
+                                                                                                                                    tableKey
+                                                                                                                                );
+                                                                                                                                handleInspectExplorerObject(
+                                                                                                                                    schemaEntry.schema,
+                                                                                                                                    tableEntry.table,
+                                                                                                                                    tableEntry.type
+                                                                                                                                );
+                                                                                                                            }}
+                                                                                                                        >
+                                                                                                                            <ExplorerInspectIcon />
+                                                                                                                        </button>
                                                                                                                         <button
                                                                                                                             type="button"
                                                                                                                             className="explorer-insert-button"
@@ -6300,9 +6595,9 @@ export default function WorkspacePage() {
                                                                                                                                                     <ExplorerIcon glyph="column" />
                                                                                                                                                 </span>
                                                                                                                                                 <span className="explorer-item-title">
-                                                                                                                                                    {
+                                                                                                                                                    {renderExplorerMatch(
                                                                                                                                                         columnEntry.name
-                                                                                                                                                    }
+                                                                                                                                                    )}
                                                                                                                                                 </span>
                                                                                                                                             </button>
                                                                                                                                             <span className="explorer-item-tail">
@@ -10218,6 +10513,204 @@ export default function WorkspacePage() {
                     ) : null}
                 </section>
             </div>
+            {objectInspectorOpen
+                ? createPortal(
+                      <div
+                          className="object-inspector-overlay"
+                          role="dialog"
+                          aria-modal="true"
+                          onClick={() => setObjectInspectorOpen(false)}
+                      >
+                          <div
+                              className="object-inspector-drawer"
+                              onClick={(event) => event.stopPropagation()}
+                          >
+                              <div className="object-inspector-header">
+                                  <div className="object-inspector-heading">
+                                      <p className="object-inspector-title">
+                                          {objectInspectorTarget
+                                              ? `${objectInspectorTarget.schema}.${objectInspectorTarget.name}`
+                                              : 'Object inspector'}
+                                      </p>
+                                      <p className="object-inspector-subtitle">
+                                          {(() => {
+                                              const datasourceId =
+                                                  objectInspectorTarget?.datasourceId ?? '';
+                                              const datasource =
+                                                  visibleDatasources.find(
+                                                      (candidate) => candidate.id === datasourceId
+                                                  ) ?? null;
+                                              if (!datasource) {
+                                                  return datasourceId || '';
+                                              }
+                                              return `${datasource.name} · ${datasource.engine}`;
+                                          })()}
+                                      </p>
+                                  </div>
+                                  <div className="object-inspector-actions">
+                                      <IconButton
+                                          icon="refresh"
+                                          title={
+                                              loadingObjectInspector ? 'Refreshing...' : 'Refresh'
+                                          }
+                                          onClick={() =>
+                                              setObjectInspectorTarget((current) =>
+                                                  current ? { ...current } : current
+                                              )
+                                          }
+                                          disabled={
+                                              !objectInspectorTarget || loadingObjectInspector
+                                          }
+                                      />
+                                      <IconButton
+                                          icon="close"
+                                          title="Close"
+                                          onClick={() => setObjectInspectorOpen(false)}
+                                      />
+                                  </div>
+                              </div>
+                              <div className="object-inspector-tabs" role="tablist">
+                                  {(objectInspectorResponse?.sections ?? []).map((section) => (
+                                      <button
+                                          key={`object-inspector-tab-${section.id}`}
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={
+                                              section.id === objectInspectorActiveSectionId
+                                          }
+                                          className={
+                                              section.id === objectInspectorActiveSectionId
+                                                  ? 'object-inspector-tab active'
+                                                  : 'object-inspector-tab'
+                                          }
+                                          onClick={() =>
+                                              setObjectInspectorActiveSectionId(section.id)
+                                          }
+                                      >
+                                          <span>{section.title}</span>
+                                      </button>
+                                  ))}
+                              </div>
+                              <div className="object-inspector-body">
+                                  {loadingObjectInspector ? (
+                                      <p className="explorer-empty">Loading inspector...</p>
+                                  ) : objectInspectorError ? (
+                                      <p className="form-error">{objectInspectorError}</p>
+                                  ) : objectInspectorResponse ? (
+                                      (() => {
+                                          const sections = objectInspectorResponse.sections ?? [];
+                                          if (sections.length === 0) {
+                                              return (
+                                                  <p className="explorer-empty">
+                                                      No inspector data available.
+                                                  </p>
+                                              );
+                                          }
+
+                                          const activeSection =
+                                              sections.find(
+                                                  (section) =>
+                                                      section.id === objectInspectorActiveSectionId
+                                              ) ?? sections[0];
+
+                                          if (activeSection.status !== 'OK') {
+                                              return (
+                                                  <p className="explorer-empty">
+                                                      {activeSection.message ??
+                                                          'Inspector data is not available.'}
+                                                  </p>
+                                              );
+                                          }
+
+                                          if (activeSection.kind === 'TEXT') {
+                                              return (
+                                                  <pre className="object-inspector-text">
+                                                      {activeSection.text ?? ''}
+                                                  </pre>
+                                              );
+                                          }
+
+                                          if (
+                                              activeSection.kind === 'KEY_VALUES' &&
+                                              activeSection.keyValues &&
+                                              activeSection.keyValues.length > 0
+                                          ) {
+                                              return (
+                                                  <table className="object-inspector-table">
+                                                      <tbody>
+                                                          {activeSection.keyValues.map((entry) => (
+                                                              <tr
+                                                                  key={`object-inspector-kv-${entry.key}`}
+                                                              >
+                                                                  <th scope="row">{entry.key}</th>
+                                                                  <td>{entry.value ?? ''}</td>
+                                                              </tr>
+                                                          ))}
+                                                      </tbody>
+                                                  </table>
+                                              );
+                                          }
+
+                                          if (
+                                              activeSection.kind === 'TABLE' &&
+                                              activeSection.table
+                                          ) {
+                                              return (
+                                                  <div className="object-inspector-table-wrap">
+                                                      <table className="object-inspector-table">
+                                                          <thead>
+                                                              <tr>
+                                                                  {activeSection.table.columns.map(
+                                                                      (column) => (
+                                                                          <th
+                                                                              key={`object-inspector-th-${column}`}
+                                                                              scope="col"
+                                                                          >
+                                                                              {column}
+                                                                          </th>
+                                                                      )
+                                                                  )}
+                                                              </tr>
+                                                          </thead>
+                                                          <tbody>
+                                                              {activeSection.table.rows.map(
+                                                                  (row, rowIndex) => (
+                                                                      <tr
+                                                                          key={`object-inspector-row-${rowIndex}`}
+                                                                      >
+                                                                          {row.map(
+                                                                              (cell, cellIndex) => (
+                                                                                  <td
+                                                                                      key={`object-inspector-cell-${rowIndex}-${cellIndex}`}
+                                                                                  >
+                                                                                      {cell ?? ''}
+                                                                                  </td>
+                                                                              )
+                                                                          )}
+                                                                      </tr>
+                                                                  )
+                                                              )}
+                                                          </tbody>
+                                                      </table>
+                                                  </div>
+                                              );
+                                          }
+
+                                          return (
+                                              <p className="explorer-empty">
+                                                  Inspector data is not available.
+                                              </p>
+                                          );
+                                      })()
+                                  ) : (
+                                      <p className="explorer-empty">Select an object to inspect.</p>
+                                  )}
+                              </div>
+                          </div>
+                      </div>,
+                      document.body
+                  )
+                : null}
         </AppShell>
     );
 }

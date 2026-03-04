@@ -66,6 +66,12 @@ Read-only access rules apply to **every** statement in a script.
 
 - The Explorer shows databases/schemas/tables/columns for the active connection.
 - Use it to navigate metadata and help author queries.
+- Use **Search** to filter schemas/tables/columns (DataGrip-style).
+- Use the **Inspect** icon on a table/view to open the Object Inspector:
+  - DDL / `SHOW CREATE` (engine-specific)
+  - Indexes, constraints, partitions (when available)
+  - Size & basic statistics (when available)
+  - If the selected credentials do not have the required privileges, the inspector shows an explicit message per section.
 
 ## Query History
 

@@ -1936,6 +1936,47 @@ button:disabled {
     width: 100%;
 }
 
+.explorer-search-wrap {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.32rem;
+}
+
+.explorer-search-wrap input {
+    width: 100%;
+}
+
+.explorer-search-clear {
+    width: 2.05rem;
+    height: 2.05rem;
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    padding: 0;
+    background: var(--surface-alt);
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.explorer-search-clear:hover {
+    filter: none;
+    background: var(--hover-tint);
+}
+
+.explorer-search-clear svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.explorer-highlight {
+    background: var(--accent-soft);
+    border-radius: 0.32rem;
+    padding: 0.02rem 0.18rem;
+}
+
 .explorer-empty {
     font-size: 0.84rem;
     color: var(--muted);
@@ -2149,6 +2190,22 @@ button:disabled {
     transition: opacity 120ms ease;
 }
 
+.explorer-inspect-button {
+    width: 1.26rem;
+    height: 1.26rem;
+    border: 0;
+    border-radius: 0.35rem;
+    padding: 0;
+    background: transparent;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+
 .explorer-node-row:hover .explorer-insert-button,
 .explorer-node-row.selected .explorer-insert-button,
 .explorer-insert-button:focus-visible {
@@ -2156,7 +2213,19 @@ button:disabled {
     pointer-events: auto;
 }
 
+.explorer-node-row:hover .explorer-inspect-button,
+.explorer-node-row.selected .explorer-inspect-button,
+.explorer-inspect-button:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 .explorer-insert-button:hover {
+    filter: none;
+    background: var(--hover-tint);
+}
+
+.explorer-inspect-button:hover {
     filter: none;
     background: var(--hover-tint);
 }
@@ -2172,6 +2241,162 @@ button:disabled {
 .explorer-insert-glyph svg {
     width: 100%;
     height: 100%;
+}
+
+.object-inspector-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 96;
+    background: rgba(26, 18, 10, 0.55);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.object-inspector-drawer {
+    width: min(740px, 94vw);
+    height: 100%;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: -16px 0 28px rgba(44, 30, 15, 0.25);
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.object-inspector-header {
+    padding: 0.85rem 1rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.object-inspector-heading {
+    min-width: 0;
+    display: grid;
+    gap: 0.2rem;
+}
+
+.object-inspector-title,
+.object-inspector-subtitle {
+    margin: 0;
+}
+
+.object-inspector-title {
+    font-size: 0.92rem;
+    font-weight: 760;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.object-inspector-subtitle {
+    font-size: 0.74rem;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.object-inspector-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    flex: 0 0 auto;
+}
+
+.object-inspector-tabs {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0.3rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.object-inspector-tab {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.24rem 0.68rem;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+.object-inspector-tab:hover {
+    filter: none;
+    background: var(--hover-tint);
+}
+
+.object-inspector-tab.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.object-inspector-body {
+    padding: 0.65rem 1rem 1rem;
+    overflow: auto;
+    min-height: 0;
+}
+
+.object-inspector-text {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    white-space: pre;
+    color: var(--text);
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    padding: 0.7rem 0.75rem;
+    overflow: auto;
+}
+
+.object-inspector-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    background: var(--surface-alt);
+}
+
+.object-inspector-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.76rem;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    color: var(--text);
+}
+
+.object-inspector-table th,
+.object-inspector-table td {
+    padding: 0.35rem 0.45rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    text-align: left;
+}
+
+.object-inspector-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
+    font-weight: 750;
+    color: var(--muted);
+}
+
+.object-inspector-table tbody tr:last-child td,
+.object-inspector-table tbody tr:last-child th {
+    border-bottom: 0;
 }
 
 .editor {
