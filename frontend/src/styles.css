@@ -573,6 +573,27 @@ p {
     display: grid;
     gap: 0.85rem;
     max-width: 420px;
+    margin-inline: auto;
+    width: 100%;
+}
+
+.login-form form {
+    display: grid;
+    gap: 0.6rem;
+    width: 100%;
+}
+
+.login-form form label {
+    justify-self: center;
+    text-align: center;
+}
+
+.login-form form button[type='submit'] {
+    justify-self: center;
+}
+
+:root[data-theme='dark'] .login-form form button[type='submit'] {
+    border-color: rgba(243, 232, 217, 0.22);
 }
 
 .chip {
@@ -2419,6 +2440,9 @@ button:disabled {
 .editor-toolbar {
     display: grid;
     gap: 0.52rem;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-height: 0;
+    height: 100%;
 }
 
 .editor-tabs-row {
@@ -2901,13 +2925,12 @@ button:disabled {
 .monaco-host {
     border: 0;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
     background: var(--workbench-main-surface);
     min-height: 0;
     height: 100%;
     display: grid;
     position: relative;
-    z-index: 1;
 }
 
 .monaco-frame {
@@ -2915,7 +2938,7 @@ button:disabled {
     height: 100%;
     padding: 0.2rem 0.85rem 0.38rem;
     display: grid;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .monaco-frame .monaco-editor,
@@ -3044,8 +3067,7 @@ button:disabled {
     background: var(--surface-alt);
 }
 
-.system-health-panel .result-stats-grid,
-.system-health-panel .history-table-wrap {
+.system-health-panel {
     border-radius: 0;
 }
 
@@ -3533,8 +3555,8 @@ button:disabled {
 }
 
 .login-brand-mark {
-    width: 4.8rem;
-    height: 4.8rem;
+    width: 5.76rem;
+    height: 5.76rem;
     object-fit: contain;
 }
 
