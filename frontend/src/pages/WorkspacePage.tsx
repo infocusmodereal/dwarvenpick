@@ -64,6 +64,7 @@ import type {
     ResultSortDirection,
     ResultSortState,
     SnippetResponse,
+    ControlPlaneDatasourceStatusResponse,
     SystemHealthResponse,
     TestConnectionResponse,
     TlsMode,
@@ -512,6 +513,16 @@ export default function WorkspacePage() {
     );
     const [loadingSystemHealth, setLoadingSystemHealth] = useState(false);
     const [systemHealthError, setSystemHealthError] = useState('');
+
+    const [controlPlaneWindowSeconds, setControlPlaneWindowSeconds] = useState(900);
+    const [controlPlaneActorFilter, setControlPlaneActorFilter] = useState('');
+    const [controlPlaneResponse, setControlPlaneResponse] =
+        useState<ControlPlaneDatasourceStatusResponse | null>(null);
+    const [loadingControlPlane, setLoadingControlPlane] = useState(false);
+    const [controlPlaneError, setControlPlaneError] = useState('');
+    const [controlPlaneAutoRefresh, setControlPlaneAutoRefresh] = useState(true);
+    const controlPlanePollingTimerRef = useRef<number | null>(null);
+    const controlPlaneRequestInFlightRef = useRef(false);
 
     const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(
         null
@@ -2345,6 +2356,7 @@ export default function WorkspacePage() {
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to load schema browser.';
+                setSchemaBrowser(null);
                 setSchemaBrowserError(message);
                 setDatasourceHealthById((current) => ({
                     ...current,
@@ -2616,6 +2628,304 @@ export default function WorkspacePage() {
         }
     }, [isSystemAdmin, readFriendlyError, systemHealthCredentialProfile, systemHealthDatasourceId]);
 
+    const loadControlPlaneStatus = useCallback(
+        async (quiet = false) => {
+            if (!isSystemAdmin) {
+                return;
+            }
+
+            const resolvedDatasourceId = systemHealthDatasourceId.trim();
+            if (!resolvedDatasourceId) {
+                setControlPlaneResponse(null);
+                setControlPlaneError('');
+                setLoadingControlPlane(false);
+                return;
+            }
+
+            if (controlPlaneRequestInFlightRef.current) {
+                return;
+            }
+            controlPlaneRequestInFlightRef.current = true;
+
+            if (!quiet) {
+                setLoadingControlPlane(true);
+            }
+            setControlPlaneError('');
+            try {
+                const queryParams = new URLSearchParams();
+                queryParams.set('datasourceId', resolvedDatasourceId);
+                queryParams.set('windowSeconds', controlPlaneWindowSeconds.toString());
+
+                const response = await fetch(`/api/admin/control-plane?${queryParams.toString()}`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const payload = (await response.json()) as ControlPlaneDatasourceStatusResponse;
+                setControlPlaneResponse(payload);
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to load control plane.';
+                setControlPlaneError(message);
+            } finally {
+                controlPlaneRequestInFlightRef.current = false;
+                setLoadingControlPlane(false);
+            }
+        },
+        [controlPlaneWindowSeconds, isSystemAdmin, readFriendlyError, systemHealthDatasourceId]
+    );
+
+    const handleControlPlanePause = useCallback(async () => {
+        const resolvedDatasourceId = systemHealthDatasourceId.trim();
+        if (!resolvedDatasourceId) {
+            return;
+        }
+
+        setControlPlaneError('');
+        setLoadingControlPlane(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch(
+                `/api/admin/control-plane/datasources/${encodeURIComponent(resolvedDatasourceId)}/pause`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                }
+            );
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            await loadControlPlaneStatus(true);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to pause connection.';
+            setControlPlaneError(message);
+        } finally {
+            setLoadingControlPlane(false);
+        }
+    }, [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError, systemHealthDatasourceId]);
+
+    const handleControlPlaneResume = useCallback(async () => {
+        const resolvedDatasourceId = systemHealthDatasourceId.trim();
+        if (!resolvedDatasourceId) {
+            return;
+        }
+
+        setControlPlaneError('');
+        setLoadingControlPlane(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch(
+                `/api/admin/control-plane/datasources/${encodeURIComponent(resolvedDatasourceId)}/resume`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                }
+            );
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            await loadControlPlaneStatus(true);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to resume connection.';
+            setControlPlaneError(message);
+        } finally {
+            setLoadingControlPlane(false);
+        }
+    }, [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError, systemHealthDatasourceId]);
+
+    const handleControlPlaneCancelAll = useCallback(async () => {
+        const resolvedDatasourceId = systemHealthDatasourceId.trim();
+        if (!resolvedDatasourceId) {
+            return;
+        }
+
+        setControlPlaneError('');
+        setLoadingControlPlane(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const queryParams = new URLSearchParams();
+            if (controlPlaneActorFilter.trim()) {
+                queryParams.set('actor', controlPlaneActorFilter.trim());
+            }
+
+            const response = await fetch(
+                `/api/admin/control-plane/datasources/${encodeURIComponent(resolvedDatasourceId)}/queries/cancel?${queryParams.toString()}`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                }
+            );
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            await loadControlPlaneStatus(true);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Failed to cancel queued/running queries.';
+            setControlPlaneError(message);
+        } finally {
+            setLoadingControlPlane(false);
+        }
+    }, [
+        controlPlaneActorFilter,
+        fetchCsrfToken,
+        loadControlPlaneStatus,
+        readFriendlyError,
+        systemHealthDatasourceId
+    ]);
+
+    const handleControlPlaneKillAll = useCallback(async () => {
+        const resolvedDatasourceId = systemHealthDatasourceId.trim();
+        if (!resolvedDatasourceId) {
+            return;
+        }
+
+        setControlPlaneError('');
+        setLoadingControlPlane(true);
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const queryParams = new URLSearchParams();
+            if (controlPlaneActorFilter.trim()) {
+                queryParams.set('actor', controlPlaneActorFilter.trim());
+            }
+
+            const response = await fetch(
+                `/api/admin/control-plane/datasources/${encodeURIComponent(resolvedDatasourceId)}/queries/kill?${queryParams.toString()}`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                }
+            );
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            await loadControlPlaneStatus(true);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Failed to kill queued/running queries.';
+            setControlPlaneError(message);
+        } finally {
+            setLoadingControlPlane(false);
+        }
+    }, [
+        controlPlaneActorFilter,
+        fetchCsrfToken,
+        loadControlPlaneStatus,
+        readFriendlyError,
+        systemHealthDatasourceId
+    ]);
+
+    const handleControlPlaneCancelExecution = useCallback(
+        async (executionId: string) => {
+            const resolvedExecutionId = executionId.trim();
+            if (!resolvedExecutionId) {
+                return;
+            }
+
+            setControlPlaneError('');
+            setLoadingControlPlane(true);
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(`/api/queries/${resolvedExecutionId}/cancel`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        [csrfToken.headerName]: csrfToken.token
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadControlPlaneStatus(true);
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to cancel query execution.';
+                setControlPlaneError(message);
+            } finally {
+                setLoadingControlPlane(false);
+            }
+        },
+        [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError]
+    );
+
+    const handleControlPlaneKillExecution = useCallback(
+        async (executionId: string) => {
+            const resolvedExecutionId = executionId.trim();
+            if (!resolvedExecutionId) {
+                return;
+            }
+
+            setControlPlaneError('');
+            setLoadingControlPlane(true);
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(
+                    `/api/admin/control-plane/queries/${encodeURIComponent(resolvedExecutionId)}/kill`,
+                    {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            [csrfToken.headerName]: csrfToken.token
+                        }
+                    }
+                );
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                await loadControlPlaneStatus(true);
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to kill query execution.';
+                setControlPlaneError(message);
+            } finally {
+                setLoadingControlPlane(false);
+            }
+        },
+        [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError]
+    );
+
+    const handleControlPlaneExportCsv = useCallback(() => {
+        const resolvedDatasourceId = systemHealthDatasourceId.trim();
+        if (!resolvedDatasourceId) {
+            return;
+        }
+
+        const queryParams = new URLSearchParams();
+        if (controlPlaneActorFilter.trim()) {
+            queryParams.set('actor', controlPlaneActorFilter.trim());
+        }
+
+        const url = `/api/admin/control-plane/datasources/${encodeURIComponent(resolvedDatasourceId)}/queries.csv?${queryParams.toString()}`;
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.rel = 'noreferrer';
+        anchor.target = '_blank';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+    }, [controlPlaneActorFilter, systemHealthDatasourceId]);
+
     useEffect(() => {
         if (!currentUser) {
             return;
@@ -2639,6 +2949,46 @@ export default function WorkspacePage() {
 
         void loadSystemHealth();
     }, [activeSection, isSystemAdmin, loadSystemHealth]);
+
+    useEffect(() => {
+        if (!isSystemAdmin || activeSection !== 'health') {
+            if (controlPlanePollingTimerRef.current !== null) {
+                window.clearInterval(controlPlanePollingTimerRef.current);
+                controlPlanePollingTimerRef.current = null;
+            }
+            return;
+        }
+
+        void loadControlPlaneStatus(true);
+
+        if (!controlPlaneAutoRefresh || !systemHealthDatasourceId.trim()) {
+            if (controlPlanePollingTimerRef.current !== null) {
+                window.clearInterval(controlPlanePollingTimerRef.current);
+                controlPlanePollingTimerRef.current = null;
+            }
+            return;
+        }
+
+        if (controlPlanePollingTimerRef.current !== null) {
+            window.clearInterval(controlPlanePollingTimerRef.current);
+        }
+        controlPlanePollingTimerRef.current = window.setInterval(() => {
+            void loadControlPlaneStatus(true);
+        }, 5000);
+
+        return () => {
+            if (controlPlanePollingTimerRef.current !== null) {
+                window.clearInterval(controlPlanePollingTimerRef.current);
+                controlPlanePollingTimerRef.current = null;
+            }
+        };
+    }, [
+        activeSection,
+        controlPlaneAutoRefresh,
+        isSystemAdmin,
+        loadControlPlaneStatus,
+        systemHealthDatasourceId
+    ]);
 
     useEffect(() => {
         if (!isSystemAdmin || activeSection !== 'health') {
@@ -7664,10 +8014,16 @@ export default function WorkspacePage() {
                                                             const absoluteIndex =
                                                                 visibleResultRows.start +
                                                                 relativeIndex;
+                                                            const pageOffset =
+                                                                (activeTab?.previousPageTokens
+                                                                    ?.length ?? 0) *
+                                                                resultsPageSize;
                                                             return (
                                                                 <tr key={`row-${absoluteIndex}`}>
                                                                     <td className="result-row-index">
-                                                                        {absoluteIndex + 1}
+                                                                        {pageOffset +
+                                                                            absoluteIndex +
+                                                                            1}
                                                                     </td>
                                                                     {row.map(
                                                                         (value, columnIndex) => (
@@ -7799,6 +8155,35 @@ export default function WorkspacePage() {
                                 error={systemHealthError}
                                 response={systemHealthResponse}
                                 onRefresh={() => void loadSystemHealth()}
+                                controlPlane={{
+                                    loading: loadingControlPlane,
+                                    error: controlPlaneError,
+                                    response: controlPlaneResponse,
+                                    windowSeconds: controlPlaneWindowSeconds,
+                                    onWindowSecondsChange: (value) => {
+                                        setControlPlaneWindowSeconds(value);
+                                        setControlPlaneError('');
+                                        window.setTimeout(() => {
+                                            void loadControlPlaneStatus(true);
+                                        }, 0);
+                                    },
+                                    actorFilter: controlPlaneActorFilter,
+                                    onActorFilterChange: (value) =>
+                                        setControlPlaneActorFilter(value),
+                                    autoRefresh: controlPlaneAutoRefresh,
+                                    onAutoRefreshChange: (value) =>
+                                        setControlPlaneAutoRefresh(value),
+                                    onRefresh: () => void loadControlPlaneStatus(false),
+                                    onPause: () => void handleControlPlanePause(),
+                                    onResume: () => void handleControlPlaneResume(),
+                                    onCancelAll: () => void handleControlPlaneCancelAll(),
+                                    onKillAll: () => void handleControlPlaneKillAll(),
+                                    onCancelExecution: (executionId) =>
+                                        void handleControlPlaneCancelExecution(executionId),
+                                    onKillExecution: (executionId) =>
+                                        void handleControlPlaneKillExecution(executionId),
+                                    onExportCsv: () => handleControlPlaneExportCsv()
+                                }}
                             />
                             <AuditEventsSection
                                 hidden={activeSection !== 'audit'}
@@ -8998,6 +9383,9 @@ export default function WorkspacePage() {
                                                                                 </option>
                                                                                 <option value="VERTICA">
                                                                                     Vertica
+                                                                                </option>
+                                                                                <option value="AEROSPIKE">
+                                                                                    Aerospike
                                                                                 </option>
                                                                             </select>
                                                                         </div>

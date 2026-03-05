@@ -4,6 +4,7 @@ import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.auth.AuthenticatedPrincipalResolver
 import com.dwarvenpick.app.auth.ErrorResponse
+import com.dwarvenpick.app.controlplane.DatasourcePauseService
 import com.dwarvenpick.app.datasource.DriverNotAvailableException
 import com.dwarvenpick.app.query.QueryConcurrencyLimitException
 import com.dwarvenpick.app.query.QueryCsvWriter
@@ -50,6 +51,7 @@ class QueryController(
     private val queryExecutionManager: QueryExecutionManager,
     private val queryExecutionProperties: QueryExecutionProperties,
     private val queryValidationService: QueryValidationService,
+    private val datasourcePauseService: DatasourcePauseService,
     private val meterRegistry: MeterRegistry,
 ) {
     @PostMapping
@@ -59,11 +61,17 @@ class QueryController(
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
+        val datasourceId = request.datasourceId.trim()
+        if (datasourcePauseService.isPaused(datasourceId)) {
+            return ResponseEntity
+                .status(HttpStatus.LOCKED)
+                .body(ErrorResponse("Connection '$datasourceId' is paused by an administrator."))
+        }
         return try {
             val accessPolicy =
                 rbacService.resolveQueryAccessPolicy(
                     principal = principal,
-                    datasourceId = request.datasourceId,
+                    datasourceId = datasourceId,
                     requestedCredentialProfile = request.credentialProfile,
                 )
             val response =
@@ -77,7 +85,7 @@ class QueryController(
         } catch (ex: QueryAccessDeniedException) {
             auditDeniedExecution(
                 actor = principal.username,
-                datasourceId = request.datasourceId,
+                datasourceId = datasourceId,
                 ipAddress = httpServletRequest.remoteAddr,
             )
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
@@ -86,7 +94,7 @@ class QueryController(
         } catch (ex: QueryConcurrencyLimitException) {
             auditLimitReached(
                 actor = principal.username,
-                datasourceId = request.datasourceId,
+                datasourceId = datasourceId,
                 ipAddress = httpServletRequest.remoteAddr,
                 message = ex.message,
             )

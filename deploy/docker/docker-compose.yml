@@ -69,7 +69,10 @@ services:
       - "9030:9030"
       - "8030:8030"
     volumes:
-      - starrocksdata:/data
+      # Use bind mounts so StarRocks metadata/storage doesn't depend on Docker Desktop's
+      # internal disk image free space (FE requires ~5GB free on its meta volume).
+      - ./.data/starrocks/fe-meta:/data/deploy/starrocks/fe/meta
+      - ./.data/starrocks/be-storage:/data/deploy/starrocks/be/storage
 
   starrocks-seed:
     image: mysql:8.4
@@ -96,6 +99,34 @@ services:
     container_name: dwarvenpick-trino
     ports:
       - "8088:8080"
+
+  aerospike:
+    image: aerospike/aerospike-server:7.1.0.1
+    container_name: dwarvenpick-aerospike
+    ports:
+      - "3005:3000"
+    volumes:
+      - aerospikedata:/opt/aerospike/data
+
+  aerospike-seed:
+    image: aerospike/aerospike-tools:latest
+    container_name: dwarvenpick-aerospike-seed
+    depends_on:
+      - aerospike
+    volumes:
+      - ./aerospike-init.aql:/seed.aql:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        until aql -h aerospike -p 3000 -c "show namespaces" >/dev/null 2>&1; do
+          echo "Waiting for Aerospike..."
+          sleep 2
+        done
+        aql -h aerospike -p 3000 -f /seed.aql
+        echo "Aerospike seeded."
+    restart: "no"
 
   keycloak:
     image: quay.io/keycloak/keycloak:25.0.6
@@ -177,6 +208,11 @@ services:
       DWARVENPICK_SEED_VERTICA_DATABASE: warehouse
       DWARVENPICK_SEED_VERTICA_USERNAME: dbadmin
       DWARVENPICK_SEED_VERTICA_PASSWORD: dwarvenpick
+      DWARVENPICK_SEED_AEROSPIKE_HOST: aerospike
+      DWARVENPICK_SEED_AEROSPIKE_PORT: 3000
+      DWARVENPICK_SEED_AEROSPIKE_DATABASE: test
+      DWARVENPICK_SEED_AEROSPIKE_USERNAME: ""
+      DWARVENPICK_SEED_AEROSPIKE_PASSWORD: ""
       DWARVENPICK_AUTH_OIDC_ENABLED: "true"
       # Use the host-reachable issuer so ID token `iss` validation matches what the browser sees.
       DWARVENPICK_AUTH_OIDC_ISSUER_URI: "http://localhost:8081/realms/dwarvenpick"
@@ -204,6 +240,8 @@ services:
         condition: service_started
       trino:
         condition: service_started
+      aerospike:
+        condition: service_started
       keycloak:
         condition: service_started
       starrocks:
@@ -211,6 +249,8 @@ services:
       starrocks-seed:
         condition: service_completed_successfully
       vertica-driver:
+        condition: service_completed_successfully
+      aerospike-seed:
         condition: service_completed_successfully
     volumes:
       - driversdata:/opt/app/drivers
@@ -230,5 +270,5 @@ volumes:
   mysqldata:
   mariadbdata:
   verticadata:
-  starrocksdata:
+  aerospikedata:
   driversdata:

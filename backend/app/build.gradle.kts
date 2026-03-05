@@ -21,11 +21,13 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.ldap:spring-ldap-core")
+    implementation("com.aerospike:aerospike-client-jdk8:9.0.5")
 
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("com.mysql:mysql-connector-j")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
     runtimeOnly("io.trino:trino-jdbc:479")
+    runtimeOnly("com.aerospike:aerospike-jdbc:1.10.1")
     runtimeOnly("com.h2database:h2")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

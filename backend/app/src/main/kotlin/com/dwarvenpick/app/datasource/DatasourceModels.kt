@@ -13,6 +13,7 @@ enum class DatasourceEngine {
     TRINO,
     STARROCKS,
     VERTICA,
+    AEROSPIKE,
 }
 
 enum class TlsMode {
@@ -153,4 +154,6 @@ data class PoolMetricsResponse(
     val activeConnections: Int,
     val idleConnections: Int,
     val totalConnections: Int,
+    val maximumPoolSize: Int,
+    val threadsAwaitingConnection: Int,
 )

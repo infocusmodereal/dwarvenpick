@@ -63,6 +63,13 @@ data class QueryCancelResponse(
     val canceledAt: String,
 )
 
+data class QueryKillResponse(
+    val executionId: String,
+    val status: String,
+    val message: String,
+    val killedAt: String,
+)
+
 data class QueryExecutionStatusResponse(
     val executionId: String,
     val datasourceId: String,
@@ -80,6 +87,21 @@ data class QueryExecutionStatusResponse(
     val maxRuntimeSeconds: Int,
     val credentialProfile: String,
     val scriptSummary: QueryScriptSummary? = null,
+)
+
+data class ActiveQueryExecutionResponse(
+    val executionId: String,
+    val actor: String,
+    val datasourceId: String,
+    val credentialProfile: String,
+    val status: String,
+    val message: String,
+    val queryHash: String,
+    val sqlPreview: String,
+    val submittedAt: String,
+    val startedAt: String?,
+    val durationMs: Long?,
+    val cancelRequested: Boolean,
 )
 
 data class QueryResultsRequest(

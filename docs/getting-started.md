@@ -47,6 +47,7 @@ The default local stack includes:
 - Vertica sample source: `localhost:5433` (`dbadmin` / `dwarvenpick`)
 - StarRocks sample source: `localhost:9030` (`readonly` / `readonly`)
 - Trino sample source: `localhost:8088` (user `trino`, no password)
+- Aerospike sample source: `localhost:3005` (namespace `test`, no auth)
 
 ## Stop
 

@@ -74,6 +74,7 @@ class QueryValidationService(
             DatasourceEngine.MYSQL, DatasourceEngine.MARIADB -> "EXPLAIN FORMAT=JSON $trimmed"
             DatasourceEngine.TRINO -> "EXPLAIN $trimmed"
             DatasourceEngine.STARROCKS, DatasourceEngine.VERTICA -> "EXPLAIN $trimmed"
+            DatasourceEngine.AEROSPIKE -> "EXPLAIN $trimmed"
         }
     }
 

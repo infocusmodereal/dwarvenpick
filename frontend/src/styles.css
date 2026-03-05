@@ -702,6 +702,29 @@ textarea::placeholder {
     word-break: break-word;
 }
 
+.inline-code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    display: inline-block;
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.bullet-list {
+    margin: 0;
+    padding-left: 1.05rem;
+    display: grid;
+    gap: 0.3rem;
+}
+
+.bullet-list li {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 .history-actions {
     white-space: nowrap;
 }
@@ -3064,6 +3087,31 @@ button:disabled {
 
 .system-health-panel {
     border-radius: 0;
+    gap: 1.05rem;
+}
+
+.system-health-panel .panel-inner {
+    gap: 0.9rem;
+}
+
+.system-health-panel .system-health-control-plane > .panel-inner {
+    padding-top: 0.95rem;
+    border-top: 1px solid var(--border);
+}
+
+.system-health-panel .result-table th,
+.system-health-panel .result-table td {
+    padding: 0.62rem 0.65rem;
+}
+
+.system-health-panel .control-plane-errors-table {
+    min-width: 0;
+    table-layout: fixed;
+}
+
+.system-health-panel .control-plane-errors-table th,
+.system-health-panel .control-plane-errors-table td {
+    white-space: normal;
 }
 
 .result-stat {

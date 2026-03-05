@@ -27,16 +27,22 @@ class DatasourcePoolManager(
         validationQuery: String,
     ): TestConnectionResponse {
         val spec = datasourceRegistryService.resolveConnectionSpec(datasourceId, credentialProfile, tlsOverride)
-        val query = validationQuery.trim().ifBlank { "SELECT 1" }
+        val query = validationQuery.trim()
+        val effectiveValidationQuery =
+            when {
+                spec.engine == DatasourceEngine.AEROSPIKE &&
+                    (query.isBlank() || query.equals("SELECT 1", ignoreCase = true)) -> ""
+                else -> query.ifBlank { "SELECT 1" }
+            }
 
         if (tlsOverride == null) {
             val pool = getOrCreatePool(spec)
-            return runValidation(pool, spec, query, datasourceId, credentialProfile)
+            return runValidation(pool, spec, effectiveValidationQuery, datasourceId, credentialProfile)
         }
 
         val temporaryPool = createPool(spec)
         return try {
-            runValidation(temporaryPool, spec, query, datasourceId, credentialProfile)
+            runValidation(temporaryPool, spec, effectiveValidationQuery, datasourceId, credentialProfile)
         } finally {
             temporaryPool.close()
         }
@@ -47,6 +53,7 @@ class DatasourcePoolManager(
             .map { (key, dataSource) ->
                 val keyParts = key.split("::", limit = 2)
                 val poolBean = dataSource.hikariPoolMXBean
+                val configBean = dataSource.hikariConfigMXBean
                 PoolMetricsResponse(
                     key = key,
                     datasourceId = keyParts.getOrElse(0) { "unknown" },
@@ -54,6 +61,8 @@ class DatasourcePoolManager(
                     activeConnections = poolBean?.activeConnections ?: 0,
                     idleConnections = poolBean?.idleConnections ?: 0,
                     totalConnections = poolBean?.totalConnections ?: 0,
+                    maximumPoolSize = configBean?.maximumPoolSize ?: dataSource.maximumPoolSize,
+                    threadsAwaitingConnection = poolBean?.threadsAwaitingConnection ?: 0,
                 )
             }.sortedBy { response -> response.key }
 
@@ -96,8 +105,10 @@ class DatasourcePoolManager(
         val config =
             HikariConfig().apply {
                 jdbcUrl = spec.jdbcUrl
-                username = spec.username
-                if (spec.engine != DatasourceEngine.TRINO || spec.password.isNotBlank()) {
+                if (spec.engine != DatasourceEngine.AEROSPIKE || spec.username.isNotBlank()) {
+                    username = spec.username
+                }
+                if ((spec.engine != DatasourceEngine.TRINO && spec.engine != DatasourceEngine.AEROSPIKE) || spec.password.isNotBlank()) {
                     password = spec.password
                 }
                 if (spec.driverSource == "built-in") {
@@ -109,7 +120,9 @@ class DatasourcePoolManager(
                 idleTimeout = spec.pool.idleTimeoutMs
                 isAutoCommit = true
                 poolName = "pool-${spec.datasourceId}-${spec.credentialProfile}"
-                connectionTestQuery = "SELECT 1"
+                if (spec.engine != DatasourceEngine.AEROSPIKE) {
+                    connectionTestQuery = "SELECT 1"
+                }
             }
 
         return HikariDataSource(config)
@@ -124,9 +137,11 @@ class DatasourcePoolManager(
     ): TestConnectionResponse =
         runCatching {
             dataSource.connection.use { connection ->
-                connection.createStatement().use { statement ->
-                    statement.queryTimeout = 10
-                    statement.execute(validationQuery)
+                if (validationQuery.isNotBlank()) {
+                    connection.createStatement().use { statement ->
+                        statement.queryTimeout = 10
+                        statement.execute(validationQuery)
+                    }
                 }
             }
 

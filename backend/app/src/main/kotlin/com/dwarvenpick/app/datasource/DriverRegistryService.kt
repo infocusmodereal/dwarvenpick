@@ -133,6 +133,14 @@ class DriverRegistryService(
                 unavailableMessage =
                     "MariaDB JDBC class is unavailable. Upload mariadb-java-client jar for StarRocks.",
             ),
+            BuiltInDriverSpec(
+                driverId = "aerospike-default",
+                engine = DatasourceEngine.AEROSPIKE,
+                driverClass = "com.aerospike.jdbc.AerospikeDriver",
+                description = "Aerospike JDBC driver",
+                unavailableMessage =
+                    "Aerospike JDBC class is unavailable. Upload the aerospike-jdbc jar.",
+            ),
         )
 
     @Synchronized

@@ -302,6 +302,50 @@ class DatasourceRegistryService(
                 ),
             )
         }
+
+        val aerospikeDriverAvailable =
+            driverRegistryService
+                .listDrivers(DatasourceEngine.AEROSPIKE)
+                .any { descriptor -> descriptor.available }
+        if (aerospikeDriverAvailable) {
+            val aerospike = seedDatasourceProperties.aerospike
+            val aerospikeId =
+                createDatasource(
+                    CreateDatasourceRequest(
+                        name = "aerospike-kv",
+                        engine = DatasourceEngine.AEROSPIKE,
+                        host = aerospike.host,
+                        port = aerospike.port,
+                        database = aerospike.database,
+                        driverId = "aerospike-default",
+                        tls = TlsSettings(mode = TlsMode.DISABLE),
+                        options =
+                            mapOf(
+                                "sendKey" to "true",
+                                "refuseScan" to "false",
+                            ),
+                    ),
+                ).id
+            upsertCredentialProfile(
+                aerospikeId,
+                "admin-ro",
+                UpsertCredentialProfileRequest(
+                    username = aerospike.username,
+                    password = aerospike.password,
+                    description = "Admin profile for local compose.",
+                    sysadmin = true,
+                ),
+            )
+            upsertCredentialProfile(
+                aerospikeId,
+                "analyst-ro",
+                UpsertCredentialProfileRequest(
+                    username = aerospike.username,
+                    password = aerospike.password,
+                    description = "Analyst profile for local compose.",
+                ),
+            )
+        }
     }
 
     fun listManagedDatasources(): List<ManagedDatasourceResponse> =
@@ -437,7 +481,8 @@ class DatasourceRegistryService(
         val now = Instant.now()
 
         val existingRecord = datasource.credentialProfiles[normalizedProfileId]
-        val passwordOptionalForNewProfile = datasource.engine == DatasourceEngine.TRINO
+        val passwordOptionalForNewProfile =
+            datasource.engine == DatasourceEngine.TRINO || datasource.engine == DatasourceEngine.AEROSPIKE
         if (existingRecord == null && encrypted == null && !passwordOptionalForNewProfile) {
             throw IllegalArgumentException("Credential password is required for a new profile.")
         }
@@ -723,6 +768,10 @@ class DatasourceRegistryService(
                     parameters["tls_verify_host"] = tls.verifyServerCertificate.toString()
                 }
                 return "jdbc:vertica://${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
+            }
+
+            DatasourceEngine.AEROSPIKE -> {
+                return "jdbc:aerospike:${datasource.host}:${datasource.port}$databaseSegment${buildQuery(parameters)}"
             }
         }
     }
