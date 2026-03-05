@@ -2920,17 +2920,24 @@ button:disabled {
     overflow: hidden;
     background: var(--workbench-main-surface);
     min-height: 0;
-    height: 100%;
-    display: grid;
+    display: flex;
+    flex-direction: column;
     position: relative;
 }
 
 .monaco-frame {
     min-height: 0;
-    height: 100%;
     padding: 0.2rem 0.85rem 0.38rem;
-    display: grid;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
     overflow: hidden;
+}
+
+.monaco-frame > section {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
 }
 
 .monaco-frame .monaco-editor,
