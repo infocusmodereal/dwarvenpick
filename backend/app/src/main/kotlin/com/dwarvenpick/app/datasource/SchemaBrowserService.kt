@@ -1,5 +1,9 @@
 package com.dwarvenpick.app.datasource
 
+import com.aerospike.client.AerospikeClient
+import com.aerospike.client.Info
+import com.aerospike.client.policy.ClientPolicy
+import com.dwarvenpick.app.datasource.aerospike.parseAerospikeJdbcTarget
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
@@ -64,6 +68,17 @@ class SchemaBrowserService(
                     cause = exception,
                 )
             }
+
+        if (handle.spec.engine == DatasourceEngine.AEROSPIKE) {
+            handle.connection.close()
+            return loadAerospikeSchema(
+                spec = handle.spec,
+                datasourceId = datasourceId,
+                fetchedAt = fetchedAt,
+                maxSchemas = maxSchemas,
+                maxTablesPerSchema = maxTablesPerSchema,
+            )
+        }
 
         return try {
             handle.connection.use { connection ->
@@ -190,5 +205,113 @@ class SchemaBrowserService(
                 cause = exception,
             )
         }
+    }
+
+    private fun loadAerospikeSchema(
+        spec: ConnectionSpec,
+        datasourceId: String,
+        fetchedAt: Instant,
+        maxSchemas: Int,
+        maxTablesPerSchema: Int,
+    ): DatasourceSchemaBrowserResponse {
+        val target = parseAerospikeJdbcTarget(spec.jdbcUrl)
+        val policy =
+            ClientPolicy().apply {
+                if (spec.username.isNotBlank()) {
+                    user = spec.username
+                }
+                if (spec.password.isNotBlank()) {
+                    password = spec.password
+                }
+                loginTimeout = 3_000
+                timeout = 1_000
+            }
+
+        return try {
+            AerospikeClient(policy, target.host, target.port).use { client ->
+                val node =
+                    client.nodes.firstOrNull()
+                        ?: throw SchemaBrowserUnavailableException("Unable to connect to Aerospike cluster.")
+
+                val namespaces =
+                    parseAerospikeList(Info.request(node, "namespaces"))
+                        .ifEmpty {
+                            target.namespace?.let { listOf(it) } ?: emptyList()
+                        }.ifEmpty { listOf("default") }
+                        .distinct()
+                        .take(maxSchemas)
+
+                val setsByNamespace =
+                    runCatching { Info.request(node, "sets") }
+                        .map { info -> parseAerospikeSets(info) }
+                        .getOrDefault(emptyMap())
+
+                val schemaResponses =
+                    namespaces
+                        .sortedBy { namespace -> namespace.lowercase(Locale.getDefault()) }
+                        .map { namespace ->
+                            val tables =
+                                setsByNamespace[namespace]
+                                    .orEmpty()
+                                    .sortedBy { name -> name.lowercase(Locale.getDefault()) }
+                                    .take(maxTablesPerSchema)
+                                    .map { setName ->
+                                        DatasourceTableEntryResponse(
+                                            table = setName,
+                                            type = "TABLE",
+                                            columns = emptyList(),
+                                        )
+                                    }
+
+                            DatasourceSchemaEntryResponse(
+                                schema = namespace,
+                                tables = tables,
+                            )
+                        }
+
+                DatasourceSchemaBrowserResponse(
+                    datasourceId = datasourceId,
+                    cached = false,
+                    fetchedAt = fetchedAt.toString(),
+                    schemas = schemaResponses,
+                )
+            }
+        } catch (exception: SchemaBrowserUnavailableException) {
+            throw exception
+        } catch (exception: RuntimeException) {
+            throw SchemaBrowserUnavailableException(
+                message = "Unable to load Aerospike schema metadata.",
+                cause = exception,
+            )
+        }
+    }
+
+    private fun parseAerospikeList(value: String?): List<String> =
+        value
+            ?.split(';')
+            ?.map { entry -> entry.trim() }
+            ?.filter { entry -> entry.isNotBlank() }
+            ?: emptyList()
+
+    private fun parseAerospikeSets(info: String): Map<String, Set<String>> {
+        val pattern = Regex("ns=([^:;\\s]+):set=([^:;\\s]+)")
+        val setsByNamespace = mutableMapOf<String, MutableSet<String>>()
+        pattern.findAll(info).forEach { match ->
+            val namespace =
+                match.groupValues
+                    .getOrNull(1)
+                    ?.trim()
+                    .orEmpty()
+            val setName =
+                match.groupValues
+                    .getOrNull(2)
+                    ?.trim()
+                    .orEmpty()
+            if (namespace.isBlank() || setName.isBlank()) {
+                return@forEach
+            }
+            setsByNamespace.getOrPut(namespace) { mutableSetOf() }.add(setName)
+        }
+        return setsByNamespace
     }
 }

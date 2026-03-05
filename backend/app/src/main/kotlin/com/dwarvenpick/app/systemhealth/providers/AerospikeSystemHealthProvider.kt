@@ -5,6 +5,7 @@ import com.aerospike.client.Info
 import com.aerospike.client.policy.ClientPolicy
 import com.dwarvenpick.app.datasource.ConnectionSpec
 import com.dwarvenpick.app.datasource.DatasourceEngine
+import com.dwarvenpick.app.datasource.aerospike.parseAerospikeJdbcTarget
 import com.dwarvenpick.app.systemhealth.SystemHealthCheckResult
 import com.dwarvenpick.app.systemhealth.SystemHealthNode
 import com.dwarvenpick.app.systemhealth.SystemHealthProvider
@@ -30,7 +31,7 @@ class AerospikeSystemHealthProvider : SystemHealthProvider {
             details["productName"] = metadata.databaseProductName
         }
 
-        val target = parseJdbcTarget(spec.jdbcUrl)
+        val target = parseAerospikeJdbcTarget(spec.jdbcUrl)
         details["host"] = target.host
         details["port"] = target.port
         target.namespace?.let { namespace -> details["namespace"] = namespace }
@@ -80,32 +81,6 @@ class AerospikeSystemHealthProvider : SystemHealthProvider {
             message = null,
             nodes = nodes,
             details = details,
-        )
-    }
-
-    private data class JdbcTarget(
-        val host: String,
-        val port: Int,
-        val namespace: String?,
-    )
-
-    private fun parseJdbcTarget(jdbcUrl: String): JdbcTarget {
-        val pattern = Regex("^jdbc:aerospike:([^:/?#]+)(?::(\\d+))?(?:/([^?]+))?.*", RegexOption.IGNORE_CASE)
-        val match =
-            pattern.find(jdbcUrl.trim())
-                ?: throw IllegalArgumentException("Unsupported Aerospike JDBC URL.")
-
-        val host = match.groupValues[1]
-        val port =
-            match.groupValues
-                .getOrNull(2)
-                ?.takeIf { value -> value.isNotBlank() }
-                ?.toInt() ?: 3000
-        val namespace = match.groupValues.getOrNull(3)?.takeIf { value -> value.isNotBlank() }
-        return JdbcTarget(
-            host = host,
-            port = port,
-            namespace = namespace,
         )
     }
 

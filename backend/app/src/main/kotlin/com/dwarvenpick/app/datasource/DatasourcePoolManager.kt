@@ -27,16 +27,22 @@ class DatasourcePoolManager(
         validationQuery: String,
     ): TestConnectionResponse {
         val spec = datasourceRegistryService.resolveConnectionSpec(datasourceId, credentialProfile, tlsOverride)
-        val query = validationQuery.trim().ifBlank { "SELECT 1" }
+        val query = validationQuery.trim()
+        val effectiveValidationQuery =
+            when {
+                spec.engine == DatasourceEngine.AEROSPIKE &&
+                    (query.isBlank() || query.equals("SELECT 1", ignoreCase = true)) -> ""
+                else -> query.ifBlank { "SELECT 1" }
+            }
 
         if (tlsOverride == null) {
             val pool = getOrCreatePool(spec)
-            return runValidation(pool, spec, query, datasourceId, credentialProfile)
+            return runValidation(pool, spec, effectiveValidationQuery, datasourceId, credentialProfile)
         }
 
         val temporaryPool = createPool(spec)
         return try {
-            runValidation(temporaryPool, spec, query, datasourceId, credentialProfile)
+            runValidation(temporaryPool, spec, effectiveValidationQuery, datasourceId, credentialProfile)
         } finally {
             temporaryPool.close()
         }
@@ -114,7 +120,9 @@ class DatasourcePoolManager(
                 idleTimeout = spec.pool.idleTimeoutMs
                 isAutoCommit = true
                 poolName = "pool-${spec.datasourceId}-${spec.credentialProfile}"
-                connectionTestQuery = "SELECT 1"
+                if (spec.engine != DatasourceEngine.AEROSPIKE) {
+                    connectionTestQuery = "SELECT 1"
+                }
             }
 
         return HikariDataSource(config)
@@ -129,9 +137,11 @@ class DatasourcePoolManager(
     ): TestConnectionResponse =
         runCatching {
             dataSource.connection.use { connection ->
-                connection.createStatement().use { statement ->
-                    statement.queryTimeout = 10
-                    statement.execute(validationQuery)
+                if (validationQuery.isNotBlank()) {
+                    connection.createStatement().use { statement ->
+                        statement.queryTimeout = 10
+                        statement.execute(validationQuery)
+                    }
                 }
             }
 

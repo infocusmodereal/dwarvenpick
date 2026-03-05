@@ -2356,6 +2356,7 @@ export default function WorkspacePage() {
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to load schema browser.';
+                setSchemaBrowser(null);
                 setSchemaBrowserError(message);
                 setDatasourceHealthById((current) => ({
                     ...current,
