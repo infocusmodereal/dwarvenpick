@@ -3087,6 +3087,16 @@ button:disabled {
 
 .system-health-panel {
     border-radius: 0;
+    gap: 1.05rem;
+}
+
+.system-health-panel .panel-inner {
+    gap: 0.9rem;
+}
+
+.system-health-panel .system-health-control-plane > .panel-inner {
+    padding-top: 0.95rem;
+    border-top: 1px solid var(--border);
 }
 
 .system-health-panel .result-table th,

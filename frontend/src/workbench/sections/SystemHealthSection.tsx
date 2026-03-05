@@ -241,7 +241,7 @@ export default function SystemHealthSection({
             ) : null}
 
             {datasourceId ? (
-                <div className="panel-inner">
+                <div className="panel-inner system-health-control-plane">
                     <h3>Control Plane</h3>
                     <div className="history-filters">
                         <div className="filter-field">

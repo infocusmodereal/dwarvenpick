@@ -40,7 +40,7 @@ export const datasourceIconByEngine: Record<DatasourceEngine, string> = {
     TRINO: '/db-icons/trino.svg',
     STARROCKS: '/db-icons/starrocks.svg',
     VERTICA: '/db-icons/vertica.svg',
-    AEROSPIKE: '/db-icons/database.svg'
+    AEROSPIKE: '/db-icons/aerospike.svg'
 };
 
 export const railIconSvgByGlyph: Record<RailGlyph, string> = {
