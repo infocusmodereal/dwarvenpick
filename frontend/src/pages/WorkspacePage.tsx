@@ -7664,10 +7664,13 @@ export default function WorkspacePage() {
                                                             const absoluteIndex =
                                                                 visibleResultRows.start +
                                                                 relativeIndex;
+                                                            const pageOffset =
+                                                                (activeTab?.previousPageTokens
+                                                                    ?.length ?? 0) * resultsPageSize;
                                                             return (
                                                                 <tr key={`row-${absoluteIndex}`}>
                                                                     <td className="result-row-index">
-                                                                        {absoluteIndex + 1}
+                                                                        {pageOffset + absoluteIndex + 1}
                                                                     </td>
                                                                     {row.map(
                                                                         (value, columnIndex) => (
