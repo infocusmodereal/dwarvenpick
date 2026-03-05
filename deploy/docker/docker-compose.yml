@@ -101,7 +101,7 @@ services:
     image: aerospike/aerospike-server:7.1.0.1
     container_name: dwarvenpick-aerospike
     ports:
-      - "3000:3000"
+      - "3005:3000"
     volumes:
       - aerospikedata:/opt/aerospike/data
 

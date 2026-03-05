@@ -75,7 +75,7 @@ Seeded databases in local compose:
 - Vertica sample source: `localhost:5433`, db `warehouse`, user `dbadmin`, password `dwarvenpick`
 - StarRocks sample source: `localhost:9030`, db `warehouse`, user `readonly`, password `readonly`
 - Trino sample source: `localhost:8088`, catalog/schema `tpch/sf1`, user `trino` (no password)
-- Aerospike sample source: `localhost:3000`, namespace `test` (no auth)
+- Aerospike sample source: `localhost:3005`, namespace `test` (no auth)
 
 The sample datasets include both transactional-style tables and analytical-style tables/views to exercise query/explain behavior.
 
