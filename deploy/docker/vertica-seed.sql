@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS warehouse.healthcheck (
     checked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+DELETE FROM warehouse.orders;
+DELETE FROM warehouse.customers;
+DELETE FROM warehouse.healthcheck;
+
 INSERT INTO warehouse.customers (customer_id, customer_name, customer_segment, region, created_at)
 SELECT 1001, 'Balin Mining Co', 'enterprise', 'north', TIMESTAMP '2025-11-12 09:14:00'
 UNION ALL
@@ -51,3 +55,5 @@ UNION ALL
 SELECT 3005, 1004, 'CANCELED', TIMESTAMP '2026-02-03 10:25:00';
 
 INSERT INTO warehouse.healthcheck (status) VALUES ('ok');
+
+COMMIT;
