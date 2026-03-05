@@ -702,6 +702,29 @@ textarea::placeholder {
     word-break: break-word;
 }
 
+.inline-code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    display: inline-block;
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.bullet-list {
+    margin: 0;
+    padding-left: 1.05rem;
+    display: grid;
+    gap: 0.3rem;
+}
+
+.bullet-list li {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 .history-actions {
     white-space: nowrap;
 }

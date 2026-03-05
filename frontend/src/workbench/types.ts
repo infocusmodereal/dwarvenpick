@@ -232,6 +232,65 @@ export type SystemHealthResponse = {
     details: Record<string, unknown>;
 };
 
+export type ControlPlaneLatencySummary = {
+    windowSeconds: number;
+    sampleSize: number;
+    succeededCount: number;
+    failedCount: number;
+    canceledCount: number;
+    averageMs?: number | null;
+    p50Ms?: number | null;
+    p90Ms?: number | null;
+    maxMs?: number | null;
+    latestErrors: string[];
+};
+
+export type ControlPlanePoolStatus = {
+    datasourceId: string;
+    credentialProfile: string;
+    activeConnections: number;
+    idleConnections: number;
+    totalConnections: number;
+    maximumPoolSize: number;
+    threadsAwaitingConnection: number;
+};
+
+export type ControlPlaneActiveQuery = {
+    executionId: string;
+    actor: string;
+    datasourceId: string;
+    credentialProfile: string;
+    status: string;
+    message: string;
+    queryHash: string;
+    sqlPreview: string;
+    submittedAt: string;
+    startedAt?: string | null;
+    durationMs?: number | null;
+    cancelRequested: boolean;
+};
+
+export type ControlPlaneDatasourceStatusResponse = {
+    datasourceId: string;
+    datasourceName: string;
+    engine: DatasourceEngine;
+    paused: boolean;
+    fetchedAt: string;
+    queuedCount: number;
+    runningCount: number;
+    pools: ControlPlanePoolStatus[];
+    activeQueries: ControlPlaneActiveQuery[];
+    latency: ControlPlaneLatencySummary;
+};
+
+export type ControlPlaneBulkActionResponse = {
+    datasourceId: string;
+    action: string;
+    matched: number;
+    succeeded: number;
+    failed: number;
+};
+
 export type AdminUserResponse = {
     username: string;
     displayName: string;
