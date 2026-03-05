@@ -44,6 +44,7 @@ The default local stack includes:
 - PostgreSQL sample source: `localhost:5432` (`dwarvenpick` / `dwarvenpick`)
 - MySQL sample source: `localhost:3306` (`readonly` / `readonly`)
 - MariaDB sample source: `localhost:3307` (`readonly` / `readonly`)
+- Vertica sample source: `localhost:5433` (`dbadmin` / `dwarvenpick`)
 - StarRocks sample source: `localhost:9030` (`readonly` / `readonly`)
 - Trino sample source: `localhost:8088` (user `trino`, no password)
 

@@ -38,6 +38,14 @@ data class SeedDatasourceProperties(
             username = "readonly",
             password = "readonly",
         ),
+    val vertica: SeedJdbcProperties =
+        SeedJdbcProperties(
+            host = "localhost",
+            port = 5433,
+            database = "warehouse",
+            username = "readonly",
+            password = "readonly",
+        ),
 )
 
 data class SeedJdbcProperties(

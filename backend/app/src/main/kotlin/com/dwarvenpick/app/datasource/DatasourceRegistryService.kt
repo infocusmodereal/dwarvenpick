@@ -263,6 +263,45 @@ class DatasourceRegistryService(
                 description = "Analyst readonly profile.",
             ),
         )
+
+        val verticaDriverAvailable =
+            driverRegistryService
+                .listDrivers(DatasourceEngine.VERTICA)
+                .any { descriptor -> descriptor.available }
+        if (verticaDriverAvailable) {
+            val vertica = seedDatasourceProperties.vertica
+            val verticaId =
+                createDatasource(
+                    CreateDatasourceRequest(
+                        name = "vertica-warehouse",
+                        engine = DatasourceEngine.VERTICA,
+                        host = vertica.host,
+                        port = vertica.port,
+                        database = vertica.database,
+                        driverId = "vertica-external",
+                        tls = TlsSettings(mode = TlsMode.DISABLE),
+                    ),
+                ).id
+            upsertCredentialProfile(
+                verticaId,
+                "admin-ro",
+                UpsertCredentialProfileRequest(
+                    username = vertica.username,
+                    password = vertica.password,
+                    description = "Admin readonly profile.",
+                    sysadmin = true,
+                ),
+            )
+            upsertCredentialProfile(
+                verticaId,
+                "analyst-ro",
+                UpsertCredentialProfileRequest(
+                    username = vertica.username,
+                    password = vertica.password,
+                    description = "Analyst readonly profile.",
+                ),
+            )
+        }
     }
 
     fun listManagedDatasources(): List<ManagedDatasourceResponse> =

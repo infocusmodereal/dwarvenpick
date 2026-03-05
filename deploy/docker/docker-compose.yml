@@ -39,6 +39,21 @@ services:
       - mariadbdata:/var/lib/mysql
       - ./mariadb-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
 
+  vertica:
+    image: jbfavre/vertica:latest
+    platform: linux/amd64
+    container_name: dwarvenpick-vertica
+    stop_grace_period: 2m
+    environment:
+      DATABASE_NAME: warehouse
+      DATABASE_PASSWORD: dwarvenpick
+    ports:
+      - "5433:5433"
+    volumes:
+      - verticadata:/home/dbadmin/docker
+      - ./vertica-init.sh:/docker-entrypoint-initdb.d/01-seed.sh:ro
+      - ./vertica-seed.sql:/vertica-seed.sql:ro
+
   starrocks:
     image: starrocks/allin1-ubuntu:3.1.7
     container_name: dwarvenpick-starrocks
@@ -100,6 +115,29 @@ services:
     volumes:
       - ./keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
 
+  vertica-driver:
+    image: curlimages/curl:8.12.1
+    container_name: dwarvenpick-vertica-driver
+    user: "0:0"
+    volumes:
+      - driversdata:/drivers
+    entrypoint:
+      - sh
+      - -lc
+      - |
+        set -e
+        VERSION="25.3.0-0"
+        TARGET="/drivers/vertica/vertica-jdbc-$${VERSION}.jar"
+        if [ -f "$${TARGET}" ]; then
+          echo "Vertica JDBC driver already present."
+          exit 0
+        fi
+        mkdir -p /drivers/vertica
+        echo "Downloading Vertica JDBC driver $${VERSION}..."
+        curl -fsSL -o "$${TARGET}" "https://repo1.maven.org/maven2/com/vertica/jdbc/vertica-jdbc/$${VERSION}/vertica-jdbc-$${VERSION}.jar"
+        echo "Vertica JDBC driver ready."
+    restart: "no"
+
   backend:
     build:
       context: ../../
@@ -134,6 +172,11 @@ services:
       DWARVENPICK_SEED_STARROCKS_DATABASE: warehouse
       DWARVENPICK_SEED_STARROCKS_USERNAME: root
       DWARVENPICK_SEED_STARROCKS_PASSWORD: ""
+      DWARVENPICK_SEED_VERTICA_HOST: vertica
+      DWARVENPICK_SEED_VERTICA_PORT: 5433
+      DWARVENPICK_SEED_VERTICA_DATABASE: warehouse
+      DWARVENPICK_SEED_VERTICA_USERNAME: dbadmin
+      DWARVENPICK_SEED_VERTICA_PASSWORD: dwarvenpick
       DWARVENPICK_AUTH_OIDC_ENABLED: "true"
       # Use the host-reachable issuer so ID token `iss` validation matches what the browser sees.
       DWARVENPICK_AUTH_OIDC_ISSUER_URI: "http://localhost:8081/realms/dwarvenpick"
@@ -151,13 +194,24 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - postgres
-      - mysql
-      - mariadb
-      - trino
-      - keycloak
-      - starrocks
-      - starrocks-seed
+      postgres:
+        condition: service_started
+      mysql:
+        condition: service_started
+      mariadb:
+        condition: service_started
+      vertica:
+        condition: service_started
+      trino:
+        condition: service_started
+      keycloak:
+        condition: service_started
+      starrocks:
+        condition: service_started
+      starrocks-seed:
+        condition: service_completed_successfully
+      vertica-driver:
+        condition: service_completed_successfully
     volumes:
       - driversdata:/opt/app/drivers
 
@@ -175,5 +229,6 @@ volumes:
   pgdata:
   mysqldata:
   mariadbdata:
+  verticadata:
   starrocksdata:
   driversdata:
