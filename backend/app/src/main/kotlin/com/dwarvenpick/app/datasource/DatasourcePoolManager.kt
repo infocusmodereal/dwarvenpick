@@ -99,8 +99,10 @@ class DatasourcePoolManager(
         val config =
             HikariConfig().apply {
                 jdbcUrl = spec.jdbcUrl
-                username = spec.username
-                if (spec.engine != DatasourceEngine.TRINO || spec.password.isNotBlank()) {
+                if (spec.engine != DatasourceEngine.AEROSPIKE || spec.username.isNotBlank()) {
+                    username = spec.username
+                }
+                if ((spec.engine != DatasourceEngine.TRINO && spec.engine != DatasourceEngine.AEROSPIKE) || spec.password.isNotBlank()) {
                     password = spec.password
                 }
                 if (spec.driverSource == "built-in") {

@@ -46,6 +46,14 @@ data class SeedDatasourceProperties(
             username = "readonly",
             password = "readonly",
         ),
+    val aerospike: SeedJdbcProperties =
+        SeedJdbcProperties(
+            host = "localhost",
+            port = 3000,
+            database = "test",
+            username = "",
+            password = "",
+        ),
 )
 
 data class SeedJdbcProperties(

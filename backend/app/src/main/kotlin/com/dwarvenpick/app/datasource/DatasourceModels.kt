@@ -13,6 +13,7 @@ enum class DatasourceEngine {
     TRINO,
     STARROCKS,
     VERTICA,
+    AEROSPIKE,
 }
 
 enum class TlsMode {

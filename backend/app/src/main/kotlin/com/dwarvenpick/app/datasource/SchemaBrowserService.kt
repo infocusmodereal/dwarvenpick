@@ -73,7 +73,9 @@ class SchemaBrowserService(
                 var schemaUsesCatalogFallback = false
                 val productName = metadata.databaseProductName.lowercase(Locale.getDefault())
                 val useCatalogsAsSchemas =
-                    productName.contains("mysql") || productName.contains("mariadb")
+                    productName.contains("mysql") ||
+                        productName.contains("mariadb") ||
+                        productName.contains("aerospike")
 
                 if (useCatalogsAsSchemas) {
                     metadata.catalogs.use { catalogs ->
