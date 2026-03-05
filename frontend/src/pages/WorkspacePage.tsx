@@ -2655,13 +2655,10 @@ export default function WorkspacePage() {
                 queryParams.set('datasourceId', resolvedDatasourceId);
                 queryParams.set('windowSeconds', controlPlaneWindowSeconds.toString());
 
-                const response = await fetch(
-                    `/api/admin/control-plane?${queryParams.toString()}`,
-                    {
-                        method: 'GET',
-                        credentials: 'include'
-                    }
-                );
+                const response = await fetch(`/api/admin/control-plane?${queryParams.toString()}`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
                 if (!response.ok) {
                     throw new Error(await readFriendlyError(response));
                 }
@@ -2677,12 +2674,7 @@ export default function WorkspacePage() {
                 setLoadingControlPlane(false);
             }
         },
-        [
-            controlPlaneWindowSeconds,
-            isSystemAdmin,
-            readFriendlyError,
-            systemHealthDatasourceId
-        ]
+        [controlPlaneWindowSeconds, isSystemAdmin, readFriendlyError, systemHealthDatasourceId]
     );
 
     const handleControlPlanePause = useCallback(async () => {
@@ -2711,8 +2703,7 @@ export default function WorkspacePage() {
 
             await loadControlPlaneStatus(true);
         } catch (error) {
-            const message =
-                error instanceof Error ? error.message : 'Failed to pause connection.';
+            const message = error instanceof Error ? error.message : 'Failed to pause connection.';
             setControlPlaneError(message);
         } finally {
             setLoadingControlPlane(false);
@@ -2745,8 +2736,7 @@ export default function WorkspacePage() {
 
             await loadControlPlaneStatus(true);
         } catch (error) {
-            const message =
-                error instanceof Error ? error.message : 'Failed to resume connection.';
+            const message = error instanceof Error ? error.message : 'Failed to resume connection.';
             setControlPlaneError(message);
         } finally {
             setLoadingControlPlane(false);
@@ -8025,11 +8015,14 @@ export default function WorkspacePage() {
                                                                 relativeIndex;
                                                             const pageOffset =
                                                                 (activeTab?.previousPageTokens
-                                                                    ?.length ?? 0) * resultsPageSize;
+                                                                    ?.length ?? 0) *
+                                                                resultsPageSize;
                                                             return (
                                                                 <tr key={`row-${absoluteIndex}`}>
                                                                     <td className="result-row-index">
-                                                                        {pageOffset + absoluteIndex + 1}
+                                                                        {pageOffset +
+                                                                            absoluteIndex +
+                                                                            1}
                                                                     </td>
                                                                     {row.map(
                                                                         (value, columnIndex) => (
@@ -8174,9 +8167,11 @@ export default function WorkspacePage() {
                                         }, 0);
                                     },
                                     actorFilter: controlPlaneActorFilter,
-                                    onActorFilterChange: (value) => setControlPlaneActorFilter(value),
+                                    onActorFilterChange: (value) =>
+                                        setControlPlaneActorFilter(value),
                                     autoRefresh: controlPlaneAutoRefresh,
-                                    onAutoRefreshChange: (value) => setControlPlaneAutoRefresh(value),
+                                    onAutoRefreshChange: (value) =>
+                                        setControlPlaneAutoRefresh(value),
                                     onRefresh: () => void loadControlPlaneStatus(false),
                                     onPause: () => void handleControlPlanePause(),
                                     onResume: () => void handleControlPlaneResume(),

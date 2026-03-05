@@ -83,9 +83,7 @@ export default function SystemHealthSection({
     const controlPlaneActorOptions = buildActorOptions(controlPlane.response?.activeQueries ?? []);
     const normalizedControlPlaneActorFilter = controlPlane.actorFilter.trim();
     const displayedActiveQueries = (controlPlane.response?.activeQueries ?? []).filter((query) =>
-        normalizedControlPlaneActorFilter
-            ? query.actor === normalizedControlPlaneActorFilter
-            : true
+        normalizedControlPlaneActorFilter ? query.actor === normalizedControlPlaneActorFilter : true
     );
 
     return (
@@ -204,7 +202,9 @@ export default function SystemHealthSection({
                             <input
                                 id="control-plane-actor-filter"
                                 value={controlPlane.actorFilter}
-                                onChange={(event) => controlPlane.onActorFilterChange(event.target.value)}
+                                onChange={(event) =>
+                                    controlPlane.onActorFilterChange(event.target.value)
+                                }
                                 placeholder="Filter actor..."
                                 list="control-plane-actor-options"
                             />
@@ -222,7 +222,9 @@ export default function SystemHealthSection({
                                     id="control-plane-auto-refresh"
                                     value={controlPlane.autoRefresh ? 'on' : 'off'}
                                     onChange={(event) =>
-                                        controlPlane.onAutoRefreshChange(event.target.value === 'on')
+                                        controlPlane.onAutoRefreshChange(
+                                            event.target.value === 'on'
+                                        )
                                     }
                                 >
                                     <option value="on">On (5s)</option>
@@ -252,7 +254,9 @@ export default function SystemHealthSection({
                             }
                             disabled={!controlPlane.response || controlPlane.loading}
                         >
-                            {controlPlane.response?.paused ? 'Resume connection' : 'Pause connection'}
+                            {controlPlane.response?.paused
+                                ? 'Resume connection'
+                                : 'Pause connection'}
                         </button>
                         <button
                             type="button"
@@ -291,15 +295,21 @@ export default function SystemHealthSection({
                                 </div>
                                 <div className="result-stat">
                                     <span>Queued</span>
-                                    <strong>{controlPlane.response.queuedCount.toLocaleString()}</strong>
+                                    <strong>
+                                        {controlPlane.response.queuedCount.toLocaleString()}
+                                    </strong>
                                 </div>
                                 <div className="result-stat">
                                     <span>Running</span>
-                                    <strong>{controlPlane.response.runningCount.toLocaleString()}</strong>
+                                    <strong>
+                                        {controlPlane.response.runningCount.toLocaleString()}
+                                    </strong>
                                 </div>
                                 <div className="result-stat">
                                     <span>Pools</span>
-                                    <strong>{controlPlane.response.pools.length.toLocaleString()}</strong>
+                                    <strong>
+                                        {controlPlane.response.pools.length.toLocaleString()}
+                                    </strong>
                                 </div>
                                 <div className="result-stat">
                                     <span>Updated</span>
@@ -321,25 +331,33 @@ export default function SystemHealthSection({
                                     <div className="result-stat">
                                         <span>Avg</span>
                                         <strong>
-                                            {formatDuration(controlPlane.response.latency.averageMs ?? null)}
+                                            {formatDuration(
+                                                controlPlane.response.latency.averageMs ?? null
+                                            )}
                                         </strong>
                                     </div>
                                     <div className="result-stat">
                                         <span>P50</span>
                                         <strong>
-                                            {formatDuration(controlPlane.response.latency.p50Ms ?? null)}
+                                            {formatDuration(
+                                                controlPlane.response.latency.p50Ms ?? null
+                                            )}
                                         </strong>
                                     </div>
                                     <div className="result-stat">
                                         <span>P90</span>
                                         <strong>
-                                            {formatDuration(controlPlane.response.latency.p90Ms ?? null)}
+                                            {formatDuration(
+                                                controlPlane.response.latency.p90Ms ?? null
+                                            )}
                                         </strong>
                                     </div>
                                     <div className="result-stat">
                                         <span>Max</span>
                                         <strong>
-                                            {formatDuration(controlPlane.response.latency.maxMs ?? null)}
+                                            {formatDuration(
+                                                controlPlane.response.latency.maxMs ?? null
+                                            )}
                                         </strong>
                                     </div>
                                 </div>
@@ -385,10 +403,18 @@ export default function SystemHealthSection({
                                                         key={`pool-${pool.datasourceId}-${pool.credentialProfile}`}
                                                     >
                                                         <td>{pool.credentialProfile}</td>
-                                                        <td>{pool.activeConnections.toLocaleString()}</td>
-                                                        <td>{pool.idleConnections.toLocaleString()}</td>
-                                                        <td>{pool.totalConnections.toLocaleString()}</td>
-                                                        <td>{pool.maximumPoolSize.toLocaleString()}</td>
+                                                        <td>
+                                                            {pool.activeConnections.toLocaleString()}
+                                                        </td>
+                                                        <td>
+                                                            {pool.idleConnections.toLocaleString()}
+                                                        </td>
+                                                        <td>
+                                                            {pool.totalConnections.toLocaleString()}
+                                                        </td>
+                                                        <td>
+                                                            {pool.maximumPoolSize.toLocaleString()}
+                                                        </td>
                                                         <td>
                                                             {pool.threadsAwaitingConnection.toLocaleString()}
                                                         </td>
@@ -434,7 +460,9 @@ export default function SystemHealthSection({
                                                         <td>{query.actor}</td>
                                                         <td>{formatDuration(query.durationMs)}</td>
                                                         <td title={query.submittedAt}>
-                                                            {new Date(query.submittedAt).toLocaleString()}
+                                                            {new Date(
+                                                                query.submittedAt
+                                                            ).toLocaleString()}
                                                         </td>
                                                         <td title={query.sqlPreview}>
                                                             <code className="inline-code">
