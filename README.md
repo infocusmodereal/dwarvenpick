@@ -36,6 +36,8 @@ Current focus is JDBC-backed SQL engines:
 - MariaDB
 - Trino
 - StarRocks (via MySQL protocol)
+- Vertica (external driver)
+- Aerospike (via Aerospike JDBC)
 
 ## Quick start (local, Docker Compose)
 
@@ -70,8 +72,10 @@ Seeded databases in local compose:
 - PostgreSQL sample source: `localhost:5432`, db `dwarvenpick`, user `dwarvenpick`, password `dwarvenpick`
 - MySQL sample source: `localhost:3306`, db `orders`, user `readonly`, password `readonly`
 - MariaDB sample source: `localhost:3307`, db `warehouse`, user `readonly`, password `readonly`
+- Vertica sample source: `localhost:5433`, db `warehouse`, user `dbadmin`, password `dwarvenpick`
 - StarRocks sample source: `localhost:9030`, db `warehouse`, user `readonly`, password `readonly`
 - Trino sample source: `localhost:8088`, catalog/schema `tpch/sf1`, user `trino` (no password)
+- Aerospike sample source: `localhost:3000`, namespace `test` (no auth)
 
 The sample datasets include both transactional-style tables and analytical-style tables/views to exercise query/explain behavior.
 

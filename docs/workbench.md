@@ -89,3 +89,12 @@ Read-only access rules apply to **every** statement in a script.
 - Only credential profiles marked as **sysadmin** are shown in the picker.
 - If no connections have a sysadmin credential profile, the page shows an explicit message.
 - If the selected credentials do not have the required privileges, the page shows an explicit message.
+
+### Control Plane
+
+The System Health page also includes a lightweight control plane for the selected connection:
+
+- Real-time view (polling) of queued/running queries and connection pool saturation.
+- Latency summary (windowed) and latest error samples.
+- Admin actions: pause/resume the connection, cancel/kill queued/running queries (optionally filtered by actor),
+  and export queued/running queries as CSV.
