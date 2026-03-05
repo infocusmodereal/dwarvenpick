@@ -151,20 +151,16 @@ class MysqlLikeObjectInspectorProvider : ObjectInspectorProvider {
                         SELECT tc.constraint_name AS name,
                                tc.constraint_type AS type,
                                GROUP_CONCAT(kcu.column_name ORDER BY kcu.ordinal_position SEPARATOR ', ') AS columns,
-                               rc.referenced_table_schema AS referenced_schema,
-                               rc.referenced_table_name AS referenced_table
+                               MAX(kcu.referenced_table_schema) AS referenced_schema,
+                               MAX(kcu.referenced_table_name) AS referenced_table
                         FROM information_schema.table_constraints tc
                         LEFT JOIN information_schema.key_column_usage kcu
                                ON tc.constraint_schema = kcu.constraint_schema
                               AND tc.table_schema = kcu.table_schema
                               AND tc.table_name = kcu.table_name
                               AND tc.constraint_name = kcu.constraint_name
-                        LEFT JOIN information_schema.referential_constraints rc
-                               ON tc.constraint_schema = rc.constraint_schema
-                              AND tc.table_name = rc.table_name
-                              AND tc.constraint_name = rc.constraint_name
                         WHERE tc.table_schema = ? AND tc.table_name = ?
-                        GROUP BY tc.constraint_name, tc.constraint_type, rc.referenced_table_schema, rc.referenced_table_name
+                        GROUP BY tc.constraint_name, tc.constraint_type
                         ORDER BY tc.constraint_type, tc.constraint_name
                         """.trimIndent(),
                         bind = { stmt ->
