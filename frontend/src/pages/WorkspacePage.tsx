@@ -475,6 +475,7 @@ export default function WorkspacePage() {
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
+    const monacoHostRef = useRef<HTMLDivElement | null>(null);
     const resultsSectionRef = useRef<HTMLElement | null>(null);
     const resultsResizeStateRef = useRef<{
         pointerId: number;
@@ -637,6 +638,37 @@ export default function WorkspacePage() {
         };
     }, [showSchemaBrowser, workbenchResultsSizePx]);
 
+    useEffect(() => {
+        if (typeof ResizeObserver === 'undefined') {
+            return;
+        }
+
+        const host = monacoHostRef.current;
+        if (!host) {
+            return;
+        }
+
+        let raf: number | null = null;
+        const observer = new ResizeObserver(() => {
+            if (raf !== null) {
+                window.cancelAnimationFrame(raf);
+            }
+
+            raf = window.requestAnimationFrame(() => {
+                editorRef.current?.layout();
+            });
+        });
+
+        observer.observe(host);
+
+        return () => {
+            observer.disconnect();
+            if (raf !== null) {
+                window.cancelAnimationFrame(raf);
+            }
+        };
+    }, []);
+
     const handleResultsResizerPointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
             if (event.button !== 0) {
@@ -729,6 +761,10 @@ export default function WorkspacePage() {
 
         resultsResizeStateRef.current = null;
         document.body.style.userSelect = '';
+
+        window.requestAnimationFrame(() => {
+            editorRef.current?.layout();
+        });
     }, []);
 
     const handleResultsResizerPointerUp = useCallback(
@@ -6910,7 +6946,7 @@ export default function WorkspacePage() {
                                 ) : null}
                             </div>
 
-                            <div className="monaco-host">
+                            <div className="monaco-host" ref={monacoHostRef}>
                                 <div className="monaco-frame">
                                     {monacoLoadTimedOut ? (
                                         <div className="editor-fallback">
