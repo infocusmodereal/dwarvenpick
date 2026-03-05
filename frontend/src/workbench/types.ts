@@ -522,7 +522,7 @@ export type RailGlyph =
     | 'collapse'
     | 'menu'
     | 'info';
-export type ExplorerGlyph = 'database' | 'schema' | 'table' | 'column';
+export type ExplorerGlyph = 'database' | 'role' | 'schema' | 'table' | 'column';
 
 export type IconButtonProps = {
     icon: IconGlyph;

@@ -6553,7 +6553,7 @@ export default function WorkspacePage() {
                                             <>
                                                 <div className="explorer-toolbar-label-row">
                                                     <span className="tile-heading-icon" aria-hidden>
-                                                        <ExplorerIcon glyph="database" />
+                                                        <ExplorerIcon glyph="role" />
                                                     </span>
                                                     <label
                                                         htmlFor="tab-credential-profile"
