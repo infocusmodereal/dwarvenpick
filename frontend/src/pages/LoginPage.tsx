@@ -223,8 +223,8 @@ export default function LoginPage() {
                     <img
                         src="/dwarvenpick-mark.svg"
                         alt=""
-                        width={54}
-                        height={54}
+                        width={111}
+                        height={111}
                         className="login-brand-mark"
                     />
                     <strong>dwarvenpick</strong>

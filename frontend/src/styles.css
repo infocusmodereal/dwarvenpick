@@ -543,7 +543,7 @@ p {
 }
 
 .login-card {
-    max-width: 540px;
+    max-width: 600px;
     margin-inline: auto;
     margin-top: 3.2rem;
     padding: 1.15rem;
@@ -572,7 +572,7 @@ p {
 .login-form {
     display: grid;
     gap: 0.85rem;
-    max-width: 420px;
+    max-width: 480px;
     margin-inline: auto;
     width: 100%;
 }
@@ -584,8 +584,8 @@ p {
 }
 
 .login-form form label {
-    justify-self: center;
-    text-align: center;
+    justify-self: start;
+    text-align: left;
 }
 
 .login-form form button[type='submit'] {
@@ -3550,8 +3550,8 @@ button:disabled {
 }
 
 .login-brand-mark {
-    width: 5.76rem;
-    height: 5.76rem;
+    width: 6.92rem;
+    height: 6.92rem;
     object-fit: contain;
 }
 
