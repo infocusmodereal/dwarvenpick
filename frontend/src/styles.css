@@ -3089,6 +3089,21 @@ button:disabled {
     border-radius: 0;
 }
 
+.system-health-panel .result-table th,
+.system-health-panel .result-table td {
+    padding: 0.62rem 0.65rem;
+}
+
+.system-health-panel .control-plane-errors-table {
+    min-width: 0;
+    table-layout: fixed;
+}
+
+.system-health-panel .control-plane-errors-table th,
+.system-health-panel .control-plane-errors-table td {
+    white-space: normal;
+}
+
 .result-stat {
     border: 1px solid var(--border);
     border-radius: 0.5rem;

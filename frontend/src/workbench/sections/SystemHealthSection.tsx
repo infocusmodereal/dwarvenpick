@@ -173,6 +173,73 @@ export default function SystemHealthSection({
                 <p className="muted-id">Select a connection to view system health.</p>
             ) : null}
 
+            {datasourceId && loading && !response && !error ? (
+                <p className="muted-id">Loading system health...</p>
+            ) : null}
+
+            {response ? (
+                <>
+                    <div className="result-stats-grid">
+                        <div className="result-stat">
+                            <span>Engine</span>
+                            <strong>{response.engine}</strong>
+                        </div>
+                        <div className="result-stat">
+                            <span>Status</span>
+                            <strong>{response.status}</strong>
+                        </div>
+                        <div className="result-stat">
+                            <span>Nodes</span>
+                            <strong>{response.nodeCount.toLocaleString()}</strong>
+                        </div>
+                        <div className="result-stat">
+                            <span>Healthy</span>
+                            <strong>{response.healthyNodeCount.toLocaleString()}</strong>
+                        </div>
+                        <div className="result-stat">
+                            <span>Checked</span>
+                            <strong title={response.checkedAt}>
+                                {new Date(response.checkedAt).toLocaleString()}
+                            </strong>
+                        </div>
+                    </div>
+
+                    {response.status === 'INSUFFICIENT_PRIVILEGES' ? (
+                        <p className="form-error" role="alert">
+                            {response.message ?? 'Insufficient privileges for health checks.'}
+                        </p>
+                    ) : response.status === 'ERROR' ? (
+                        <p className="form-error" role="alert">
+                            {response.message ?? 'System health check failed.'}
+                        </p>
+                    ) : response.status === 'UNSUPPORTED' ? (
+                        <p className="muted-id">
+                            {response.message ?? 'Health checks unsupported.'}
+                        </p>
+                    ) : null}
+
+                    {response.engine === 'POSTGRESQL' ? (
+                        <PostgresSystemHealthView response={response} />
+                    ) : response.engine === 'STARROCKS' ? (
+                        <StarRocksSystemHealthView response={response} />
+                    ) : response.engine === 'MARIADB' || response.engine === 'MYSQL' ? (
+                        <MariaDbSystemHealthView response={response} />
+                    ) : response.engine === 'TRINO' ? (
+                        <TrinoSystemHealthView response={response} />
+                    ) : response.engine === 'AEROSPIKE' ? (
+                        <AerospikeSystemHealthView response={response} />
+                    ) : (
+                        <div className="panel-inner">
+                            <h3>System Health</h3>
+                            <p className="muted-id">
+                                No engine-specific health view is available yet for{' '}
+                                {response.engine}.
+                            </p>
+                        </div>
+                    )}
+                </>
+            ) : null}
+
             {datasourceId ? (
                 <div className="panel-inner">
                     <h3>Control Plane</h3>
@@ -365,13 +432,26 @@ export default function SystemHealthSection({
                                 {controlPlane.response.latency.latestErrors.length > 0 ? (
                                     <div className="panel-inner">
                                         <h4>Latest errors</h4>
-                                        <ul className="bullet-list">
-                                            {controlPlane.response.latency.latestErrors.map(
-                                                (message) => (
-                                                    <li key={`err-${message}`}>{message}</li>
-                                                )
-                                            )}
-                                        </ul>
+                                        <div className="history-table-wrap">
+                                            <table className="result-table history-table control-plane-errors-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Message</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {controlPlane.response.latency.latestErrors.map(
+                                                        (message, index) => (
+                                                            <tr key={`err-${index}-${message}`}>
+                                                                <td className="audit-details">
+                                                                    {message}
+                                                                </td>
+                                                            </tr>
+                                                        )
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 ) : null}
                             </div>
@@ -507,69 +587,6 @@ export default function SystemHealthSection({
                         <p className="muted-id">Loading control plane status...</p>
                     )}
                 </div>
-            ) : null}
-
-            {response ? (
-                <>
-                    <div className="result-stats-grid">
-                        <div className="result-stat">
-                            <span>Engine</span>
-                            <strong>{response.engine}</strong>
-                        </div>
-                        <div className="result-stat">
-                            <span>Status</span>
-                            <strong>{response.status}</strong>
-                        </div>
-                        <div className="result-stat">
-                            <span>Nodes</span>
-                            <strong>{response.nodeCount.toLocaleString()}</strong>
-                        </div>
-                        <div className="result-stat">
-                            <span>Healthy</span>
-                            <strong>{response.healthyNodeCount.toLocaleString()}</strong>
-                        </div>
-                        <div className="result-stat">
-                            <span>Checked</span>
-                            <strong title={response.checkedAt}>
-                                {new Date(response.checkedAt).toLocaleString()}
-                            </strong>
-                        </div>
-                    </div>
-
-                    {response.status === 'INSUFFICIENT_PRIVILEGES' ? (
-                        <p className="form-error" role="alert">
-                            {response.message ?? 'Insufficient privileges for health checks.'}
-                        </p>
-                    ) : response.status === 'ERROR' ? (
-                        <p className="form-error" role="alert">
-                            {response.message ?? 'System health check failed.'}
-                        </p>
-                    ) : response.status === 'UNSUPPORTED' ? (
-                        <p className="muted-id">
-                            {response.message ?? 'Health checks unsupported.'}
-                        </p>
-                    ) : null}
-
-                    {response.engine === 'POSTGRESQL' ? (
-                        <PostgresSystemHealthView response={response} />
-                    ) : response.engine === 'STARROCKS' ? (
-                        <StarRocksSystemHealthView response={response} />
-                    ) : response.engine === 'MARIADB' || response.engine === 'MYSQL' ? (
-                        <MariaDbSystemHealthView response={response} />
-                    ) : response.engine === 'TRINO' ? (
-                        <TrinoSystemHealthView response={response} />
-                    ) : response.engine === 'AEROSPIKE' ? (
-                        <AerospikeSystemHealthView response={response} />
-                    ) : (
-                        <div className="panel-inner">
-                            <h3>System Health</h3>
-                            <p className="muted-id">
-                                No engine-specific health view is available yet for{' '}
-                                {response.engine}.
-                            </p>
-                        </div>
-                    )}
-                </>
             ) : null}
         </section>
     );
