@@ -91,11 +91,16 @@ class AerospikeSystemHealthProvider : SystemHealthProvider {
 
     private fun parseJdbcTarget(jdbcUrl: String): JdbcTarget {
         val pattern = Regex("^jdbc:aerospike:([^:/?#]+)(?::(\\d+))?(?:/([^?]+))?.*", RegexOption.IGNORE_CASE)
-        val match = pattern.find(jdbcUrl.trim())
-            ?: throw IllegalArgumentException("Unsupported Aerospike JDBC URL.")
+        val match =
+            pattern.find(jdbcUrl.trim())
+                ?: throw IllegalArgumentException("Unsupported Aerospike JDBC URL.")
 
         val host = match.groupValues[1]
-        val port = match.groupValues.getOrNull(2)?.takeIf { value -> value.isNotBlank() }?.toInt() ?: 3000
+        val port =
+            match.groupValues
+                .getOrNull(2)
+                ?.takeIf { value -> value.isNotBlank() }
+                ?.toInt() ?: 3000
         val namespace = match.groupValues.getOrNull(3)?.takeIf { value -> value.isNotBlank() }
         return JdbcTarget(
             host = host,
@@ -126,4 +131,3 @@ class AerospikeSystemHealthProvider : SystemHealthProvider {
             ?.takeIf { value -> value.isNotBlank() }
     }
 }
-

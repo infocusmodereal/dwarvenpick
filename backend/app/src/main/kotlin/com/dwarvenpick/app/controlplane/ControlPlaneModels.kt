@@ -60,4 +60,3 @@ data class ControlPlaneBulkActionResponse(
     val succeeded: Int,
     val failed: Int,
 )
-

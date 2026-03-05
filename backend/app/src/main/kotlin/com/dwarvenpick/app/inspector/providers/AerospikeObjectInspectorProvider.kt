@@ -15,7 +15,6 @@ import com.dwarvenpick.app.systemhealth.isInsufficientPrivilege
 import org.springframework.stereotype.Component
 import java.sql.Connection
 import java.sql.DatabaseMetaData
-import java.sql.ResultSet
 import java.sql.SQLException
 import java.util.Locale
 

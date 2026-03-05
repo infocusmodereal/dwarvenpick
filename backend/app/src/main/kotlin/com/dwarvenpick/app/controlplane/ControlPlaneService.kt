@@ -28,7 +28,8 @@ class ControlPlaneService(
         }
 
         val catalog =
-            datasourceRegistryService.listCatalogEntries()
+            datasourceRegistryService
+                .listCatalogEntries()
                 .firstOrNull { entry -> entry.id == normalizedDatasourceId }
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$normalizedDatasourceId' was not found.")
 
@@ -37,7 +38,8 @@ class ControlPlaneService(
         val from = now.minusSeconds(window)
 
         val poolMetrics =
-            datasourcePoolManager.listPoolMetrics()
+            datasourcePoolManager
+                .listPoolMetrics()
                 .filter { metric -> metric.datasourceId == normalizedDatasourceId }
                 .map { metric ->
                     ControlPlanePoolStatus(

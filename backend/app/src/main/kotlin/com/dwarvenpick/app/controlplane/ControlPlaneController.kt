@@ -249,7 +249,8 @@ class ControlPlaneController(
         QueryCsvWriter.writeCsv(outputStream, columns, rows, includeHeaders = true)
         val filename = "dwarvenpick-active-queries-$datasourceId.csv"
 
-        return ResponseEntity.ok()
+        return ResponseEntity
+            .ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
             .contentType(MediaType.parseMediaType("text/csv"))
             .body(outputStream.toByteArray())

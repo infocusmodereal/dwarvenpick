@@ -17,4 +17,3 @@ class DatasourcePauseService {
         pausedDatasources.remove(datasourceId.trim())
     }
 }
-
