@@ -27,5 +27,8 @@ frontend/node_modules/
 .env.*
 !.env.example
 
+# Local docker bind-mount data
+deploy/docker/.data/
+
 # Helm
 *.tgz

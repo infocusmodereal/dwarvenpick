@@ -69,7 +69,10 @@ services:
       - "9030:9030"
       - "8030:8030"
     volumes:
-      - starrocksdata:/data
+      # Use bind mounts so StarRocks metadata/storage doesn't depend on Docker Desktop's
+      # internal disk image free space (FE requires ~5GB free on its meta volume).
+      - ./.data/starrocks/fe-meta:/data/deploy/starrocks/fe/meta
+      - ./.data/starrocks/be-storage:/data/deploy/starrocks/be/storage
 
   starrocks-seed:
     image: mysql:8.4
@@ -267,6 +270,5 @@ volumes:
   mysqldata:
   mariadbdata:
   verticadata:
-  starrocksdata:
   aerospikedata:
   driversdata:
