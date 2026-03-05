@@ -110,5 +110,6 @@ export const defaultPortByEngine: Record<DatasourceEngine, number> = {
     MARIADB: 3306,
     TRINO: 8088,
     STARROCKS: 9030,
-    VERTICA: 5433
+    VERTICA: 5433,
+    AEROSPIKE: 3000
 };

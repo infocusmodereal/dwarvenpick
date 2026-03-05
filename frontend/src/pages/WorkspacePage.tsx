@@ -9388,6 +9388,9 @@ export default function WorkspacePage() {
                                                                                 <option value="VERTICA">
                                                                                     Vertica
                                                                                 </option>
+                                                                                <option value="AEROSPIKE">
+                                                                                    Aerospike
+                                                                                </option>
                                                                             </select>
                                                                         </div>
                                                                     </div>

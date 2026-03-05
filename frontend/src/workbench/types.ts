@@ -33,7 +33,8 @@ export type DatasourceEngine =
     | 'MARIADB'
     | 'TRINO'
     | 'STARROCKS'
-    | 'VERTICA';
+    | 'VERTICA'
+    | 'AEROSPIKE';
 
 export type TlsMode = 'DISABLE' | 'REQUIRE';
 

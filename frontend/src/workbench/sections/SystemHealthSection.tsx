@@ -5,6 +5,7 @@ import type {
     SystemHealthResponse
 } from '../types';
 import { IconButton } from '../components/WorkbenchIcons';
+import AerospikeSystemHealthView from '../systemHealth/AerospikeSystemHealthView';
 import MariaDbSystemHealthView from '../systemHealth/MariaDbSystemHealthView';
 import PostgresSystemHealthView from '../systemHealth/PostgresSystemHealthView';
 import StarRocksSystemHealthView from '../systemHealth/StarRocksSystemHealthView';
@@ -529,6 +530,8 @@ export default function SystemHealthSection({
                         <MariaDbSystemHealthView response={response} />
                     ) : response.engine === 'TRINO' ? (
                         <TrinoSystemHealthView response={response} />
+                    ) : response.engine === 'AEROSPIKE' ? (
+                        <AerospikeSystemHealthView response={response} />
                     ) : (
                         <div className="panel-inner">
                             <h3>System Health</h3>
