@@ -1,0 +1,9 @@
+-- Seed data for Aerospike local compose.
+-- Namespace: test
+-- Set: port_list
+
+INSERT INTO test.port_list (PK, port, description) VALUES ('ntp', 123, 'Network Time Protocol used for time synchronization');
+INSERT INTO test.port_list (PK, port, description) VALUES ('snmp', 161, 'Simple Network Management Protocol (SNMP)');
+INSERT INTO test.port_list (PK, port, description) VALUES ('snmptrap', 162, 'Simple Network Management Protocol Trap (SNMPTRAP)');
+INSERT INTO test.port_list (PK, port, description) VALUES ('aerospike', 3000, 'Aerospike Database');
+INSERT INTO test.port_list (PK, port, description) VALUES ('metasys', 11001, 'Johnson Controls Metasys java AC control environment');
