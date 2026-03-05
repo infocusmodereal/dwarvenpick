@@ -18,7 +18,7 @@ STARROCKS_DATASOURCE_ID="${STARROCKS_DATASOURCE_ID:-starrocks-warehouse}"
 MARIADB_SQL="${MARIADB_SQL:-SELECT SLEEP(30) AS slept;}"
 STARROCKS_SQL="${STARROCKS_SQL:-SELECT SLEEP(30) AS slept;}"
 
-CONCURRENCY="${CONCURRENCY:-3}"
+CONCURRENCY="${CONCURRENCY:-5}"
 MODE="${MODE:-burst}" # burst | loop
 
 echo "Logging in to ${DWARVENPICK_URL} as ${DWARVENPICK_USERNAME}..."
@@ -76,13 +76,23 @@ post_query() {
 }
 
 worker_burst() {
-  post_query "${MARIADB_DATASOURCE_ID}" "${MARIADB_SQL}" || true
-  post_query "${STARROCKS_DATASOURCE_ID}" "${STARROCKS_SQL}" || true
+  local worker_id="$1"
+
+  # Avoid starving one datasource when the backend enforces a per-user concurrency cap by
+  # alternating which datasource is fired first across workers.
+  if (( worker_id % 2 == 0 )); then
+    post_query "${MARIADB_DATASOURCE_ID}" "${MARIADB_SQL}" || true
+    post_query "${STARROCKS_DATASOURCE_ID}" "${STARROCKS_SQL}" || true
+  else
+    post_query "${STARROCKS_DATASOURCE_ID}" "${STARROCKS_SQL}" || true
+    post_query "${MARIADB_DATASOURCE_ID}" "${MARIADB_SQL}" || true
+  fi
 }
 
 worker_loop() {
+  local worker_id="$1"
   while true; do
-    worker_burst
+    worker_burst "${worker_id}"
     sleep 1
   done
 }
@@ -96,11 +106,11 @@ cleanup() {
 trap 'echo; echo "Stopping..."; cleanup; exit 0' INT TERM
 trap 'cleanup' EXIT
 
-for _ in $(seq 1 "${CONCURRENCY}"); do
+for worker_id in $(seq 1 "${CONCURRENCY}"); do
   if [[ "${MODE}" == "loop" ]]; then
-    worker_loop &
+    worker_loop "${worker_id}" &
   else
-    worker_burst &
+    worker_burst "${worker_id}" &
   fi
 done
 
