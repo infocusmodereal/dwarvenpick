@@ -47,6 +47,7 @@ class DatasourcePoolManager(
             .map { (key, dataSource) ->
                 val keyParts = key.split("::", limit = 2)
                 val poolBean = dataSource.hikariPoolMXBean
+                val configBean = dataSource.hikariConfigMXBean
                 PoolMetricsResponse(
                     key = key,
                     datasourceId = keyParts.getOrElse(0) { "unknown" },
@@ -54,6 +55,8 @@ class DatasourcePoolManager(
                     activeConnections = poolBean?.activeConnections ?: 0,
                     idleConnections = poolBean?.idleConnections ?: 0,
                     totalConnections = poolBean?.totalConnections ?: 0,
+                    maximumPoolSize = configBean?.maximumPoolSize ?: dataSource.maximumPoolSize,
+                    threadsAwaitingConnection = poolBean?.threadsAwaitingConnection ?: 0,
                 )
             }.sortedBy { response -> response.key }
 

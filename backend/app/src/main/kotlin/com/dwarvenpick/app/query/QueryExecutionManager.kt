@@ -354,6 +354,122 @@ class QueryExecutionManager(
         )
     }
 
+    fun killQuery(
+        actor: String,
+        isSystemAdmin: Boolean,
+        executionId: String,
+    ): QueryKillResponse {
+        if (!isSystemAdmin) {
+            throw QueryExecutionForbiddenException("Killing queries requires the SYSTEM_ADMIN role.")
+        }
+
+        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
+        if (record.status in terminalStatuses()) {
+            return QueryKillResponse(
+                executionId = record.executionId,
+                status = record.status.name,
+                message = "Query already finished with status ${record.status.name}.",
+                killedAt = Instant.now().toString(),
+            )
+        }
+
+        record.cancelRequested = true
+        if (record.status == QueryExecutionStatus.QUEUED) {
+            record.executionFuture?.cancel(true)
+            markCanceled(record, "Query killed before execution started.")
+            auditExecution(
+                record = record,
+                type = "query.kill",
+                outcome = "killed",
+                details = mapOf("executionId" to record.executionId),
+            )
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.kill.total",
+                    "datasourceId",
+                    record.datasourceId,
+                ).increment()
+            return QueryKillResponse(
+                executionId = record.executionId,
+                status = record.status.name,
+                message = record.message,
+                killedAt = Instant.now().toString(),
+            )
+        }
+
+        runCatching { record.activeStatement?.cancel() }
+        runCatching { record.activeConnection?.close() }
+        record.executionFuture?.cancel(true)
+
+        if (record.status == QueryExecutionStatus.RUNNING) {
+            markCanceled(record, "Query killed by admin request.")
+        }
+
+        auditExecution(
+            record = record,
+            type = "query.kill",
+            outcome = "killed",
+            details = mapOf("executionId" to record.executionId),
+        )
+        meterRegistry
+            .counter(
+                "dwarvenpick.query.kill.total",
+                "datasourceId",
+                record.datasourceId,
+            ).increment()
+
+        return QueryKillResponse(
+            executionId = record.executionId,
+            status = record.status.name,
+            message = record.message,
+            killedAt = Instant.now().toString(),
+        )
+    }
+
+    fun listActiveExecutions(
+        actor: String,
+        isSystemAdmin: Boolean,
+        datasourceId: String?,
+        actorFilter: String? = null,
+    ): List<ActiveQueryExecutionResponse> {
+        val normalizedDatasourceId = datasourceId?.trim()?.takeIf { value -> value.isNotBlank() }
+        val normalizedActorFilter = actorFilter?.trim()?.takeIf { value -> value.isNotBlank() }
+        val now = Instant.now()
+
+        return executions.values
+            .asSequence()
+            .filter { record ->
+                record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING
+            }.filter { record ->
+                if (isSystemAdmin) {
+                    normalizedActorFilter == null || record.actor == normalizedActorFilter
+                } else {
+                    record.actor == actor
+                }
+            }.filter { record ->
+                normalizedDatasourceId == null || record.datasourceId == normalizedDatasourceId
+            }.sortedBy { record -> record.submittedAt }
+            .map { record ->
+                ActiveQueryExecutionResponse(
+                    executionId = record.executionId,
+                    actor = record.actor,
+                    datasourceId = record.datasourceId,
+                    credentialProfile = record.credentialProfile,
+                    status = record.status.name,
+                    message = record.message,
+                    queryHash = record.queryHash,
+                    sqlPreview = buildSqlPreview(record.sql),
+                    submittedAt = record.submittedAt.toString(),
+                    startedAt = record.startedAt?.toString(),
+                    durationMs =
+                        record.startedAt?.let { startedAt ->
+                            Duration.between(startedAt, now).toMillis().coerceAtLeast(0)
+                        },
+                    cancelRequested = record.cancelRequested,
+                )
+            }.toList()
+    }
+
     fun getExecutionStatus(
         actor: String,
         isSystemAdmin: Boolean,
@@ -1091,6 +1207,9 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         message: String,
     ) {
+        if (record.status == QueryExecutionStatus.CANCELED) {
+            return
+        }
         record.status = QueryExecutionStatus.CANCELED
         record.errorSummary = null
         record.message = message
