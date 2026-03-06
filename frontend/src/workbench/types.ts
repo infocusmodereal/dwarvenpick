@@ -475,7 +475,8 @@ export type IconGlyph =
     | 'activity'
     | 'file-text'
     | 'shield-check'
-    | 'settings';
+    | 'settings'
+    | 'save';
 export type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 export type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
 export type DatasourceHealthState = 'active' | 'inactive' | 'unknown';
@@ -522,7 +523,7 @@ export type RailGlyph =
     | 'collapse'
     | 'menu'
     | 'info';
-export type ExplorerGlyph = 'database' | 'schema' | 'table' | 'column';
+export type ExplorerGlyph = 'database' | 'role' | 'schema' | 'table' | 'column';
 
 export type IconButtonProps = {
     icon: IconGlyph;

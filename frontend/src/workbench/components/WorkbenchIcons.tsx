@@ -18,6 +18,7 @@ import {
     plusIcon,
     railIconSvgByGlyph,
     refreshCwIcon,
+    saveIcon,
     settingsIcon,
     shieldCheckIcon,
     tabCloseIcon,
@@ -150,6 +151,18 @@ export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
                 aria-hidden
                 dangerouslySetInnerHTML={{
                     __html: settingsIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'save') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: saveIcon
                 }}
             />
         );

@@ -9,6 +9,7 @@ import railCollapseIcon from '../assets/lucide/panel-left-close.svg?raw';
 import railMenuIcon from '../assets/lucide/panel-left-open.svg?raw';
 import railInfoIcon from '../assets/lucide/info.svg?raw';
 import explorerDatabaseIcon from '../assets/lucide/database.svg?raw';
+import explorerRoleIcon from '../assets/lucide/badge.svg?raw';
 import explorerSchemaIcon from '../assets/lucide/folder-tree.svg?raw';
 import explorerTableIcon from '../assets/lucide/table-properties.svg?raw';
 import explorerColumnIcon from '../assets/lucide/columns-3.svg?raw';
@@ -30,6 +31,7 @@ import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
 import playIcon from '../assets/lucide/play.svg?raw';
 import circlePlayIcon from '../assets/lucide/circle-play.svg?raw';
 import alignStartHorizontalIcon from '../assets/lucide/align-start-horizontal.svg?raw';
+import saveIcon from '../assets/lucide/save.svg?raw';
 
 import type { DatasourceEngine, ExplorerGlyph, RailGlyph } from './types';
 
@@ -58,6 +60,7 @@ export const railIconSvgByGlyph: Record<RailGlyph, string> = {
 
 export const explorerIconSvgByGlyph: Record<ExplorerGlyph, string> = {
     database: explorerDatabaseIcon,
+    role: explorerRoleIcon,
     schema: explorerSchemaIcon,
     table: explorerTableIcon,
     column: explorerColumnIcon
@@ -90,6 +93,7 @@ export {
     playIcon,
     plusIcon,
     refreshCwIcon,
+    saveIcon,
     searchIcon,
     settingsIcon,
     shieldCheckIcon,

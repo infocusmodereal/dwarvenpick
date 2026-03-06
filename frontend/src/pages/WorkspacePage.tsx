@@ -6553,7 +6553,7 @@ export default function WorkspacePage() {
                                             <>
                                                 <div className="explorer-toolbar-label-row">
                                                     <span className="tile-heading-icon" aria-hidden>
-                                                        <ExplorerIcon glyph="database" />
+                                                        <ExplorerIcon glyph="role" />
                                                     </span>
                                                     <label
                                                         htmlFor="tab-credential-profile"
@@ -7552,14 +7552,12 @@ export default function WorkspacePage() {
                                         onClick={handleFormatSql}
                                         disabled={!activeTab || activeTab.isExecuting}
                                     />
-                                    <button
-                                        type="button"
-                                        className="chip"
-                                        disabled={!activeTab || savingSnippet}
+                                    <IconButton
+                                        icon="save"
+                                        title={savingSnippet ? 'Saving snippet...' : 'Save Snippet'}
                                         onClick={() => void handleSaveSnippetFromEditor()}
-                                    >
-                                        {savingSnippet ? 'Saving...' : 'Save Snippet'}
-                                    </button>
+                                        disabled={!activeTab || savingSnippet}
+                                    />
                                     <IconButton
                                         icon="close"
                                         title="Cancel"
@@ -7717,7 +7715,11 @@ export default function WorkspacePage() {
                                                 {editorCursorLegend.selectedChars} chars,{' '}
                                                 {editorCursorLegend.selectedLines} lines selected
                                             </span>
-                                        ) : null}
+                                        ) : (
+                                            <span className="is-placeholder" aria-hidden="true">
+                                                000000 chars, 0000 lines selected
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>

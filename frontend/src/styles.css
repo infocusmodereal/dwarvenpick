@@ -2708,10 +2708,10 @@ button:disabled {
 }
 
 .editor-action-row {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 0.55rem;
+    display: grid;
+    grid-template-columns: minmax(7rem, 1fr) auto;
+    align-items: start;
+    gap: 0.55rem 0.85rem;
     background: var(--workbench-main-surface);
     position: relative;
     z-index: 6;
@@ -2720,10 +2720,14 @@ button:disabled {
 }
 
 .editor-primary-actions {
-    flex: 1 1 auto;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 0.12rem;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 0;
+    row-gap: 0.42rem;
+    align-self: start;
 }
 
 .editor-primary-actions > * {
@@ -2731,11 +2735,17 @@ button:disabled {
 }
 
 .editor-secondary-actions {
+    display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
-    align-items: center;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 0.12rem;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 0.35rem;
+    inline-size: clamp(14.5rem, 22vw, 18rem);
+    min-width: 14.5rem;
+    justify-self: end;
+    overflow: visible;
+    padding-bottom: 0;
 }
 
 .editor-secondary-actions > * {
@@ -3087,7 +3097,11 @@ button:disabled {
 
 .system-health-panel {
     border-radius: 0;
+    grid-auto-rows: max-content;
     gap: 1.05rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
 }
 
 .system-health-panel .panel-inner {
@@ -3817,18 +3831,36 @@ select {
     display: grid;
     justify-items: end;
     gap: 0.08rem;
-    margin-left: 0.35rem;
+    order: 1;
+    flex: 1 1 13rem;
+    min-width: 13rem;
+    max-width: 100%;
+    margin-left: 0;
 }
 
 .editor-cursor-legend span {
+    width: 100%;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.73rem;
     color: #6f5a43;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
 }
 
 .editor-cursor-legend span:last-child {
     color: #5c462f;
     font-weight: 620;
+}
+
+.editor-cursor-legend span.is-placeholder {
+    visibility: hidden;
+}
+
+.editor-shortcuts-wrapper {
+    order: 2;
+    flex: 0 0 auto;
 }
 
 .admin-audit .history-table {
@@ -3945,7 +3977,7 @@ select {
         grid-template-columns: 1fr;
         grid-template-rows: auto minmax(0, 1fr);
         min-height: 100dvh;
-        height: 100dvh;
+        height: auto;
     }
 
     .workspace-left-rail,
@@ -3959,7 +3991,7 @@ select {
     }
 
     .workspace-main {
-        height: 100%;
+        height: auto;
         min-height: 0;
     }
 
@@ -3978,12 +4010,24 @@ select {
 
     .workspace-grid {
         --workbench-results-resizer-height: 0px;
+        --workbench-results-size: auto;
+        --workbench-editor-min-height: 240px;
+        --workbench-results-min-height: 240px;
         grid-template-columns: 1fr;
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: auto auto;
         row-gap: 0.7rem;
+        height: auto;
+        min-height: max-content;
+        align-content: start;
     }
 
     .workbench-results-resizer {
+        pointer-events: none;
+        cursor: default;
+    }
+
+    .workbench-results-resizer::before,
+    .workbench-results-resizer::after {
         display: none;
     }
 
@@ -4004,11 +4048,44 @@ select {
         grid-row: auto;
         border-right: 0;
         padding-right: 0;
+        height: clamp(360px, 58dvh, 560px);
+        align-self: start;
+        overflow: hidden;
+    }
+
+    .schema-browser {
+        height: 100%;
+        min-height: 0;
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .explorer-body {
+        height: 100%;
+        min-height: 0;
+        max-height: none;
+        overflow: hidden;
+        padding-right: 0.12rem;
+    }
+
+    .explorer-root,
+    .schema-tree {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow: auto;
+        padding-bottom: 0.95rem;
     }
 
     .editor {
         grid-column: 1;
         grid-row: auto;
+        height: auto;
+        grid-template-rows:
+            auto
+            minmax(240px, 42dvh)
+            var(--workbench-results-resizer-height)
+            auto
+            minmax(240px, 34dvh);
     }
 
     .results {
@@ -4030,16 +4107,25 @@ select {
     }
 
     .editor-action-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         align-items: stretch;
     }
 
     .editor-secondary-actions {
         justify-content: flex-start;
+        inline-size: 100%;
+        min-width: 0;
+        justify-self: stretch;
     }
 
     .editor-cursor-legend {
         justify-items: start;
+        flex-basis: 100%;
+        min-width: 0;
         margin-left: 0;
+    }
+
+    .editor-cursor-legend span {
+        text-align: left;
     }
 }
