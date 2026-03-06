@@ -3087,6 +3087,7 @@ button:disabled {
 
 .system-health-panel {
     border-radius: 0;
+    grid-auto-rows: max-content;
     gap: 1.05rem;
     overflow-y: auto;
     overflow-x: hidden;
@@ -3981,14 +3982,21 @@ select {
 
     .workspace-grid {
         --workbench-results-resizer-height: 0px;
-        --workbench-editor-min-height: 260px;
-        --workbench-results-min-height: 180px;
+        --workbench-results-size: 1fr !important;
+        --workbench-editor-min-height: 0px;
+        --workbench-results-min-height: 0px;
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(0, 40dvh) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) minmax(0, 2fr);
         row-gap: 0.7rem;
     }
 
     .workbench-results-resizer {
+        pointer-events: none;
+        cursor: default;
+    }
+
+    .workbench-results-resizer::before,
+    .workbench-results-resizer::after {
         display: none;
     }
 
