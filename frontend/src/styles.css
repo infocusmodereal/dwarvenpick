@@ -3949,7 +3949,7 @@ select {
         grid-template-columns: 1fr;
         grid-template-rows: auto minmax(0, 1fr);
         min-height: 100dvh;
-        height: 100dvh;
+        height: auto;
     }
 
     .workspace-left-rail,
@@ -3963,7 +3963,7 @@ select {
     }
 
     .workspace-main {
-        height: 100%;
+        height: auto;
         min-height: 0;
     }
 
@@ -3982,12 +3982,15 @@ select {
 
     .workspace-grid {
         --workbench-results-resizer-height: 0px;
-        --workbench-results-size: 1fr !important;
-        --workbench-editor-min-height: 0px;
-        --workbench-results-min-height: 0px;
+        --workbench-results-size: auto;
+        --workbench-editor-min-height: 240px;
+        --workbench-results-min-height: 240px;
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(0, 1fr) minmax(0, 2fr);
+        grid-template-rows: auto auto;
         row-gap: 0.7rem;
+        height: auto;
+        min-height: max-content;
+        align-content: start;
     }
 
     .workbench-results-resizer {
@@ -4017,11 +4020,37 @@ select {
         grid-row: auto;
         border-right: 0;
         padding-right: 0;
+        height: auto;
+        overflow: visible;
+    }
+
+    .schema-browser {
+        height: auto;
+        grid-template-rows: auto auto;
+    }
+
+    .explorer-body {
+        height: auto;
+        max-height: min(42dvh, 420px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 0.12rem;
+    }
+
+    .schema-tree {
+        max-height: none;
     }
 
     .editor {
         grid-column: 1;
         grid-row: auto;
+        height: auto;
+        grid-template-rows:
+            auto
+            minmax(240px, 42dvh)
+            var(--workbench-results-resizer-height)
+            auto
+            minmax(240px, 34dvh);
     }
 
     .results {
