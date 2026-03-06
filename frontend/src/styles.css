@@ -2709,9 +2709,10 @@ button:disabled {
 
 .editor-action-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 0.55rem;
+    gap: 0.55rem 0.85rem;
     background: var(--workbench-main-surface);
     position: relative;
     z-index: 6;
@@ -2720,10 +2721,13 @@ button:disabled {
 }
 
 .editor-primary-actions {
-    flex: 1 1 auto;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 0.12rem;
+    flex: 1 1 26rem;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 0;
+    row-gap: 0.42rem;
 }
 
 .editor-primary-actions > * {
@@ -2731,11 +2735,15 @@ button:disabled {
 }
 
 .editor-secondary-actions {
-    justify-content: flex-end;
-    align-items: center;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 0.12rem;
+    display: grid;
+    justify-items: end;
+    align-content: end;
+    gap: 0.35rem;
+    flex: 0 1 auto;
+    min-width: max-content;
+    margin-left: auto;
+    overflow: visible;
+    padding-bottom: 0;
 }
 
 .editor-secondary-actions > * {
@@ -3821,7 +3829,8 @@ select {
     display: grid;
     justify-items: end;
     gap: 0.08rem;
-    margin-left: 0.35rem;
+    min-width: max-content;
+    margin-left: 0;
 }
 
 .editor-cursor-legend span {
@@ -4020,25 +4029,32 @@ select {
         grid-row: auto;
         border-right: 0;
         padding-right: 0;
-        height: auto;
-        overflow: visible;
+        height: clamp(360px, 58dvh, 560px);
+        align-self: start;
+        overflow: hidden;
     }
 
     .schema-browser {
-        height: auto;
-        grid-template-rows: auto auto;
+        height: 100%;
+        min-height: 0;
+        grid-template-rows: auto minmax(0, 1fr);
     }
 
     .explorer-body {
-        height: auto;
-        max-height: min(42dvh, 420px);
-        overflow-y: auto;
-        overflow-x: hidden;
+        height: 100%;
+        min-height: 0;
+        max-height: none;
+        overflow: hidden;
         padding-right: 0.12rem;
     }
 
+    .explorer-root,
     .schema-tree {
+        flex: 1 1 auto;
+        min-height: 0;
         max-height: none;
+        overflow: auto;
+        padding-bottom: 0.95rem;
     }
 
     .editor {
@@ -4077,11 +4093,14 @@ select {
     }
 
     .editor-secondary-actions {
-        justify-content: flex-start;
+        justify-items: start;
+        min-width: 0;
+        margin-left: 0;
     }
 
     .editor-cursor-legend {
         justify-items: start;
+        min-width: 0;
         margin-left: 0;
     }
 }

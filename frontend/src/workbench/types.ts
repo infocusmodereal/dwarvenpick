@@ -475,7 +475,8 @@ export type IconGlyph =
     | 'activity'
     | 'file-text'
     | 'shield-check'
-    | 'settings';
+    | 'settings'
+    | 'save';
 export type ConnectionType = 'HOST_PORT' | 'JDBC_URL';
 export type ConnectionAuthentication = 'USER_PASSWORD' | 'NO_AUTH';
 export type DatasourceHealthState = 'active' | 'inactive' | 'unknown';

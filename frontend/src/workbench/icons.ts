@@ -31,6 +31,7 @@ import sortNeutralIcon from '../assets/lucide/arrow-up-down.svg?raw';
 import playIcon from '../assets/lucide/play.svg?raw';
 import circlePlayIcon from '../assets/lucide/circle-play.svg?raw';
 import alignStartHorizontalIcon from '../assets/lucide/align-start-horizontal.svg?raw';
+import saveIcon from '../assets/lucide/save.svg?raw';
 
 import type { DatasourceEngine, ExplorerGlyph, RailGlyph } from './types';
 
@@ -92,6 +93,7 @@ export {
     playIcon,
     plusIcon,
     refreshCwIcon,
+    saveIcon,
     searchIcon,
     settingsIcon,
     shieldCheckIcon,

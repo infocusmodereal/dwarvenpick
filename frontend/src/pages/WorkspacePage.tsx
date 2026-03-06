@@ -7552,14 +7552,12 @@ export default function WorkspacePage() {
                                         onClick={handleFormatSql}
                                         disabled={!activeTab || activeTab.isExecuting}
                                     />
-                                    <button
-                                        type="button"
-                                        className="chip"
-                                        disabled={!activeTab || savingSnippet}
+                                    <IconButton
+                                        icon="save"
+                                        title={savingSnippet ? 'Saving snippet...' : 'Save Snippet'}
                                         onClick={() => void handleSaveSnippetFromEditor()}
-                                    >
-                                        {savingSnippet ? 'Saving...' : 'Save Snippet'}
-                                    </button>
+                                        disabled={!activeTab || savingSnippet}
+                                    />
                                     <IconButton
                                         icon="close"
                                         title="Cancel"
