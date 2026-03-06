@@ -2740,7 +2740,8 @@ button:disabled {
     align-content: end;
     gap: 0.35rem;
     flex: 0 1 auto;
-    min-width: max-content;
+    inline-size: clamp(16rem, 22vw, 20rem);
+    min-width: 16rem;
     margin-left: auto;
     overflow: visible;
     padding-bottom: 0;
@@ -3829,19 +3830,29 @@ select {
     display: grid;
     justify-items: end;
     gap: 0.08rem;
-    min-width: max-content;
+    inline-size: 100%;
+    min-width: 0;
     margin-left: 0;
 }
 
 .editor-cursor-legend span {
+    width: 100%;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.73rem;
     color: #6f5a43;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
 }
 
 .editor-cursor-legend span:last-child {
     color: #5c462f;
     font-weight: 620;
+}
+
+.editor-cursor-legend span.is-placeholder {
+    visibility: hidden;
 }
 
 .admin-audit .history-table {
@@ -4094,6 +4105,7 @@ select {
 
     .editor-secondary-actions {
         justify-items: start;
+        inline-size: 100%;
         min-width: 0;
         margin-left: 0;
     }
@@ -4102,5 +4114,9 @@ select {
         justify-items: start;
         min-width: 0;
         margin-left: 0;
+    }
+
+    .editor-cursor-legend span {
+        text-align: left;
     }
 }

@@ -7715,7 +7715,11 @@ export default function WorkspacePage() {
                                                 {editorCursorLegend.selectedChars} chars,{' '}
                                                 {editorCursorLegend.selectedLines} lines selected
                                             </span>
-                                        ) : null}
+                                        ) : (
+                                            <span className="is-placeholder" aria-hidden="true">
+                                                000000 chars, 0000 lines selected
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
