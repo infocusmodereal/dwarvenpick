@@ -2708,10 +2708,9 @@ button:disabled {
 }
 
 .editor-action-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(7rem, 1fr) auto;
+    align-items: start;
     gap: 0.55rem 0.85rem;
     background: var(--workbench-main-surface);
     position: relative;
@@ -2721,13 +2720,14 @@ button:disabled {
 }
 
 .editor-primary-actions {
-    flex: 1 1 26rem;
+    min-width: 0;
     align-items: center;
     justify-content: flex-start;
     flex-wrap: wrap;
     overflow: visible;
     padding-bottom: 0;
     row-gap: 0.42rem;
+    align-self: start;
 }
 
 .editor-primary-actions > * {
@@ -2735,14 +2735,15 @@ button:disabled {
 }
 
 .editor-secondary-actions {
-    display: grid;
-    justify-items: end;
-    align-content: end;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: flex-start;
+    align-content: flex-start;
     gap: 0.35rem;
-    flex: 0 1 auto;
-    inline-size: clamp(16rem, 22vw, 20rem);
-    min-width: 16rem;
-    margin-left: auto;
+    inline-size: clamp(14.5rem, 22vw, 18rem);
+    min-width: 14.5rem;
+    justify-self: end;
     overflow: visible;
     padding-bottom: 0;
 }
@@ -3830,8 +3831,10 @@ select {
     display: grid;
     justify-items: end;
     gap: 0.08rem;
-    inline-size: 100%;
-    min-width: 0;
+    order: 1;
+    flex: 1 1 13rem;
+    min-width: 13rem;
+    max-width: 100%;
     margin-left: 0;
 }
 
@@ -3853,6 +3856,11 @@ select {
 
 .editor-cursor-legend span.is-placeholder {
     visibility: hidden;
+}
+
+.editor-shortcuts-wrapper {
+    order: 2;
+    flex: 0 0 auto;
 }
 
 .admin-audit .history-table {
@@ -4099,19 +4107,20 @@ select {
     }
 
     .editor-action-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         align-items: stretch;
     }
 
     .editor-secondary-actions {
-        justify-items: start;
+        justify-content: flex-start;
         inline-size: 100%;
         min-width: 0;
-        margin-left: 0;
+        justify-self: stretch;
     }
 
     .editor-cursor-legend {
         justify-items: start;
+        flex-basis: 100%;
         min-width: 0;
         margin-left: 0;
     }
