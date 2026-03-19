@@ -15,7 +15,7 @@ The Workbench is the main SQL editor and results viewer.
 
 - Create tabs for multiple queries.
 - Run selection or run the full query.
-- Save a query as a snippet from the editor.
+- Use **Save to Scripts** to open the current editor contents as a draft in the Resource Manager with the active connection pre-selected.
 
 ### Autocomplete
 
@@ -50,10 +50,21 @@ Options:
 
 - **Stop on error**: stop at the first failing statement (recommended for safe operations).
 - **Transaction mode**:
-  - `AUTOCOMMIT`: each statement commits independently.
-  - `TRANSACTION`: attempt to run the whole script in one transaction and roll back on failure (where supported).
+    - `AUTOCOMMIT`: each statement commits independently.
+    - `TRANSACTION`: attempt to run the whole script in one transaction and roll back on failure (where supported).
 
 Read-only access rules apply to **every** statement in a script.
+
+## Scripts
+
+- The **Scripts** section is a server-backed Resource Manager for SQL files.
+- Save scripts into **Private** or **Shared** spaces.
+- Shared scripts require a group and can optionally allow group members to update content.
+- Organize scripts with folder paths, tags, and a folder tree view.
+- Associate a script with a fixed connection when you want it to open against a specific target.
+- Open or run a saved script directly into the Workbench.
+- Script-backed tabs autosave content changes back to the server.
+- Edit mode includes version history so owners can review and restore previous saved revisions.
 
 ## Results
 
@@ -68,10 +79,10 @@ Read-only access rules apply to **every** statement in a script.
 - Use it to navigate metadata and help author queries.
 - Use **Search** to filter schemas/tables/columns (DataGrip-style).
 - Use the **Inspect** icon on a table/view to open the Object Inspector:
-  - DDL / `SHOW CREATE` (engine-specific)
-  - Indexes, constraints, partitions (when available)
-  - Size & basic statistics (when available)
-  - If the selected credentials do not have the required privileges, the inspector shows an explicit message per section.
+    - DDL / `SHOW CREATE` (engine-specific)
+    - Indexes, constraints, partitions (when available)
+    - Size & basic statistics (when available)
+    - If the selected credentials do not have the required privileges, the inspector shows an explicit message per section.
 
 ## Query History
 

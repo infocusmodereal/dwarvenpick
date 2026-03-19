@@ -1,0 +1,706 @@
+package com.dwarvenpick.app.resource
+
+import com.dwarvenpick.app.auth.AuthenticatedUserPrincipal
+import com.dwarvenpick.app.datasource.DriverRegistryProperties
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.path.exists
+
+class ResourceNotFoundException(
+    override val message: String,
+) : RuntimeException(message)
+
+class ResourceAccessDeniedException(
+    override val message: String,
+) : RuntimeException(message)
+
+private data class ResourceRecord(
+    val resourceId: String,
+    val owner: String,
+    var title: String,
+    var sql: String,
+    var scope: ResourceScope,
+    var groupId: String?,
+    var folderPath: String,
+    var datasourceId: String?,
+    var tags: List<String>,
+    var allowGroupEdit: Boolean,
+    val createdAt: Instant,
+    var updatedAt: Instant,
+    var currentRevision: Int = 0,
+)
+
+private data class ResourceVersionRecord(
+    val versionId: String,
+    val resourceId: String,
+    val revision: Int,
+    val title: String,
+    val sql: String,
+    val scope: ResourceScope,
+    val groupId: String?,
+    val folderPath: String,
+    val datasourceId: String?,
+    val tags: List<String>,
+    val allowGroupEdit: Boolean,
+    val action: ResourceVersionAction,
+    val savedBy: String,
+    val savedAt: Instant,
+)
+
+private data class ResourceStorageSnapshot(
+    val version: Int = 2,
+    val resources: List<ResourceRecord> = emptyList(),
+    val versions: Map<String, List<ResourceVersionRecord>> = emptyMap(),
+)
+
+private val resourceTitlePattern = Regex("^[A-Za-z0-9][A-Za-z0-9.-]*$")
+private val resourceTagPattern = Regex("^[a-z0-9][a-z0-9.-]*$")
+
+@Service
+class ResourceService(
+    private val objectMapper: ObjectMapper,
+    driverRegistryProperties: DriverRegistryProperties,
+) {
+    private val logger = LoggerFactory.getLogger(ResourceService::class.java)
+    private val resources = ConcurrentHashMap<String, ResourceRecord>()
+    private val resourceVersions = ConcurrentHashMap<String, MutableList<ResourceVersionRecord>>()
+    private val baseDir: Path = Path.of(driverRegistryProperties.externalDir).resolve("resources")
+    private val storagePath: Path = baseDir.resolve("scripts.json")
+
+    init {
+        loadFromDisk()
+    }
+
+    fun listResources(
+        principal: AuthenticatedUserPrincipal,
+        scope: String?,
+        query: String?,
+        groupId: String?,
+        datasourceId: String?,
+        tag: String?,
+    ): List<ResourceScriptResponse> {
+        val normalizedScope = scope?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val normalizedQuery = query?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val normalizedGroupId = groupId?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedDatasourceId = datasourceId?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedTag = normalizeTag(tag)
+
+        return resources.values
+            .asSequence()
+            .filter { record -> canView(principal, record) }
+            .filter { record ->
+                when (normalizedScope) {
+                    null, "all" -> true
+                    "private" -> record.scope == ResourceScope.PRIVATE
+                    "shared" -> record.scope == ResourceScope.SHARED
+                    else -> throw IllegalArgumentException("Unsupported resource scope '$scope'.")
+                }
+            }.filter { record ->
+                normalizedGroupId == null || record.groupId == normalizedGroupId
+            }.filter { record ->
+                normalizedDatasourceId == null || record.datasourceId == normalizedDatasourceId
+            }.filter { record ->
+                normalizedTag == null || record.tags.contains(normalizedTag)
+            }.filter { record ->
+                normalizedQuery == null ||
+                    listOf(
+                        record.title,
+                        record.folderPath,
+                        record.datasourceId.orEmpty(),
+                        record.owner,
+                        record.sql,
+                        record.groupId.orEmpty(),
+                        record.tags.joinToString(" "),
+                    ).any { value -> value.lowercase().contains(normalizedQuery) }
+            }.sortedByDescending { record -> record.updatedAt }
+            .map { record -> record.toResponse(principal) }
+            .toList()
+    }
+
+    fun getResource(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+    ): ResourceScriptResponse {
+        val resource = resourceRecord(resourceId)
+        enforceCanView(principal, resource)
+        return resource.toResponse(principal)
+    }
+
+    fun listVersions(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+    ): List<ResourceVersionResponse> {
+        val resource = resourceRecord(resourceId)
+        enforceCanView(principal, resource)
+        return versionsFor(resourceId)
+            .sortedByDescending { version -> version.revision }
+            .map { version -> version.toResponse() }
+    }
+
+    @Synchronized
+    fun createResource(
+        principal: AuthenticatedUserPrincipal,
+        request: CreateResourceRequest,
+    ): ResourceScriptResponse {
+        val now = Instant.now()
+        val normalized = normalizeCreateOrMetadataRequest(principal, request)
+        val resource =
+            ResourceRecord(
+                resourceId = UUID.randomUUID().toString(),
+                owner = principal.username,
+                title = normalized.title,
+                sql = request.sql,
+                scope = normalized.scope,
+                groupId = normalized.groupId,
+                folderPath = normalized.folderPath,
+                datasourceId = normalized.datasourceId,
+                tags = normalized.tags,
+                allowGroupEdit = normalized.allowGroupEdit,
+                createdAt = now,
+                updatedAt = now,
+            )
+        resources[resource.resourceId] = resource
+        versionsFor(resource.resourceId)
+        appendVersion(resource, principal.username, ResourceVersionAction.CREATED, now)
+        persist()
+        return resource.toResponse(principal)
+    }
+
+    @Synchronized
+    fun updateMetadata(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+        request: UpdateResourceMetadataRequest,
+    ): ResourceScriptResponse {
+        val resource = resourceRecord(resourceId)
+        enforceCanShare(principal, resource)
+        val normalized = normalizeCreateOrMetadataRequest(principal, request)
+        val now = Instant.now()
+
+        resource.title = normalized.title
+        resource.sql = request.sql
+        resource.scope = normalized.scope
+        resource.groupId = normalized.groupId
+        resource.folderPath = normalized.folderPath
+        resource.datasourceId = normalized.datasourceId
+        resource.tags = normalized.tags
+        resource.allowGroupEdit = normalized.allowGroupEdit
+        resource.updatedAt = now
+
+        appendVersion(resource, principal.username, ResourceVersionAction.UPDATED_METADATA, now)
+        persist()
+        return resource.toResponse(principal)
+    }
+
+    @Synchronized
+    fun updateContent(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+        request: UpdateResourceContentRequest,
+    ): ResourceScriptResponse {
+        val resource = resourceRecord(resourceId)
+        enforceCanEdit(principal, resource)
+        val normalizedTitle = normalizeResourceTitle(request.title)
+
+        val now = Instant.now()
+        resource.title = normalizedTitle
+        resource.sql = request.sql
+        resource.datasourceId = request.datasourceId?.trim()?.ifBlank { null }
+        resource.updatedAt = now
+
+        appendVersion(resource, principal.username, ResourceVersionAction.UPDATED_CONTENT, now)
+        persist()
+        return resource.toResponse(principal)
+    }
+
+    @Synchronized
+    fun restoreVersion(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+        versionId: String,
+        request: RestoreResourceVersionRequest,
+    ): ResourceScriptResponse {
+        val resource = resourceRecord(resourceId)
+        enforceCanShare(principal, resource)
+        val version = versionRecord(resourceId, versionId)
+        val now = Instant.now()
+
+        resource.title = version.title
+        resource.sql = version.sql
+        resource.datasourceId = version.datasourceId
+        if (!request.keepCurrentMetadata) {
+            resource.scope = version.scope
+            resource.groupId = version.groupId
+            resource.folderPath = version.folderPath
+            resource.tags = version.tags
+            resource.allowGroupEdit = version.allowGroupEdit
+        }
+        resource.updatedAt = now
+
+        appendVersion(resource, principal.username, ResourceVersionAction.RESTORED, now)
+        persist()
+        return resource.toResponse(principal)
+    }
+
+    @Synchronized
+    fun duplicateResource(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+        request: DuplicateResourceRequest,
+    ): ResourceScriptResponse {
+        val source = resourceRecord(resourceId)
+        enforceCanView(principal, source)
+
+        val requestedScope =
+            request.scope ?: if (canShare(principal, source)) source.scope else ResourceScope.PRIVATE
+        val requestedGroupId =
+            when (requestedScope) {
+                ResourceScope.PRIVATE -> null
+                ResourceScope.SHARED -> request.groupId?.trim()?.ifBlank { null } ?: source.groupId
+            }
+
+        val normalized =
+            normalizeResourceMetadata(
+                principal = principal,
+                title = request.title?.trim()?.ifBlank { null } ?: buildDuplicateTitle(source.title),
+                scope = requestedScope,
+                groupId = requestedGroupId,
+                folderPath = request.folderPath ?: source.folderPath,
+                datasourceId = request.datasourceId ?: source.datasourceId,
+                tags = request.tags ?: source.tags,
+                allowGroupEdit = request.allowGroupEdit ?: source.allowGroupEdit,
+            )
+
+        val now = Instant.now()
+        val copy =
+            ResourceRecord(
+                resourceId = UUID.randomUUID().toString(),
+                owner = principal.username,
+                title = normalized.title,
+                sql = source.sql,
+                scope = normalized.scope,
+                groupId = normalized.groupId,
+                folderPath = normalized.folderPath,
+                datasourceId = normalized.datasourceId,
+                tags = normalized.tags,
+                allowGroupEdit = normalized.allowGroupEdit,
+                createdAt = now,
+                updatedAt = now,
+            )
+        resources[copy.resourceId] = copy
+        versionsFor(copy.resourceId)
+        appendVersion(copy, principal.username, ResourceVersionAction.DUPLICATED, now)
+        persist()
+        return copy.toResponse(principal)
+    }
+
+    @Synchronized
+    fun deleteResource(
+        principal: AuthenticatedUserPrincipal,
+        resourceId: String,
+    ): Boolean {
+        val resource = resourceRecord(resourceId)
+        enforceCanDelete(principal, resource)
+        val deleted = resources.remove(resourceId) != null
+        val deletedVersions = resourceVersions.remove(resourceId)
+        if (deleted || deletedVersions != null) {
+            persist()
+        }
+        return deleted
+    }
+
+    private fun resourceRecord(resourceId: String): ResourceRecord =
+        resources[resourceId]
+            ?: throw ResourceNotFoundException("Resource '$resourceId' was not found.")
+
+    private fun versionRecord(
+        resourceId: String,
+        versionId: String,
+    ): ResourceVersionRecord =
+        versionsFor(resourceId).find { version -> version.versionId == versionId }
+            ?: throw ResourceNotFoundException(
+                "Resource version '$versionId' was not found for resource '$resourceId'.",
+            )
+
+    private fun versionsFor(resourceId: String): MutableList<ResourceVersionRecord> =
+        resourceVersions.getOrPut(resourceId) { mutableListOf() }
+
+    private fun appendVersion(
+        resource: ResourceRecord,
+        actor: String,
+        action: ResourceVersionAction,
+        timestamp: Instant = Instant.now(),
+    ) {
+        val revision = resource.currentRevision + 1
+        versionsFor(resource.resourceId).add(
+            ResourceVersionRecord(
+                versionId = UUID.randomUUID().toString(),
+                resourceId = resource.resourceId,
+                revision = revision,
+                title = resource.title,
+                sql = resource.sql,
+                scope = resource.scope,
+                groupId = resource.groupId,
+                folderPath = resource.folderPath,
+                datasourceId = resource.datasourceId,
+                tags = resource.tags,
+                allowGroupEdit = resource.allowGroupEdit,
+                action = action,
+                savedBy = actor,
+                savedAt = timestamp,
+            ),
+        )
+        resource.currentRevision = revision
+    }
+
+    private fun normalizeCreateOrMetadataRequest(
+        principal: AuthenticatedUserPrincipal,
+        request: CreateResourceRequest,
+    ): NormalizedResourceMetadata =
+        normalizeResourceMetadata(
+            principal = principal,
+            title = request.title,
+            scope = request.scope,
+            groupId = request.groupId,
+            folderPath = request.folderPath,
+            datasourceId = request.datasourceId,
+            tags = request.tags,
+            allowGroupEdit = request.allowGroupEdit,
+        )
+
+    private fun normalizeCreateOrMetadataRequest(
+        principal: AuthenticatedUserPrincipal,
+        request: UpdateResourceMetadataRequest,
+    ): NormalizedResourceMetadata =
+        normalizeResourceMetadata(
+            principal = principal,
+            title = request.title,
+            scope = request.scope,
+            groupId = request.groupId,
+            folderPath = request.folderPath,
+            datasourceId = request.datasourceId,
+            tags = request.tags,
+            allowGroupEdit = request.allowGroupEdit,
+        )
+
+    private data class NormalizedResourceMetadata(
+        val title: String,
+        val scope: ResourceScope,
+        val groupId: String?,
+        val folderPath: String,
+        val datasourceId: String?,
+        val tags: List<String>,
+        val allowGroupEdit: Boolean,
+    )
+
+    private fun normalizeResourceMetadata(
+        principal: AuthenticatedUserPrincipal,
+        title: String,
+        scope: ResourceScope,
+        groupId: String?,
+        folderPath: String,
+        datasourceId: String?,
+        tags: List<String>,
+        allowGroupEdit: Boolean,
+    ): NormalizedResourceMetadata {
+        val normalizedTitle = normalizeResourceTitle(title)
+
+        val normalizedGroupId =
+            when (scope) {
+                ResourceScope.PRIVATE -> null
+                ResourceScope.SHARED -> {
+                    val resolved =
+                        groupId?.trim()?.ifBlank { null }
+                            ?: throw IllegalArgumentException("Shared resources require a group.")
+                    if (!principal.roles.contains("SYSTEM_ADMIN") && resolved !in principal.groups) {
+                        throw ResourceAccessDeniedException(
+                            "Sharing denied. Join group '$resolved' or save the resource as private.",
+                        )
+                    }
+                    resolved
+                }
+            }
+
+        val normalizedFolderPath =
+            folderPath
+                .split('/')
+                .map { segment -> segment.trim() }
+                .filter { segment -> segment.isNotBlank() }
+                .onEach { segment ->
+                    if (segment == "." || segment == "..") {
+                        throw IllegalArgumentException("Folder path cannot contain '.' or '..' segments.")
+                    }
+                    if (!resourceTitlePattern.matches(segment)) {
+                        throw IllegalArgumentException(
+                            "Folder names must start with a letter or number and only use letters, numbers, dots or hyphens.",
+                        )
+                    }
+                }.joinToString("/")
+
+        return NormalizedResourceMetadata(
+            title = normalizedTitle,
+            scope = scope,
+            groupId = normalizedGroupId,
+            folderPath = normalizedFolderPath,
+            datasourceId = datasourceId?.trim()?.ifBlank { null },
+            tags = normalizeTags(tags),
+            allowGroupEdit = scope == ResourceScope.SHARED && allowGroupEdit,
+        )
+    }
+
+    private fun normalizeTags(rawTags: List<String>): List<String> =
+        rawTags
+            .asSequence()
+            .mapNotNull { normalizeTag(it) }
+            .distinct()
+            .sorted()
+            .toList()
+
+    private fun normalizeTag(rawTag: String?): String? {
+        val normalized = rawTag?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+        if (!resourceTagPattern.matches(normalized)) {
+            throw IllegalArgumentException(
+                "Tags must start with a letter or number and only use lowercase letters, numbers, dots or hyphens.",
+            )
+        }
+        return normalized
+    }
+
+    private fun normalizeResourceTitle(rawTitle: String): String {
+        val normalizedTitle = rawTitle.trim()
+        if (normalizedTitle.isBlank()) {
+            throw IllegalArgumentException("Resource title is required.")
+        }
+        if (!resourceTitlePattern.matches(normalizedTitle)) {
+            throw IllegalArgumentException(
+                "Resource titles must start with a letter or number and only use letters, numbers, dots or hyphens.",
+            )
+        }
+        return normalizedTitle
+    }
+
+    private fun buildDuplicateTitle(sourceTitle: String): String {
+        val normalized =
+            sourceTitle
+                .trim()
+                .replace(Regex("[_\\s]+"), "-")
+                .replace(Regex("[^A-Za-z0-9.-]+"), "-")
+                .replace(Regex("^[^A-Za-z0-9]+"), "")
+                .replace(Regex("-{2,}"), "-")
+                .replace(Regex("\\.{2,}"), ".")
+                .replace(Regex("[.-]+$"), "")
+
+        val candidate = if (normalized.isBlank()) "script" else normalized
+        val duplicateTitle = if (candidate.endsWith("-copy")) candidate else "$candidate-copy"
+        return if (resourceTitlePattern.matches(duplicateTitle)) {
+            duplicateTitle
+        } else {
+            "script-copy"
+        }
+    }
+
+    private fun canView(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ): Boolean =
+        principal.roles.contains("SYSTEM_ADMIN") ||
+            resource.owner == principal.username ||
+            (
+                resource.scope == ResourceScope.SHARED &&
+                    resource.groupId != null &&
+                    resource.groupId in principal.groups
+            )
+
+    private fun canEdit(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ): Boolean =
+        principal.roles.contains("SYSTEM_ADMIN") ||
+            resource.owner == principal.username ||
+            (
+                resource.scope == ResourceScope.SHARED &&
+                    resource.allowGroupEdit &&
+                    resource.groupId != null &&
+                    resource.groupId in principal.groups
+            )
+
+    private fun canDelete(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ): Boolean = principal.roles.contains("SYSTEM_ADMIN") || resource.owner == principal.username
+
+    private fun canShare(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ): Boolean = principal.roles.contains("SYSTEM_ADMIN") || resource.owner == principal.username
+
+    private fun enforceCanView(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ) {
+        if (!canView(principal, resource)) {
+            throw ResourceAccessDeniedException("Resource view denied for '${resource.resourceId}'.")
+        }
+    }
+
+    private fun enforceCanEdit(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ) {
+        if (!canEdit(principal, resource)) {
+            throw ResourceAccessDeniedException("Resource edit denied for '${resource.resourceId}'.")
+        }
+    }
+
+    private fun enforceCanDelete(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ) {
+        if (!canDelete(principal, resource)) {
+            throw ResourceAccessDeniedException("Resource delete denied for '${resource.resourceId}'.")
+        }
+    }
+
+    private fun enforceCanShare(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceRecord,
+    ) {
+        if (!canShare(principal, resource)) {
+            throw ResourceAccessDeniedException("Resource share denied for '${resource.resourceId}'.")
+        }
+    }
+
+    private fun ResourceRecord.toResponse(principal: AuthenticatedUserPrincipal): ResourceScriptResponse =
+        ResourceScriptResponse(
+            resourceId = resourceId,
+            title = title,
+            sql = sql,
+            owner = owner,
+            scope = scope,
+            groupId = groupId,
+            folderPath = folderPath,
+            datasourceId = datasourceId,
+            tags = tags,
+            allowGroupEdit = allowGroupEdit,
+            createdAt = createdAt.toString(),
+            updatedAt = updatedAt.toString(),
+            currentRevision = currentRevision,
+            versionCount = resourceVersions[resourceId]?.size ?: currentRevision,
+            permissions =
+                ResourcePermissionsResponse(
+                    canView = canView(principal, this),
+                    canEdit = canEdit(principal, this),
+                    canExecute = canView(principal, this),
+                    canDelete = canDelete(principal, this),
+                    canShare = canShare(principal, this),
+                ),
+        )
+
+    private fun ResourceVersionRecord.toResponse(): ResourceVersionResponse =
+        ResourceVersionResponse(
+            versionId = versionId,
+            resourceId = resourceId,
+            revision = revision,
+            title = title,
+            sql = sql,
+            scope = scope,
+            groupId = groupId,
+            folderPath = folderPath,
+            datasourceId = datasourceId,
+            tags = tags,
+            allowGroupEdit = allowGroupEdit,
+            action = action,
+            savedBy = savedBy,
+            savedAt = savedAt.toString(),
+        )
+
+    private fun loadFromDisk() {
+        try {
+            if (!storagePath.exists()) {
+                return
+            }
+
+            val snapshot = objectMapper.readValue<ResourceStorageSnapshot>(storagePath.toFile())
+            resources.clear()
+            resourceVersions.clear()
+
+            snapshot.resources.forEach { resource ->
+                resources[resource.resourceId] = resource
+            }
+            snapshot.versions.forEach { (resourceId, versions) ->
+                resourceVersions[resourceId] = versions.sortedBy { version -> version.revision }.toMutableList()
+            }
+
+            var migrated = false
+            resources.values.forEach { resource ->
+                val versions = versionsFor(resource.resourceId)
+                if (versions.isEmpty()) {
+                    appendVersion(
+                        resource = resource,
+                        actor = resource.owner,
+                        action = ResourceVersionAction.CREATED,
+                        timestamp = resource.updatedAt,
+                    )
+                    migrated = true
+                    return@forEach
+                }
+
+                val latestRevision = versions.maxOf { version -> version.revision }
+                if (resource.currentRevision != latestRevision) {
+                    resource.currentRevision = latestRevision
+                    migrated = true
+                }
+            }
+
+            if (migrated) {
+                persist()
+            }
+
+            logger.info(
+                "Loaded {} resource manager scripts and {} saved versions from {}",
+                resources.size,
+                resourceVersions.values.sumOf { versions -> versions.size },
+                storagePath,
+            )
+        } catch (exception: Exception) {
+            logger.error("Failed to load resource manager state from {}", storagePath, exception)
+        }
+    }
+
+    private fun persist() {
+        Files.createDirectories(baseDir)
+        val tempPath = storagePath.resolveSibling("${storagePath.fileName}.tmp")
+        val snapshot =
+            ResourceStorageSnapshot(
+                resources =
+                    resources.values
+                        .sortedWith(compareBy({ it.owner }, { it.folderPath }, { it.title }))
+                        .toList(),
+                versions =
+                    resourceVersions
+                        .toSortedMap()
+                        .mapValues { (_, versions) ->
+                            versions.sortedBy { version -> version.revision }
+                        },
+            )
+        objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempPath.toFile(), snapshot)
+        runCatching {
+            Files.move(
+                tempPath,
+                storagePath,
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        }.recoverCatching {
+            Files.move(tempPath, storagePath, StandardCopyOption.REPLACE_EXISTING)
+        }.getOrThrow()
+    }
+}

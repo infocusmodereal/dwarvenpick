@@ -48,7 +48,7 @@ export const datasourceIconByEngine: Record<DatasourceEngine, string> = {
 export const railIconSvgByGlyph: Record<RailGlyph, string> = {
     workbench: railWorkbenchIcon,
     history: railHistoryIcon,
-    snippets: fileTextIcon,
+    resources: fileTextIcon,
     audit: shieldCheckIcon,
     health: activityIcon,
     admin: settingsIcon,

@@ -19,6 +19,7 @@ import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
+import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
 import { useTheme } from '../theme/ThemeContext';
@@ -58,12 +59,15 @@ import type {
     QueryResultsResponse,
     QueryRunMode,
     QueryValidationResponse,
+    ResourceFormState,
+    ResourceManagerMode,
+    ResourceScriptResponse,
+    ResourceVersionResponse,
     ScriptTransactionMode,
     QueryStatusEventResponse,
     ReencryptCredentialsResponse,
     ResultSortDirection,
     ResultSortState,
-    SnippetResponse,
     ControlPlaneDatasourceStatusResponse,
     SystemHealthResponse,
     TestConnectionResponse,
@@ -116,7 +120,7 @@ import {
 } from '../workbench/components/WorkbenchIcons';
 import AuditEventsSection from '../workbench/sections/AuditEventsSection';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
-import SnippetsSection from '../workbench/sections/SnippetsSection';
+import ResourceManagerSection from '../workbench/sections/ResourceManagerSection';
 import SystemHealthSection from '../workbench/sections/SystemHealthSection';
 import {
     chevronDownIcon,
@@ -211,6 +215,92 @@ const buildDatasourceFormFromManaged = (
     allowSelfSigned: datasource.tls.allowSelfSigned
 });
 
+const buildBlankResourceForm = (): ResourceFormState => ({
+    title: '',
+    sql: '',
+    scope: 'PRIVATE',
+    groupId: '',
+    folderPath: '',
+    datasourceId: '',
+    tagsInput: '',
+    allowGroupEdit: false
+});
+
+const resourceTitlePattern = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+const resourceFolderSegmentPattern = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+const resourceTagPattern = /^[a-z0-9][a-z0-9.-]*$/;
+
+const buildSafeResourceTitle = (value: string, fallback = 'script'): string => {
+    const normalized = value
+        .trim()
+        .replace(/[_\s]+/g, '-')
+        .replace(/[^A-Za-z0-9.-]+/g, '-')
+        .replace(/^[^A-Za-z0-9]+/g, '')
+        .replace(/-{2,}/g, '-')
+        .replace(/\.{2,}/g, '.')
+        .replace(/[.-]+$/g, '');
+
+    if (normalized && resourceTitlePattern.test(normalized)) {
+        return normalized;
+    }
+
+    return fallback;
+};
+
+const validateResourceTitle = (value: string): string | null => {
+    const normalized = value.trim();
+    if (!normalized) {
+        return 'Script title is required.';
+    }
+    if (!resourceTitlePattern.test(normalized)) {
+        return 'Script titles must start with a letter or number and only use letters, numbers, dots or hyphens.';
+    }
+    return null;
+};
+
+const validateResourceFolderPath = (value: string): string | null => {
+    const normalized = value.trim();
+    if (!normalized) {
+        return null;
+    }
+
+    const segments = normalized
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
+
+    const invalidSegment = segments.find(
+        (segment) =>
+            segment === '.' || segment === '..' || !resourceFolderSegmentPattern.test(segment)
+    );
+
+    if (invalidSegment) {
+        return 'Folder names must start with a letter or number and only use letters, numbers, dots or hyphens.';
+    }
+
+    return null;
+};
+
+const splitResourceTagsInput = (value: string): string[] =>
+    value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+
+const validateResourceTagsInput = (value: string): string | null => {
+    const invalidTag = splitResourceTagsInput(value).find((tag) => !resourceTagPattern.test(tag));
+    if (invalidTag) {
+        return 'Tags must start with a letter or number and only use lowercase letters, numbers, dots or hyphens.';
+    }
+    return null;
+};
+
+const parseResourceTagsInput = (value: string): string[] =>
+    splitResourceTagsInput(value).map((tag) => tag.toLowerCase());
+
+const formatResourceTagsInput = (tags: string[]): string =>
+    tags.length > 0 ? `${tags.join(', ')}, ` : '';
+
 const createTabId = (): string => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
@@ -222,12 +312,21 @@ const createTabId = (): string => {
 const buildWorkspaceTab = (
     datasourceId: string,
     title: string,
-    queryText = 'SELECT 1;'
+    queryText = 'SELECT 1;',
+    resource?: ResourceScriptResponse | null
 ): WorkspaceTab => ({
     id: createTabId(),
     title,
     datasourceId,
     schema: '',
+    resourceId: resource?.resourceId,
+    resourceTitle: resource?.title,
+    resourceScope: resource?.scope,
+    resourceGroupId: resource?.groupId ?? undefined,
+    resourceFolderPath: resource?.folderPath,
+    resourceTags: resource?.tags ?? [],
+    resourceAllowGroupEdit: resource?.allowGroupEdit,
+    resourceOwner: resource?.owner,
     requestedCredentialProfile: '',
     queryText,
     isExecuting: false,
@@ -259,7 +358,15 @@ const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
     title: tab.title,
     datasourceId: tab.datasourceId,
     schema: tab.schema,
-    queryText: tab.queryText
+    queryText: tab.queryText,
+    resourceId: tab.resourceId,
+    resourceTitle: tab.resourceTitle,
+    resourceScope: tab.resourceScope,
+    resourceGroupId: tab.resourceGroupId,
+    resourceFolderPath: tab.resourceFolderPath,
+    resourceTags: tab.resourceTags,
+    resourceAllowGroupEdit: tab.resourceAllowGroupEdit,
+    resourceOwner: tab.resourceOwner
 });
 
 const DetailsSummary = ({ children }: { children: ReactNode }) => (
@@ -530,13 +637,27 @@ export default function WorkspacePage() {
     const [loadingSchemaBrowser, setLoadingSchemaBrowser] = useState(false);
     const [schemaBrowserError, setSchemaBrowserError] = useState('');
 
-    const [snippets, setSnippets] = useState<SnippetResponse[]>([]);
-    const [loadingSnippets, setLoadingSnippets] = useState(false);
-    const [snippetScope, setSnippetScope] = useState<'all' | 'personal' | 'group'>('all');
-    const [snippetTitleInput, setSnippetTitleInput] = useState('');
-    const [snippetGroupInput, setSnippetGroupInput] = useState('');
-    const [savingSnippet, setSavingSnippet] = useState(false);
-    const [snippetError, setSnippetError] = useState('');
+    const [resources, setResources] = useState<ResourceScriptResponse[]>([]);
+    const [loadingResources, setLoadingResources] = useState(false);
+    const [resourceScopeFilter, setResourceScopeFilter] = useState<'all' | 'private' | 'shared'>(
+        'all'
+    );
+    const [resourceSearchInput, setResourceSearchInput] = useState('');
+    const [resourceTagFilter, setResourceTagFilter] = useState('');
+    const [resourceGroupFilter, setResourceGroupFilter] = useState('');
+    const [resourceDatasourceFilter, setResourceDatasourceFilter] = useState('');
+    const [resourceError, setResourceError] = useState('');
+    const [savingResource, setSavingResource] = useState(false);
+    const [resourceEditorMode, setResourceEditorMode] = useState<ResourceManagerMode>('list');
+    const [editingResourceId, setEditingResourceId] = useState('');
+    const [resourceFormState, setResourceFormState] =
+        useState<ResourceFormState>(buildBlankResourceForm());
+    const [resourceFormSourceTabId, setResourceFormSourceTabId] = useState('');
+    const [resourceVersions, setResourceVersions] = useState<ResourceVersionResponse[]>([]);
+    const [loadingResourceVersions, setLoadingResourceVersions] = useState(false);
+    const [restoringResourceVersionId, setRestoringResourceVersionId] = useState('');
+    const resourceAutosaveTimerRef = useRef<Record<string, number>>({});
+    const resourceAutosaveSnapshotRef = useRef<Record<string, string>>({});
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
     const [activeAdminSubsection, setActiveAdminSubsection] = useState<AdminSubsection>('groups');
     const [groupAdminMode, setGroupAdminMode] = useState<GroupAdminMode>('list');
@@ -1220,6 +1341,34 @@ export default function WorkspacePage() {
     }, [workspaceTabs]);
 
     useEffect(() => {
+        const activeTabIds = new Set(workspaceTabs.map((tab) => tab.id));
+        Object.entries(resourceAutosaveTimerRef.current).forEach(([tabId, timer]) => {
+            if (activeTabIds.has(tabId)) {
+                return;
+            }
+
+            window.clearTimeout(timer);
+            delete resourceAutosaveTimerRef.current[tabId];
+        });
+        Object.keys(resourceAutosaveSnapshotRef.current).forEach((tabId) => {
+            if (!activeTabIds.has(tabId)) {
+                delete resourceAutosaveSnapshotRef.current[tabId];
+            }
+        });
+    }, [workspaceTabs]);
+
+    useEffect(
+        () => () => {
+            Object.values(resourceAutosaveTimerRef.current).forEach((timer) => {
+                window.clearTimeout(timer);
+            });
+            resourceAutosaveTimerRef.current = {};
+            resourceAutosaveSnapshotRef.current = {};
+        },
+        []
+    );
+
+    useEffect(() => {
         setResultGridScrollTop(0);
         setResultSortState(null);
     }, [activeTabId]);
@@ -1650,7 +1799,7 @@ export default function WorkspacePage() {
         return () => controller.abort();
     }, [mavenDriverPreset, mavenPresetsForFormEngine]);
 
-    const snippetGroupOptions = useMemo(() => {
+    const resourceGroupOptions = useMemo(() => {
         const options = new Set<string>();
         (currentUser?.groups ?? []).forEach((groupId) => {
             if (groupId.trim()) {
@@ -1662,14 +1811,23 @@ export default function WorkspacePage() {
                 options.add(group.id.trim());
             }
         });
-        snippets.forEach((snippet) => {
-            if (snippet.groupId?.trim()) {
-                options.add(snippet.groupId.trim());
+        resources.forEach((resource) => {
+            if (resource.groupId?.trim()) {
+                options.add(resource.groupId.trim());
             }
         });
 
         return Array.from(options).sort((left, right) => left.localeCompare(right));
-    }, [adminGroups, currentUser?.groups, snippets]);
+    }, [adminGroups, currentUser?.groups, resources]);
+
+    const resourceDatasourceOptions = useMemo(
+        () =>
+            visibleDatasources.map((datasource) => ({
+                id: datasource.id,
+                name: datasource.name
+            })),
+        [visibleDatasources]
+    );
 
     const auditActionOptions = useMemo(() => {
         const options = new Set<string>(builtInAuditActions);
@@ -1799,6 +1957,35 @@ export default function WorkspacePage() {
                             ? tab.datasourceId
                             : fallbackDatasourceId,
                         schema: typeof tab.schema === 'string' ? tab.schema : '',
+                        resourceId:
+                            typeof tab.resourceId === 'string' && tab.resourceId.trim()
+                                ? tab.resourceId
+                                : undefined,
+                        resourceTitle:
+                            typeof tab.resourceTitle === 'string' && tab.resourceTitle.trim()
+                                ? tab.resourceTitle
+                                : undefined,
+                        resourceScope:
+                            tab.resourceScope === 'PRIVATE' || tab.resourceScope === 'SHARED'
+                                ? tab.resourceScope
+                                : undefined,
+                        resourceGroupId:
+                            typeof tab.resourceGroupId === 'string' && tab.resourceGroupId.trim()
+                                ? tab.resourceGroupId
+                                : undefined,
+                        resourceFolderPath:
+                            typeof tab.resourceFolderPath === 'string'
+                                ? tab.resourceFolderPath
+                                : undefined,
+                        resourceTags: Array.isArray(tab.resourceTags) ? tab.resourceTags : [],
+                        resourceAllowGroupEdit:
+                            typeof tab.resourceAllowGroupEdit === 'boolean'
+                                ? tab.resourceAllowGroupEdit
+                                : undefined,
+                        resourceOwner:
+                            typeof tab.resourceOwner === 'string' && tab.resourceOwner.trim()
+                                ? tab.resourceOwner
+                                : undefined,
                         requestedCredentialProfile: '',
                         queryText: typeof tab.queryText === 'string' ? tab.queryText : 'SELECT 1;',
                         isExecuting: false,
@@ -1849,6 +2036,101 @@ export default function WorkspacePage() {
         },
         []
     );
+
+    const buildResourceTabSnapshot = useCallback((tab: WorkspaceTab): string => {
+        const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim() || 'Untitled Script';
+        return JSON.stringify({
+            title: resourceTitle,
+            sql: tab.queryText,
+            datasourceId: tab.datasourceId.trim()
+        });
+    }, []);
+
+    const resetResourceEditor = useCallback(() => {
+        setResourceEditorMode('list');
+        setEditingResourceId('');
+        setResourceFormState(buildBlankResourceForm());
+        setResourceFormSourceTabId('');
+        setResourceVersions([]);
+        setRestoringResourceVersionId('');
+    }, []);
+
+    const replaceVisibleResource = useCallback((resource: ResourceScriptResponse) => {
+        setResources((currentResources) => {
+            const resourceIndex = currentResources.findIndex(
+                (entry) => entry.resourceId === resource.resourceId
+            );
+            if (resourceIndex < 0) {
+                return currentResources;
+            }
+
+            const nextResources = [...currentResources];
+            nextResources[resourceIndex] = resource;
+            return nextResources;
+        });
+    }, []);
+
+    const syncResourceToTabs = useCallback(
+        (
+            resource: ResourceScriptResponse,
+            options?: { syncTitle?: boolean; targetTabId?: string }
+        ) => {
+            setWorkspaceTabs((currentTabs) =>
+                currentTabs.map((tab) => {
+                    if (tab.resourceId !== resource.resourceId) {
+                        return tab;
+                    }
+                    if (options?.targetTabId && tab.id !== options.targetTabId) {
+                        return tab;
+                    }
+
+                    return {
+                        ...tab,
+                        title: options?.syncTitle ? resource.title : tab.title,
+                        datasourceId: resource.datasourceId ?? tab.datasourceId,
+                        resourceId: resource.resourceId,
+                        resourceTitle: resource.title,
+                        resourceScope: resource.scope,
+                        resourceGroupId: resource.groupId ?? undefined,
+                        resourceFolderPath: resource.folderPath,
+                        resourceTags: resource.tags,
+                        resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceOwner: resource.owner
+                    };
+                })
+            );
+        },
+        []
+    );
+
+    const unlinkResourceFromTabs = useCallback((resourceId: string) => {
+        setWorkspaceTabs((currentTabs) =>
+            currentTabs.map((tab) => {
+                if (tab.resourceId !== resourceId) {
+                    return tab;
+                }
+
+                delete resourceAutosaveSnapshotRef.current[tab.id];
+                const timer = resourceAutosaveTimerRef.current[tab.id];
+                if (timer) {
+                    window.clearTimeout(timer);
+                    delete resourceAutosaveTimerRef.current[tab.id];
+                }
+
+                return {
+                    ...tab,
+                    resourceId: undefined,
+                    resourceTitle: undefined,
+                    resourceScope: undefined,
+                    resourceGroupId: undefined,
+                    resourceFolderPath: undefined,
+                    resourceTags: [],
+                    resourceAllowGroupEdit: undefined,
+                    resourceOwner: undefined
+                };
+            })
+        );
+    }, []);
 
     useEffect(() => {
         if (!tabsHydrated) {
@@ -2451,23 +2733,30 @@ export default function WorkspacePage() {
         return () => controller.abort();
     }, [loadObjectInspector, objectInspectorOpen, objectInspectorTarget]);
 
-    const loadSnippets = useCallback(async () => {
+    const loadResources = useCallback(async () => {
         if (!currentUser) {
             return;
         }
 
-        setLoadingSnippets(true);
-        setSnippetError('');
+        setLoadingResources(true);
+        setResourceError('');
         try {
             const queryParams = new URLSearchParams();
-            queryParams.set('scope', snippetScope);
-            if (snippetTitleInput.trim()) {
-                queryParams.set('title', snippetTitleInput.trim());
+            queryParams.set('scope', resourceScopeFilter);
+            if (resourceSearchInput.trim()) {
+                queryParams.set('q', resourceSearchInput.trim());
             }
-            if (snippetGroupInput.trim()) {
-                queryParams.set('groupId', snippetGroupInput.trim());
+            if (resourceTagFilter.trim()) {
+                queryParams.set('tag', resourceTagFilter.trim());
             }
-            const response = await fetch(`/api/snippets?${queryParams.toString()}`, {
+            if (resourceGroupFilter.trim()) {
+                queryParams.set('groupId', resourceGroupFilter.trim());
+            }
+            if (resourceDatasourceFilter.trim()) {
+                queryParams.set('datasourceId', resourceDatasourceFilter.trim());
+            }
+
+            const response = await fetch(`/api/resources?${queryParams.toString()}`, {
                 method: 'GET',
                 credentials: 'include'
             });
@@ -2475,15 +2764,56 @@ export default function WorkspacePage() {
                 throw new Error(await readFriendlyError(response));
             }
 
-            const payload = (await response.json()) as SnippetResponse[];
-            setSnippets(Array.isArray(payload) ? payload : []);
+            const payload = (await response.json()) as ResourceScriptResponse[];
+            setResources(Array.isArray(payload) ? payload : []);
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to load snippets.';
-            setSnippetError(message);
+            const message = error instanceof Error ? error.message : 'Failed to load scripts.';
+            setResourceError(message);
         } finally {
-            setLoadingSnippets(false);
+            setLoadingResources(false);
         }
-    }, [currentUser, readFriendlyError, snippetGroupInput, snippetScope, snippetTitleInput]);
+    }, [
+        currentUser,
+        readFriendlyError,
+        resourceDatasourceFilter,
+        resourceGroupFilter,
+        resourceScopeFilter,
+        resourceSearchInput,
+        resourceTagFilter
+    ]);
+
+    const loadResourceVersions = useCallback(
+        async (resourceId: string) => {
+            if (!currentUser || !resourceId.trim()) {
+                setResourceVersions([]);
+                return;
+            }
+
+            setLoadingResourceVersions(true);
+            setResourceError('');
+            try {
+                const response = await fetch(`/api/resources/${resourceId}/versions`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const payload = (await response.json()) as ResourceVersionResponse[];
+                setResourceVersions(Array.isArray(payload) ? payload : []);
+            } catch (error) {
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : 'Failed to load script version history.';
+                setResourceError(message);
+            } finally {
+                setLoadingResourceVersions(false);
+            }
+        },
+        [currentUser, readFriendlyError]
+    );
 
     const loadQueryHistory = useCallback(async () => {
         if (!currentUser) {
@@ -3112,8 +3442,18 @@ export default function WorkspacePage() {
             return;
         }
 
-        void loadSnippets();
-    }, [currentUser, loadSnippets]);
+        void loadResources();
+    }, [currentUser, loadResources]);
+
+    useEffect(() => {
+        if (!currentUser || resourceEditorMode !== 'edit' || !editingResourceId.trim()) {
+            setResourceVersions([]);
+            setLoadingResourceVersions(false);
+            return;
+        }
+
+        void loadResourceVersions(editingResourceId);
+    }, [currentUser, editingResourceId, loadResourceVersions, resourceEditorMode]);
 
     useEffect(() => {
         completionProviderRef.current?.dispose();
@@ -3698,6 +4038,12 @@ export default function WorkspacePage() {
             }
 
             clearQueryStatusPolling(tabId);
+            const resourceAutosaveTimer = resourceAutosaveTimerRef.current[tabId];
+            if (resourceAutosaveTimer) {
+                window.clearTimeout(resourceAutosaveTimer);
+                delete resourceAutosaveTimerRef.current[tabId];
+            }
+            delete resourceAutosaveSnapshotRef.current[tabId];
             if (closingTab.isExecuting) {
                 void handleCancelRun(tabId);
             }
@@ -4355,119 +4701,385 @@ export default function WorkspacePage() {
         resolveRunnableSqlForTab
     ]);
 
-    const persistSnippet = useCallback(
-        async (title: string, sqlText: string, groupId: string | null) => {
-            if (!title.trim()) {
-                setSnippetError('Snippet title is required.');
-                return false;
+    const persistResourceTabContent = useCallback(
+        async (
+            tabId: string,
+            options?: {
+                announce?: boolean;
+                snapshotOverride?: string;
             }
-            if (!sqlText.trim()) {
-                setSnippetError('Cannot save an empty snippet.');
+        ) => {
+            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            if (!tab?.resourceId) {
                 return false;
             }
 
-            setSavingSnippet(true);
-            setSnippetError('');
+            const snapshot = options?.snapshotOverride ?? buildResourceTabSnapshot(tab);
+            const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim();
+            const titleValidationMessage = validateResourceTitle(resourceTitle);
+            if (titleValidationMessage) {
+                if (options?.announce) {
+                    setResourceError(titleValidationMessage);
+                }
+                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                return false;
+            }
+
             try {
                 const csrfToken = await fetchCsrfToken();
-                const response = await fetch('/api/snippets', {
-                    method: 'POST',
+                const response = await fetch(`/api/resources/${tab.resourceId}/content`, {
+                    method: 'PATCH',
                     credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
                         [csrfToken.headerName]: csrfToken.token
                     },
                     body: JSON.stringify({
-                        title: title.trim(),
-                        sql: sqlText,
-                        groupId
+                        title: resourceTitle,
+                        sql: tab.queryText,
+                        datasourceId: tab.datasourceId.trim() || undefined
                     })
+                });
+
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const resource = (await response.json()) as ResourceScriptResponse;
+                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                replaceVisibleResource(resource);
+                syncResourceToTabs(resource, { targetTabId: tabId });
+                if (options?.announce) {
+                    setCopyFeedback('Script saved.');
+                }
+                return true;
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to save script content.';
+                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                setResourceError(message);
+                return false;
+            }
+        },
+        [
+            buildResourceTabSnapshot,
+            fetchCsrfToken,
+            readFriendlyError,
+            replaceVisibleResource,
+            syncResourceToTabs
+        ]
+    );
+
+    const handleStartCreateResource = useCallback(() => {
+        setResourceError('');
+        resetResourceEditor();
+        setResourceEditorMode('create');
+        setActiveSection('resources');
+    }, [resetResourceEditor]);
+
+    const handleSeedResourceFromActiveTab = useCallback(() => {
+        if (!activeTab) {
+            setResourceError('Open a query tab first so we can seed the script.');
+            return;
+        }
+
+        setResourceError('');
+        setEditingResourceId('');
+        setResourceEditorMode('create');
+        setResourceFormSourceTabId(activeTab.id);
+        setResourceFormState({
+            title: buildSafeResourceTitle(
+                activeTab.resourceTitle?.trim() || activeTab.title.trim(),
+                'script'
+            ),
+            sql: activeTab.queryText,
+            scope: activeTab.resourceScope ?? 'PRIVATE',
+            groupId: activeTab.resourceGroupId ?? '',
+            folderPath: activeTab.resourceFolderPath ?? '',
+            datasourceId: activeTab.datasourceId,
+            tagsInput: formatResourceTagsInput(activeTab.resourceTags ?? []),
+            allowGroupEdit: activeTab.resourceAllowGroupEdit ?? false
+        });
+        setActiveSection('resources');
+    }, [activeTab]);
+
+    const handleSaveResourceDraftFromEditor = useCallback(() => {
+        if (!activeTab) {
+            return;
+        }
+        if (!activeTab.queryText.trim()) {
+            setResourceError('Cannot save an empty script.');
+            setActiveSection('resources');
+            return;
+        }
+
+        handleSeedResourceFromActiveTab();
+        setCopyFeedback('Script draft loaded. Review the details in Scripts and create it there.');
+    }, [activeTab, handleSeedResourceFromActiveTab]);
+
+    const handleEditResource = useCallback((resource: ResourceScriptResponse) => {
+        setResourceError('');
+        setEditingResourceId(resource.resourceId);
+        setResourceEditorMode('edit');
+        setResourceFormSourceTabId('');
+        setResourceFormState({
+            title: resource.title,
+            sql: resource.sql,
+            scope: resource.scope,
+            groupId: resource.groupId ?? '',
+            folderPath: resource.folderPath,
+            datasourceId: resource.datasourceId ?? '',
+            tagsInput: formatResourceTagsInput(resource.tags),
+            allowGroupEdit: resource.allowGroupEdit
+        });
+        setActiveSection('resources');
+    }, []);
+
+    const handleCancelResourceEdit = useCallback(() => {
+        setResourceError('');
+        resetResourceEditor();
+    }, [resetResourceEditor]);
+
+    const handleSaveResource = useCallback(async () => {
+        const normalizedTitle = resourceFormState.title.trim();
+        const titleValidationMessage = validateResourceTitle(normalizedTitle);
+        if (titleValidationMessage) {
+            setResourceError(titleValidationMessage);
+            return;
+        }
+
+        const folderValidationMessage = validateResourceFolderPath(resourceFormState.folderPath);
+        if (folderValidationMessage) {
+            setResourceError(folderValidationMessage);
+            return;
+        }
+
+        const tagsValidationMessage = validateResourceTagsInput(resourceFormState.tagsInput);
+        if (tagsValidationMessage) {
+            setResourceError(tagsValidationMessage);
+            return;
+        }
+
+        const payload = {
+            title: normalizedTitle,
+            sql: resourceFormState.sql,
+            scope: resourceFormState.scope,
+            groupId:
+                resourceFormState.scope === 'SHARED'
+                    ? resourceFormState.groupId.trim() || null
+                    : null,
+            folderPath: resourceFormState.folderPath,
+            datasourceId: resourceFormState.datasourceId.trim() || null,
+            tags: parseResourceTagsInput(resourceFormState.tagsInput),
+            allowGroupEdit: resourceFormState.scope === 'SHARED' && resourceFormState.allowGroupEdit
+        };
+
+        if (resourceEditorMode === 'edit' && !editingResourceId) {
+            setResourceError('Choose a script before saving changes.');
+            return;
+        }
+
+        setSavingResource(true);
+        setResourceError('');
+        try {
+            const csrfToken = await fetchCsrfToken();
+            const response = await fetch(
+                resourceEditorMode === 'edit'
+                    ? `/api/resources/${editingResourceId}`
+                    : '/api/resources',
+                {
+                    method: resourceEditorMode === 'edit' ? 'PUT' : 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify(payload)
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+
+            const resource = (await response.json()) as ResourceScriptResponse;
+            const sourceTabId = resourceFormSourceTabId;
+
+            if (resourceEditorMode === 'create' && sourceTabId) {
+                const sourceTab = workspaceTabsRef.current.find((tab) => tab.id === sourceTabId);
+                if (sourceTab) {
+                    const linkedTab: WorkspaceTab = {
+                        ...sourceTab,
+                        title: resource.title,
+                        datasourceId: resource.datasourceId ?? sourceTab.datasourceId,
+                        queryText: resource.sql,
+                        resourceId: resource.resourceId,
+                        resourceTitle: resource.title,
+                        resourceScope: resource.scope,
+                        resourceGroupId: resource.groupId ?? undefined,
+                        resourceFolderPath: resource.folderPath,
+                        resourceTags: resource.tags,
+                        resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceOwner: resource.owner
+                    };
+                    resourceAutosaveSnapshotRef.current[sourceTabId] =
+                        buildResourceTabSnapshot(linkedTab);
+                    updateWorkspaceTab(sourceTabId, () => linkedTab);
+                    setActiveTabId(sourceTabId);
+                    setActiveSection('workbench');
+                }
+            } else {
+                workspaceTabsRef.current.forEach((tab) => {
+                    if (tab.resourceId !== resource.resourceId) {
+                        return;
+                    }
+
+                    resourceAutosaveSnapshotRef.current[tab.id] = buildResourceTabSnapshot({
+                        ...tab,
+                        title: resource.title,
+                        datasourceId: resource.datasourceId ?? tab.datasourceId,
+                        resourceTitle: resource.title
+                    });
+                });
+                syncResourceToTabs(resource, { syncTitle: true });
+            }
+
+            resetResourceEditor();
+            await loadResources();
+            setCopyFeedback(
+                resourceEditorMode === 'create' ? 'Script created.' : 'Script updated.'
+            );
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Failed to save script metadata.';
+            setResourceError(message);
+        } finally {
+            setSavingResource(false);
+        }
+    }, [
+        buildResourceTabSnapshot,
+        editingResourceId,
+        fetchCsrfToken,
+        loadResources,
+        readFriendlyError,
+        resetResourceEditor,
+        resourceEditorMode,
+        resourceFormSourceTabId,
+        resourceFormState,
+        syncResourceToTabs,
+        updateWorkspaceTab
+    ]);
+
+    const handleOpenResource = useCallback(
+        (resource: ResourceScriptResponse, runImmediately: boolean) => {
+            setResourceError('');
+
+            const existingTab = workspaceTabsRef.current.find(
+                (tab) => tab.resourceId === resource.resourceId
+            );
+            if (existingTab) {
+                const linkedTab = {
+                    ...existingTab,
+                    datasourceId: resource.datasourceId ?? existingTab.datasourceId,
+                    resourceTitle: resource.title
+                };
+                resourceAutosaveSnapshotRef.current[existingTab.id] =
+                    buildResourceTabSnapshot(linkedTab);
+                syncResourceToTabs(resource, { targetTabId: existingTab.id });
+                setActiveTabId(existingTab.id);
+                setActiveSection('workbench');
+                if (runImmediately) {
+                    window.setTimeout(() => {
+                        void executeSqlForTab(existingTab.id, existingTab.queryText, 'all');
+                    }, 0);
+                }
+                return;
+            }
+
+            const preferredDatasourceId =
+                resource.datasourceId &&
+                visibleDatasources.some((datasource) => datasource.id === resource.datasourceId)
+                    ? resource.datasourceId
+                    : activeTab?.datasourceId || visibleDatasources[0]?.id || '';
+
+            if (!preferredDatasourceId) {
+                setResourceError('No permitted connection is available to open this script.');
+                return;
+            }
+
+            const createdTab = buildWorkspaceTab(
+                preferredDatasourceId,
+                resource.title,
+                resource.sql,
+                resource
+            );
+            resourceAutosaveSnapshotRef.current[createdTab.id] =
+                buildResourceTabSnapshot(createdTab);
+            setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
+            setActiveTabId(createdTab.id);
+            setActiveSection('workbench');
+
+            if (resource.datasourceId && resource.datasourceId !== preferredDatasourceId) {
+                setCopyFeedback(
+                    'The linked connection is no longer available. We opened the script with your current connection.'
+                );
+            }
+
+            if (runImmediately) {
+                window.setTimeout(() => {
+                    void executeSqlForTab(createdTab.id, createdTab.queryText, 'all');
+                }, 0);
+            }
+        },
+        [
+            activeTab?.datasourceId,
+            buildResourceTabSnapshot,
+            executeSqlForTab,
+            syncResourceToTabs,
+            visibleDatasources
+        ]
+    );
+
+    const handleDuplicateResource = useCallback(
+        async (resource: ResourceScriptResponse) => {
+            setResourceError('');
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(`/api/resources/${resource.resourceId}/duplicate`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [csrfToken.headerName]: csrfToken.token
+                    },
+                    body: JSON.stringify({})
                 });
                 if (!response.ok) {
                     throw new Error(await readFriendlyError(response));
                 }
 
-                await loadSnippets();
-                setCopyFeedback('Snippet saved.');
-                return true;
+                await loadResources();
+                setCopyFeedback(`Duplicated script "${resource.title}".`);
             } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to save snippet.';
-                setSnippetError(message);
-                return false;
-            } finally {
-                setSavingSnippet(false);
+                const message =
+                    error instanceof Error ? error.message : 'Failed to duplicate script.';
+                setResourceError(message);
             }
         },
-        [fetchCsrfToken, loadSnippets, readFriendlyError]
+        [fetchCsrfToken, loadResources, readFriendlyError]
     );
 
-    const handleSaveSnippetFromEditor = useCallback(async () => {
-        if (!activeTab) {
-            return;
-        }
-        if (!activeTab.queryText.trim()) {
-            setSnippetError('Cannot save an empty snippet.');
-            return;
-        }
-
-        const proposedTitle = window.prompt('Snippet title', activeTab.title);
-        if (proposedTitle === null) {
-            return;
-        }
-        const title = proposedTitle.trim();
-        if (!title) {
-            setSnippetError('Snippet title is required.');
-            return;
-        }
-
-        const defaultGroupId = snippetGroupInput.trim() || currentUser?.groups?.[0] || '';
-        const proposedGroupId = window.prompt(
-            'Group ID (optional, leave blank for personal snippet)',
-            defaultGroupId
-        );
-        if (proposedGroupId === null) {
-            return;
-        }
-
-        const normalizedGroupId = proposedGroupId.trim() ? proposedGroupId.trim() : null;
-        const saved = await persistSnippet(title, activeTab.queryText, normalizedGroupId);
-        if (saved) {
-            setSnippetGroupInput(normalizedGroupId ?? '');
-        }
-    }, [activeTab, currentUser?.groups, persistSnippet, snippetGroupInput]);
-
-    const handleOpenSnippet = useCallback(
-        (snippet: SnippetResponse, runImmediately: boolean) => {
-            const resolvedDatasourceId = activeTab?.datasourceId ?? visibleDatasources[0]?.id ?? '';
-            if (!resolvedDatasourceId) {
-                setSnippetError('No permitted connection is available to open this snippet.');
+    const handleDeleteResource = useCallback(
+        async (resourceId: string) => {
+            const resource = resources.find((entry) => entry.resourceId === resourceId);
+            if (resource && !window.confirm(`Delete script "${resource.title}"?`)) {
                 return;
             }
 
-            const createdTab = buildWorkspaceTab(
-                resolvedDatasourceId,
-                `Snippet ${workspaceTabsRef.current.length + 1}`,
-                snippet.sql
-            );
-            setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
-            setActiveTabId(createdTab.id);
-            setActiveSection('workbench');
-
-            if (runImmediately) {
-                window.setTimeout(() => {
-                    void executeSqlForTab(createdTab.id, snippet.sql, 'all');
-                }, 0);
-            }
-        },
-        [activeTab?.datasourceId, executeSqlForTab, visibleDatasources]
-    );
-
-    const handleDeleteSnippet = useCallback(
-        async (snippetId: string) => {
-            setSnippetError('');
+            setResourceError('');
             try {
                 const csrfToken = await fetchCsrfToken();
-                const response = await fetch(`/api/snippets/${snippetId}`, {
+                const response = await fetch(`/api/resources/${resourceId}`, {
                     method: 'DELETE',
                     credentials: 'include',
                     headers: {
@@ -4478,15 +5090,152 @@ export default function WorkspacePage() {
                     throw new Error(await readFriendlyError(response));
                 }
 
-                await loadSnippets();
+                unlinkResourceFromTabs(resourceId);
+                if (editingResourceId === resourceId) {
+                    resetResourceEditor();
+                }
+                await loadResources();
+                setCopyFeedback('Script deleted.');
             } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : 'Failed to delete snippet.';
-                setSnippetError(message);
+                const message = error instanceof Error ? error.message : 'Failed to delete script.';
+                setResourceError(message);
             }
         },
-        [fetchCsrfToken, loadSnippets, readFriendlyError]
+        [
+            editingResourceId,
+            fetchCsrfToken,
+            loadResources,
+            readFriendlyError,
+            resetResourceEditor,
+            resources,
+            unlinkResourceFromTabs
+        ]
     );
+
+    const handleRestoreResourceVersion = useCallback(
+        async (versionId: string) => {
+            if (!editingResourceId.trim()) {
+                setResourceError('Open a script in edit mode before restoring a revision.');
+                return;
+            }
+
+            if (
+                !window.confirm(
+                    'Restore this saved revision? Any unsaved changes in the form will be replaced.'
+                )
+            ) {
+                return;
+            }
+
+            setRestoringResourceVersionId(versionId);
+            setResourceError('');
+            try {
+                const csrfToken = await fetchCsrfToken();
+                const response = await fetch(
+                    `/api/resources/${editingResourceId}/versions/${versionId}/restore`,
+                    {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            [csrfToken.headerName]: csrfToken.token
+                        },
+                        body: JSON.stringify({})
+                    }
+                );
+                if (!response.ok) {
+                    throw new Error(await readFriendlyError(response));
+                }
+
+                const resource = (await response.json()) as ResourceScriptResponse;
+                setResourceFormState({
+                    title: resource.title,
+                    sql: resource.sql,
+                    scope: resource.scope,
+                    groupId: resource.groupId ?? '',
+                    folderPath: resource.folderPath,
+                    datasourceId: resource.datasourceId ?? '',
+                    tagsInput: formatResourceTagsInput(resource.tags),
+                    allowGroupEdit: resource.allowGroupEdit
+                });
+
+                workspaceTabsRef.current.forEach((tab) => {
+                    if (tab.resourceId !== resource.resourceId) {
+                        return;
+                    }
+
+                    const linkedTab: WorkspaceTab = {
+                        ...tab,
+                        title: resource.title,
+                        datasourceId: resource.datasourceId ?? tab.datasourceId,
+                        queryText: resource.sql,
+                        resourceTitle: resource.title,
+                        resourceScope: resource.scope,
+                        resourceGroupId: resource.groupId ?? undefined,
+                        resourceFolderPath: resource.folderPath,
+                        resourceTags: resource.tags,
+                        resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceOwner: resource.owner
+                    };
+                    resourceAutosaveSnapshotRef.current[tab.id] =
+                        buildResourceTabSnapshot(linkedTab);
+                    updateWorkspaceTab(tab.id, () => linkedTab);
+                });
+
+                replaceVisibleResource(resource);
+                await loadResources();
+                await loadResourceVersions(editingResourceId);
+                setCopyFeedback('Script restored from version history.');
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to restore script revision.';
+                setResourceError(message);
+            } finally {
+                setRestoringResourceVersionId('');
+            }
+        },
+        [
+            buildResourceTabSnapshot,
+            editingResourceId,
+            fetchCsrfToken,
+            loadResourceVersions,
+            loadResources,
+            readFriendlyError,
+            replaceVisibleResource,
+            updateWorkspaceTab
+        ]
+    );
+
+    useEffect(() => {
+        workspaceTabs.forEach((tab) => {
+            if (!tab.resourceId) {
+                return;
+            }
+
+            const snapshot = buildResourceTabSnapshot(tab);
+            const lastSnapshot = resourceAutosaveSnapshotRef.current[tab.id];
+            if (!lastSnapshot) {
+                resourceAutosaveSnapshotRef.current[tab.id] = snapshot;
+                return;
+            }
+            if (lastSnapshot === snapshot) {
+                return;
+            }
+
+            const pendingTimer = resourceAutosaveTimerRef.current[tab.id];
+            if (pendingTimer) {
+                window.clearTimeout(pendingTimer);
+            }
+
+            resourceAutosaveTimerRef.current[tab.id] = window.setTimeout(() => {
+                delete resourceAutosaveTimerRef.current[tab.id];
+                void persistResourceTabContent(tab.id, {
+                    announce: false,
+                    snapshotOverride: snapshot
+                });
+            }, 1200);
+        });
+    }, [buildResourceTabSnapshot, persistResourceTabContent, workspaceTabs]);
 
     const updateEditorCursorLegend = useCallback(
         (editorInstance: MonacoEditorNamespace.IStandaloneCodeEditor | null) => {
@@ -6008,13 +6757,7 @@ export default function WorkspacePage() {
     };
 
     if (loadingWorkspace) {
-        return (
-            <AppShell title="dwarvenpick" showTitle={false} className="workspace-app-shell">
-                <section className="panel">
-                    <p>Loading...</p>
-                </section>
-            </AppShell>
-        );
+        return <WorkspaceLoadingScreen />;
     }
 
     return (
@@ -6118,21 +6861,21 @@ export default function WorkspacePage() {
                             type="button"
                             role="tab"
                             className={
-                                activeSection === 'snippets'
+                                activeSection === 'resources'
                                     ? 'workspace-mode-tab active'
                                     : 'workspace-mode-tab'
                             }
-                            aria-selected={activeSection === 'snippets'}
+                            aria-selected={activeSection === 'resources'}
                             onClick={() => {
                                 setCollapsedAdminSubmenuOpen(false);
-                                setActiveSection('snippets');
+                                setActiveSection('resources');
                             }}
-                            title={leftRailCollapsed ? 'Snippets' : undefined}
+                            title={leftRailCollapsed ? 'Scripts' : undefined}
                         >
                             <span className="workspace-mode-icon">
-                                <RailIcon glyph="snippets" />
+                                <RailIcon glyph="resources" />
                             </span>
-                            {!leftRailCollapsed ? <span>Snippets</span> : null}
+                            {!leftRailCollapsed ? <span>Scripts</span> : null}
                         </button>
                         {isSystemAdmin ? (
                             <button
@@ -7554,9 +8297,9 @@ export default function WorkspacePage() {
                                     />
                                     <IconButton
                                         icon="save"
-                                        title={savingSnippet ? 'Saving snippet...' : 'Save Snippet'}
-                                        onClick={() => void handleSaveSnippetFromEditor()}
-                                        disabled={!activeTab || savingSnippet}
+                                        title="Save to Scripts"
+                                        onClick={handleSaveResourceDraftFromEditor}
+                                        disabled={!activeTab}
                                     />
                                     <IconButton
                                         icon="close"
@@ -8114,21 +8857,58 @@ export default function WorkspacePage() {
                         onOpenEntry={handleOpenHistoryEntry}
                     />
 
-                    <SnippetsSection
-                        hidden={activeSection !== 'snippets'}
-                        snippetScope={snippetScope}
-                        onSnippetScopeChange={(scope) => setSnippetScope(scope)}
-                        snippetTitleInput={snippetTitleInput}
-                        onSnippetTitleChange={(value) => setSnippetTitleInput(value)}
-                        snippetGroupInput={snippetGroupInput}
-                        onSnippetGroupChange={(value) => setSnippetGroupInput(value)}
-                        snippetGroupOptions={snippetGroupOptions}
-                        loadingSnippets={loadingSnippets}
-                        onRefresh={() => void loadSnippets()}
-                        snippetError={snippetError}
-                        snippets={snippets}
-                        onOpenSnippet={handleOpenSnippet}
-                        onDeleteSnippet={(snippetId) => void handleDeleteSnippet(snippetId)}
+                    <ResourceManagerSection
+                        hidden={activeSection !== 'resources'}
+                        resourceScopeFilter={resourceScopeFilter}
+                        onResourceScopeFilterChange={(value) => setResourceScopeFilter(value)}
+                        resourceSearchInput={resourceSearchInput}
+                        onResourceSearchInputChange={(value) => setResourceSearchInput(value)}
+                        resourceTagFilter={resourceTagFilter}
+                        onResourceTagFilterChange={(value) => setResourceTagFilter(value)}
+                        resourceGroupFilter={resourceGroupFilter}
+                        onResourceGroupFilterChange={(value) => setResourceGroupFilter(value)}
+                        resourceGroupOptions={resourceGroupOptions}
+                        resourceDatasourceFilter={resourceDatasourceFilter}
+                        onResourceDatasourceFilterChange={(value) =>
+                            setResourceDatasourceFilter(value)
+                        }
+                        resourceDatasourceOptions={resourceDatasourceOptions}
+                        loadingResources={loadingResources}
+                        onRefresh={() => void loadResources()}
+                        resources={resources}
+                        resourceError={resourceError}
+                        resourceEditorMode={resourceEditorMode}
+                        resourceFormState={resourceFormState}
+                        onResourceFormChange={(next) => {
+                            setResourceError('');
+                            setResourceFormState(
+                                next.scope === 'PRIVATE'
+                                    ? {
+                                          ...next,
+                                          groupId: '',
+                                          allowGroupEdit: false
+                                      }
+                                    : next
+                            );
+                        }}
+                        savingResource={savingResource}
+                        resourceVersions={resourceVersions}
+                        loadingResourceVersions={loadingResourceVersions}
+                        restoringResourceVersionId={restoringResourceVersionId}
+                        onRefreshVersions={() => void loadResourceVersions(editingResourceId)}
+                        onRestoreResourceVersion={(versionId) =>
+                            void handleRestoreResourceVersion(versionId)
+                        }
+                        onStartCreate={handleStartCreateResource}
+                        onSeedFromActiveTab={handleSeedResourceFromActiveTab}
+                        canSeedFromActiveTab={Boolean(activeTab)}
+                        activeTabLabel={activeTab?.title ?? 'current tab'}
+                        onSaveResource={() => void handleSaveResource()}
+                        onCancelEdit={handleCancelResourceEdit}
+                        onOpenResource={handleOpenResource}
+                        onEditResource={handleEditResource}
+                        onDuplicateResource={(resource) => void handleDuplicateResource(resource)}
+                        onDeleteResource={(resourceId) => void handleDeleteResource(resourceId)}
                     />
 
                     {isSystemAdmin ? (

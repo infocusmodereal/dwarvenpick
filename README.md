@@ -13,19 +13,20 @@
 
 - Tabbed SQL editor (Monaco) with syntax highlighting and keyboard shortcuts.
 - SQL autocomplete (keywords + explorer objects).
+- Server-backed script library with private/shared spaces, folder tree browsing, tags, autosave, version history, and optional connection binding.
 - Validate SQL with engine-aware `EXPLAIN` (inline editor markers when available).
 - Safe scripting: run semicolon-delimited multi-statement scripts with stop-on-error and transaction options.
 - Explain and analyze query plans (engine-aware).
 - Results grid with pagination, sorting, and CSV export.
 - Connection catalog and connection management UI.
 - Governance:
-  - Groups and access rules (per-connection query/export/read-only controls).
-  - Local user management for development and small deployments.
+    - Groups and access rules (per-connection query/export/read-only controls).
+    - Local user management for development and small deployments.
 - Audit trail:
-  - User query history.
-  - Admin audit events.
+    - User query history.
+    - Admin audit events.
 - Operations:
-  - System Health (SYSTEM_ADMIN) with engine-specific cluster checks.
+    - System Health (SYSTEM_ADMIN) with engine-specific cluster checks.
 
 ## Supported engines
 
@@ -86,6 +87,7 @@ The backend uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`
 - JDBC driver jars uploaded from the UI
 - JDBC driver jars downloaded from Maven Central
 - Uploaded TLS/SSL certificates and generated keystores/truststores
+- Resource Manager script storage
 
 Docker Compose mounts a named volume at `/opt/app/drivers` so these artifacts persist across restarts.
 

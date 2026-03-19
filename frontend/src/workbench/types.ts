@@ -384,12 +384,82 @@ export type SnippetResponse = {
     updatedAt: string;
 };
 
+export type ResourceScope = 'PRIVATE' | 'SHARED';
+export type ResourceVersionAction =
+    | 'CREATED'
+    | 'UPDATED_METADATA'
+    | 'UPDATED_CONTENT'
+    | 'RESTORED'
+    | 'DUPLICATED';
+
+export type ResourcePermissionsResponse = {
+    canView: boolean;
+    canEdit: boolean;
+    canExecute: boolean;
+    canDelete: boolean;
+    canShare: boolean;
+};
+
+export type ResourceScriptResponse = {
+    resourceId: string;
+    title: string;
+    sql: string;
+    owner: string;
+    scope: ResourceScope;
+    groupId?: string | null;
+    folderPath: string;
+    datasourceId?: string | null;
+    tags: string[];
+    allowGroupEdit: boolean;
+    createdAt: string;
+    updatedAt: string;
+    currentRevision: number;
+    versionCount: number;
+    permissions: ResourcePermissionsResponse;
+};
+
+export type ResourceVersionResponse = {
+    versionId: string;
+    resourceId: string;
+    revision: number;
+    title: string;
+    sql: string;
+    scope: ResourceScope;
+    groupId?: string | null;
+    folderPath: string;
+    datasourceId?: string | null;
+    tags: string[];
+    allowGroupEdit: boolean;
+    action: ResourceVersionAction;
+    savedBy: string;
+    savedAt: string;
+};
+
+export type ResourceFormState = {
+    title: string;
+    sql: string;
+    scope: ResourceScope;
+    groupId: string;
+    folderPath: string;
+    datasourceId: string;
+    tagsInput: string;
+    allowGroupEdit: boolean;
+};
+
 export type PersistentWorkspaceTab = {
     id: string;
     title: string;
     datasourceId: string;
     schema: string;
     queryText: string;
+    resourceId?: string;
+    resourceTitle?: string;
+    resourceScope?: ResourceScope;
+    resourceGroupId?: string;
+    resourceFolderPath?: string;
+    resourceTags?: string[];
+    resourceAllowGroupEdit?: boolean;
+    resourceOwner?: string;
 };
 
 export type WorkspaceTab = PersistentWorkspaceTab & {
@@ -453,7 +523,7 @@ export type QueryScriptSummary = {
 export type WorkspaceSection =
     | 'workbench'
     | 'history'
-    | 'snippets'
+    | 'resources'
     | 'audit'
     | 'health'
     | 'admin'
@@ -484,6 +554,7 @@ export type ConnectionEditorMode = 'list' | 'create' | 'edit';
 export type GroupAdminMode = 'list' | 'create' | 'edit';
 export type UserAdminMode = 'list' | 'create';
 export type AccessAdminMode = 'list' | 'create' | 'edit';
+export type ResourceManagerMode = 'list' | 'create' | 'edit';
 export type EditorCursorLegend = {
     line: number;
     column: number;
@@ -515,7 +586,7 @@ export type ResultSortState = {
 export type RailGlyph =
     | 'workbench'
     | 'history'
-    | 'snippets'
+    | 'resources'
     | 'audit'
     | 'health'
     | 'admin'
