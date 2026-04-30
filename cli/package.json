@@ -1,0 +1,26 @@
+{
+  "name": "@dwarvenpick/cli",
+  "version": "0.1.0",
+  "description": "Command line client for running dwarvenpick queries.",
+  "type": "module",
+  "bin": {
+    "dwarvenpick": "./bin/dwarvenpick.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "dwarvenpick",
+    "sql",
+    "cli"
+  ],
+  "license": "Apache-2.0"
+}
