@@ -31,3 +31,4 @@ nav_order: 1
 - [Connections](connections.md)
 - [Governance](governance.md)
 - [Authentication](authentication.md)
+- [CLI](cli.md)

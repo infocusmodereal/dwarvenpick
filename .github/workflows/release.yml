@@ -77,6 +77,12 @@ jobs:
           npm run test
           npm run build
 
+      - name: Run CLI checks
+        working-directory: cli
+        run: |
+          npm test
+          npm pack --dry-run
+
       - name: Build backend jar (versioned)
         env:
           DWARVENPICK_VERSION: ${{ steps.version.outputs.version }}

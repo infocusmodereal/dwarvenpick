@@ -18,6 +18,7 @@
 - Safe scripting: run semicolon-delimited multi-statement scripts with stop-on-error and transaction options.
 - Explain and analyze query plans (engine-aware).
 - Results grid with pagination, sorting, and CSV export.
+- CLI package for authenticated terminal query execution via Local or LDAP auth.
 - Connection catalog and connection management UI.
 - Governance:
     - Groups and access rules (per-connection query/export/read-only controls).
@@ -128,6 +129,7 @@ By default the Vite dev server runs on `http://localhost:5173` and proxies `/api
 
 - `backend/`: Kotlin + Spring Boot backend (Gradle)
 - `frontend/`: React + TypeScript web application
+- `cli/`: Node.js CLI for authenticated query execution
 - `deploy/`: Docker and Helm deployment assets
 - `docs/`: User and operator documentation (published to GitHub Pages)
 
