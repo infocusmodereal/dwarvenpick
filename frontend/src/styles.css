@@ -1408,7 +1408,7 @@ button:disabled {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.09);
+    background: transparent;
     color: #f6ead8;
     transition:
         background-color 220ms ease,
@@ -1434,7 +1434,7 @@ button:disabled {
 
 .workspace-rail-toggle:hover {
     filter: none;
-    background: rgba(255, 255, 255, 0.17);
+    background: transparent;
     border-color: transparent;
     transform: translateY(-1px);
 }
@@ -1891,7 +1891,7 @@ button:disabled {
     height: 2.15rem;
     border-radius: 0.66rem;
     border: 1px solid transparent;
-    background: var(--icon-button-bg);
+    background: transparent;
     box-shadow: none;
     color: var(--icon-button-fg);
     transition:
@@ -1901,7 +1901,7 @@ button:disabled {
 }
 
 .schema-browser-toggle:hover:not(:disabled) {
-    background: var(--icon-button-hover-bg);
+    background: transparent;
     border-color: transparent;
     transform: translateY(-1px);
 }
