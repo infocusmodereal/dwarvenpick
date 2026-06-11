@@ -1403,7 +1403,7 @@ button:disabled {
     width: 1.72rem;
     height: 1.72rem;
     border-radius: 0.5rem;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid transparent;
     padding: 0;
     display: inline-flex;
     align-items: center;
@@ -1435,7 +1435,7 @@ button:disabled {
 .workspace-rail-toggle:hover {
     filter: none;
     background: rgba(255, 255, 255, 0.17);
-    border-color: rgba(255, 255, 255, 0.24);
+    border-color: transparent;
     transform: translateY(-1px);
 }
 
@@ -1890,7 +1890,7 @@ button:disabled {
     width: 2.15rem;
     height: 2.15rem;
     border-radius: 0.66rem;
-    border: 1px solid var(--icon-button-border);
+    border: 1px solid transparent;
     background: var(--icon-button-bg);
     box-shadow: none;
     color: var(--icon-button-fg);
@@ -1902,7 +1902,7 @@ button:disabled {
 
 .schema-browser-toggle:hover:not(:disabled) {
     background: var(--icon-button-hover-bg);
-    border-color: var(--icon-button-hover-border);
+    border-color: transparent;
     transform: translateY(-1px);
 }
 
@@ -2117,7 +2117,7 @@ button:disabled {
 
 .explorer-toggle:hover {
     filter: none;
-    background: var(--hover-tint);
+    background: transparent;
 }
 
 .explorer-toggle svg {
@@ -2131,6 +2131,7 @@ button:disabled {
     align-items: center;
     justify-content: space-between;
     min-width: 0;
+    position: relative;
 }
 
 .explorer-item-main {
@@ -2197,6 +2198,56 @@ button:disabled {
     overflow: hidden;
     text-overflow: ellipsis;
     font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+.explorer-name-hover-card {
+    position: absolute;
+    top: calc(100% + 0.2rem);
+    left: 0.18rem;
+    right: 0.18rem;
+    z-index: 55;
+    display: none;
+    align-items: flex-start;
+    gap: 0.48rem;
+    padding: 0.46rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.62rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    white-space: normal;
+}
+
+.explorer-item:hover .explorer-name-hover-card,
+.explorer-item:focus-within .explorer-name-hover-card {
+    display: flex;
+}
+
+.explorer-name-hover-text {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+    user-select: text;
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.explorer-name-copy {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-alt);
+    color: var(--accent-strong);
+    padding: 0.18rem 0.48rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+.explorer-name-copy:hover {
+    filter: none;
+    border-color: var(--accent);
+    background: var(--accent-soft);
 }
 
 .explorer-item-meta {

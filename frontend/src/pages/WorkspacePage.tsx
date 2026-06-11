@@ -4413,6 +4413,38 @@ export default function WorkspacePage() {
         [writeTextToClipboard]
     );
 
+    const handleCopyExplorerName = useCallback(
+        async (value: string) => {
+            try {
+                await writeTextToClipboard(value);
+                setCopyFeedback('Copied explorer name to clipboard.');
+            } catch {
+                setCopyFeedback('Unable to copy explorer name.');
+            }
+        },
+        [writeTextToClipboard]
+    );
+
+    const renderExplorerNameHoverCard = useCallback(
+        (label: string): ReactNode => (
+            <span className="explorer-name-hover-card" role="tooltip">
+                <span className="explorer-name-hover-text">{label}</span>
+                <button
+                    type="button"
+                    className="explorer-name-copy"
+                    aria-label={`Copy ${label}`}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        void handleCopyExplorerName(label);
+                    }}
+                >
+                    Copy
+                </button>
+            </span>
+        ),
+        [handleCopyExplorerName]
+    );
+
     useEffect(() => {
         if (!copyFeedback) {
             return;
@@ -7459,6 +7491,8 @@ export default function WorkspacePage() {
                                                         (datasource) =>
                                                             datasource.id === browser.datasourceId
                                                     ) ?? null;
+                                                const datasourceLabel =
+                                                    activeDatasource?.name ?? browser.datasourceId;
                                                 return (
                                                     <li className="explorer-node explorer-depth-0">
                                                         <div
@@ -7500,19 +7534,20 @@ export default function WorkspacePage() {
                                                                             datasourceKey
                                                                         )
                                                                     }
-                                                                    title={
-                                                                        activeDatasource?.name ??
-                                                                        browser.datasourceId
-                                                                    }
+                                                                    title={datasourceLabel}
                                                                 >
                                                                     <span className="explorer-item-icon">
                                                                         <ExplorerIcon glyph="database" />
                                                                     </span>
                                                                     <span className="explorer-item-title">
-                                                                        {activeDatasource?.name ??
-                                                                            browser.datasourceId}
+                                                                        {renderExplorerMatch(
+                                                                            datasourceLabel
+                                                                        )}
                                                                     </span>
                                                                 </button>
+                                                                {renderExplorerNameHoverCard(
+                                                                    datasourceLabel
+                                                                )}
                                                                 <span className="explorer-item-tail">
                                                                     {activeDatasource ? (
                                                                         <span className="explorer-item-meta">
@@ -7596,6 +7631,9 @@ export default function WorkspacePage() {
                                                                                                         schemaKey
                                                                                                     )
                                                                                                 }
+                                                                                                title={
+                                                                                                    schemaEntry.schema
+                                                                                                }
                                                                                             >
                                                                                                 <span className="explorer-item-icon">
                                                                                                     <ExplorerIcon glyph="schema" />
@@ -7606,6 +7644,9 @@ export default function WorkspacePage() {
                                                                                                     )}
                                                                                                 </span>
                                                                                             </button>
+                                                                                            {renderExplorerNameHoverCard(
+                                                                                                schemaEntry.schema
+                                                                                            )}
                                                                                             <span className="explorer-item-tail">
                                                                                                 <span
                                                                                                     className="explorer-item-count"
@@ -7722,6 +7763,9 @@ export default function WorkspacePage() {
                                                                                                                                 tableKey
                                                                                                                             )
                                                                                                                         }
+                                                                                                                        title={
+                                                                                                                            tableEntry.table
+                                                                                                                        }
                                                                                                                     >
                                                                                                                         <span className="explorer-item-icon">
                                                                                                                             <ExplorerIcon glyph="table" />
@@ -7732,6 +7776,9 @@ export default function WorkspacePage() {
                                                                                                                             )}
                                                                                                                         </span>
                                                                                                                     </button>
+                                                                                                                    {renderExplorerNameHoverCard(
+                                                                                                                        tableEntry.table
+                                                                                                                    )}
                                                                                                                     <span className="explorer-item-tail">
                                                                                                                         <span
                                                                                                                             className="explorer-item-count"
@@ -7819,6 +7866,9 @@ export default function WorkspacePage() {
                                                                                                                                                         columnKey
                                                                                                                                                     )
                                                                                                                                                 }
+                                                                                                                                                title={
+                                                                                                                                                    columnEntry.name
+                                                                                                                                                }
                                                                                                                                             >
                                                                                                                                                 <span className="explorer-item-icon">
                                                                                                                                                     <ExplorerIcon glyph="column" />
@@ -7829,6 +7879,9 @@ export default function WorkspacePage() {
                                                                                                                                                     )}
                                                                                                                                                 </span>
                                                                                                                                             </button>
+                                                                                                                                            {renderExplorerNameHoverCard(
+                                                                                                                                                columnEntry.name
+                                                                                                                                            )}
                                                                                                                                             <span className="explorer-item-tail">
                                                                                                                                                 <span className="explorer-item-type">
                                                                                                                                                     (
