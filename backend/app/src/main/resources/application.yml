@@ -71,7 +71,7 @@ dwarvenpick:
       deny-cidrs: []
   schema:
     cache-ttl-seconds: 300
-    max-schemas: 20
+    max-schemas: 100
     max-tables-per-schema: 100
     max-columns-per-table: 200
   auth:

@@ -4,7 +4,16 @@ import com.aerospike.client.AerospikeClient
 import com.aerospike.client.Info
 import com.aerospike.client.policy.ClientPolicy
 import com.dwarvenpick.app.datasource.aerospike.parseAerospikeJdbcTarget
+import com.dwarvenpick.app.starrocks.STARROCKS_DEFAULT_CATALOG
+import com.dwarvenpick.app.starrocks.StarRocksSchemaRef
+import com.dwarvenpick.app.starrocks.isStarRocksDefaultCatalog
+import com.dwarvenpick.app.starrocks.qualifiedObjectName
+import com.dwarvenpick.app.starrocks.qualifiedSchemaName
+import com.dwarvenpick.app.starrocks.quoteStarRocksIdentifier
 import org.springframework.stereotype.Service
+import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.SQLException
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
@@ -78,6 +87,19 @@ class SchemaBrowserService(
                 maxSchemas = maxSchemas,
                 maxTablesPerSchema = maxTablesPerSchema,
             )
+        }
+
+        if (handle.spec.engine == DatasourceEngine.STARROCKS) {
+            return handle.connection.use { connection ->
+                loadStarRocksSchema(
+                    connection = connection,
+                    datasourceId = datasourceId,
+                    fetchedAt = fetchedAt,
+                    maxSchemas = maxSchemas,
+                    maxTablesPerSchema = maxTablesPerSchema,
+                    maxColumnsPerTable = maxColumnsPerTable,
+                )
+            }
         }
 
         return try {
@@ -207,6 +229,229 @@ class SchemaBrowserService(
         }
     }
 
+    private fun loadStarRocksSchema(
+        connection: Connection,
+        datasourceId: String,
+        fetchedAt: Instant,
+        maxSchemas: Int,
+        maxTablesPerSchema: Int,
+        maxColumnsPerTable: Int,
+    ): DatasourceSchemaBrowserResponse =
+        try {
+            val schemaRefs = discoverStarRocksSchemas(connection, maxSchemas)
+            val schemaResponses =
+                schemaRefs.map { schemaRef ->
+                    DatasourceSchemaEntryResponse(
+                        schema = schemaRef.displayName,
+                        tables =
+                            loadStarRocksTables(
+                                connection = connection,
+                                schemaRef = schemaRef,
+                                maxTablesPerSchema = maxTablesPerSchema,
+                                maxColumnsPerTable = maxColumnsPerTable,
+                            ),
+                    )
+                }
+
+            DatasourceSchemaBrowserResponse(
+                datasourceId = datasourceId,
+                cached = false,
+                fetchedAt = fetchedAt.toString(),
+                schemas = schemaResponses,
+            )
+        } catch (exception: Exception) {
+            throw SchemaBrowserUnavailableException(
+                message = "Unable to load StarRocks metadata from datasource.",
+                cause = exception,
+            )
+        }
+
+    private fun discoverStarRocksSchemas(
+        connection: Connection,
+        maxSchemas: Int,
+    ): List<StarRocksSchemaRef> {
+        val catalogs =
+            try {
+                runStarRocksFirstColumnQuery(connection, "SHOW CATALOGS")
+                    .ifEmpty { listOf(STARROCKS_DEFAULT_CATALOG) }
+            } catch (_: SQLException) {
+                listOf(STARROCKS_DEFAULT_CATALOG)
+            }
+
+        val schemaRefs = mutableListOf<StarRocksSchemaRef>()
+        catalogs
+            .distinctBy { catalog -> catalog.lowercase(Locale.getDefault()) }
+            .sortedBy { catalog -> if (isStarRocksDefaultCatalog(catalog)) 1 else 0 }
+            .forEach { catalog ->
+                if (schemaRefs.size >= maxSchemas) {
+                    return@forEach
+                }
+
+                val sql =
+                    if (isStarRocksDefaultCatalog(catalog)) {
+                        "SHOW DATABASES"
+                    } else {
+                        "SHOW DATABASES FROM ${quoteStarRocksIdentifier(catalog)}"
+                    }
+                val databases =
+                    try {
+                        runStarRocksFirstColumnQuery(connection, sql)
+                    } catch (_: SQLException) {
+                        emptyList()
+                    }
+
+                databases
+                    .filter { database -> database.isNotBlank() }
+                    .distinctBy { database -> database.lowercase(Locale.getDefault()) }
+                    .forEach { database ->
+                        if (schemaRefs.size < maxSchemas) {
+                            schemaRefs.add(
+                                StarRocksSchemaRef(
+                                    catalog = catalog,
+                                    database = database,
+                                ),
+                            )
+                        }
+                    }
+            }
+
+        if (schemaRefs.isEmpty()) {
+            return listOf(StarRocksSchemaRef(catalog = null, database = "default"))
+        }
+
+        return schemaRefs.sortedWith(
+            compareBy<StarRocksSchemaRef> { ref ->
+                if (ref.catalog.isNullOrBlank() || isStarRocksDefaultCatalog(ref.catalog)) {
+                    ""
+                } else {
+                    ref.catalog.lowercase(Locale.getDefault())
+                }
+            }.thenBy { ref -> ref.database.lowercase(Locale.getDefault()) },
+        )
+    }
+
+    private fun loadStarRocksTables(
+        connection: Connection,
+        schemaRef: StarRocksSchemaRef,
+        maxTablesPerSchema: Int,
+        maxColumnsPerTable: Int,
+    ): List<DatasourceTableEntryResponse> {
+        val tableSummaries =
+            try {
+                runStarRocksTableSummaryQuery(
+                    connection,
+                    "SHOW FULL TABLES FROM ${schemaRef.qualifiedSchemaName()}",
+                    maxTablesPerSchema,
+                )
+            } catch (_: SQLException) {
+                try {
+                    runStarRocksTableSummaryQuery(
+                        connection,
+                        "SHOW TABLES FROM ${schemaRef.qualifiedSchemaName()}",
+                        maxTablesPerSchema,
+                    )
+                } catch (_: SQLException) {
+                    emptyList()
+                }
+            }
+
+        return tableSummaries
+            .distinctBy { summary -> summary.name.lowercase(Locale.getDefault()) }
+            .sortedBy { summary -> summary.name.lowercase(Locale.getDefault()) }
+            .map { summary ->
+                DatasourceTableEntryResponse(
+                    table = summary.name,
+                    type = summary.type,
+                    columns =
+                        loadStarRocksColumns(
+                            connection = connection,
+                            schemaRef = schemaRef,
+                            tableName = summary.name,
+                            maxColumnsPerTable = maxColumnsPerTable,
+                        ),
+                )
+            }
+    }
+
+    private fun loadStarRocksColumns(
+        connection: Connection,
+        schemaRef: StarRocksSchemaRef,
+        tableName: String,
+        maxColumnsPerTable: Int,
+    ): List<DatasourceColumnEntryResponse> =
+        try {
+            connection.createStatement().use { statement ->
+                statement.queryTimeout = 10
+                statement
+                    .executeQuery("DESCRIBE ${schemaRef.qualifiedObjectName(tableName)}")
+                    .use { resultSet ->
+                        val columns = mutableListOf<DatasourceColumnEntryResponse>()
+                        while (resultSet.next() && columns.size < maxColumnsPerTable) {
+                            val columnName = resultSet.getStringSafely(1)?.trim().orEmpty()
+                            if (columnName.isBlank() || columnName.startsWith("#")) {
+                                continue
+                            }
+                            val jdbcType = resultSet.getStringSafely(2)?.ifBlank { "UNKNOWN" } ?: "UNKNOWN"
+                            val nullableText = resultSet.getStringSafely(3)?.trim().orEmpty()
+                            columns.add(
+                                DatasourceColumnEntryResponse(
+                                    name = columnName,
+                                    jdbcType = jdbcType,
+                                    nullable = !nullableText.equals("NO", ignoreCase = true),
+                                ),
+                            )
+                        }
+                        columns
+                    }
+            }
+        } catch (_: SQLException) {
+            emptyList()
+        }
+
+    private fun runStarRocksFirstColumnQuery(
+        connection: Connection,
+        sql: String,
+    ): List<String> =
+        connection.createStatement().use { statement ->
+            statement.queryTimeout = 10
+            statement.executeQuery(sql).use { resultSet ->
+                val values = mutableListOf<String>()
+                while (resultSet.next()) {
+                    resultSet.getStringSafely(1)?.trim()?.takeIf { it.isNotBlank() }?.let { value ->
+                        values.add(value)
+                    }
+                }
+                values
+            }
+        }
+
+    private fun runStarRocksTableSummaryQuery(
+        connection: Connection,
+        sql: String,
+        maxTablesPerSchema: Int,
+    ): List<StarRocksTableSummary> =
+        connection.createStatement().use { statement ->
+            statement.queryTimeout = 10
+            statement.executeQuery(sql).use { resultSet ->
+                val summaries = mutableListOf<StarRocksTableSummary>()
+                val columnCount = resultSet.metaData.columnCount
+                while (resultSet.next() && summaries.size < maxTablesPerSchema) {
+                    val tableName = resultSet.getStringSafely(1)?.trim().orEmpty()
+                    if (tableName.isBlank()) {
+                        continue
+                    }
+                    val tableType =
+                        if (columnCount >= 2) {
+                            resultSet.getStringSafely(2)?.ifBlank { "TABLE" } ?: "TABLE"
+                        } else {
+                            "TABLE"
+                        }
+                    summaries.add(StarRocksTableSummary(name = tableName, type = tableType.uppercase()))
+                }
+                summaries
+            }
+        }
+
     private fun loadAerospikeSchema(
         spec: ConnectionSpec,
         datasourceId: String,
@@ -315,3 +560,15 @@ class SchemaBrowserService(
         return setsByNamespace
     }
 }
+
+private data class StarRocksTableSummary(
+    val name: String,
+    val type: String,
+)
+
+private fun ResultSet.getStringSafely(index: Int): String? =
+    if (index <= metaData.columnCount) {
+        getString(index)
+    } else {
+        null
+    }

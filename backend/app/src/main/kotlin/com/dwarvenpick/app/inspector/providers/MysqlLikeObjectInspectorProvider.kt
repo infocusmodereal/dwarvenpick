@@ -10,6 +10,8 @@ import com.dwarvenpick.app.inspector.ObjectInspectorProvider
 import com.dwarvenpick.app.inspector.ObjectInspectorSection
 import com.dwarvenpick.app.inspector.ObjectInspectorSectionKind
 import com.dwarvenpick.app.inspector.ObjectInspectorSectionStatus
+import com.dwarvenpick.app.starrocks.parseStarRocksExplorerSchema
+import com.dwarvenpick.app.starrocks.qualifiedObjectName
 import com.dwarvenpick.app.systemhealth.isInsufficientPrivilege
 import org.springframework.stereotype.Component
 import java.sql.Connection
@@ -33,6 +35,10 @@ class MysqlLikeObjectInspectorProvider : ObjectInspectorProvider {
         val name = objectRef.name.trim()
         if (schema.isBlank() || name.isBlank()) {
             throw IllegalArgumentException("Schema and object name are required.")
+        }
+
+        if (spec.engine == DatasourceEngine.STARROCKS && schema.contains(".")) {
+            return inspectStarRocksExternalCatalogObject(connection, objectRef)
         }
 
         if (!objectExists(connection, schema, name, objectRef.type)) {
@@ -265,6 +271,88 @@ class MysqlLikeObjectInspectorProvider : ObjectInspectorProvider {
             partitionsSection,
             sizeSection,
         )
+    }
+
+    private fun inspectStarRocksExternalCatalogObject(
+        connection: Connection,
+        objectRef: ObjectInspectorObjectRef,
+    ): List<ObjectInspectorSection> {
+        val schemaRef = parseStarRocksExplorerSchema(objectRef.schema)
+        val qualified = schemaRef.qualifiedObjectName(objectRef.name)
+
+        val ddlSection =
+            buildSection(
+                id = "ddl",
+                title = "DDL",
+            ) {
+                val sql =
+                    when (objectRef.type) {
+                        InspectedObjectType.VIEW -> "SHOW CREATE VIEW $qualified"
+                        InspectedObjectType.TABLE -> "SHOW CREATE TABLE $qualified"
+                    }
+                val table = runTableQuery(connection, sql)
+                val ddlText =
+                    table.rows
+                        .firstOrNull()
+                        ?.getOrNull(1)
+                        .orEmpty()
+                        .trim()
+                if (ddlText.isBlank()) {
+                    throw SQLException("SHOW CREATE did not return DDL.")
+                }
+                ObjectInspectorSection(
+                    id = "ddl",
+                    title = "DDL",
+                    status = ObjectInspectorSectionStatus.OK,
+                    kind = ObjectInspectorSectionKind.TEXT,
+                    text = ddlText,
+                )
+            }
+
+        val columnsSection =
+            buildSection(
+                id = "columns",
+                title = "Columns",
+            ) {
+                val table = runTableQuery(connection, "DESCRIBE $qualified")
+                ObjectInspectorSection(
+                    id = "columns",
+                    title = "Columns",
+                    status = ObjectInspectorSectionStatus.OK,
+                    kind = ObjectInspectorSectionKind.TABLE,
+                    table = table,
+                )
+            }
+
+        val unsupportedSections =
+            listOf(
+                "indexes" to "Indexes",
+                "constraints" to "Constraints",
+                "partitions" to "Partitions",
+            ).map { (id, title) ->
+                ObjectInspectorSection(
+                    id = id,
+                    title = title,
+                    status = ObjectInspectorSectionStatus.UNSUPPORTED,
+                    message = "$title are not exposed by StarRocks external catalog metadata.",
+                )
+            }
+
+        val sizeSection =
+            ObjectInspectorSection(
+                id = "size",
+                title = "Size & stats",
+                status = ObjectInspectorSectionStatus.OK,
+                kind = ObjectInspectorSectionKind.KEY_VALUES,
+                keyValues =
+                    listOf(
+                        ObjectInspectorKeyValue("catalog", schemaRef.catalog),
+                        ObjectInspectorKeyValue("database", schemaRef.database),
+                        ObjectInspectorKeyValue("object", objectRef.name),
+                    ),
+            )
+
+        return listOf(ddlSection, columnsSection) + unsupportedSections + sizeSection
     }
 
     private fun objectExists(
