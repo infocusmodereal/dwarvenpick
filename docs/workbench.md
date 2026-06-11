@@ -23,6 +23,7 @@ The editor provides basic autocomplete:
 
 - SQL keywords
 - Schemas/tables/columns discovered by **Explorer** for the active connection
+- StarRocks external catalog objects as fully qualified `catalog.database.table` references
 
 Use `Ctrl+Space` / `Cmd+Space` to open suggestions.
 
@@ -76,6 +77,7 @@ Read-only access rules apply to **every** statement in a script.
 ## Explorer
 
 - The Explorer shows databases/schemas/tables/columns for the active connection.
+- StarRocks external catalog databases are shown as `catalog.database`, so inserting a table reference produces `catalog.database.table`.
 - Use it to navigate metadata and help author queries.
 - Use **Search** to filter schemas/tables/columns (DataGrip-style).
 - Use the **Inspect** icon on a table/view to open the Object Inspector:

@@ -37,7 +37,7 @@ Current focus is JDBC-backed SQL engines:
 - MySQL
 - MariaDB
 - Trino
-- StarRocks (via MySQL protocol)
+- StarRocks (via MySQL protocol, including external catalogs)
 - Vertica (external driver)
 - Aerospike (via Aerospike JDBC)
 

@@ -45,7 +45,7 @@ The default local stack includes:
 - MySQL sample source: `localhost:3306` (`readonly` / `readonly`)
 - MariaDB sample source: `localhost:3307` (`readonly` / `readonly`)
 - Vertica sample source: `localhost:5433` (`dbadmin` / `dwarvenpick`)
-- StarRocks sample source: `localhost:9030` (`readonly` / `readonly`)
+- StarRocks sample source: `localhost:9030` (`readonly` / `readonly`), with external catalog metadata displayed as `catalog.database`
 - Trino sample source: `localhost:8088` (user `trino`, no password)
 - Aerospike sample source: `localhost:3005` (namespace `test`, no auth)
 
