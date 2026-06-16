@@ -1,7 +1,7 @@
 import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
 import { toStatusToneClass } from '../utils';
 import { IconButton } from '../components/WorkbenchIcons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type QueryHistorySectionProps = {
     hidden: boolean;
@@ -57,6 +57,23 @@ const downloadCsv = (fileName: string, csv: string) => {
     window.URL.revokeObjectURL(objectUrl);
 };
 
+const copyToClipboard = async (value: string) => {
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = value;
+    textArea.setAttribute('readonly', 'true');
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    textArea.remove();
+};
+
 export default function QueryHistorySection({
     hidden,
     visibleDatasources,
@@ -78,6 +95,7 @@ export default function QueryHistorySection({
 }: QueryHistorySectionProps) {
     const [pageSize, setPageSize] = useState(100);
     const [pageIndex, setPageIndex] = useState(0);
+    const [copiedExecutionId, setCopiedExecutionId] = useState('');
 
     useEffect(() => {
         setPageIndex(0);
@@ -89,6 +107,20 @@ export default function QueryHistorySection({
         const start = resolvedPageIndex * pageSize;
         return entries.slice(start, start + pageSize);
     }, [entries, pageSize, resolvedPageIndex]);
+
+    const handleCopyQuery = useCallback(async (executionId: string, queryText: string) => {
+        await copyToClipboard(queryText);
+        setCopiedExecutionId(executionId);
+    }, []);
+
+    useEffect(() => {
+        if (!copiedExecutionId) {
+            return undefined;
+        }
+
+        const timeout = window.setTimeout(() => setCopiedExecutionId(''), 1800);
+        return () => window.clearTimeout(timeout);
+    }, [copiedExecutionId]);
 
     return (
         <section className="panel history-panel" hidden={hidden}>
@@ -235,7 +267,7 @@ export default function QueryHistorySection({
             </div>
 
             <div className="history-table-wrap">
-                <table className="result-table history-table">
+                <table className="result-table history-table query-history-table">
                     <thead>
                         <tr>
                             <th>Submitted</th>
@@ -253,45 +285,87 @@ export default function QueryHistorySection({
                                 <td colSpan={7}>No history entries found for current filters.</td>
                             </tr>
                         ) : (
-                            pagedEntries.map((entry) => (
-                                <tr key={`history-${entry.executionId}`}>
-                                    <td>{new Date(entry.submittedAt).toLocaleString()}</td>
-                                    <td>
-                                        <span className={toStatusToneClass(entry.status)}>
-                                            {entry.status}
-                                        </span>
-                                    </td>
-                                    <td>{entry.datasourceId}</td>
-                                    <td>
-                                        {typeof entry.durationMs === 'number'
-                                            ? `${entry.durationMs} ms`
-                                            : '-'}
-                                    </td>
-                                    <td>{entry.rowCount.toLocaleString()}</td>
-                                    <td className="history-query">
-                                        {entry.queryTextRedacted
-                                            ? '[REDACTED]'
-                                            : (entry.queryText ?? '[empty]')}
-                                    </td>
-                                    <td className="history-actions">
-                                        <button
-                                            type="button"
-                                            className="chip"
-                                            disabled={!entry.queryText || entry.queryTextRedacted}
-                                            onClick={() => onOpenEntry(entry, false)}
-                                        >
-                                            Open
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={!entry.queryText || entry.queryTextRedacted}
-                                            onClick={() => onOpenEntry(entry, true)}
-                                        >
-                                            Rerun
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
+                            pagedEntries.map((entry) => {
+                                const queryPreview = entry.queryTextRedacted
+                                    ? '[REDACTED]'
+                                    : (entry.queryText ?? '[empty]');
+                                const canUseQuery = Boolean(
+                                    entry.queryText && !entry.queryTextRedacted
+                                );
+
+                                return (
+                                    <tr key={`history-${entry.executionId}`}>
+                                        <td>{new Date(entry.submittedAt).toLocaleString()}</td>
+                                        <td>
+                                            <span className={toStatusToneClass(entry.status)}>
+                                                {entry.status}
+                                            </span>
+                                        </td>
+                                        <td>{entry.datasourceId}</td>
+                                        <td>
+                                            {typeof entry.durationMs === 'number'
+                                                ? `${entry.durationMs} ms`
+                                                : '-'}
+                                        </td>
+                                        <td>{entry.rowCount.toLocaleString()}</td>
+                                        <td className="history-query-cell">
+                                            <span
+                                                className="history-query-preview"
+                                                title={queryPreview}
+                                            >
+                                                {queryPreview}
+                                            </span>
+                                            {canUseQuery ? (
+                                                <div
+                                                    className="history-query-hover-card"
+                                                    role="tooltip"
+                                                >
+                                                    <code className="history-query-full">
+                                                        {queryPreview}
+                                                    </code>
+                                                    <button
+                                                        type="button"
+                                                        className="history-query-copy"
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                            void handleCopyQuery(
+                                                                entry.executionId,
+                                                                queryPreview
+                                                            );
+                                                        }}
+                                                    >
+                                                        {copiedExecutionId === entry.executionId
+                                                            ? 'Copied'
+                                                            : 'Copy'}
+                                                    </button>
+                                                </div>
+                                            ) : null}
+                                        </td>
+                                        <td className="history-actions">
+                                            <button
+                                                type="button"
+                                                className="chip"
+                                                disabled={
+                                                    !entry.queryText || entry.queryTextRedacted
+                                                }
+                                                onClick={() => onOpenEntry(entry, false)}
+                                            >
+                                                Open
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={
+                                                    !entry.queryText || entry.queryTextRedacted
+                                                }
+                                                onClick={() => onOpenEntry(entry, true)}
+                                            >
+                                                Rerun
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
