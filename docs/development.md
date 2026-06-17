@@ -60,16 +60,16 @@ Query execution is covered by Testcontainers-based integration tests (Postgres, 
 
 `dwarvenpick` uses Git tags for release versions.
 
-- Dev builds default to `0.4.6-SNAPSHOT`.
-- Release builds use the pushed tag name (for example `v0.4.6` becomes version `0.4.6`).
+- Dev builds default to `0.4.7-SNAPSHOT`.
+- Release builds use the pushed tag name (for example `v0.4.7` becomes version `0.4.7`).
 
 To cut a release:
 
    1. Create a tag:
 
    ```bash
-   git tag v0.4.6
-   git push origin v0.4.6
+   git tag v0.4.7
+   git push origin v0.4.7
    ```
 
 2. GitHub Actions runs the `Release` workflow and publishes a GitHub Release with:
@@ -79,5 +79,5 @@ To cut a release:
 To build a versioned jar locally without tagging:
 
 ```bash
-DWARVENPICK_VERSION=0.4.6 ./gradlew :backend:app:bootJar
+DWARVENPICK_VERSION=0.4.7 ./gradlew :backend:app:bootJar
 ```

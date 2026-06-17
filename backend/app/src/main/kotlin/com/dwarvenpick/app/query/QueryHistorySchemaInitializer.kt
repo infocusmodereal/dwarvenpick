@@ -2,18 +2,17 @@ package com.dwarvenpick.app.query
 
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
-import org.springframework.boot.ApplicationArguments
-import org.springframework.boot.ApplicationRunner
+import org.springframework.beans.factory.SmartInitializingSingleton
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 
 @Component
 class QueryHistorySchemaInitializer(
     private val jdbcTemplateProvider: ObjectProvider<JdbcTemplate>,
-) : ApplicationRunner {
+) : SmartInitializingSingleton {
     private val logger = LoggerFactory.getLogger(QueryHistorySchemaInitializer::class.java)
 
-    override fun run(args: ApplicationArguments) {
+    override fun afterSingletonsInstantiated() {
         val jdbcTemplate = jdbcTemplateProvider.ifAvailable ?: return
         val dataSource = jdbcTemplate.dataSource ?: return
         val databaseProduct =
