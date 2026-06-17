@@ -24,7 +24,7 @@
     - Groups and access rules (per-connection query/export/read-only controls).
     - Local user management for development and small deployments.
 - Audit trail:
-    - User query history.
+    - Persisted user query history with configurable retention and optional SQL text redaction.
     - Admin audit events.
 - Operations:
     - System Health (SYSTEM_ADMIN) with engine-specific cluster checks.

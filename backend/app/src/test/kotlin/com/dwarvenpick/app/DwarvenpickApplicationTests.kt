@@ -10,6 +10,7 @@ import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import com.dwarvenpick.app.datasource.TlsMode
 import com.dwarvenpick.app.datasource.TlsSettings
 import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
+import com.dwarvenpick.app.query.QueryHistoryRepository
 import com.dwarvenpick.app.rbac.CreateGroupRequest
 import com.dwarvenpick.app.rbac.QueryAccessDeniedException
 import com.dwarvenpick.app.rbac.RbacService
@@ -74,11 +75,15 @@ class DwarvenpickApplicationTests {
     @Autowired
     private lateinit var datasourceRegistryService: DatasourceRegistryService
 
+    @Autowired
+    private lateinit var queryHistoryRepository: QueryHistoryRepository
+
     @BeforeEach
     fun resetState() {
         userAccountService.resetState()
         rbacService.resetState()
         authAuditEventStore.clear()
+        queryHistoryRepository.clear()
     }
 
     @Test
@@ -593,6 +598,45 @@ class DwarvenpickApplicationTests {
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.rows.length()").value(10))
             .andExpect(jsonPath("$.rows[0][0]").value("11"))
+    }
+
+    @Test
+    fun `query history endpoint returns persisted execution records`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        val submitResult =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(*analystSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "sql": "select generate_series(1,3)"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isOk)
+                .andReturn()
+        val executionId = jsonPathValue(submitResult, "$.executionId")
+
+        val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
+        assertThat(finalStatus).isEqualTo("SUCCEEDED")
+
+        mockMvc
+            .perform(
+                get("/api/queries/history")
+                    .cookie(*analystSession)
+                    .queryParam("limit", "1")
+                    .queryParam("offset", "0")
+                    .queryParam("sort", "newest"),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].executionId").value(executionId))
+            .andExpect(jsonPath("$[0].queryText").value("select generate_series(1,3)"))
+            .andExpect(jsonPath("$[0].queryTextRedacted").value(false))
+            .andExpect(jsonPath("$[0].rowCount").value(3))
     }
 
     @Test

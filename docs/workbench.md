@@ -89,7 +89,10 @@ Read-only access rules apply to **every** statement in a script.
 ## Query History
 
 - Filter by connection/status/time range and sort by newest/oldest.
-- Paginate results and export the current page as CSV.
+- Query history is stored in the application database, so entries survive backend restarts and redeployments.
+- Paginate through persisted history and export the current page as CSV.
+- History retention is controlled by `dwarvenpick.query.history-retention-days`.
+- Optional SQL text redaction is controlled by `dwarvenpick.query.query-text-redaction-days`.
 
 ## Audit Events (SYSTEM_ADMIN)
 
