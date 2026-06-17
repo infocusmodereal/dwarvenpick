@@ -15,6 +15,7 @@ import com.dwarvenpick.app.query.QueryExecutionProperties
 import com.dwarvenpick.app.query.QueryExecutionRequest
 import com.dwarvenpick.app.query.QueryExecutionStatus
 import com.dwarvenpick.app.query.QueryExportLimitExceededException
+import com.dwarvenpick.app.query.QueryHistorySortOrder
 import com.dwarvenpick.app.query.QueryInvalidPageTokenException
 import com.dwarvenpick.app.query.QueryReadOnlyViolationException
 import com.dwarvenpick.app.query.QueryResultsExpiredException
@@ -314,7 +315,9 @@ class QueryController(
         @RequestParam(required = false) from: String?,
         @RequestParam(required = false) to: String?,
         @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) actor: String?,
+        @RequestParam(required = false) sort: String?,
         authentication: Authentication,
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
@@ -329,6 +332,12 @@ class QueryController(
                 status?.trim()?.takeIf { it.isNotBlank() }?.let { value ->
                     QueryExecutionStatus.valueOf(value.uppercase())
                 }
+            val sortOrder =
+                when (sort?.trim()?.lowercase()) {
+                    null, "", "newest", "desc", "descending" -> QueryHistorySortOrder.NEWEST
+                    "oldest", "asc", "ascending" -> QueryHistorySortOrder.OLDEST
+                    else -> throw IllegalArgumentException("sort must be newest or oldest.")
+                }
 
             val history =
                 queryExecutionManager.listHistory(
@@ -340,6 +349,8 @@ class QueryController(
                     to = toInstant,
                     limit = limit ?: 100,
                     actorFilter = actor,
+                    offset = offset ?: 0,
+                    sortOrder = sortOrder,
                 )
             ResponseEntity.ok(history)
         } catch (ex: IllegalArgumentException) {

@@ -603,6 +603,9 @@ export default function WorkspacePage() {
     const [historyFromFilter, setHistoryFromFilter] = useState('');
     const [historyToFilter, setHistoryToFilter] = useState('');
     const [historySortOrder, setHistorySortOrder] = useState<'newest' | 'oldest'>('newest');
+    const [historyPageIndex, setHistoryPageIndex] = useState(0);
+    const [historyPageSize, setHistoryPageSize] = useState(100);
+    const [historyHasNextPage, setHistoryHasNextPage] = useState(false);
 
     const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
     const [loadingAuditEvents, setLoadingAuditEvents] = useState(false);
@@ -2838,7 +2841,9 @@ export default function WorkspacePage() {
             if (toIso) {
                 queryParams.set('to', toIso);
             }
-            queryParams.set('limit', '200');
+            queryParams.set('limit', String(historyPageSize + 1));
+            queryParams.set('offset', String(historyPageIndex * historyPageSize));
+            queryParams.set('sort', historySortOrder);
 
             const response = await fetch(`/api/queries/history?${queryParams.toString()}`, {
                 method: 'GET',
@@ -2849,7 +2854,9 @@ export default function WorkspacePage() {
             }
 
             const payload = (await response.json()) as QueryHistoryEntryResponse[];
-            setQueryHistoryEntries(Array.isArray(payload) ? payload : []);
+            const rows = Array.isArray(payload) ? payload : [];
+            setHistoryHasNextPage(rows.length > historyPageSize);
+            setQueryHistoryEntries(rows.slice(0, historyPageSize));
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to load query history.';
@@ -2861,6 +2868,9 @@ export default function WorkspacePage() {
         currentUser,
         historyDatasourceFilter,
         historyFromFilter,
+        historyPageIndex,
+        historyPageSize,
+        historySortOrder,
         historyStatusFilter,
         historyToFilter,
         readFriendlyError
@@ -8882,31 +8892,50 @@ export default function WorkspacePage() {
                         hidden={activeSection !== 'history'}
                         visibleDatasources={visibleDatasources}
                         datasourceFilter={historyDatasourceFilter}
-                        onDatasourceFilterChange={(value) => setHistoryDatasourceFilter(value)}
+                        onDatasourceFilterChange={(value) => {
+                            setHistoryPageIndex(0);
+                            setHistoryDatasourceFilter(value);
+                        }}
                         statusFilter={historyStatusFilter}
-                        onStatusFilterChange={(value) => setHistoryStatusFilter(value)}
+                        onStatusFilterChange={(value) => {
+                            setHistoryPageIndex(0);
+                            setHistoryStatusFilter(value);
+                        }}
                         fromFilter={historyFromFilter}
-                        onFromFilterChange={(value) => setHistoryFromFilter(value)}
+                        onFromFilterChange={(value) => {
+                            setHistoryPageIndex(0);
+                            setHistoryFromFilter(value);
+                        }}
                         toFilter={historyToFilter}
-                        onToFilterChange={(value) => setHistoryToFilter(value)}
+                        onToFilterChange={(value) => {
+                            setHistoryPageIndex(0);
+                            setHistoryToFilter(value);
+                        }}
                         loadingQueryHistory={loadingQueryHistory}
                         onRefresh={() => void loadQueryHistory()}
                         sortOrder={historySortOrder}
-                        onToggleSortOrder={() =>
+                        onToggleSortOrder={() => {
+                            setHistoryPageIndex(0);
                             setHistorySortOrder((current) =>
                                 current === 'newest' ? 'oldest' : 'newest'
-                            )
-                        }
+                            );
+                        }}
                         onClearFilters={() => {
+                            setHistoryPageIndex(0);
                             setHistoryDatasourceFilter('');
                             setHistoryStatusFilter('');
                             setHistoryFromFilter('');
                             setHistoryToFilter('');
-                            window.setTimeout(() => {
-                                void loadQueryHistory();
-                            }, 0);
                         }}
                         entries={sortedQueryHistoryEntries}
+                        pageIndex={historyPageIndex}
+                        pageSize={historyPageSize}
+                        hasNextPage={historyHasNextPage}
+                        onPageIndexChange={(value) => setHistoryPageIndex(value)}
+                        onPageSizeChange={(value) => {
+                            setHistoryPageIndex(0);
+                            setHistoryPageSize(value);
+                        }}
                         onOpenEntry={handleOpenHistoryEntry}
                     />
 

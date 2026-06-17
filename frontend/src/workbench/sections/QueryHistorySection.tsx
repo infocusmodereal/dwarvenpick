@@ -1,7 +1,7 @@
 import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
 import { toStatusToneClass } from '../utils';
 import { IconButton } from '../components/WorkbenchIcons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type QueryHistorySectionProps = {
     hidden: boolean;
@@ -20,6 +20,11 @@ type QueryHistorySectionProps = {
     onToggleSortOrder: () => void;
     onClearFilters: () => void;
     entries: QueryHistoryEntryResponse[];
+    pageIndex: number;
+    pageSize: number;
+    hasNextPage: boolean;
+    onPageIndexChange: (value: number) => void;
+    onPageSizeChange: (value: number) => void;
     onOpenEntry: (entry: QueryHistoryEntryResponse, rerun: boolean) => void;
 };
 
@@ -91,22 +96,14 @@ export default function QueryHistorySection({
     onToggleSortOrder,
     onClearFilters,
     entries,
+    pageIndex,
+    pageSize,
+    hasNextPage,
+    onPageIndexChange,
+    onPageSizeChange,
     onOpenEntry
 }: QueryHistorySectionProps) {
-    const [pageSize, setPageSize] = useState(100);
-    const [pageIndex, setPageIndex] = useState(0);
     const [copiedExecutionId, setCopiedExecutionId] = useState('');
-
-    useEffect(() => {
-        setPageIndex(0);
-    }, [datasourceFilter, fromFilter, pageSize, sortOrder, statusFilter, toFilter]);
-
-    const totalPages = Math.max(1, Math.ceil(entries.length / pageSize));
-    const resolvedPageIndex = Math.min(pageIndex, totalPages - 1);
-    const pagedEntries = useMemo(() => {
-        const start = resolvedPageIndex * pageSize;
-        return entries.slice(start, start + pageSize);
-    }, [entries, pageSize, resolvedPageIndex]);
 
     const handleCopyQuery = useCallback(async (executionId: string, queryText: string) => {
         await copyToClipboard(queryText);
@@ -191,13 +188,13 @@ export default function QueryHistorySection({
                 />
                 <IconButton
                     icon="download"
-                    title={pagedEntries.length > 0 ? 'Export CSV' : 'No rows to export'}
+                    title={entries.length > 0 ? 'Export CSV' : 'No rows to export'}
                     onClick={() => {
-                        if (pagedEntries.length === 0) {
+                        if (entries.length === 0) {
                             return;
                         }
 
-                        const rows = pagedEntries.map((entry) => [
+                        const rows = entries.map((entry) => [
                             entry.submittedAt,
                             entry.status,
                             entry.datasourceId,
@@ -207,7 +204,7 @@ export default function QueryHistorySection({
                         ]);
 
                         downloadCsv(
-                            `query-history-page-${resolvedPageIndex + 1}.csv`,
+                            `query-history-page-${pageIndex + 1}.csv`,
                             toCsv(
                                 [
                                     'Submitted',
@@ -221,7 +218,7 @@ export default function QueryHistorySection({
                             )
                         );
                     }}
-                    disabled={pagedEntries.length === 0}
+                    disabled={entries.length === 0}
                 />
                 <button type="button" className="chip" onClick={onToggleSortOrder}>
                     {sortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
@@ -232,21 +229,19 @@ export default function QueryHistorySection({
                 <div className="result-pagination-controls row">
                     <button
                         type="button"
-                        onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-                        disabled={resolvedPageIndex <= 0}
+                        onClick={() => onPageIndexChange(Math.max(0, pageIndex - 1))}
+                        disabled={pageIndex <= 0}
                     >
                         Previous Page
                     </button>
                     <button
                         type="button"
-                        onClick={() =>
-                            setPageIndex((current) => Math.min(totalPages - 1, current + 1))
-                        }
-                        disabled={resolvedPageIndex >= totalPages - 1}
+                        onClick={() => onPageIndexChange(pageIndex + 1)}
+                        disabled={!hasNextPage}
                     >
                         Next Page
                     </button>
-                    <span className="muted-id">{`Page ${resolvedPageIndex + 1} of ${totalPages}`}</span>
+                    <span className="muted-id">{`Page ${pageIndex + 1}`}</span>
                 </div>
                 <div className="result-page-size-inline">
                     <label htmlFor="history-page-size">Rows per page</label>
@@ -254,7 +249,7 @@ export default function QueryHistorySection({
                         <select
                             id="history-page-size"
                             value={pageSize}
-                            onChange={(event) => setPageSize(Number(event.target.value))}
+                            onChange={(event) => onPageSizeChange(Number(event.target.value))}
                         >
                             <option value={10}>10</option>
                             <option value={100}>100</option>
@@ -285,7 +280,7 @@ export default function QueryHistorySection({
                                 <td colSpan={7}>No history entries found for current filters.</td>
                             </tr>
                         ) : (
-                            pagedEntries.map((entry) => {
+                            entries.map((entry) => {
                                 const queryPreview = entry.queryTextRedacted
                                     ? '[REDACTED]'
                                     : (entry.queryText ?? '[empty]');

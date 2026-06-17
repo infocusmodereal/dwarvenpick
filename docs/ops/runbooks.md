@@ -25,8 +25,8 @@ Symptoms:
 - high `dwarvenpick_query_active{status="running"}` for sustained period
 
 Actions:
-1. Inspect query history and audit events for affected connection/user.
+1. Inspect persisted query history and audit events for the affected connection/user.
 2. Cancel stuck executions from UI/API.
 3. Verify connection connectivity and pool saturation.
-4. Confirm cleanup scheduler is active and retention cleanup logs appear.
+4. Confirm cleanup scheduler is active and retention cleanup logs appear; query history is pruned from the application database according to `dwarvenpick.query.history-retention-days`.
 5. If service restart is required, graceful shutdown will cancel remaining in-flight queries.
