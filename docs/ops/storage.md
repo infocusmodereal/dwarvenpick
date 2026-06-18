@@ -6,13 +6,33 @@ nav_order: 22
 
 # Storage
 
-`dwarvenpick` is designed to be stateless by default, but some features need a writable directory to persist artifacts:
+`dwarvenpick` uses the application database for durable runtime state and a writable directory for file artifacts.
+
+## Application database
+
+The application database stores:
+
+- HTTP sessions
+- query history and audit events
+- snippets and scripts/resources
+- local users, identity snapshots, RBAC groups, and access mappings
+- admin-created connections and credential profile metadata
+- connection pause state
+- uploaded custom JDBC driver metadata
+
+Use a shared PostgreSQL database for HA and production. The local embedded H2 database is intended for development.
+
+Legacy Resource Manager data in `scripts.json` is imported into the database on startup if the resource tables are empty.
+
+## File artifacts
+
+Some features need a writable directory to persist artifacts:
 
 - JDBC driver jars uploaded from the UI
 - JDBC driver jars downloaded from Maven Central
 - TLS/SSL materials (CA certificates, client certificates, client keys) and generated keystores/truststores
 
-## External drivers directory
+### External drivers directory
 
 The backend uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as the root for these artifacts.
 
@@ -32,7 +52,7 @@ Notes:
 
 ## Docker Compose persistence
 
-`deploy/docker/docker-compose.yml` mounts a named volume at `/opt/app/drivers` so artifacts persist across restarts.
+`deploy/docker/docker-compose.yml` mounts a named volume at `/opt/app/drivers` so file artifacts persist across restarts.
 
 If you prefer a host bind mount (for easier inspection/backups during development), replace the volume with a host path, for example:
 
@@ -74,4 +94,3 @@ drivers:
     mountPath: /opt/app/drivers
     readOnly: false
 ```
-

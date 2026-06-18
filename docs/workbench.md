@@ -59,6 +59,7 @@ Read-only access rules apply to **every** statement in a script.
 ## Scripts
 
 - The **Scripts** section is a server-backed Resource Manager for SQL files.
+- Scripts and their version history are stored in the application database.
 - Save scripts into **Private** or **Shared** spaces.
 - Shared scripts require a group and can optionally allow group members to update content.
 - Organize scripts with folder paths, tags, and a folder tree view.
@@ -98,6 +99,7 @@ Read-only access rules apply to **every** statement in a script.
 
 - Filter audit events by action/actor/outcome/time range and sort by newest/oldest.
 - Paginate results and export the current page as CSV.
+- Audit event retention is controlled by `dwarvenpick.query.audit-retention-days`.
 
 ## System Health (SYSTEM_ADMIN)
 
@@ -114,3 +116,4 @@ The System Health page also includes a lightweight control plane for the selecte
 - Latency summary (windowed) and latest error samples.
 - Admin actions: pause/resume the connection, cancel/kill queued/running queries (optionally filtered by actor),
   and export queued/running queries as CSV.
+- Paused connection state is stored in the application database and survives backend restarts.

@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 class ManagedDatasourceNotFoundException(
     override val message: String,
@@ -36,7 +35,7 @@ data class ConnectionSpec(
     val pool: PoolSettings,
 )
 
-private data class CredentialProfileRecord(
+data class CredentialProfileRecord(
     val profileId: String,
     var username: String,
     var description: String?,
@@ -45,7 +44,7 @@ private data class CredentialProfileRecord(
     var updatedAt: Instant,
 )
 
-private data class ManagedDatasourceRecord(
+data class ManagedDatasourceRecord(
     val id: String,
     var name: String,
     var engine: DatasourceEngine,
@@ -58,6 +57,7 @@ private data class ManagedDatasourceRecord(
     var tls: TlsSettings,
     var options: MutableMap<String, String>,
     val credentialProfiles: MutableMap<String, CredentialProfileRecord>,
+    var source: String = "ui",
 )
 
 @Service
@@ -67,25 +67,28 @@ class DatasourceRegistryService(
     private val datasourceNetworkGuard: DatasourceNetworkGuard,
     private val seedDatasourceProperties: SeedDatasourceProperties,
     private val tlsCertificateStore: TlsCertificateStore,
+    private val datasourceRegistryRepository: DatasourceRegistryRepository,
 ) {
-    private val datasources = ConcurrentHashMap<String, ManagedDatasourceRecord>()
-
     @PostConstruct
     fun initialize() {
-        resetState()
+        ensureSeedDatasources()
     }
 
     @Synchronized
     fun resetState() {
-        datasources.clear()
+        datasourceRegistryRepository.clear()
+        ensureSeedDatasources()
+    }
 
+    @Synchronized
+    fun ensureSeedDatasources() {
         if (!seedDatasourceProperties.enabled) {
             return
         }
 
         val postgres = seedDatasourceProperties.postgres
         val postgresId =
-            createDatasource(
+            upsertManagedDatasource(
                 CreateDatasourceRequest(
                     name = "postgresql-core",
                     engine = DatasourceEngine.POSTGRESQL,
@@ -95,6 +98,7 @@ class DatasourceRegistryService(
                     driverId = "postgres-default",
                     tls = TlsSettings(mode = TlsMode.DISABLE),
                 ),
+                source = "seed",
             ).id
         upsertCredentialProfile(
             postgresId,
@@ -118,7 +122,7 @@ class DatasourceRegistryService(
 
         val mysql = seedDatasourceProperties.mysql
         val mysqlId =
-            createDatasource(
+            upsertManagedDatasource(
                 CreateDatasourceRequest(
                     name = "mysql-orders",
                     engine = DatasourceEngine.MYSQL,
@@ -133,6 +137,7 @@ class DatasourceRegistryService(
                             "serverTimezone" to "UTC",
                         ),
                 ),
+                source = "seed",
             ).id
         upsertCredentialProfile(
             mysqlId,
@@ -156,7 +161,7 @@ class DatasourceRegistryService(
 
         val mariadb = seedDatasourceProperties.mariadb
         val mariadbId =
-            createDatasource(
+            upsertManagedDatasource(
                 CreateDatasourceRequest(
                     name = "mariadb-mart",
                     engine = DatasourceEngine.MARIADB,
@@ -170,6 +175,7 @@ class DatasourceRegistryService(
                             "sessionVariables" to "sql_mode=ANSI_QUOTES",
                         ),
                 ),
+                source = "seed",
             ).id
         upsertCredentialProfile(
             mariadbId,
@@ -194,7 +200,7 @@ class DatasourceRegistryService(
         val trino = seedDatasourceProperties.trino
         if (trino.enabled) {
             val trinoId =
-                createDatasource(
+                upsertManagedDatasource(
                     CreateDatasourceRequest(
                         name = "trino-warehouse",
                         engine = DatasourceEngine.TRINO,
@@ -204,6 +210,7 @@ class DatasourceRegistryService(
                         driverId = "trino-default",
                         tls = TlsSettings(mode = TlsMode.DISABLE),
                     ),
+                    source = "seed",
                 ).id
             upsertCredentialProfile(
                 trinoId,
@@ -228,7 +235,7 @@ class DatasourceRegistryService(
 
         val starrocks = seedDatasourceProperties.starrocks
         val starrocksId =
-            createDatasource(
+            upsertManagedDatasource(
                 CreateDatasourceRequest(
                     name = "starrocks-warehouse",
                     engine = DatasourceEngine.STARROCKS,
@@ -243,6 +250,7 @@ class DatasourceRegistryService(
                             "serverTimezone" to "UTC",
                         ),
                 ),
+                source = "seed",
             ).id
         upsertCredentialProfile(
             starrocksId,
@@ -271,7 +279,7 @@ class DatasourceRegistryService(
         if (verticaDriverAvailable) {
             val vertica = seedDatasourceProperties.vertica
             val verticaId =
-                createDatasource(
+                upsertManagedDatasource(
                     CreateDatasourceRequest(
                         name = "vertica-warehouse",
                         engine = DatasourceEngine.VERTICA,
@@ -281,6 +289,7 @@ class DatasourceRegistryService(
                         driverId = "vertica-external",
                         tls = TlsSettings(mode = TlsMode.DISABLE),
                     ),
+                    source = "seed",
                 ).id
             upsertCredentialProfile(
                 verticaId,
@@ -310,7 +319,7 @@ class DatasourceRegistryService(
         if (aerospikeDriverAvailable) {
             val aerospike = seedDatasourceProperties.aerospike
             val aerospikeId =
-                createDatasource(
+                upsertManagedDatasource(
                     CreateDatasourceRequest(
                         name = "aerospike-kv",
                         engine = DatasourceEngine.AEROSPIKE,
@@ -325,6 +334,7 @@ class DatasourceRegistryService(
                                 "refuseScan" to "false",
                             ),
                     ),
+                    source = "seed",
                 ).id
             upsertCredentialProfile(
                 aerospikeId,
@@ -349,12 +359,14 @@ class DatasourceRegistryService(
     }
 
     fun listManagedDatasources(): List<ManagedDatasourceResponse> =
-        datasources.values
+        datasourceRegistryRepository
+            .list()
             .sortedBy { it.name.lowercase(Locale.getDefault()) }
             .map { it.toResponse() }
 
     fun listCatalogEntries(): List<CatalogDatasourceEntry> =
-        datasources.values
+        datasourceRegistryRepository
+            .list()
             .sortedBy { it.name.lowercase(Locale.getDefault()) }
             .map { datasource ->
                 val sysadminProfiles =
@@ -387,10 +399,37 @@ class DatasourceRegistryService(
 
     fun createDatasource(request: CreateDatasourceRequest): ManagedDatasourceResponse {
         val datasourceId = slugify(request.name)
-        if (datasources.containsKey(datasourceId)) {
+        if (datasourceRegistryRepository.find(datasourceId) != null) {
             throw IllegalArgumentException("Datasource '$datasourceId' already exists.")
         }
 
+        return persistDatasource(
+            datasourceId = datasourceId,
+            request = request,
+            existing = null,
+            source = "ui",
+        )
+    }
+
+    fun upsertManagedDatasource(
+        request: CreateDatasourceRequest,
+        source: String = "config",
+    ): ManagedDatasourceResponse {
+        val datasourceId = slugify(request.name)
+        return persistDatasource(
+            datasourceId = datasourceId,
+            request = request,
+            existing = datasourceRegistryRepository.find(datasourceId),
+            source = source,
+        )
+    }
+
+    private fun persistDatasource(
+        datasourceId: String,
+        request: CreateDatasourceRequest,
+        existing: ManagedDatasourceRecord?,
+        source: String,
+    ): ManagedDatasourceResponse {
         val driver = driverRegistryService.resolveDriver(request.engine, request.driverId)
         val sanitizedHost = request.host.trim()
         if (sanitizedHost.isBlank()) {
@@ -398,25 +437,41 @@ class DatasourceRegistryService(
         }
         datasourceNetworkGuard.validateHost(sanitizedHost)
 
-        datasources[datasourceId] =
-            ManagedDatasourceRecord(
-                id = datasourceId,
-                name = request.name.trim(),
-                engine = request.engine,
-                host = sanitizedHost,
-                port = request.port,
-                database = request.database?.trim()?.ifBlank { null },
-                driverId = driver.driverId,
-                driverClass = driver.driverClass,
-                pool = request.pool,
-                tls = request.tls,
-                options = request.options.toMutableMap(),
-                credentialProfiles = linkedMapOf(),
-            )
+        val datasource =
+            existing
+                ?: ManagedDatasourceRecord(
+                    id = datasourceId,
+                    name = request.name.trim(),
+                    engine = request.engine,
+                    host = sanitizedHost,
+                    port = request.port,
+                    database = request.database?.trim()?.ifBlank { null },
+                    driverId = driver.driverId,
+                    driverClass = driver.driverClass,
+                    pool = request.pool,
+                    tls = request.tls,
+                    options = request.options.toMutableMap(),
+                    credentialProfiles = linkedMapOf(),
+                    source = source,
+                )
 
+        datasource.name = request.name.trim()
+        datasource.engine = request.engine
+        datasource.host = sanitizedHost
+        datasource.port = request.port
+        datasource.database = request.database?.trim()?.ifBlank { null }
+        datasource.driverId = driver.driverId
+        datasource.driverClass = driver.driverClass
+        datasource.pool = request.pool
+        datasource.tls = request.tls
+        datasource.options.clear()
+        datasource.options.putAll(request.options)
+        datasource.source = source
+
+        datasourceRegistryRepository.saveDatasource(datasource)
         request.tlsCertificates?.let { tlsCertificateStore.apply(datasourceId, it) }
 
-        return datasources.getValue(datasourceId).toResponse()
+        return datasource.toResponse()
     }
 
     fun updateDatasource(
@@ -424,7 +479,7 @@ class DatasourceRegistryService(
         request: UpdateDatasourceRequest,
     ): ManagedDatasourceResponse {
         val datasource =
-            datasources[datasourceId]
+            datasourceRegistryRepository.find(datasourceId)
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
 
         request.name?.let { datasource.name = it.trim() }
@@ -434,7 +489,7 @@ class DatasourceRegistryService(
             datasource.host = sanitizedHost
         }
         request.port?.let { datasource.port = it }
-        request.database?.let { datasource.database = it.trim().ifBlank { null } }
+        request.database?.let { database -> datasource.database = database.trim().ifBlank { null } }
         request.pool?.let { datasource.pool = it }
         request.tls?.let { datasource.tls = it }
         request.options?.let {
@@ -449,11 +504,12 @@ class DatasourceRegistryService(
             datasource.driverClass = resolvedDriver.driverClass
         }
 
+        datasourceRegistryRepository.saveDatasource(datasource)
         return datasource.toResponse()
     }
 
     fun deleteDatasource(datasourceId: String): Boolean {
-        val removed = datasources.remove(datasourceId) != null
+        val removed = datasourceRegistryRepository.delete(datasourceId)
         if (removed) {
             tlsCertificateStore.clear(datasourceId)
         }
@@ -466,7 +522,7 @@ class DatasourceRegistryService(
         request: UpsertCredentialProfileRequest,
     ): CredentialProfileResponse {
         val datasource =
-            datasources[datasourceId]
+            datasourceRegistryRepository.find(datasourceId)
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
 
         val normalizedProfileId = profileId.trim()
@@ -496,9 +552,7 @@ class DatasourceRegistryService(
                     sysadmin = request.sysadmin,
                     encryptedCredential = encrypted ?: datasourceCredentialCryptoService.encryptPassword(""),
                     updatedAt = now,
-                ).also { created ->
-                    datasource.credentialProfiles[normalizedProfileId] = created
-                }
+                )
 
         record.username = request.username.trim()
         record.description = request.description?.trim()?.ifBlank { null }
@@ -508,12 +562,15 @@ class DatasourceRegistryService(
         }
         record.updatedAt = now
 
+        datasource.credentialProfiles[normalizedProfileId] = record
+        datasourceRegistryRepository.saveCredentialProfile(datasourceId, record)
+
         return record.toResponse()
     }
 
     fun listCredentialProfiles(datasourceId: String): List<CredentialProfileResponse> {
         val datasource =
-            datasources[datasourceId]
+            datasourceRegistryRepository.find(datasourceId)
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
 
         return datasource.credentialProfiles.values
@@ -527,7 +584,7 @@ class DatasourceRegistryService(
         tlsOverride: TlsSettings?,
     ): ConnectionSpec {
         val datasource =
-            datasources[datasourceId]
+            datasourceRegistryRepository.find(datasourceId)
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
 
         val credential =
@@ -560,11 +617,12 @@ class DatasourceRegistryService(
 
     fun reencryptAllCredentialProfiles(): ReencryptCredentialsResponse {
         var updates = 0
-        datasources.values.forEach { datasource ->
+        datasourceRegistryRepository.list().forEach { datasource ->
             datasource.credentialProfiles.values.forEach { credential ->
                 credential.encryptedCredential =
                     datasourceCredentialCryptoService.reencrypt(credential.encryptedCredential)
                 credential.updatedAt = Instant.now()
+                datasourceRegistryRepository.saveCredentialProfile(datasource.id, credential)
                 updates += 1
             }
         }
@@ -581,7 +639,7 @@ class DatasourceRegistryService(
         profileId: String,
     ): String {
         val datasource =
-            datasources[datasourceId]
+            datasourceRegistryRepository.find(datasourceId)
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         val credential =
             datasource.credentialProfiles[profileId]
@@ -591,11 +649,11 @@ class DatasourceRegistryService(
         return credential.encryptedCredential.ciphertext
     }
 
-    fun hasDatasource(datasourceId: String): Boolean = datasources.containsKey(datasourceId)
+    fun hasDatasource(datasourceId: String): Boolean = datasourceRegistryRepository.find(datasourceId) != null
 
     fun credentialProfilesForDatasource(datasourceId: String): Set<String> {
         val datasource =
-            datasources[datasourceId]
+            datasourceRegistryRepository.find(datasourceId)
                 ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         return datasource.credentialProfiles.keys.toSet()
     }

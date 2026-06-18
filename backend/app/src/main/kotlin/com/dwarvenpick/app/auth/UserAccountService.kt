@@ -3,7 +3,6 @@ package com.dwarvenpick.app.auth
 import jakarta.annotation.PostConstruct
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
-import java.util.concurrent.ConcurrentHashMap
 
 class DisabledUserException(
     override val message: String = "User account is disabled.",
@@ -15,7 +14,7 @@ class UserNotFoundException(
 
 private val localUsernamePattern = Regex("^[a-z][a-z0-9.-]*$")
 
-private data class UserAccount(
+data class UserAccount(
     val username: String,
     var displayName: String,
     var email: String?,
@@ -43,17 +42,22 @@ class UserAccountService(
     private val authProperties: AuthProperties,
     private val passwordPolicyValidator: PasswordPolicyValidator,
     private val passwordEncoder: PasswordEncoder,
+    private val userAccountRepository: UserAccountRepository,
 ) {
-    private val users = ConcurrentHashMap<String, UserAccount>()
-
     @PostConstruct
     fun initializeSeedUsers() {
-        resetState()
+        seedLocalUsers(clearExisting = false)
     }
 
     @Synchronized
     fun resetState() {
-        users.clear()
+        seedLocalUsers(clearExisting = true)
+    }
+
+    private fun seedLocalUsers(clearExisting: Boolean) {
+        if (clearExisting) {
+            userAccountRepository.clear()
+        }
         if (!authProperties.isLocalAuthEnabled()) {
             return
         }
@@ -64,7 +68,10 @@ class UserAccountService(
             require(localUsernamePattern.matches(normalizedUsername)) {
                 "Seed user '${seedUser.username}' has an invalid username."
             }
-            users[normalizedUsername] =
+            if (!clearExisting && userAccountRepository.find(normalizedUsername) != null) {
+                return@forEach
+            }
+            userAccountRepository.save(
                 UserAccount(
                     username = normalizedUsername,
                     displayName = seedUser.displayName,
@@ -75,12 +82,14 @@ class UserAccountService(
                     temporaryPassword = false,
                     roles = seedUser.roles.map { it.uppercase() }.toMutableSet(),
                     groups = mutableSetOf(),
-                )
+                ),
+            )
         }
     }
 
     fun listUsers(): List<AdminUserAccount> =
-        users.values
+        userAccountRepository
+            .list()
             .sortedBy { account -> account.username.lowercase() }
             .map { account -> account.toAdminSummary() }
 
@@ -102,7 +111,7 @@ class UserAccountService(
                 "Username must start with a letter and contain only lowercase letters, numbers, '.' and '-'.",
             )
         }
-        if (users.containsKey(normalizedUsername)) {
+        if (userAccountRepository.find(normalizedUsername) != null) {
             throw IllegalArgumentException("User '$normalizedUsername' already exists.")
         }
 
@@ -115,7 +124,7 @@ class UserAccountService(
                 mutableSetOf("USER")
             }
 
-        users[normalizedUsername] =
+        val user =
             UserAccount(
                 username = normalizedUsername,
                 displayName = resolvedDisplayName,
@@ -127,8 +136,9 @@ class UserAccountService(
                 roles = roles,
                 groups = mutableSetOf(),
             )
+        userAccountRepository.save(user)
 
-        return toPrincipal(users.getValue(normalizedUsername))
+        return toPrincipal(user)
     }
 
     fun updateLocalDisplayName(
@@ -137,7 +147,7 @@ class UserAccountService(
     ): AdminUserAccount {
         val normalizedUsername = normalizeUsername(username)
         val user =
-            users[normalizedUsername]
+            userAccountRepository.find(normalizedUsername)
                 ?: throw UserNotFoundException("User '$normalizedUsername' does not exist.")
 
         if (!user.enabled) {
@@ -149,6 +159,7 @@ class UserAccountService(
 
         val resolvedDisplayName = displayName?.trim()?.ifBlank { null } ?: user.username
         user.displayName = resolvedDisplayName
+        userAccountRepository.save(user)
         return user.toAdminSummary()
     }
 
@@ -156,7 +167,7 @@ class UserAccountService(
         username: String,
         password: String,
     ): AuthenticatedUserPrincipal? {
-        val user = users[normalizeUsername(username)] ?: return null
+        val user = userAccountRepository.find(normalizeUsername(username)) ?: return null
 
         if (!user.enabled) {
             throw DisabledUserException()
@@ -167,11 +178,12 @@ class UserAccountService(
             return null
         }
 
+        userAccountRepository.save(user)
         return toPrincipal(user)
     }
 
     fun currentUserPrincipal(username: String): AuthenticatedUserPrincipal? {
-        val user = users[normalizeUsername(username)] ?: return null
+        val user = userAccountRepository.find(normalizeUsername(username)) ?: return null
         return toPrincipal(user)
     }
 
@@ -183,7 +195,7 @@ class UserAccountService(
         passwordPolicyValidator.validateOrThrow(newPassword)
 
         val user =
-            users[normalizeUsername(username)]
+            userAccountRepository.find(normalizeUsername(username))
                 ?: throw UserNotFoundException("User '$username' does not exist.")
 
         if (!user.enabled) {
@@ -193,6 +205,7 @@ class UserAccountService(
         user.passwordHash = passwordEncoder.encode(newPassword)
         user.provider = AuthProvider.LOCAL
         user.temporaryPassword = temporaryPassword
+        userAccountRepository.save(user)
         return toPrincipal(user)
     }
 
@@ -202,7 +215,7 @@ class UserAccountService(
         roles: Set<String>,
     ): AuthenticatedUserPrincipal {
         val normalizedUsername = normalizeUsername(profile.username)
-        val existingUser = users[normalizedUsername]
+        val existingUser = userAccountRepository.find(normalizedUsername)
 
         val normalizedRoles =
             roles
@@ -213,9 +226,9 @@ class UserAccountService(
                 .apply { add("USER") }
 
         if (existingUser == null) {
-            users[normalizedUsername] =
+            val user =
                 UserAccount(
-                    username = profile.username,
+                    username = normalizedUsername,
                     displayName = profile.displayName,
                     email = profile.email,
                     passwordHash = null,
@@ -225,8 +238,9 @@ class UserAccountService(
                     roles = normalizedRoles,
                     groups = internalGroups.toMutableSet(),
                 )
+            userAccountRepository.save(user)
 
-            return toPrincipal(users[normalizedUsername]!!)
+            return toPrincipal(user)
         }
 
         if (!existingUser.enabled) {
@@ -242,6 +256,7 @@ class UserAccountService(
         existingUser.roles.clear()
         existingUser.roles.addAll(normalizedRoles)
 
+        userAccountRepository.save(existingUser)
         return toPrincipal(existingUser)
     }
 
@@ -253,7 +268,7 @@ class UserAccountService(
         roles: Set<String>,
     ): AuthenticatedUserPrincipal {
         val normalizedUsername = normalizeUsername(username)
-        val existingUser = users[normalizedUsername]
+        val existingUser = userAccountRepository.find(normalizedUsername)
 
         val normalizedRoles =
             roles
@@ -264,7 +279,7 @@ class UserAccountService(
                 .apply { add("USER") }
 
         if (existingUser == null) {
-            users[normalizedUsername] =
+            val user =
                 UserAccount(
                     username = normalizedUsername,
                     displayName = displayName,
@@ -276,8 +291,9 @@ class UserAccountService(
                     roles = normalizedRoles,
                     groups = internalGroups.toMutableSet(),
                 )
+            userAccountRepository.save(user)
 
-            return toPrincipal(users[normalizedUsername]!!)
+            return toPrincipal(user)
         }
 
         if (!existingUser.enabled) {
@@ -293,6 +309,7 @@ class UserAccountService(
         existingUser.roles.clear()
         existingUser.roles.addAll(normalizedRoles)
 
+        userAccountRepository.save(existingUser)
         return toPrincipal(existingUser)
     }
 
@@ -301,7 +318,7 @@ class UserAccountService(
         groupId: String,
     ): AuthenticatedUserPrincipal {
         val user =
-            users[normalizeUsername(username)]
+            userAccountRepository.find(normalizeUsername(username))
                 ?: throw UserNotFoundException("User '$username' does not exist.")
 
         if (!user.enabled) {
@@ -309,6 +326,7 @@ class UserAccountService(
         }
 
         user.groups.add(groupId)
+        userAccountRepository.save(user)
         return toPrincipal(user)
     }
 
@@ -317,7 +335,7 @@ class UserAccountService(
         groupId: String,
     ): AuthenticatedUserPrincipal {
         val user =
-            users[normalizeUsername(username)]
+            userAccountRepository.find(normalizeUsername(username))
                 ?: throw UserNotFoundException("User '$username' does not exist.")
 
         if (!user.enabled) {
@@ -325,6 +343,7 @@ class UserAccountService(
         }
 
         user.groups.remove(groupId)
+        userAccountRepository.save(user)
         return toPrincipal(user)
     }
 

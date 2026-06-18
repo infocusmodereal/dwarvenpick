@@ -9,8 +9,8 @@ nav_order: 10
 ## Session and authentication
 
 - Authentication uses server-side HTTP sessions (`JSESSIONID`) with HTTP-only cookies.
-- By default, sessions are stored in memory (a backend restart/redeploy invalidates active sessions).
-- For HA (multi-replica) and redeploy-safe logins, use a shared session store (Spring Session JDBC).
+- Sessions are stored through Spring Session JDBC.
+- For HA (multi-replica) and redeploy-safe logins, use a shared PostgreSQL metadata DB.
 - Local login and LDAP login are exposed as JSON endpoints:
   - `POST /api/auth/login`
   - `POST /api/auth/ldap/login`
@@ -52,3 +52,5 @@ Authentication, RBAC, and query governance actions produce audit events:
 - group create/update/member add/member remove
 - connection access mapping create/update/delete
 - query execution allowed/denied decisions
+
+Audit events are stored in the application database and pruned by `dwarvenpick.query.audit-retention-days`.

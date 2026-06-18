@@ -4,7 +4,6 @@ import com.dwarvenpick.app.auth.AuthenticatedUserPrincipal
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 class SnippetNotFoundException(
     override val message: String,
@@ -14,7 +13,7 @@ class SnippetAccessDeniedException(
     override val message: String,
 ) : RuntimeException(message)
 
-private data class SnippetRecord(
+data class SnippetRecord(
     val snippetId: String,
     val owner: String,
     var groupId: String?,
@@ -25,9 +24,9 @@ private data class SnippetRecord(
 )
 
 @Service
-class SnippetService {
-    private val snippets = ConcurrentHashMap<String, SnippetRecord>()
-
+class SnippetService(
+    private val snippetRepository: SnippetRepository,
+) {
     fun listSnippets(
         principal: AuthenticatedUserPrincipal,
         scope: String?,
@@ -48,7 +47,8 @@ class SnippetService {
                 else -> parseRegexFilterOrNull(titleFilter)
             }
 
-        return snippets.values
+        return snippetRepository
+            .list()
             .asSequence()
             .filter { record ->
                 (includePersonal && record.owner == principal.username) ||
@@ -89,7 +89,7 @@ class SnippetService {
                 createdAt = now,
                 updatedAt = now,
             )
-        snippets[snippetId] = snippet
+        snippetRepository.save(snippet)
         return snippet.toResponse()
     }
 
@@ -98,9 +98,7 @@ class SnippetService {
         snippetId: String,
         request: UpdateSnippetRequest,
     ): SnippetResponse {
-        val snippet =
-            snippets[snippetId]
-                ?: throw SnippetNotFoundException("Snippet '$snippetId' was not found.")
+        val snippet = snippetRepository.find(snippetId) ?: throw SnippetNotFoundException("Snippet '$snippetId' was not found.")
 
         if (!canEditSnippet(principal, snippet)) {
             throw SnippetAccessDeniedException("Snippet update denied for '$snippetId'.")
@@ -114,6 +112,7 @@ class SnippetService {
         }
         snippet.updatedAt = Instant.now()
 
+        snippetRepository.save(snippet)
         return snippet.toResponse()
     }
 
@@ -121,16 +120,16 @@ class SnippetService {
         principal: AuthenticatedUserPrincipal,
         snippetId: String,
     ): Boolean {
-        val snippet =
-            snippets[snippetId]
-                ?: throw SnippetNotFoundException("Snippet '$snippetId' was not found.")
+        val snippet = snippetRepository.find(snippetId) ?: throw SnippetNotFoundException("Snippet '$snippetId' was not found.")
 
         if (!canEditSnippet(principal, snippet)) {
             throw SnippetAccessDeniedException("Snippet delete denied for '$snippetId'.")
         }
 
-        return snippets.remove(snippetId) != null
+        return snippetRepository.delete(snippetId)
     }
+
+    fun clear() = snippetRepository.clear()
 
     private fun canAccessGroupSnippet(
         principal: AuthenticatedUserPrincipal,

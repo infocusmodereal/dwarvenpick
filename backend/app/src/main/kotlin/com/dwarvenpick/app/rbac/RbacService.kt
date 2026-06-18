@@ -9,7 +9,6 @@ import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 class GroupNotFoundException(
     override val message: String,
@@ -31,14 +30,14 @@ data class QueryAccessPolicy(
     val concurrencyLimit: Int,
 )
 
-private data class GroupRecord(
+data class GroupRecord(
     val id: String,
     val name: String,
     var description: String?,
     val members: MutableSet<String>,
 )
 
-private data class DatasourceAccessRecord(
+data class DatasourceAccessRecord(
     val groupId: String,
     val datasourceId: String,
     var canQuery: Boolean,
@@ -54,56 +53,56 @@ private data class DatasourceAccessRecord(
 class RbacService(
     private val userAccountService: UserAccountService,
     private val datasourceRegistryService: DatasourceRegistryService,
+    private val rbacRepository: RbacRepository,
 ) {
-    private val groups = ConcurrentHashMap<String, GroupRecord>()
-    private val datasourceAccess = ConcurrentHashMap<String, DatasourceAccessRecord>()
     private val protectedGroupIds = setOf("platform-admins", "analytics-users")
 
     @PostConstruct
     fun initialize() {
-        resetState()
+        seedGroups()
+        seedAccessMappings()
     }
 
     @Synchronized
     fun resetState() {
-        groups.clear()
-        datasourceAccess.clear()
+        rbacRepository.clear()
         datasourceRegistryService.resetState()
         seedGroups()
         seedAccessMappings()
     }
 
     fun listGroups(): List<GroupResponse> =
-        groups.values
+        rbacRepository
+            .listGroups()
             .sortedBy { it.name.lowercase(Locale.getDefault()) }
             .map { group -> group.toResponse() }
 
     fun createGroup(request: CreateGroupRequest): GroupResponse {
         val groupId = request.name.trim()
-        if (groups.containsKey(groupId)) {
+        if (rbacRepository.findGroup(groupId) != null) {
             throw IllegalArgumentException("Group '$groupId' already exists.")
         }
 
-        groups[groupId] =
+        val group =
             GroupRecord(
                 id = groupId,
                 name = groupId,
                 description = request.description?.trim()?.ifBlank { null },
                 members = linkedSetOf(),
             )
+        rbacRepository.saveGroup(group)
 
-        return groups.getValue(groupId).toResponse()
+        return group.toResponse()
     }
 
     fun updateGroup(
         groupId: String,
         request: UpdateGroupRequest,
     ): GroupResponse {
-        val group =
-            groups[groupId]
-                ?: throw GroupNotFoundException("Group '$groupId' was not found.")
+        val group = rbacRepository.findGroup(groupId) ?: throw GroupNotFoundException("Group '$groupId' was not found.")
 
         group.description = request.description?.trim()?.ifBlank { null }
+        rbacRepository.saveGroup(group)
         return group.toResponse()
     }
 
@@ -111,9 +110,7 @@ class RbacService(
         groupId: String,
         username: String,
     ): GroupResponse {
-        val group =
-            groups[groupId]
-                ?: throw GroupNotFoundException("Group '$groupId' was not found.")
+        val group = rbacRepository.findGroup(groupId) ?: throw GroupNotFoundException("Group '$groupId' was not found.")
 
         val normalizedUsername = username.trim()
         if (normalizedUsername.isBlank()) {
@@ -129,6 +126,7 @@ class RbacService(
         }
 
         group.members.add(normalizedUsername)
+        rbacRepository.addMember(groupId, normalizedUsername)
         return group.toResponse()
     }
 
@@ -136,9 +134,7 @@ class RbacService(
         groupId: String,
         username: String,
     ): GroupResponse {
-        val group =
-            groups[groupId]
-                ?: throw GroupNotFoundException("Group '$groupId' was not found.")
+        val group = rbacRepository.findGroup(groupId) ?: throw GroupNotFoundException("Group '$groupId' was not found.")
 
         val normalizedUsername = username.trim()
         if (normalizedUsername.isBlank()) {
@@ -154,6 +150,7 @@ class RbacService(
         }
 
         group.members.remove(normalizedUsername)
+        rbacRepository.removeMember(groupId, normalizedUsername)
         return group.toResponse()
     }
 
@@ -168,10 +165,9 @@ class RbacService(
         }
 
         val removedGroup =
-            groups.remove(normalizedGroupId)
+            rbacRepository.deleteGroup(normalizedGroupId)
                 ?: throw GroupNotFoundException("Group '$normalizedGroupId' was not found.")
 
-        datasourceAccess.entries.removeIf { (_, access) -> access.groupId == normalizedGroupId }
         removedGroup.members.forEach { member ->
             runCatching { userAccountService.removeGroupMembership(member, normalizedGroupId) }
         }
@@ -182,9 +178,9 @@ class RbacService(
         datasourceRegistryService.listCatalogEntries().map { catalog -> catalog.toResponse() }
 
     fun listDatasourceAccess(groupId: String?): List<DatasourceAccessResponse> =
-        datasourceAccess.values
+        rbacRepository
+            .listDatasourceAccess(groupId)
             .asSequence()
-            .filter { access -> groupId == null || access.groupId == groupId }
             .sortedWith(compareBy({ access -> access.groupId }, { access -> access.datasourceId }))
             .map { access -> access.toResponse() }
             .toList()
@@ -194,7 +190,7 @@ class RbacService(
         datasourceId: String,
         request: UpsertDatasourceAccessRequest,
     ): DatasourceAccessResponse {
-        if (!groups.containsKey(groupId)) {
+        if (rbacRepository.findGroup(groupId) == null) {
             throw GroupNotFoundException("Group '$groupId' was not found.")
         }
 
@@ -214,9 +210,10 @@ class RbacService(
         }
 
         val key = accessKey(groupId, datasourceId)
+        val existing = rbacRepository.listDatasourceAccess().firstOrNull { accessKey(it.groupId, it.datasourceId) == key }
         val record =
-            datasourceAccess.computeIfAbsent(key) {
-                DatasourceAccessRecord(
+            existing
+                ?: DatasourceAccessRecord(
                     groupId = groupId,
                     datasourceId = datasourceId,
                     canQuery = request.canQuery,
@@ -227,7 +224,6 @@ class RbacService(
                     concurrencyLimit = request.concurrencyLimit,
                     credentialProfile = credentialProfile,
                 )
-            }
 
         record.canQuery = request.canQuery
         record.canExport = request.canExport
@@ -237,16 +233,14 @@ class RbacService(
         record.concurrencyLimit = request.concurrencyLimit
         record.credentialProfile = credentialProfile
 
+        rbacRepository.saveDatasourceAccess(record)
         return record.toResponse()
     }
 
     fun deleteDatasourceAccess(
         groupId: String,
         datasourceId: String,
-    ): Boolean {
-        val key = accessKey(groupId, datasourceId)
-        return datasourceAccess.remove(key) != null
-    }
+    ): Boolean = rbacRepository.deleteDatasourceAccess(groupId, datasourceId)
 
     fun listPermittedDatasources(principal: AuthenticatedUserPrincipal): List<DatasourceResponse> {
         if (principal.roles.contains("SYSTEM_ADMIN")) {
@@ -254,7 +248,8 @@ class RbacService(
         }
 
         val allowedIds =
-            datasourceAccess.values
+            rbacRepository
+                .listDatasourceAccess()
                 .asSequence()
                 .filter { access -> access.groupId in principal.groups && access.canQuery }
                 .map { access -> access.datasourceId }
@@ -280,7 +275,7 @@ class RbacService(
             return true
         }
 
-        return datasourceAccess.values.any { access ->
+        return rbacRepository.listDatasourceAccess().any { access ->
             access.datasourceId == datasourceId &&
                 access.groupId in principal.groups &&
                 access.canQuery
@@ -299,7 +294,7 @@ class RbacService(
             return true
         }
 
-        return datasourceAccess.values.any { access ->
+        return rbacRepository.listDatasourceAccess().any { access ->
             access.datasourceId == datasourceId &&
                 access.groupId in principal.groups &&
                 access.canExport
@@ -332,7 +327,8 @@ class RbacService(
         }
 
         val matchingAccessRules =
-            datasourceAccess.values
+            rbacRepository
+                .listDatasourceAccess()
                 .asSequence()
                 .filter { access ->
                     access.datasourceId == datasourceId &&
@@ -410,7 +406,8 @@ class RbacService(
 
         val isSystemAdmin = principal.roles.contains("SYSTEM_ADMIN")
         val matchingAccessRules =
-            datasourceAccess.values
+            rbacRepository
+                .listDatasourceAccess()
                 .asSequence()
                 .filter { access ->
                     access.datasourceId == datasourceId &&
@@ -459,60 +456,89 @@ class RbacService(
     private fun seedGroups() {
         val adminGroupId = "platform-admins"
         val adminSeedUser = userAccountService.currentUserPrincipal("admin")
-        groups[adminGroupId] =
-            GroupRecord(
-                id = adminGroupId,
-                name = adminGroupId,
-                description = "System administrators with governance permissions.",
-                members = adminSeedUser?.let { linkedSetOf("admin") } ?: linkedSetOf(),
-            )
+        val adminGroup =
+            rbacRepository.findGroup(adminGroupId)
+                ?: GroupRecord(
+                    id = adminGroupId,
+                    name = adminGroupId,
+                    description = "System administrators with governance permissions.",
+                    members = linkedSetOf(),
+                ).also { group -> rbacRepository.saveGroup(group) }
         if (adminSeedUser != null) {
             userAccountService.addGroupMembership("admin", adminGroupId)
+            if ("admin" !in adminGroup.members) {
+                rbacRepository.addMember(adminGroupId, "admin")
+            }
         }
 
         val analystsGroupId = "analytics-users"
         val analystSeedUser = userAccountService.currentUserPrincipal("analyst")
-        groups[analystsGroupId] =
-            GroupRecord(
-                id = analystsGroupId,
-                name = analystsGroupId,
-                description = "Analysts with warehouse query access.",
-                members = analystSeedUser?.let { linkedSetOf("analyst") } ?: linkedSetOf(),
-            )
+        val analystGroup =
+            rbacRepository.findGroup(analystsGroupId)
+                ?: GroupRecord(
+                    id = analystsGroupId,
+                    name = analystsGroupId,
+                    description = "Analysts with warehouse query access.",
+                    members = linkedSetOf(),
+                ).also { group -> rbacRepository.saveGroup(group) }
         if (analystSeedUser != null) {
             userAccountService.addGroupMembership("analyst", analystsGroupId)
+            if ("analyst" !in analystGroup.members) {
+                rbacRepository.addMember(analystsGroupId, "analyst")
+            }
         }
     }
 
     private fun seedAccessMappings() {
         val allDatasourceIds = datasourceRegistryService.listCatalogEntries().map { datasource -> datasource.id }
+        val existingAccessKeys =
+            rbacRepository
+                .listDatasourceAccess()
+                .map { access -> accessKey(access.groupId, access.datasourceId) }
+                .toSet()
         allDatasourceIds.forEach { datasourceId ->
-            datasourceAccess[accessKey("platform-admins", datasourceId)] =
-                DatasourceAccessRecord(
-                    groupId = "platform-admins",
-                    datasourceId = datasourceId,
-                    canQuery = true,
-                    canExport = true,
-                    readOnly = false,
-                    maxRowsPerQuery = 5000,
-                    maxRuntimeSeconds = 300,
-                    concurrencyLimit = 5,
-                    credentialProfile = "admin-ro",
+            val key = accessKey("platform-admins", datasourceId)
+            val hasAdminReadonlyProfile =
+                datasourceRegistryService
+                    .credentialProfilesForDatasource(datasourceId)
+                    .contains("admin-ro")
+            if (key !in existingAccessKeys && hasAdminReadonlyProfile) {
+                rbacRepository.saveDatasourceAccess(
+                    DatasourceAccessRecord(
+                        groupId = "platform-admins",
+                        datasourceId = datasourceId,
+                        canQuery = true,
+                        canExport = true,
+                        readOnly = false,
+                        maxRowsPerQuery = 5000,
+                        maxRuntimeSeconds = 300,
+                        concurrencyLimit = 5,
+                        credentialProfile = "admin-ro",
+                    ),
                 )
+            }
         }
 
-        datasourceAccess[accessKey("analytics-users", "trino-warehouse")] =
-            DatasourceAccessRecord(
-                groupId = "analytics-users",
-                datasourceId = "trino-warehouse",
-                canQuery = true,
-                canExport = false,
-                readOnly = true,
-                maxRowsPerQuery = 2000,
-                maxRuntimeSeconds = 180,
-                concurrencyLimit = 2,
-                credentialProfile = "analyst-ro",
+        val analyticsTrinoKey = accessKey("analytics-users", "trino-warehouse")
+        if (
+            analyticsTrinoKey !in existingAccessKeys &&
+            datasourceRegistryService.hasDatasource("trino-warehouse") &&
+            datasourceRegistryService.credentialProfilesForDatasource("trino-warehouse").contains("analyst-ro")
+        ) {
+            rbacRepository.saveDatasourceAccess(
+                DatasourceAccessRecord(
+                    groupId = "analytics-users",
+                    datasourceId = "trino-warehouse",
+                    canQuery = true,
+                    canExport = false,
+                    readOnly = true,
+                    maxRowsPerQuery = 2000,
+                    maxRuntimeSeconds = 180,
+                    concurrencyLimit = 2,
+                    credentialProfile = "analyst-ro",
+                ),
             )
+        }
     }
 
     private fun accessKey(

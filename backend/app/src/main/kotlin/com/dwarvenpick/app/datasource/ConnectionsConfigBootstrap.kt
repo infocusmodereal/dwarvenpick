@@ -43,7 +43,7 @@ class ConnectionsConfigBootstrap(
 
         connections.forEach { spec ->
             val datasource =
-                datasourceRegistryService.createDatasource(
+                datasourceRegistryService.upsertManagedDatasource(
                     CreateDatasourceRequest(
                         name = spec.name.trim(),
                         engine = spec.engine,
@@ -55,6 +55,7 @@ class ConnectionsConfigBootstrap(
                         tls = spec.tls,
                         options = spec.options,
                     ),
+                    source = "config",
                 )
 
             spec.credentialProfiles.entries.forEach { (profileId, credential) ->

@@ -139,8 +139,11 @@ class ControlPlaneService(
         )
     }
 
-    fun pause(datasourceId: String) {
-        datasourcePauseService.pause(datasourceId)
+    fun pause(
+        datasourceId: String,
+        actor: String,
+    ) {
+        datasourcePauseService.pause(datasourceId, pausedBy = actor)
     }
 
     fun resume(datasourceId: String) {
