@@ -64,7 +64,7 @@ class ControlPlaneController(
         authentication: Authentication,
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
-        controlPlaneService.pause(datasourceId)
+        controlPlaneService.pause(datasourceId, principal.username)
         audit(
             type = "control_plane.datasource.pause",
             actor = principal.username,

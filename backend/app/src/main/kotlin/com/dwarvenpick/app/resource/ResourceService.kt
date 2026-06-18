@@ -6,12 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
 
 class ResourceNotFoundException(
@@ -22,7 +19,7 @@ class ResourceAccessDeniedException(
     override val message: String,
 ) : RuntimeException(message)
 
-private data class ResourceRecord(
+data class ResourceRecord(
     val resourceId: String,
     val owner: String,
     var title: String,
@@ -38,7 +35,7 @@ private data class ResourceRecord(
     var currentRevision: Int = 0,
 )
 
-private data class ResourceVersionRecord(
+data class ResourceVersionRecord(
     val versionId: String,
     val resourceId: String,
     val revision: Int,
@@ -55,7 +52,7 @@ private data class ResourceVersionRecord(
     val savedAt: Instant,
 )
 
-private data class ResourceStorageSnapshot(
+data class ResourceStorageSnapshot(
     val version: Int = 2,
     val resources: List<ResourceRecord> = emptyList(),
     val versions: Map<String, List<ResourceVersionRecord>> = emptyMap(),
@@ -67,16 +64,15 @@ private val resourceTagPattern = Regex("^[a-z0-9][a-z0-9.-]*$")
 @Service
 class ResourceService(
     private val objectMapper: ObjectMapper,
+    private val resourceRepository: ResourceRepository,
     driverRegistryProperties: DriverRegistryProperties,
 ) {
     private val logger = LoggerFactory.getLogger(ResourceService::class.java)
-    private val resources = ConcurrentHashMap<String, ResourceRecord>()
-    private val resourceVersions = ConcurrentHashMap<String, MutableList<ResourceVersionRecord>>()
     private val baseDir: Path = Path.of(driverRegistryProperties.externalDir).resolve("resources")
     private val storagePath: Path = baseDir.resolve("scripts.json")
 
     init {
-        loadFromDisk()
+        migrateLegacyDiskState()
     }
 
     fun listResources(
@@ -93,7 +89,8 @@ class ResourceService(
         val normalizedDatasourceId = datasourceId?.trim()?.takeIf { it.isNotBlank() }
         val normalizedTag = normalizeTag(tag)
 
-        return resources.values
+        return resourceRepository
+            .listResources()
             .asSequence()
             .filter { record -> canView(principal, record) }
             .filter { record ->
@@ -140,7 +137,8 @@ class ResourceService(
     ): List<ResourceVersionResponse> {
         val resource = resourceRecord(resourceId)
         enforceCanView(principal, resource)
-        return versionsFor(resourceId)
+        return resourceRepository
+            .listVersions(resourceId)
             .sortedByDescending { version -> version.revision }
             .map { version -> version.toResponse() }
     }
@@ -167,10 +165,8 @@ class ResourceService(
                 createdAt = now,
                 updatedAt = now,
             )
-        resources[resource.resourceId] = resource
-        versionsFor(resource.resourceId)
         appendVersion(resource, principal.username, ResourceVersionAction.CREATED, now)
-        persist()
+        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
@@ -196,7 +192,7 @@ class ResourceService(
         resource.updatedAt = now
 
         appendVersion(resource, principal.username, ResourceVersionAction.UPDATED_METADATA, now)
-        persist()
+        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
@@ -217,7 +213,7 @@ class ResourceService(
         resource.updatedAt = now
 
         appendVersion(resource, principal.username, ResourceVersionAction.UPDATED_CONTENT, now)
-        persist()
+        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
@@ -246,7 +242,7 @@ class ResourceService(
         resource.updatedAt = now
 
         appendVersion(resource, principal.username, ResourceVersionAction.RESTORED, now)
-        persist()
+        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
@@ -295,10 +291,8 @@ class ResourceService(
                 createdAt = now,
                 updatedAt = now,
             )
-        resources[copy.resourceId] = copy
-        versionsFor(copy.resourceId)
         appendVersion(copy, principal.username, ResourceVersionAction.DUPLICATED, now)
-        persist()
+        resourceRepository.saveResource(copy)
         return copy.toResponse(principal)
     }
 
@@ -309,29 +303,21 @@ class ResourceService(
     ): Boolean {
         val resource = resourceRecord(resourceId)
         enforceCanDelete(principal, resource)
-        val deleted = resources.remove(resourceId) != null
-        val deletedVersions = resourceVersions.remove(resourceId)
-        if (deleted || deletedVersions != null) {
-            persist()
-        }
-        return deleted
+        return resourceRepository.deleteResource(resourceId)
     }
 
     private fun resourceRecord(resourceId: String): ResourceRecord =
-        resources[resourceId]
+        resourceRepository.findResource(resourceId)
             ?: throw ResourceNotFoundException("Resource '$resourceId' was not found.")
 
     private fun versionRecord(
         resourceId: String,
         versionId: String,
     ): ResourceVersionRecord =
-        versionsFor(resourceId).find { version -> version.versionId == versionId }
+        resourceRepository.findVersion(resourceId, versionId)
             ?: throw ResourceNotFoundException(
                 "Resource version '$versionId' was not found for resource '$resourceId'.",
             )
-
-    private fun versionsFor(resourceId: String): MutableList<ResourceVersionRecord> =
-        resourceVersions.getOrPut(resourceId) { mutableListOf() }
 
     private fun appendVersion(
         resource: ResourceRecord,
@@ -340,7 +326,7 @@ class ResourceService(
         timestamp: Instant = Instant.now(),
     ) {
         val revision = resource.currentRevision + 1
-        versionsFor(resource.resourceId).add(
+        resourceRepository.saveVersion(
             ResourceVersionRecord(
                 versionId = UUID.randomUUID().toString(),
                 resourceId = resource.resourceId,
@@ -593,7 +579,7 @@ class ResourceService(
             createdAt = createdAt.toString(),
             updatedAt = updatedAt.toString(),
             currentRevision = currentRevision,
-            versionCount = resourceVersions[resourceId]?.size ?: currentRevision,
+            versionCount = resourceRepository.listVersions(resourceId).size,
             permissions =
                 ResourcePermissionsResponse(
                     canView = canView(principal, this),
@@ -622,85 +608,69 @@ class ResourceService(
             savedAt = savedAt.toString(),
         )
 
-    private fun loadFromDisk() {
+    fun clear() = resourceRepository.clear()
+
+    private fun migrateLegacyDiskState() {
         try {
             if (!storagePath.exists()) {
                 return
             }
 
             val snapshot = objectMapper.readValue<ResourceStorageSnapshot>(storagePath.toFile())
-            resources.clear()
-            resourceVersions.clear()
+            val resources = snapshot.resources.toMutableList()
+            val versionsByResource =
+                snapshot.versions
+                    .mapValues { (_, versions) -> versions.sortedBy { version -> version.revision }.toMutableList() }
+                    .toMutableMap()
 
-            snapshot.resources.forEach { resource ->
-                resources[resource.resourceId] = resource
-            }
-            snapshot.versions.forEach { (resourceId, versions) ->
-                resourceVersions[resourceId] = versions.sortedBy { version -> version.revision }.toMutableList()
-            }
-
-            var migrated = false
-            resources.values.forEach { resource ->
-                val versions = versionsFor(resource.resourceId)
+            resources.forEach { resource ->
+                val versions = versionsByResource.getOrPut(resource.resourceId) { mutableListOf() }
                 if (versions.isEmpty()) {
-                    appendVersion(
-                        resource = resource,
-                        actor = resource.owner,
-                        action = ResourceVersionAction.CREATED,
-                        timestamp = resource.updatedAt,
+                    val revision = resource.currentRevision.coerceAtLeast(1)
+                    versions.add(
+                        ResourceVersionRecord(
+                            versionId = UUID.randomUUID().toString(),
+                            resourceId = resource.resourceId,
+                            revision = revision,
+                            title = resource.title,
+                            sql = resource.sql,
+                            scope = resource.scope,
+                            groupId = resource.groupId,
+                            folderPath = resource.folderPath,
+                            datasourceId = resource.datasourceId,
+                            tags = resource.tags,
+                            allowGroupEdit = resource.allowGroupEdit,
+                            action = ResourceVersionAction.CREATED,
+                            savedBy = resource.owner,
+                            savedAt = resource.updatedAt,
+                        ),
                     )
-                    migrated = true
-                    return@forEach
                 }
 
                 val latestRevision = versions.maxOf { version -> version.revision }
                 if (resource.currentRevision != latestRevision) {
                     resource.currentRevision = latestRevision
-                    migrated = true
                 }
             }
 
-            if (migrated) {
-                persist()
+            val imported =
+                resourceRepository.importSnapshotIfEmpty(
+                    ResourceStorageSnapshot(
+                        resources = resources,
+                        versions = versionsByResource,
+                    ),
+                )
+
+            if (imported) {
+                logger.info(
+                    "Migrated {} resource manager scripts and {} saved versions from {} into application database.",
+                    resources.size,
+                    versionsByResource.values.sumOf { versions -> versions.size },
+                    storagePath,
+                )
             }
-
-            logger.info(
-                "Loaded {} resource manager scripts and {} saved versions from {}",
-                resources.size,
-                resourceVersions.values.sumOf { versions -> versions.size },
-                storagePath,
-            )
         } catch (exception: Exception) {
-            logger.error("Failed to load resource manager state from {}", storagePath, exception)
+            logger.error("Failed to migrate resource manager state from {}", storagePath, exception)
         }
-    }
-
-    private fun persist() {
-        Files.createDirectories(baseDir)
-        val tempPath = storagePath.resolveSibling("${storagePath.fileName}.tmp")
-        val snapshot =
-            ResourceStorageSnapshot(
-                resources =
-                    resources.values
-                        .sortedWith(compareBy({ it.owner }, { it.folderPath }, { it.title }))
-                        .toList(),
-                versions =
-                    resourceVersions
-                        .toSortedMap()
-                        .mapValues { (_, versions) ->
-                            versions.sortedBy { version -> version.revision }
-                        },
-            )
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempPath.toFile(), snapshot)
-        runCatching {
-            Files.move(
-                tempPath,
-                storagePath,
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE,
-            )
-        }.recoverCatching {
-            Files.move(tempPath, storagePath, StandardCopyOption.REPLACE_EXISTING)
-        }.getOrThrow()
     }
 }

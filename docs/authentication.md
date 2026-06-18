@@ -9,7 +9,7 @@ nav_order: 6
 
 ## Local
 
-- Username/password stored in memory (passwords are hashed).
+- Username/password records are stored in the application database (passwords are hashed).
 - Intended for development, small deployments, and break-glass access.
 - Local user administration is available to SYSTEM_ADMINs when enabled.
 
@@ -63,8 +63,9 @@ The backend exposes enabled methods via:
 
 Sessions are JDBC-backed via Spring Session (`spring-session-jdbc`).
 
-If you run with the default embedded H2 metadata DB, a backend redeploy/restart will invalidate active logins. For
-multi-replica deployments and redeploy-safe logins, use a shared Postgres metadata DB.
+If you run with the default embedded H2 metadata DB, a backend redeploy/restart may still invalidate active logins
+depending on how the local process is started. For multi-replica deployments and redeploy-safe logins, use a shared
+Postgres metadata DB.
 
 ### Persistent sessions (recommended for HA)
 

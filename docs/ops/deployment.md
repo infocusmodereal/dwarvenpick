@@ -23,7 +23,7 @@ Sample Helm deployments live under `deploy/helm/examples`:
 
 - Java 21 runtime for backend
 - Node/Nginx for frontend static bundle
-- Metadata DB: embedded H2 by default (ephemeral). For persistence and HA, configure a shared PostgreSQL DB via `SPRING_DATASOURCE_*`.
+- Metadata DB: embedded H2 by default for local development. For persistence and HA, configure a shared PostgreSQL DB via `SPRING_DATASOURCE_*`.
 - Credential encryption key provided by environment or secret store
 - JDBC-backed sessions (Spring Session). For multi-replica and redeploy-safe logins, use a shared PostgreSQL metadata DB.
 
@@ -35,12 +35,19 @@ Disable in production:
 
 - `DWARVENPICK_SEED_ENABLED=false` (default in Helm)
 
-## Session persistence
+## Application state persistence
 
-Sessions are JDBC-backed via Spring Session. When using the default embedded H2 metadata DB, a backend restart/redeploy
-still invalidates active sessions.
+`dwarvenpick` stores runtime state in the application database:
 
-For multi-replica deployments and redeploy-safe logins, configure a shared PostgreSQL metadata DB:
+- sessions
+- query history and audit events
+- snippets and scripts/resources
+- local users, identity snapshots, RBAC groups, access mappings
+- admin-created connections, credential profile metadata, connection pause state
+- uploaded custom JDBC driver metadata
+
+When using the default local H2 metadata DB, state is development-only. For multi-replica deployments and redeploy-safe
+state, configure a shared PostgreSQL metadata DB:
 
 - `SPRING_SESSION_STORE_TYPE=jdbc`
 - `SPRING_DATASOURCE_URL=jdbc:postgresql://<host>:5432/<db>`
@@ -153,7 +160,7 @@ When local auth is enabled (`DWARVENPICK_AUTH_LOCAL_ENABLED=true`), `SYSTEM_ADMI
 
 When local auth is disabled (LDAP-only), user creation/reset is blocked in UI and API (`/api/auth/admin/users*`).
 
-## Persistent storage (drivers + TLS materials)
+## Persistent artifact storage (drivers + TLS materials)
 
 The backend uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as a writable state directory.
 
@@ -161,6 +168,9 @@ It stores:
 
 - Uploaded and Maven-downloaded JDBC driver jars under `uploads/`
 - Uploaded TLS certificates/keys and generated keystores/truststores under `tls/`
+
+Scripts/resources are stored in the application database. Existing `scripts.json` files under the external drivers
+directory are imported into the database on startup when the resource tables are empty.
 
 Kubernetes (Helm) recommendation:
 

@@ -21,11 +21,11 @@
 - CLI package for authenticated terminal query execution via Local or LDAP auth.
 - Connection catalog and connection management UI.
 - Governance:
-    - Groups and access rules (per-connection query/export/read-only controls).
-    - Local user management for development and small deployments.
+    - Groups and access rules (per-connection query/export/read-only controls) persisted in the application database.
+    - Local user management for development and small deployments, with durable password resets and last-seen state.
 - Audit trail:
     - Persisted user query history with configurable retention and optional SQL text redaction.
-    - Admin audit events.
+    - Persisted admin audit events with configurable retention.
 - Operations:
     - System Health (SYSTEM_ADMIN) with engine-specific cluster checks.
 
@@ -81,16 +81,27 @@ Seeded databases in local compose:
 
 The sample datasets include both transactional-style tables and analytical-style tables/views to exercise query/explain behavior.
 
-## Persistence (drivers + TLS materials)
+## Persistence
 
-The backend uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as a writable state directory for:
+The application database stores runtime state that must survive restarts and multi-replica rollouts:
+
+- HTTP sessions
+- query history and audit events
+- snippets and scripts/resources
+- users, RBAC groups, access mappings, connections, and credential profile metadata
+- connection pause state
+- uploaded custom JDBC driver metadata
+
+Use a shared PostgreSQL metadata DB for production and HA deployments. The default local H2 database is intended for
+development only.
+
+The backend also uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as a writable artifact directory for:
 
 - JDBC driver jars uploaded from the UI
 - JDBC driver jars downloaded from Maven Central
 - Uploaded TLS/SSL certificates and generated keystores/truststores
-- Resource Manager script storage
 
-Docker Compose mounts a named volume at `/opt/app/drivers` so these artifacts persist across restarts.
+Docker Compose mounts a named volume at `/opt/app/drivers` so these file artifacts persist across restarts.
 
 For Kubernetes (Helm), enable the external drivers volume and back it with a PVC:
 

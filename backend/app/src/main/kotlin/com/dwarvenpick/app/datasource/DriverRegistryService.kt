@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.datasource
 
+import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service
 import java.net.URI
 import java.net.URLClassLoader
@@ -30,7 +31,7 @@ private data class BuiltInDriverSpec(
     val unavailableMessage: String,
 )
 
-private data class UploadedDriverRegistration(
+data class UploadedDriverRegistration(
     val driverId: String,
     val engine: DatasourceEngine,
     val driverClass: String,
@@ -67,6 +68,7 @@ class DriverNotAvailableException(
 @Service
 class DriverRegistryService(
     private val driverRegistryProperties: DriverRegistryProperties,
+    private val uploadedDriverRepository: UploadedDriverRepository,
 ) {
     private val verticaDriverClass = "com.vertica.jdbc.Driver"
     private val verticaDriverId = "vertica-external"
@@ -82,6 +84,14 @@ class DriverRegistryService(
             .connectTimeout(Duration.ofSeconds(6))
             .build()
     private val mavenVersionPattern = Regex("<version>([^<]+)</version>", RegexOption.IGNORE_CASE)
+
+    @PostConstruct
+    fun loadUploadedDrivers() {
+        uploadedDrivers.clear()
+        uploadedDriverRepository.list().forEach { registration ->
+            uploadedDrivers[registration.driverId] = registration
+        }
+    }
 
     private val builtInDriverSpecs =
         listOf(
@@ -261,6 +271,7 @@ class DriverRegistryService(
             )
         }
 
+        uploadedDriverRepository.save(uploadedDrivers.getValue(driverId))
         return descriptor
     }
 
