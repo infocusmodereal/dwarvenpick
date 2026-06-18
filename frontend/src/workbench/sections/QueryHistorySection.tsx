@@ -1,7 +1,8 @@
 import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
 import { toStatusToneClass } from '../utils';
 import { IconButton } from '../components/WorkbenchIcons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from 'react';
 
 type QueryHistorySectionProps = {
     hidden: boolean;
@@ -79,6 +80,54 @@ const copyToClipboard = async (value: string) => {
     textArea.remove();
 };
 
+type QueryHoverCard = {
+    executionId: string;
+    queryText: string;
+    top: number;
+    left: number;
+    width: number;
+};
+
+const HOVER_CARD_MAX_WIDTH = 672;
+const HOVER_CARD_MIN_WIDTH = 320;
+const HOVER_CARD_MAX_HEIGHT = 224;
+const HOVER_CARD_MARGIN = 16;
+
+const clamp = (value: number, min: number, max: number) => {
+    return Math.min(Math.max(value, min), max);
+};
+
+const getQueryHoverCard = (
+    trigger: HTMLElement,
+    executionId: string,
+    queryText: string
+): QueryHoverCard => {
+    const rect = trigger.getBoundingClientRect();
+    const availableWidth = Math.max(
+        HOVER_CARD_MIN_WIDTH,
+        window.innerWidth - HOVER_CARD_MARGIN * 2
+    );
+    const width = Math.min(HOVER_CARD_MAX_WIDTH, availableWidth);
+    const left = clamp(
+        rect.right - width,
+        HOVER_CARD_MARGIN,
+        Math.max(HOVER_CARD_MARGIN, window.innerWidth - width - HOVER_CARD_MARGIN)
+    );
+    const preferredTop = rect.bottom + 6;
+    const top =
+        preferredTop + HOVER_CARD_MAX_HEIGHT > window.innerHeight
+            ? Math.max(HOVER_CARD_MARGIN, rect.top - HOVER_CARD_MAX_HEIGHT - 6)
+            : preferredTop;
+
+    return {
+        executionId,
+        queryText,
+        top,
+        left,
+        width
+    };
+};
+
 export default function QueryHistorySection({
     hidden,
     visibleDatasources,
@@ -104,6 +153,33 @@ export default function QueryHistorySection({
     onOpenEntry
 }: QueryHistorySectionProps) {
     const [copiedExecutionId, setCopiedExecutionId] = useState('');
+    const [hoveredQuery, setHoveredQuery] = useState<QueryHoverCard | null>(null);
+    const hoverHideTimeoutRef = useRef<number | null>(null);
+
+    const clearHoverHideTimeout = useCallback(() => {
+        if (hoverHideTimeoutRef.current === null) {
+            return;
+        }
+
+        window.clearTimeout(hoverHideTimeoutRef.current);
+        hoverHideTimeoutRef.current = null;
+    }, []);
+
+    const showQueryHoverCard = useCallback(
+        (trigger: HTMLElement, executionId: string, queryText: string) => {
+            clearHoverHideTimeout();
+            setHoveredQuery(getQueryHoverCard(trigger, executionId, queryText));
+        },
+        [clearHoverHideTimeout]
+    );
+
+    const scheduleQueryHoverCardHide = useCallback(() => {
+        clearHoverHideTimeout();
+        hoverHideTimeoutRef.current = window.setTimeout(() => {
+            setHoveredQuery(null);
+            hoverHideTimeoutRef.current = null;
+        }, 160);
+    }, [clearHoverHideTimeout]);
 
     const handleCopyQuery = useCallback(async (executionId: string, queryText: string) => {
         await copyToClipboard(queryText);
@@ -118,6 +194,16 @@ export default function QueryHistorySection({
         const timeout = window.setTimeout(() => setCopiedExecutionId(''), 1800);
         return () => window.clearTimeout(timeout);
     }, [copiedExecutionId]);
+
+    useEffect(() => {
+        return () => clearHoverHideTimeout();
+    }, [clearHoverHideTimeout]);
+
+    useEffect(() => {
+        if (hidden) {
+            setHoveredQuery(null);
+        }
+    }, [hidden]);
 
     return (
         <section className="panel history-panel" hidden={hidden}>
@@ -261,7 +347,7 @@ export default function QueryHistorySection({
                 </div>
             </div>
 
-            <div className="history-table-wrap">
+            <div className="history-table-wrap" onScroll={() => setHoveredQuery(null)}>
                 <table className="result-table history-table query-history-table">
                     <thead>
                         <tr>
@@ -307,35 +393,39 @@ export default function QueryHistorySection({
                                             <span
                                                 className="history-query-preview"
                                                 title={queryPreview}
+                                                tabIndex={canUseQuery ? 0 : undefined}
+                                                aria-describedby={
+                                                    canUseQuery
+                                                        ? `history-query-hover-${entry.executionId}`
+                                                        : undefined
+                                                }
+                                                onMouseEnter={(
+                                                    event: ReactMouseEvent<HTMLSpanElement>
+                                                ) => {
+                                                    if (canUseQuery) {
+                                                        showQueryHoverCard(
+                                                            event.currentTarget,
+                                                            entry.executionId,
+                                                            queryPreview
+                                                        );
+                                                    }
+                                                }}
+                                                onMouseLeave={scheduleQueryHoverCardHide}
+                                                onFocus={(
+                                                    event: ReactFocusEvent<HTMLSpanElement>
+                                                ) => {
+                                                    if (canUseQuery) {
+                                                        showQueryHoverCard(
+                                                            event.currentTarget,
+                                                            entry.executionId,
+                                                            queryPreview
+                                                        );
+                                                    }
+                                                }}
+                                                onBlur={scheduleQueryHoverCardHide}
                                             >
                                                 {queryPreview}
                                             </span>
-                                            {canUseQuery ? (
-                                                <div
-                                                    className="history-query-hover-card"
-                                                    role="tooltip"
-                                                >
-                                                    <code className="history-query-full">
-                                                        {queryPreview}
-                                                    </code>
-                                                    <button
-                                                        type="button"
-                                                        className="history-query-copy"
-                                                        onClick={(event) => {
-                                                            event.preventDefault();
-                                                            event.stopPropagation();
-                                                            void handleCopyQuery(
-                                                                entry.executionId,
-                                                                queryPreview
-                                                            );
-                                                        }}
-                                                    >
-                                                        {copiedExecutionId === entry.executionId
-                                                            ? 'Copied'
-                                                            : 'Copy'}
-                                                    </button>
-                                                </div>
-                                            ) : null}
                                         </td>
                                         <td className="history-actions">
                                             <button
@@ -365,6 +455,33 @@ export default function QueryHistorySection({
                     </tbody>
                 </table>
             </div>
+            {hoveredQuery ? (
+                <div
+                    id={`history-query-hover-${hoveredQuery.executionId}`}
+                    className="history-query-hover-card"
+                    role="tooltip"
+                    style={{
+                        top: hoveredQuery.top,
+                        left: hoveredQuery.left,
+                        width: hoveredQuery.width
+                    }}
+                    onMouseEnter={clearHoverHideTimeout}
+                    onMouseLeave={scheduleQueryHoverCardHide}
+                >
+                    <code className="history-query-full">{hoveredQuery.queryText}</code>
+                    <button
+                        type="button"
+                        className="history-query-copy"
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void handleCopyQuery(hoveredQuery.executionId, hoveredQuery.queryText);
+                        }}
+                    >
+                        {copiedExecutionId === hoveredQuery.executionId ? 'Copied' : 'Copy'}
+                    </button>
+                </div>
+            ) : null}
         </section>
     );
 }
