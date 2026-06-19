@@ -516,6 +516,13 @@ class DatasourceRegistryService(
         return removed
     }
 
+    fun listDatasourcesBySource(source: String): List<ManagedDatasourceRecord> = datasourceRegistryRepository.listBySource(source)
+
+    fun deleteCredentialProfile(
+        datasourceId: String,
+        profileId: String,
+    ): Boolean = datasourceRegistryRepository.deleteCredentialProfile(datasourceId, profileId)
+
     fun upsertCredentialProfile(
         datasourceId: String,
         profileId: String,

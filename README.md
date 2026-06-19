@@ -86,22 +86,28 @@ The sample datasets include both transactional-style tables and analytical-style
 The application database stores runtime state that must survive restarts and multi-replica rollouts:
 
 - HTTP sessions
-- query history and audit events
+- query history, active query status, buffered query results, and audit events
 - snippets and scripts/resources
 - users, RBAC groups, access mappings, connections, and credential profile metadata
 - connection pause state
 - uploaded custom JDBC driver metadata
 
+Schema changes are managed by Flyway migrations. Existing deployments with pre-created tables are baselined and then
+migrated forward on startup.
+
 Use a shared PostgreSQL metadata DB for production and HA deployments. The default local H2 database is intended for
 development only.
 
-The backend also uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as a writable artifact directory for:
+The backend also uses `DWARVENPICK_EXTERNAL_DRIVERS_DIR` (default: `/opt/app/drivers`) as an artifact directory for:
 
 - JDBC driver jars uploaded from the UI
-- JDBC driver jars downloaded from Maven Central
+- JDBC driver jars downloaded from Maven or an internal Maven-compatible repository
 - Uploaded TLS/SSL certificates and generated keystores/truststores
 
 Docker Compose mounts a named volume at `/opt/app/drivers` so these file artifacts persist across restarts.
+
+Driver uploads, Maven installs, and TLS certificate uploads are disabled by default. Enable artifact writes only when
+all backend replicas can access the same artifact storage, or when you intentionally run a single backend instance.
 
 For Kubernetes (Helm), enable the external drivers volume and back it with a PVC:
 

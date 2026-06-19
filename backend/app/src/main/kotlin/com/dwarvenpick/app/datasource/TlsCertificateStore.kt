@@ -52,6 +52,11 @@ class TlsCertificateStore(
         datasourceId: String,
         request: TlsCertificateRequest,
     ) {
+        if (!driverRegistryProperties.uploadsEnabled) {
+            throw IllegalStateException(
+                "TLS certificate uploads are disabled. Set DWARVENPICK_DRIVERS_UPLOADS_ENABLED=true to enable.",
+            )
+        }
         Files.createDirectories(baseDir)
         val dir = baseDir.resolve(datasourceId)
         Files.createDirectories(dir)

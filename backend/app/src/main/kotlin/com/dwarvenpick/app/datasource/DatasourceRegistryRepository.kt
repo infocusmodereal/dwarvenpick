@@ -50,6 +50,19 @@ class DatasourceRegistryRepository(
                 datasourceRowMapper,
             ).firstOrNull()
 
+    fun listBySource(source: String): List<ManagedDatasourceRecord> =
+        namedParameterJdbcTemplate.query(
+            """
+            SELECT datasource_id, datasource_name, engine, host, port, datasource_database, driver_id,
+                   driver_class, pool_json, tls_json, options_json, source, created_at, updated_at
+            FROM managed_datasources
+            WHERE source = :source
+            ORDER BY datasource_name
+            """.trimIndent(),
+            mapOf("source" to source),
+            datasourceRowMapper,
+        )
+
     @Transactional
     fun saveDatasource(record: ManagedDatasourceRecord) {
         val now = Instant.now()
@@ -151,6 +164,19 @@ class DatasourceRegistryRepository(
             record.toParameters(datasourceId),
         )
     }
+
+    fun deleteCredentialProfile(
+        datasourceId: String,
+        profileId: String,
+    ): Boolean =
+        namedParameterJdbcTemplate.update(
+            """
+            DELETE FROM managed_credential_profiles
+            WHERE datasource_id = :datasourceId
+              AND profile_id = :profileId
+            """.trimIndent(),
+            mapOf("datasourceId" to datasourceId, "profileId" to profileId),
+        ) > 0
 
     @Transactional
     fun delete(datasourceId: String): Boolean {

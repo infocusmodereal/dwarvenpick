@@ -34,12 +34,14 @@ class ConnectionsConfigBootstrap(
         val connections = configLoader.load(path, failOnMissingEnv = connectionsConfigProperties.failOnMissingEnv)
         if (connections.isEmpty()) {
             logger.info("Connections config {} did not define any connections.", path)
-            return
         }
 
         logger.info("Bootstrapping {} connections from {}.", connections.size, path)
 
         val existingGroups = rbacService.listGroups().map { it.id }.toMutableSet()
+        val desiredDatasourceIds = mutableSetOf<String>()
+        val desiredCredentialProfiles = linkedMapOf<String, MutableSet<String>>()
+        val desiredAccessKeys = mutableSetOf<String>()
 
         connections.forEach { spec ->
             val datasource =
@@ -57,11 +59,15 @@ class ConnectionsConfigBootstrap(
                     ),
                     source = "config",
                 )
+            desiredDatasourceIds.add(datasource.id)
+            val datasourceProfiles = desiredCredentialProfiles.computeIfAbsent(datasource.id) { mutableSetOf() }
 
             spec.credentialProfiles.entries.forEach { (profileId, credential) ->
+                val normalizedProfileId = profileId.trim()
+                datasourceProfiles.add(normalizedProfileId)
                 datasourceRegistryService.upsertCredentialProfile(
                     datasourceId = datasource.id,
-                    profileId = profileId.trim(),
+                    profileId = normalizedProfileId,
                     request =
                         UpsertCredentialProfileRequest(
                             username = credential.username.trim(),
@@ -79,6 +85,7 @@ class ConnectionsConfigBootstrap(
                 require(seenAccessKeys.add(accessKey)) {
                     "Duplicate access rule for group '$groupId' and datasource '${datasource.id}'."
                 }
+                desiredAccessKeys.add(accessKey)
 
                 if (groupId !in existingGroups) {
                     rbacService.createGroup(
@@ -105,6 +112,57 @@ class ConnectionsConfigBootstrap(
                         ),
                 )
             }
+        }
+
+        if (connectionsConfigProperties.authoritative) {
+            reconcileAuthoritativeConfig(
+                desiredDatasourceIds = desiredDatasourceIds,
+                desiredCredentialProfiles = desiredCredentialProfiles,
+                desiredAccessKeys = desiredAccessKeys,
+            )
+        }
+    }
+
+    private fun reconcileAuthoritativeConfig(
+        desiredDatasourceIds: Set<String>,
+        desiredCredentialProfiles: Map<String, Set<String>>,
+        desiredAccessKeys: Set<String>,
+    ) {
+        val configManagedDatasources = datasourceRegistryService.listDatasourcesBySource("config")
+        val configManagedDatasourceIds = configManagedDatasources.map { datasource -> datasource.id }.toSet()
+        val removedDatasourceIds = configManagedDatasourceIds - desiredDatasourceIds
+        val governedDatasourceIds = configManagedDatasourceIds + desiredDatasourceIds
+
+        rbacService.listDatasourceAccess(null).forEach { access ->
+            val accessKey = "${access.groupId}::${access.datasourceId}"
+            if (access.datasourceId in governedDatasourceIds && accessKey !in desiredAccessKeys) {
+                rbacService.deleteDatasourceAccess(access.groupId, access.datasourceId)
+                logger.info(
+                    "Removed stale config-managed access mapping group={} datasource={}.",
+                    access.groupId,
+                    access.datasourceId,
+                )
+            }
+        }
+
+        configManagedDatasources
+            .filter { datasource -> datasource.id in desiredDatasourceIds }
+            .forEach { datasource ->
+                val desiredProfiles = desiredCredentialProfiles[datasource.id].orEmpty()
+                val staleProfiles = datasource.credentialProfiles.keys - desiredProfiles
+                staleProfiles.forEach { profileId ->
+                    datasourceRegistryService.deleteCredentialProfile(datasource.id, profileId)
+                    logger.info(
+                        "Removed stale config-managed credential profile datasource={} profile={}.",
+                        datasource.id,
+                        profileId,
+                    )
+                }
+            }
+
+        removedDatasourceIds.forEach { datasourceId ->
+            datasourceRegistryService.deleteDatasource(datasourceId)
+            logger.info("Removed stale config-managed datasource={}.", datasourceId)
         }
     }
 }

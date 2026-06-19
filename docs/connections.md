@@ -34,19 +34,23 @@ Examples:
 ## Uploading driver jars (Kubernetes)
 
 If you plan to upload JDBC driver jars from the UI, the backend needs a writable, persistent external drivers directory.
+Driver uploads are disabled by default; enable `DWARVENPICK_DRIVERS_UPLOADS_ENABLED=true` only when all replicas share
+the same artifact storage or you are running a single backend instance.
 
 For Helm deployments:
 
 - set `.Values.drivers.external.enabled=true`
 - set `.Values.drivers.external.createPvc=true` (or provide `.Values.drivers.external.existingClaim`)
 
-## Installing drivers from Maven Central
+## Installing drivers from Maven
 
 System admins can also install supported JDBC driver versions directly from the UI. Downloads are stored in the external drivers directory.
+This is disabled by default for production safety. If enabled, prefer an internal Maven-compatible repository.
 
 Settings:
 
-- `DWARVENPICK_DRIVERS_MAVEN_ENABLED` (default: `true`)
+- `DWARVENPICK_DRIVERS_UPLOADS_ENABLED` (default: `false`)
+- `DWARVENPICK_DRIVERS_MAVEN_ENABLED` (default: `false`)
 - `DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL` (default: `https://repo1.maven.org/maven2/`)
 - `DWARVENPICK_DRIVERS_MAVEN_MAX_JAR_SIZE_MB` (default: `50`)
 
@@ -55,6 +59,7 @@ Helm chart values:
 - `.Values.drivers.maven.enabled`
 - `.Values.drivers.maven.repositoryUrl`
 - `.Values.drivers.maven.maxJarSizeMb`
+- `.Values.drivers.uploads.enabled`
 
 The UI shows the Maven coordinates (`groupId` + `artifactId`) and driver class for each preset so operators can verify exactly what is being downloaded.
 
@@ -69,6 +74,8 @@ Optionally, you can also upload certificates for TLS verification and mutual TLS
 
 Notes:
 
+- TLS certificate uploads use the same artifact-write toggle as driver uploads:
+  `DWARVENPICK_DRIVERS_UPLOADS_ENABLED=true`.
 - The client private key must be an **unencrypted PKCS#8 PEM** (`BEGIN PRIVATE KEY`). PKCS#1 (`BEGIN RSA PRIVATE KEY`) and encrypted private keys are rejected with a clear error.
 - Uploaded TLS materials are stored on the backend under `${DWARVENPICK_EXTERNAL_DRIVERS_DIR}/tls/<connection-id>/`.
 - In Kubernetes, make sure the external drivers directory is writable and backed by a PVC if you want TLS materials (and driver jars) to survive pod restarts.

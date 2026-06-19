@@ -40,7 +40,7 @@ Disable in production:
 `dwarvenpick` stores runtime state in the application database:
 
 - sessions
-- query history and audit events
+- query history, active query status, buffered query results, and audit events
 - snippets and scripts/resources
 - local users, identity snapshots, RBAC groups, access mappings
 - admin-created connections, credential profile metadata, connection pause state
@@ -54,6 +54,9 @@ state, configure a shared PostgreSQL metadata DB:
 - `SPRING_DATASOURCE_USERNAME=<user>`
 - `SPRING_DATASOURCE_PASSWORD=<password>`
 
+Schema changes are managed by Flyway migrations. Existing deployments with pre-created state tables are baselined and
+migrated forward on startup.
+
 When running behind HTTPS, also set:
 
 - `DWARVENPICK_SESSION_COOKIE_SECURE=true`
@@ -64,6 +67,8 @@ For environments that want connections managed as code, the backend can bootstra
 (optionally) group access rules from a YAML file at startup:
 
 - `DWARVENPICK_CONNECTIONS_CONFIG_PATH=/path/to/connections.yaml`
+- `DWARVENPICK_CONNECTIONS_AUTHORITATIVE=true` (default): remove config-managed connections, credential profiles, and
+  access rules that are no longer present in YAML.
 
 ### Structured YAML format
 
@@ -177,6 +182,8 @@ Kubernetes (Helm) recommendation:
 - Enable the external drivers volume: `.Values.drivers.external.enabled=true`
 - Back it with a PVC: set `.Values.drivers.external.createPvc=true` or provide `.Values.drivers.external.existingClaim=<pvc-name>`.
 - Ensure it is writable (`.Values.drivers.external.readOnly=false`) if you plan to upload drivers or TLS materials from the UI.
+- Enable driver/TLS artifact writes explicitly with `.Values.drivers.uploads.enabled=true`.
+- Maven installs are disabled by default. If enabled, prefer `.Values.drivers.maven.repositoryUrl` pointing at an internal repository.
 
 Docker Compose:
 

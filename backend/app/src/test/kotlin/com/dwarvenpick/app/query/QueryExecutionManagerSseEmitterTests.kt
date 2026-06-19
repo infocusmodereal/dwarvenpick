@@ -2,6 +2,7 @@ package com.dwarvenpick.app.query
 
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -17,6 +18,15 @@ import java.util.concurrent.CopyOnWriteArrayList
 class QueryExecutionManagerSseEmitterTests {
     @Autowired
     private lateinit var queryExecutionManager: QueryExecutionManager
+
+    @Autowired
+    private lateinit var queryRuntimeRepository: QueryRuntimeRepository
+
+    @BeforeEach
+    fun resetRuntime() {
+        queryRuntimeRepository.clear()
+        reflectExecutions(queryExecutionManager).clear()
+    }
 
     @Test
     fun `query execution does not fail when SSE cleanup throws`() {
@@ -57,6 +67,51 @@ class QueryExecutionManagerSseEmitterTests {
         assertThat(subscribers[actor]).doesNotContain(failingEmitter)
     }
 
+    @Test
+    fun `query status and results survive local execution map loss`() {
+        val actor = "runtime-fallback-user"
+        val submitted =
+            queryExecutionManager.submitQuery(
+                actor = actor,
+                ipAddress = "127.0.0.1",
+                request =
+                    QueryExecutionRequest(
+                        datasourceId = "unit-test-datasource",
+                        sql = "select 1 as one",
+                    ),
+                policy =
+                    QueryAccessPolicy(
+                        credentialProfile = "unit-test-profile",
+                        readOnly = true,
+                        maxRowsPerQuery = 100,
+                        maxRuntimeSeconds = 10,
+                        concurrencyLimit = 1,
+                    ),
+            )
+
+        val terminal = waitForTerminalStatus(actor, submitted.executionId)
+        assertThat(terminal.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
+
+        reflectExecutions(queryExecutionManager).clear()
+
+        val status =
+            queryExecutionManager.getExecutionStatus(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+            )
+        val results =
+            queryExecutionManager.getQueryResults(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+                request = QueryResultsRequest(pageSize = 10),
+            )
+
+        assertThat(status.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
+        assertThat(results.rows).containsExactly(listOf("1"))
+    }
+
     private fun waitForTerminalStatus(
         actor: String,
         executionId: String,
@@ -87,5 +142,12 @@ class QueryExecutionManagerSseEmitterTests {
         val field = QueryExecutionManager::class.java.getDeclaredField("subscribers")
         field.isAccessible = true
         return field.get(manager) as ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun reflectExecutions(manager: QueryExecutionManager): ConcurrentHashMap<String, Any> {
+        val field = QueryExecutionManager::class.java.getDeclaredField("executions")
+        field.isAccessible = true
+        return field.get(manager) as ConcurrentHashMap<String, Any>
     }
 }

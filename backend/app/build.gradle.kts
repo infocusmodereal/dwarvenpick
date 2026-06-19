@@ -19,11 +19,13 @@ dependencies {
     implementation("com.zaxxer:HikariCP")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("org.flywaydb:flyway-core")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.ldap:spring-ldap-core")
     implementation("com.aerospike:aerospike-client-jdk8:9.0.5")
 
     runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("com.mysql:mysql-connector-j")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
     runtimeOnly("io.trino:trino-jdbc:479")

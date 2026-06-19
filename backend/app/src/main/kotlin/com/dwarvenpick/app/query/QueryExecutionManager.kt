@@ -4,6 +4,7 @@ import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
+import com.dwarvenpick.app.runtime.ApplicationInstanceId
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
 import jakarta.annotation.PostConstruct
@@ -105,6 +106,8 @@ class QueryExecutionManager(
     private val authAuditLogger: AuthAuditLogger,
     private val queryExecutionProperties: QueryExecutionProperties,
     private val queryHistoryRepository: QueryHistoryRepository,
+    private val queryRuntimeRepository: QueryRuntimeRepository,
+    private val applicationInstanceId: ApplicationInstanceId,
     private val meterRegistry: MeterRegistry,
 ) {
     private val virtualExecutor = Executors.newVirtualThreadPerTaskExecutor()
@@ -168,10 +171,13 @@ class QueryExecutionManager(
 
         synchronized(this) {
             val activeExecutions =
-                executions.values.count { execution ->
-                    execution.actor == actor &&
-                        (execution.status == QueryExecutionStatus.QUEUED || execution.status == QueryExecutionStatus.RUNNING)
-                }
+                queryRuntimeRepository
+                    .listActive(
+                        actor = actor,
+                        isSystemAdmin = false,
+                        datasourceId = null,
+                        actorFilter = null,
+                    ).size
             if (activeExecutions >= concurrencyLimit) {
                 meterRegistry
                     .counter(
@@ -266,7 +272,10 @@ class QueryExecutionManager(
         isSystemAdmin: Boolean,
         executionId: String,
     ): QueryCancelResponse {
-        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
+        val record =
+            executions[executionId]
+                ?: return requestRemoteCancel(actor, isSystemAdmin, executionId)
+        enforceExecutionAccess(actor, isSystemAdmin, record)
         if (record.status in terminalStatuses()) {
             return QueryCancelResponse(
                 executionId = record.executionId,
@@ -342,7 +351,10 @@ class QueryExecutionManager(
             throw QueryExecutionForbiddenException("Killing queries requires the SYSTEM_ADMIN role.")
         }
 
-        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
+        val record =
+            executions[executionId]
+                ?: return requestRemoteKill(actor, executionId)
+        enforceExecutionAccess(actor, isSystemAdmin, record)
         if (record.status in terminalStatuses()) {
             return QueryKillResponse(
                 executionId = record.executionId,
@@ -415,19 +427,13 @@ class QueryExecutionManager(
         val normalizedActorFilter = actorFilter?.trim()?.takeIf { value -> value.isNotBlank() }
         val now = Instant.now()
 
-        return executions.values
-            .asSequence()
-            .filter { record ->
-                record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING
-            }.filter { record ->
-                if (isSystemAdmin) {
-                    normalizedActorFilter == null || record.actor == normalizedActorFilter
-                } else {
-                    record.actor == actor
-                }
-            }.filter { record ->
-                normalizedDatasourceId == null || record.datasourceId == normalizedDatasourceId
-            }.sortedBy { record -> record.submittedAt }
+        return queryRuntimeRepository
+            .listActive(
+                actor = actor,
+                isSystemAdmin = isSystemAdmin,
+                datasourceId = normalizedDatasourceId,
+                actorFilter = normalizedActorFilter,
+            ).asSequence()
             .map { record ->
                 ActiveQueryExecutionResponse(
                     executionId = record.executionId,
@@ -437,7 +443,7 @@ class QueryExecutionManager(
                     status = record.status.name,
                     message = record.message,
                     queryHash = record.queryHash,
-                    sqlPreview = buildSqlPreview(record.sql),
+                    sqlPreview = record.sql?.let { buildSqlPreview(it) } ?: "(query text redacted)",
                     submittedAt = record.submittedAt.toString(),
                     startedAt = record.startedAt?.toString(),
                     durationMs =
@@ -454,8 +460,16 @@ class QueryExecutionManager(
         isSystemAdmin: Boolean,
         executionId: String,
     ): QueryExecutionStatusResponse {
-        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
-        return record.toStatusResponse()
+        val record = executions[executionId]
+        if (record != null) {
+            enforceExecutionAccess(actor, isSystemAdmin, record)
+            return record.toStatusResponse()
+        }
+        val persisted =
+            queryRuntimeRepository.find(executionId)
+                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+        enforceExecutionAccess(actor, isSystemAdmin, persisted)
+        return persisted.toStatusResponse()
     }
 
     fun getQueryResults(
@@ -464,7 +478,15 @@ class QueryExecutionManager(
         executionId: String,
         request: QueryResultsRequest,
     ): QueryResultsResponse {
-        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
+        val record = executions[executionId]
+        if (record == null) {
+            val persisted =
+                queryRuntimeRepository.find(executionId)
+                    ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+            enforceExecutionAccess(actor, isSystemAdmin, persisted)
+            return persisted.toResultsResponse(request)
+        }
+        enforceExecutionAccess(actor, isSystemAdmin, record)
         if (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) {
             throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${record.status.name}.")
         }
@@ -502,6 +524,7 @@ class QueryExecutionManager(
             }
 
         record.lastAccessedAt = Instant.now()
+        queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
         return QueryResultsResponse(
             executionId = executionId,
             status = record.status.name,
@@ -520,7 +543,15 @@ class QueryExecutionManager(
         includeHeaders: Boolean,
         maxExportRows: Int,
     ): QueryCsvExportPayload {
-        val record = resolveAuthorizedExecution(actor, isSystemAdmin, executionId)
+        val record = executions[executionId]
+        if (record == null) {
+            val persisted =
+                queryRuntimeRepository.find(executionId)
+                    ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+            enforceExecutionAccess(actor, isSystemAdmin, persisted)
+            return persisted.toCsvExportPayload(includeHeaders, maxExportRows)
+        }
+        enforceExecutionAccess(actor, isSystemAdmin, record)
         if (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) {
             throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${record.status.name}.")
         }
@@ -543,6 +574,7 @@ class QueryExecutionManager(
         }
 
         record.lastAccessedAt = Instant.now()
+        queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
         return QueryCsvExportPayload(
             executionId = record.executionId,
             datasourceId = record.datasourceId,
@@ -585,6 +617,10 @@ class QueryExecutionManager(
 
     fun redactHistoryQueryTextOlderThan(cutoff: Instant): Int = queryHistoryRepository.redactQueryTextOlderThan(cutoff)
 
+    fun pruneRuntimeOlderThan(cutoff: Instant): Int = queryRuntimeRepository.pruneOlderThan(cutoff)
+
+    fun redactRuntimeQueryTextOlderThan(cutoff: Instant): Int = queryRuntimeRepository.redactQueryTextOlderThan(cutoff)
+
     fun subscribeToStatusEvents(
         actor: String,
         isSystemAdmin: Boolean,
@@ -624,9 +660,17 @@ class QueryExecutionManager(
         val now = Instant.now()
         val resultTtlSeconds = queryExecutionProperties.resultSessionTtlSeconds.coerceAtLeast(60)
         val retentionSeconds = queryExecutionProperties.executionRetentionSeconds.coerceAtLeast(120)
+        val staleCutoff = now.minusSeconds(queryExecutionProperties.activeExecutionStaleSeconds.coerceAtLeast(60))
 
         val removableExecutionIds = mutableListOf<String>()
         executions.forEach { (executionId, record) ->
+            if (record.status !in terminalStatuses()) {
+                queryRuntimeRepository.updateHeartbeat(
+                    executionId = executionId,
+                    ownerInstanceId = applicationInstanceId.value,
+                    heartbeatAt = now,
+                )
+            }
             if (record.status == QueryExecutionStatus.RUNNING) {
                 val startedAt = record.startedAt
                 if (startedAt != null) {
@@ -657,6 +701,7 @@ class QueryExecutionManager(
                     record.resultsExpired = true
                     record.message = "Result session expired. Re-run the query."
                     syncHistoryFromExecution(record)
+                    queryRuntimeRepository.expireResults(record.executionId, record.message)
                 }
             }
 
@@ -672,6 +717,11 @@ class QueryExecutionManager(
                 closeRuntimeResources(removed)
             }
         }
+        queryRuntimeRepository.markStaleActiveExecutions(
+            staleCutoff,
+            "Query state was lost after its backend stopped heartbeating.",
+        )
+        queryRuntimeRepository.pruneOlderThan(now.minusSeconds(retentionSeconds))
     }
 
     @PreDestroy
@@ -1177,11 +1227,78 @@ class QueryExecutionManager(
             executions[executionId]
                 ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
 
-        if (!isSystemAdmin && record.actor != actor) {
-            throw QueryExecutionForbiddenException("Query execution '$executionId' is not accessible.")
-        }
-
+        enforceExecutionAccess(actor, isSystemAdmin, record)
         return record
+    }
+
+    private fun enforceExecutionAccess(
+        actor: String,
+        isSystemAdmin: Boolean,
+        record: QueryExecutionRecord,
+    ) {
+        if (!isSystemAdmin && record.actor != actor) {
+            throw QueryExecutionForbiddenException("Query execution '${record.executionId}' is not accessible.")
+        }
+    }
+
+    private fun enforceExecutionAccess(
+        actor: String,
+        isSystemAdmin: Boolean,
+        record: PersistedQueryRuntimeRecord,
+    ) {
+        if (!isSystemAdmin && record.actor != actor) {
+            throw QueryExecutionForbiddenException("Query execution '${record.executionId}' is not accessible.")
+        }
+    }
+
+    private fun requestRemoteCancel(
+        actor: String,
+        isSystemAdmin: Boolean,
+        executionId: String,
+    ): QueryCancelResponse {
+        val persisted =
+            queryRuntimeRepository.find(executionId)
+                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+        enforceExecutionAccess(actor, isSystemAdmin, persisted)
+        if (persisted.status in terminalStatuses()) {
+            return QueryCancelResponse(
+                executionId = persisted.executionId,
+                status = persisted.status.name,
+                message = "Query already finished with status ${persisted.status.name}.",
+                canceledAt = Instant.now().toString(),
+            )
+        }
+        queryRuntimeRepository.markCancelRequested(executionId)
+        return QueryCancelResponse(
+            executionId = persisted.executionId,
+            status = persisted.status.name,
+            message = "Cancellation requested on backend instance ${persisted.ownerInstanceId}.",
+            canceledAt = Instant.now().toString(),
+        )
+    }
+
+    private fun requestRemoteKill(
+        actor: String,
+        executionId: String,
+    ): QueryKillResponse {
+        val persisted =
+            queryRuntimeRepository.find(executionId)
+                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+        if (persisted.status in terminalStatuses()) {
+            return QueryKillResponse(
+                executionId = persisted.executionId,
+                status = persisted.status.name,
+                message = "Query already finished with status ${persisted.status.name}.",
+                killedAt = Instant.now().toString(),
+            )
+        }
+        queryRuntimeRepository.markCancelRequested(executionId)
+        return QueryKillResponse(
+            executionId = persisted.executionId,
+            status = persisted.status.name,
+            message = "Kill requested on backend instance ${persisted.ownerInstanceId}.",
+            killedAt = Instant.now().toString(),
+        )
     }
 
     private fun parsePageToken(
@@ -1232,7 +1349,12 @@ class QueryExecutionManager(
     }
 
     private fun throwIfCanceled(record: QueryExecutionRecord) {
-        if (record.cancelRequested || Thread.currentThread().isInterrupted) {
+        if (
+            record.cancelRequested ||
+            runCatching { queryRuntimeRepository.isCancelRequested(record.executionId) }.getOrDefault(false) ||
+            Thread.currentThread().isInterrupted
+        ) {
+            record.cancelRequested = true
             throw QueryCanceledException("Query canceled.")
         }
     }
@@ -1244,7 +1366,9 @@ class QueryExecutionManager(
         record.activeConnection = null
     }
 
-    private fun countExecutions(status: QueryExecutionStatus): Int = executions.values.count { record -> record.status == status }
+    private fun countExecutions(status: QueryExecutionStatus): Int =
+        runCatching { queryRuntimeRepository.countActive(status) }
+            .getOrElse { executions.values.count { record -> record.status == status } }
 
     private fun recordExecutionOutcomeMetric(
         record: QueryExecutionRecord,
@@ -1306,13 +1430,12 @@ class QueryExecutionManager(
         emitter: SseEmitter,
     ) {
         val inFlightExecutions =
-            executions.values
-                .asSequence()
-                .filter { record ->
-                    (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) &&
-                        (isSystemAdmin || record.actor == actor)
-                }.sortedBy { record -> record.submittedAt }
-                .toList()
+            queryRuntimeRepository.listActive(
+                actor = actor,
+                isSystemAdmin = isSystemAdmin,
+                datasourceId = null,
+                actorFilter = null,
+            )
 
         inFlightExecutions.forEach { record ->
             val event =
@@ -1408,7 +1531,41 @@ class QueryExecutionManager(
                 completedAt = record.completedAt,
             ),
         )
+        queryRuntimeRepository.save(record.toPersistedRuntimeRecord())
     }
+
+    private fun QueryExecutionRecord.toPersistedRuntimeRecord(): PersistedQueryRuntimeRecord =
+        PersistedQueryRuntimeRecord(
+            executionId = executionId,
+            actor = actor,
+            ipAddress = ipAddress,
+            datasourceId = datasourceId,
+            credentialProfile = credentialProfile,
+            sql = sql,
+            sqlRedacted = false,
+            queryHash = queryHash,
+            maxRowsPerQuery = maxRowsPerQuery,
+            maxRuntimeSeconds = maxRuntimeSeconds,
+            concurrencyLimit = concurrencyLimit,
+            scriptStatementCount = scriptStatementCount,
+            scriptStopOnError = scriptStopOnError,
+            scriptTransactionMode = scriptTransactionMode,
+            scriptStatements = scriptStatements.toList(),
+            status = status,
+            message = message,
+            errorSummary = errorSummary,
+            submittedAt = submittedAt,
+            startedAt = startedAt,
+            completedAt = completedAt,
+            rowLimitReached = rowLimitReached,
+            columns = columns.toList(),
+            rows = synchronized(rows) { rows.toList() },
+            lastAccessedAt = lastAccessedAt,
+            resultsExpired = resultsExpired,
+            cancelRequested = cancelRequested,
+            ownerInstanceId = applicationInstanceId.value,
+            heartbeatAt = Instant.now(),
+        )
 
     private fun sha256Hex(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -1452,4 +1609,103 @@ class QueryExecutionManager(
                     null
                 },
         )
+
+    private fun PersistedQueryRuntimeRecord.toStatusResponse(): QueryExecutionStatusResponse =
+        QueryExecutionStatusResponse(
+            executionId = executionId,
+            datasourceId = datasourceId,
+            status = status.name,
+            message = message,
+            submittedAt = submittedAt.toString(),
+            startedAt = startedAt?.toString(),
+            completedAt = completedAt?.toString(),
+            queryHash = queryHash,
+            errorSummary = errorSummary,
+            rowCount = rows.size,
+            columnCount = columns.size,
+            rowLimitReached = rowLimitReached,
+            maxRowsPerQuery = maxRowsPerQuery,
+            maxRuntimeSeconds = maxRuntimeSeconds,
+            credentialProfile = credentialProfile,
+            scriptSummary =
+                if (scriptStatementCount > 1 || scriptStatements.isNotEmpty()) {
+                    QueryScriptSummary(
+                        statementCount = scriptStatementCount,
+                        stopOnError = scriptStopOnError,
+                        transactionMode = scriptTransactionMode.name,
+                        statements = scriptStatements,
+                    )
+                } else {
+                    null
+                },
+        )
+
+    private fun PersistedQueryRuntimeRecord.toResultsResponse(request: QueryResultsRequest): QueryResultsResponse {
+        if (status == QueryExecutionStatus.QUEUED || status == QueryExecutionStatus.RUNNING) {
+            throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${status.name}.")
+        }
+        if (resultsExpired) {
+            throw QueryResultsExpiredException("Result session expired. Re-run the query.")
+        }
+        if (status == QueryExecutionStatus.FAILED) {
+            throw QueryResultsNotReadyException("Query failed and no result set is available.")
+        }
+        if (status == QueryExecutionStatus.CANCELED) {
+            throw QueryResultsNotReadyException("Query was canceled before a complete result set was available.")
+        }
+
+        val resolvedPageSize =
+            request.pageSize?.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
+                ?: queryExecutionProperties.defaultPageSize.coerceAtLeast(1)
+        val startOffset = request.pageToken?.let { token -> parsePageToken(executionId, token) } ?: 0
+        if (startOffset > rows.size) {
+            throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
+        }
+        val endOffset = (startOffset + resolvedPageSize).coerceAtMost(rows.size)
+        val nextPageToken = if (endOffset < rows.size) buildPageToken(executionId, endOffset) else null
+        queryRuntimeRepository.updateLastAccessed(executionId, Instant.now())
+        return QueryResultsResponse(
+            executionId = executionId,
+            status = status.name,
+            columns = columns,
+            rows = rows.subList(startOffset, endOffset),
+            pageSize = resolvedPageSize,
+            nextPageToken = nextPageToken,
+            rowLimitReached = rowLimitReached,
+        )
+    }
+
+    private fun PersistedQueryRuntimeRecord.toCsvExportPayload(
+        includeHeaders: Boolean,
+        maxExportRows: Int,
+    ): QueryCsvExportPayload {
+        if (status == QueryExecutionStatus.QUEUED || status == QueryExecutionStatus.RUNNING) {
+            throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${status.name}.")
+        }
+        if (resultsExpired) {
+            throw QueryResultsExpiredException("Result session expired. Re-run the query.")
+        }
+        if (status == QueryExecutionStatus.FAILED) {
+            throw QueryResultsNotReadyException("Query failed and cannot be exported.")
+        }
+        if (status == QueryExecutionStatus.CANCELED) {
+            throw QueryResultsNotReadyException("Query was canceled and cannot be exported.")
+        }
+
+        val resolvedMaxExportRows = maxExportRows.coerceAtLeast(1)
+        if (rows.size > resolvedMaxExportRows) {
+            throw QueryExportLimitExceededException(
+                "Export row limit exceeded (${rows.size} rows > $resolvedMaxExportRows allowed).",
+            )
+        }
+        queryRuntimeRepository.updateLastAccessed(executionId, Instant.now())
+        return QueryCsvExportPayload(
+            executionId = executionId,
+            datasourceId = datasourceId,
+            includeHeaders = includeHeaders,
+            rowCount = rows.size,
+            columns = columns,
+            rows = rows,
+        )
+    }
 }

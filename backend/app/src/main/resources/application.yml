@@ -6,8 +6,12 @@ spring:
   session:
     store-type: jdbc
     jdbc:
-      # We create the tables via JdbcSessionSchemaInitializer using CREATE TABLE IF NOT EXISTS.
+      # Flyway owns the application schema, including Spring Session tables.
       initialize-schema: never
+  flyway:
+    enabled: ${DWARVENPICK_FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    baseline-version: 0
 
 management:
   endpoints:
@@ -49,7 +53,13 @@ dwarvenpick:
     shutdown-grace-period-seconds: 15
     history-retention-days: 30
     audit-retention-days: 90
-    query-text-redaction-days: 0
+    query-text-redaction-days: 7
+    retention-cleanup-interval-ms: 3600000
+    active-execution-stale-seconds: 120
+    pool-metrics-stale-seconds: 120
+  resources:
+    version-retention-days: 180
+    max-versions-per-resource: 100
     retention-cleanup-interval-ms: 3600000
   security:
     credentials:
@@ -57,8 +67,9 @@ dwarvenpick:
       master-key: ${DWARVENPICK_CREDENTIAL_MASTER_KEY:dwarvenpick-dev-master-key-change-me}
   drivers:
     external-dir: ${DWARVENPICK_EXTERNAL_DRIVERS_DIR:/opt/app/drivers}
+    uploads-enabled: ${DWARVENPICK_DRIVERS_UPLOADS_ENABLED:false}
     maven:
-      enabled: ${DWARVENPICK_DRIVERS_MAVEN_ENABLED:true}
+      enabled: ${DWARVENPICK_DRIVERS_MAVEN_ENABLED:false}
       repository-url: ${DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL:https://repo1.maven.org/maven2/}
       max-jar-size-mb: ${DWARVENPICK_DRIVERS_MAVEN_MAX_JAR_SIZE_MB:50}
   datasource:

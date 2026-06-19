@@ -196,6 +196,47 @@ class ResourceRepository(
     }
 
     @Transactional
+    fun pruneVersions(
+        cutoff: Instant,
+        maxVersionsPerResource: Int,
+    ): Int {
+        val removedByAge =
+            namedParameterJdbcTemplate.update(
+                """
+                DELETE FROM resource_script_versions
+                WHERE saved_at < :cutoff
+                  AND revision < COALESCE(
+                    (
+                      SELECT current_revision
+                      FROM resource_scripts
+                      WHERE resource_scripts.resource_id = resource_script_versions.resource_id
+                    ),
+                    revision
+                  )
+                """.trimIndent(),
+                mapOf("cutoff" to cutoff.toTimestamp()),
+            )
+
+        val maxVersions = maxVersionsPerResource.coerceAtLeast(1)
+        val removedByCount =
+            listResources().sumOf { resource ->
+                val versions = listVersions(resource.resourceId)
+                val staleVersions =
+                    versions
+                        .filter { version -> version.revision < resource.currentRevision }
+                        .dropLast(maxVersions)
+                staleVersions.sumOf { version ->
+                    namedParameterJdbcTemplate.update(
+                        "DELETE FROM resource_script_versions WHERE version_id = :versionId",
+                        mapOf("versionId" to version.versionId),
+                    )
+                }
+            }
+
+        return removedByAge + removedByCount
+    }
+
+    @Transactional
     fun clear() {
         namedParameterJdbcTemplate.update("DELETE FROM resource_script_versions", emptyMap<String, Any>())
         namedParameterJdbcTemplate.update("DELETE FROM resource_scripts", emptyMap<String, Any>())

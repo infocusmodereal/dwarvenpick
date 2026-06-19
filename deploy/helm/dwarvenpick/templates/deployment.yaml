@@ -47,6 +47,8 @@ spec:
               value: {{ .Values.credentials.activeKeyId | quote }}
             - name: DWARVENPICK_EXTERNAL_DRIVERS_DIR
               value: {{ ternary .Values.drivers.external.mountPath .Values.env.DWARVENPICK_EXTERNAL_DRIVERS_DIR .Values.drivers.external.enabled | quote }}
+            - name: DWARVENPICK_DRIVERS_UPLOADS_ENABLED
+              value: {{ .Values.drivers.uploads.enabled | quote }}
             - name: DWARVENPICK_DRIVERS_MAVEN_ENABLED
               value: {{ .Values.drivers.maven.enabled | quote }}
             - name: DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL
