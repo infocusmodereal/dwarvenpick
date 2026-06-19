@@ -54,3 +54,6 @@ Authentication, RBAC, and query governance actions produce audit events:
 - query execution allowed/denied decisions
 
 Audit events are stored in the application database and pruned by `dwarvenpick.query.audit-retention-days`.
+
+Query text is redacted from persisted query history and runtime records after
+`dwarvenpick.query.query-text-redaction-days` days. The default is 7 days.

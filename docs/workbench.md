@@ -90,7 +90,8 @@ Read-only access rules apply to **every** statement in a script.
 ## Query History
 
 - Filter by connection/status/time range and sort by newest/oldest.
-- Query history is stored in the application database, so entries survive backend restarts and redeployments.
+- Query history, active query status, and buffered result pages are stored in the application database, so they survive
+  backend restarts, redeployments, and routing to a different backend replica.
 - Paginate through persisted history and export the current page as CSV.
 - History retention is controlled by `dwarvenpick.query.history-retention-days`.
 - Optional SQL text redaction is controlled by `dwarvenpick.query.query-text-redaction-days`.
@@ -112,7 +113,7 @@ Read-only access rules apply to **every** statement in a script.
 
 The System Health page also includes a lightweight control plane for the selected connection:
 
-- Real-time view (polling) of queued/running queries and connection pool saturation.
+- Real-time view (polling) of queued/running queries and connection pool saturation across backend replicas.
 - Latency summary (windowed) and latest error samples.
 - Admin actions: pause/resume the connection, cancel/kill queued/running queries (optionally filtered by actor),
   and export queued/running queries as CSV.

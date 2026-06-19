@@ -220,6 +220,11 @@ class DriverRegistryService(
         requestedDriverId: String?,
         requestedDescription: String?,
     ): DriverDescriptor {
+        if (!driverRegistryProperties.uploadsEnabled) {
+            throw IllegalStateException(
+                "JDBC driver uploads are disabled. Set DWARVENPICK_DRIVERS_UPLOADS_ENABLED=true to enable.",
+            )
+        }
         if (!jarFileName.endsWith(".jar", ignoreCase = true)) {
             throw IllegalArgumentException("Only .jar files are accepted for JDBC driver uploads.")
         }

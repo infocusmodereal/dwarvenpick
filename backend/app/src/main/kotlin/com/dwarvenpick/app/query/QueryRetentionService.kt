@@ -32,6 +32,7 @@ class QueryRetentionService(
             )
 
         val removedHistory = queryExecutionManager.pruneHistoryOlderThan(historyCutoff)
+        val removedRuntime = queryExecutionManager.pruneRuntimeOlderThan(historyCutoff)
         val removedAuditEvents = authAuditEventStore.pruneOlderThan(auditCutoff)
 
         val redactedHistoryEntries =
@@ -46,13 +47,34 @@ class QueryRetentionService(
             } else {
                 0
             }
+        val redactedRuntimeEntries =
+            if (queryExecutionProperties.queryTextRedactionDays > 0) {
+                val redactionCutoff =
+                    now.minus(
+                        Duration.ofDays(
+                            queryExecutionProperties.queryTextRedactionDays.coerceAtLeast(1),
+                        ),
+                    )
+                queryExecutionManager.redactRuntimeQueryTextOlderThan(redactionCutoff)
+            } else {
+                0
+            }
 
-        if (removedHistory > 0 || removedAuditEvents > 0 || redactedHistoryEntries > 0) {
+        if (
+            removedHistory > 0 ||
+            removedRuntime > 0 ||
+            removedAuditEvents > 0 ||
+            redactedHistoryEntries > 0 ||
+            redactedRuntimeEntries > 0
+        ) {
             logger.info(
-                "Retention cleanup completed: removedHistory={}, removedAuditEvents={}, redactedHistoryEntries={}",
+                "Retention cleanup completed: removedHistory={}, removedRuntime={}, removedAuditEvents={}, " +
+                    "redactedHistoryEntries={}, redactedRuntimeEntries={}",
                 removedHistory,
+                removedRuntime,
                 removedAuditEvents,
                 redactedHistoryEntries,
+                redactedRuntimeEntries,
             )
         }
     }

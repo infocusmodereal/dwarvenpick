@@ -12,6 +12,11 @@ data class ConnectionsConfigProperties(
      */
     val configPath: String = "",
     /**
+     * When true, YAML config is treated as the desired state for config-managed connections: removed connections,
+     * credential profiles, and access mappings are removed from persistent state during startup.
+     */
+    val authoritative: Boolean = true,
+    /**
      * When true (default), the application will fail fast if the config file references a missing environment variable
      * via `${ENV:VAR_NAME}`.
      */

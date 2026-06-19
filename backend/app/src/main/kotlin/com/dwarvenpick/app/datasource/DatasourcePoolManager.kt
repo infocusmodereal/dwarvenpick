@@ -1,11 +1,14 @@
 package com.dwarvenpick.app.datasource
 
+import com.dwarvenpick.app.runtime.ApplicationInstanceId
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.sql.Connection
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 data class QueryConnectionHandle(
@@ -16,6 +19,8 @@ data class QueryConnectionHandle(
 @Service
 class DatasourcePoolManager(
     private val datasourceRegistryService: DatasourceRegistryService,
+    private val poolMetricsSnapshotRepository: PoolMetricsSnapshotRepository,
+    private val applicationInstanceId: ApplicationInstanceId,
     private val meterRegistry: MeterRegistry,
 ) {
     private val pools = ConcurrentHashMap<String, HikariDataSource>()
@@ -65,6 +70,30 @@ class DatasourcePoolManager(
                     threadsAwaitingConnection = poolBean?.threadsAwaitingConnection ?: 0,
                 )
             }.sortedBy { response -> response.key }
+
+    @Scheduled(fixedDelayString = "\${dwarvenpick.query.pool-metrics-publish-interval-ms:15000}")
+    fun publishPoolMetricsSnapshot() {
+        val now = Instant.now()
+        val snapshots =
+            listPoolMetrics().map { metric ->
+                PoolMetricsSnapshot(
+                    instanceId = applicationInstanceId.value,
+                    key = metric.key,
+                    datasourceId = metric.datasourceId,
+                    credentialProfile = metric.credentialProfile,
+                    activeConnections = metric.activeConnections,
+                    idleConnections = metric.idleConnections,
+                    totalConnections = metric.totalConnections,
+                    maximumPoolSize = metric.maximumPoolSize,
+                    threadsAwaitingConnection = metric.threadsAwaitingConnection,
+                    updatedAt = now,
+                )
+            }
+        runCatching {
+            poolMetricsSnapshotRepository.replaceForInstance(applicationInstanceId.value, snapshots, now)
+            poolMetricsSnapshotRepository.deleteOlderThan(now.minusSeconds(120))
+        }
+    }
 
     fun evictPoolsForDatasource(datasourceId: String) {
         val keysToRemove = pools.keys.filter { key -> key.startsWith("$datasourceId::") }

@@ -76,9 +76,8 @@ Enable a shared JDBC-backed session store (Spring Session) by setting:
 - `SPRING_DATASOURCE_USERNAME=<user>`
 - `SPRING_DATASOURCE_PASSWORD=<password>`
 
-On first start, `dwarvenpick` attempts to create the required Spring Session tables (`SPRING_SESSION`,
-`SPRING_SESSION_ATTRIBUTES`) automatically for PostgreSQL and H2. Ensure your DB user has permission to create tables and
-indexes (or pre-create them yourself).
+Flyway migrations create and upgrade the required Spring Session tables (`SPRING_SESSION`,
+`SPRING_SESSION_ATTRIBUTES`) for PostgreSQL and H2. Ensure your DB user has permission to create tables and indexes.
 
 When running behind HTTPS, also set:
 

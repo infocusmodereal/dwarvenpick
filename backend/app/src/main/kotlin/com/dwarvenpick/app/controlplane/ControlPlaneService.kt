@@ -1,9 +1,10 @@
 package com.dwarvenpick.app.controlplane
 
-import com.dwarvenpick.app.datasource.DatasourcePoolManager
 import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import com.dwarvenpick.app.datasource.ManagedDatasourceNotFoundException
+import com.dwarvenpick.app.datasource.PoolMetricsSnapshotRepository
 import com.dwarvenpick.app.query.QueryExecutionManager
+import com.dwarvenpick.app.query.QueryExecutionProperties
 import com.dwarvenpick.app.query.QueryExecutionStatus
 import com.dwarvenpick.app.query.QueryKillResponse
 import org.springframework.stereotype.Service
@@ -13,7 +14,8 @@ import kotlin.math.ceil
 @Service
 class ControlPlaneService(
     private val datasourceRegistryService: DatasourceRegistryService,
-    private val datasourcePoolManager: DatasourcePoolManager,
+    private val poolMetricsSnapshotRepository: PoolMetricsSnapshotRepository,
+    private val queryExecutionProperties: QueryExecutionProperties,
     private val queryExecutionManager: QueryExecutionManager,
     private val datasourcePauseService: DatasourcePauseService,
 ) {
@@ -38,20 +40,21 @@ class ControlPlaneService(
         val from = now.minusSeconds(window)
 
         val poolMetrics =
-            datasourcePoolManager
-                .listPoolMetrics()
+            poolMetricsSnapshotRepository
+                .listRecent(now.minusSeconds(queryExecutionProperties.poolMetricsStaleSeconds.coerceAtLeast(30)))
                 .filter { metric -> metric.datasourceId == normalizedDatasourceId }
-                .map { metric ->
+                .groupBy { metric -> metric.credentialProfile }
+                .map { (credentialProfile, snapshots) ->
                     ControlPlanePoolStatus(
-                        datasourceId = metric.datasourceId,
-                        credentialProfile = metric.credentialProfile,
-                        activeConnections = metric.activeConnections,
-                        idleConnections = metric.idleConnections,
-                        totalConnections = metric.totalConnections,
-                        maximumPoolSize = metric.maximumPoolSize,
-                        threadsAwaitingConnection = metric.threadsAwaitingConnection,
+                        datasourceId = normalizedDatasourceId,
+                        credentialProfile = credentialProfile,
+                        activeConnections = snapshots.sumOf { it.activeConnections },
+                        idleConnections = snapshots.sumOf { it.idleConnections },
+                        totalConnections = snapshots.sumOf { it.totalConnections },
+                        maximumPoolSize = snapshots.sumOf { it.maximumPoolSize },
+                        threadsAwaitingConnection = snapshots.sumOf { it.threadsAwaitingConnection },
                     )
-                }
+                }.sortedBy { it.credentialProfile }
 
         val activeQueries =
             queryExecutionManager

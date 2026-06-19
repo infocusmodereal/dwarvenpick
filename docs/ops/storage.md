@@ -13,7 +13,7 @@ nav_order: 22
 The application database stores:
 
 - HTTP sessions
-- query history and audit events
+- query history, active query status, buffered query results, and audit events
 - snippets and scripts/resources
 - local users, identity snapshots, RBAC groups, and access mappings
 - admin-created connections and credential profile metadata
@@ -22,7 +22,15 @@ The application database stores:
 
 Use a shared PostgreSQL database for HA and production. The local embedded H2 database is intended for development.
 
+Schema changes are managed by Flyway migrations. Existing deployments with pre-created state tables are baselined and
+migrated forward on startup.
+
 Legacy Resource Manager data in `scripts.json` is imported into the database on startup if the resource tables are empty.
+
+Script/resource versions are retained according to:
+
+- `dwarvenpick.resources.version-retention-days`
+- `dwarvenpick.resources.max-versions-per-resource`
 
 ## File artifacts
 
@@ -48,6 +56,7 @@ Directory layout:
 Notes:
 
 - The application writes **no log files** to this directory by default. Backend logs go to stdout for Kubernetes-friendly collection. See `docs/ops/logging.md`.
+- Driver uploads, Maven installs, and TLS certificate uploads are disabled by default. Enable artifact writes only when all backend replicas can access the same artifact storage, or run with a single backend instance.
 - If `.Values.drivers.external.readOnly=true` in Helm, driver uploads and TLS uploads will fail (read-only mount).
 
 ## Docker Compose persistence
