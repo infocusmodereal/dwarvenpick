@@ -10,6 +10,7 @@ The Workbench is the main SQL editor and results viewer.
 ## Theme
 
 - Use the user menu in the left rail to toggle between Light mode and Dark mode.
+- The main navigation rail opens collapsed by default; use the rail toggle to expand it when you want labels.
 
 ## Editor
 
@@ -80,6 +81,7 @@ Read-only access rules apply to **every** statement in a script.
 - The Explorer shows databases/schemas/tables/columns for the active connection.
 - StarRocks external catalog databases are shown as `catalog.database`, so inserting a table reference produces `catalog.database.table`.
 - Use it to navigate metadata and help author queries.
+- Drag the vertical handle between Explorer and the editor to resize Explorer horizontally. Double-click the handle to reset.
 - Use **Search** to filter schemas/tables/columns (DataGrip-style).
 - Use the **Inspect** icon on a table/view to open the Object Inspector:
     - DDL / `SHOW CREATE` (engine-specific)

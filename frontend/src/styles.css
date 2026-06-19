@@ -2,8 +2,11 @@
     color-scheme: light;
     --workspace-left-rail-width: 228px;
     --workspace-left-rail-collapsed-width: 68px;
-    --workbench-explorer-min-width: 216px;
-    --workbench-explorer-max-width: 244px;
+    --workbench-explorer-default-width: 244px;
+    --workbench-explorer-width: var(--workbench-explorer-default-width);
+    --workbench-explorer-max-resize-width: 560px;
+    --workbench-editor-min-width: 520px;
+    --workspace-collapse-control-size: 2rem;
     --bg: #dbd0bf;
     --surface: #f4ebdd;
     --surface-alt: #e8dcc8;
@@ -1437,7 +1440,7 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.45rem;
+    gap: 0.72rem;
     padding-inline: 0.1rem;
 }
 
@@ -1448,15 +1451,18 @@ button:disabled {
 }
 
 .workspace-logo {
+    min-width: 0;
+    flex: 1 1 auto;
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.42rem;
     border: 0;
     border-radius: 0.48rem;
-    padding: 0.4rem 0.35rem;
+    padding: 0.34rem 0.24rem;
     background: transparent;
     color: #f6ead8;
     font-weight: 640;
+    justify-content: flex-start;
 }
 
 .workspace-logo:hover {
@@ -1471,8 +1477,8 @@ button:disabled {
 }
 
 .workspace-logo-icon {
-    width: 2.45rem;
-    height: 2.45rem;
+    width: 2.08rem;
+    height: 2.08rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1488,15 +1494,20 @@ button:disabled {
 }
 
 .workspace-logo-label {
-    font-size: 1.26rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1.16rem;
     letter-spacing: -0.02em;
 }
 
 .workspace-rail-toggle {
-    width: 1.72rem;
-    height: 1.72rem;
+    flex: 0 0 auto;
+    width: var(--workspace-collapse-control-size);
+    height: var(--workspace-collapse-control-size);
     border-radius: 0.5rem;
-    border: 1px solid transparent;
+    border: 0;
     padding: 0;
     display: inline-flex;
     align-items: center;
@@ -1504,19 +1515,18 @@ button:disabled {
     background: transparent;
     color: #f6ead8;
     transition:
-        background-color 220ms ease,
-        border-color 220ms ease,
-        transform 220ms ease;
+        background-color 160ms ease,
+        color 160ms ease;
 }
 
 .workspace-rail-toggle svg {
-    width: 1.06rem;
-    height: 1.06rem;
+    width: 1.12rem;
+    height: 1.12rem;
 }
 
 .workspace-left-rail.is-collapsed .workspace-rail-toggle {
-    width: 2.45rem;
-    height: 2.45rem;
+    width: var(--workspace-collapse-control-size);
+    height: var(--workspace-collapse-control-size);
     border-radius: 0.56rem;
 }
 
@@ -1527,9 +1537,8 @@ button:disabled {
 
 .workspace-rail-toggle:hover {
     filter: none;
-    background: transparent;
-    border-color: transparent;
-    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff7ea;
 }
 
 .workspace-mode-tabs {
@@ -1868,8 +1877,11 @@ button:disabled {
     --workbench-main-surface: var(--workbench-surface);
     display: grid;
     grid-template-columns:
-        minmax(var(--workbench-explorer-min-width), var(--workbench-explorer-max-width))
-        minmax(0, 1fr);
+        minmax(
+            var(--workbench-explorer-default-width),
+            var(--workbench-explorer-width, var(--workbench-explorer-default-width))
+        )
+        minmax(var(--workbench-editor-min-width), 1fr);
     grid-template-rows: minmax(0, 1fr);
     column-gap: 0;
     row-gap: 0;
@@ -1891,6 +1903,7 @@ button:disabled {
 }
 
 .sidebar {
+    position: relative;
     min-width: 0;
     height: 100%;
     min-height: 0;
@@ -1980,27 +1993,58 @@ button:disabled {
 }
 
 .schema-browser-toggle {
-    width: 2.15rem;
-    height: 2.15rem;
-    border-radius: 0.66rem;
-    border: 1px solid transparent;
+    width: var(--workspace-collapse-control-size);
+    height: var(--workspace-collapse-control-size);
+    border-radius: 0.5rem;
+    border: 0;
     background: transparent;
     box-shadow: none;
     color: var(--icon-button-fg);
     transition:
-        background-color 220ms ease,
-        border-color 220ms ease,
-        transform 220ms ease;
+        background-color 160ms ease,
+        color 160ms ease;
 }
 
 .schema-browser-toggle:hover:not(:disabled) {
-    background: transparent;
+    filter: none;
+    background: var(--hover-tint);
     border-color: transparent;
-    transform: translateY(-1px);
 }
 
 .schema-browser.is-collapsed .schema-browser-toggle {
     margin: 0;
+}
+
+.schema-browser-width-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 20;
+    width: 0.72rem;
+    height: 100%;
+    cursor: col-resize;
+    touch-action: none;
+    outline: none;
+}
+
+.schema-browser-width-resizer::before {
+    content: '';
+    position: absolute;
+    top: 0.72rem;
+    bottom: 0.72rem;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    background: transparent;
+    transition:
+        background-color 160ms ease,
+        box-shadow 160ms ease;
+}
+
+.schema-browser-width-resizer:hover::before,
+.schema-browser-width-resizer:focus-visible::before {
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--hover-tint);
 }
 
 .schema-browser-header h3 {
@@ -4634,6 +4678,10 @@ select {
 
     .workbench-results-resizer::before,
     .workbench-results-resizer::after {
+        display: none;
+    }
+
+    .schema-browser-width-resizer {
         display: none;
     }
 
