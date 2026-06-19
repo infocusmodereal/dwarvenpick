@@ -90,8 +90,8 @@ describe('App shell', () => {
             </ThemeProvider>
         );
 
-        expect(screen.getByText(/^dwarvenpick$/i)).toBeInTheDocument();
-        expect((await screen.findAllByText(/^workbench$/i)).length).toBeGreaterThan(0);
+        expect(await screen.findByRole('button', { name: /expand menu/i })).toBeTruthy();
+        expect(await screen.findByRole('tab', { name: /workbench/i })).toBeTruthy();
         expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });
 
@@ -215,6 +215,7 @@ describe('App shell', () => {
             </ThemeProvider>
         );
 
-        expect((await screen.findAllByText(/^admin$/i)).length).toBeGreaterThan(0);
+        expect(await screen.findByRole('button', { name: /expand menu/i })).toBeTruthy();
+        expect(await screen.findByRole('tab', { name: /admin/i })).toBeTruthy();
     });
 });

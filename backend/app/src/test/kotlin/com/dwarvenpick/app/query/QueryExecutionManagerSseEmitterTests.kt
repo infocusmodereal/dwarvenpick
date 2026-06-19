@@ -101,11 +101,9 @@ class QueryExecutionManagerSseEmitterTests {
                 executionId = submitted.executionId,
             )
         val results =
-            queryExecutionManager.getQueryResults(
+            waitForQueryResults(
                 actor = actor,
-                isSystemAdmin = false,
                 executionId = submitted.executionId,
-                request = QueryResultsRequest(pageSize = 10),
             )
 
         assertThat(status.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
@@ -135,6 +133,29 @@ class QueryExecutionManagerSseEmitterTests {
             isSystemAdmin = false,
             executionId = executionId,
         )
+    }
+
+    private fun waitForQueryResults(
+        actor: String,
+        executionId: String,
+        timeoutMs: Long = 5000,
+    ): QueryResultsResponse {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var lastError: QueryResultsNotReadyException? = null
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return queryExecutionManager.getQueryResults(
+                    actor = actor,
+                    isSystemAdmin = false,
+                    executionId = executionId,
+                    request = QueryResultsRequest(pageSize = 10),
+                )
+            } catch (error: QueryResultsNotReadyException) {
+                lastError = error
+                Thread.sleep(25)
+            }
+        }
+        throw lastError ?: QueryResultsNotReadyException("Query results were not ready before timeout.")
     }
 
     @Suppress("UNCHECKED_CAST")

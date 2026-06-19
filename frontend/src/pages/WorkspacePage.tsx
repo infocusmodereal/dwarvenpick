@@ -134,6 +134,7 @@ import {
 loader.config({ monaco: MonacoModule });
 
 const workbenchResultsSizeStorageKey = 'dwarvenpick.workbench.resultsSizePx';
+const workbenchExplorerSizeStorageKey = 'dwarvenpick.workbench.explorerSizePx';
 
 const parsePxValue = (rawValue: string, fallback: number): number => {
     const trimmed = rawValue.trim();
@@ -579,7 +580,21 @@ export default function WorkspacePage() {
             return null;
         }
     });
+    const [workbenchExplorerSizePx, setWorkbenchExplorerSizePx] = useState<number | null>(() => {
+        try {
+            const raw = window.localStorage.getItem(workbenchExplorerSizeStorageKey);
+            if (!raw) {
+                return null;
+            }
+
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        } catch {
+            return null;
+        }
+    });
     const workbenchGridRef = useRef<HTMLDivElement | null>(null);
+    const schemaBrowserSidebarRef = useRef<HTMLElement | null>(null);
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
@@ -594,6 +609,13 @@ export default function WorkspacePage() {
         actionRowHeight: number;
         resultsMinHeight: number;
         resizerHeight: number;
+    } | null>(null);
+    const explorerResizeStateRef = useRef<{
+        pointerId: number;
+        startX: number;
+        startWidth: number;
+        minWidth: number;
+        maxWidth: number;
     } | null>(null);
 
     const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
@@ -668,7 +690,7 @@ export default function WorkspacePage() {
     const [userAdminMode, setUserAdminMode] = useState<UserAdminMode>('list');
     const [accessAdminMode, setAccessAdminMode] = useState<AccessAdminMode>('list');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
-    const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+    const [leftRailCollapsed, setLeftRailCollapsed] = useState(true);
     const [showVersionInfo, setShowVersionInfo] = useState(false);
     const [collapsedAdminSubmenuOpen, setCollapsedAdminSubmenuOpen] = useState(false);
     const [leftRailUserMenuOpen, setLeftRailUserMenuOpen] = useState(false);
@@ -759,6 +781,22 @@ export default function WorkspacePage() {
     }, [workbenchResultsSizePx]);
 
     useEffect(() => {
+        try {
+            if (workbenchExplorerSizePx === null) {
+                window.localStorage.removeItem(workbenchExplorerSizeStorageKey);
+                return;
+            }
+
+            window.localStorage.setItem(
+                workbenchExplorerSizeStorageKey,
+                workbenchExplorerSizePx.toString()
+            );
+        } catch {
+            // Ignore persistence failures.
+        }
+    }, [workbenchExplorerSizePx]);
+
+    useEffect(() => {
         const editor = editorRef.current;
         if (!editor) {
             return;
@@ -771,7 +809,7 @@ export default function WorkspacePage() {
         return () => {
             window.cancelAnimationFrame(raf);
         };
-    }, [showSchemaBrowser, workbenchResultsSizePx]);
+    }, [showSchemaBrowser, workbenchResultsSizePx, workbenchExplorerSizePx]);
 
     useEffect(() => {
         if (typeof ResizeObserver === 'undefined') {
@@ -803,6 +841,153 @@ export default function WorkspacePage() {
             }
         };
     }, []);
+
+    const getExplorerResizeBounds = useCallback(() => {
+        const grid = workbenchGridRef.current;
+        const sidebar = schemaBrowserSidebarRef.current;
+        if (!grid || !sidebar) {
+            return null;
+        }
+
+        const computed = window.getComputedStyle(grid);
+        const minWidth = parsePxValue(
+            computed.getPropertyValue('--workbench-explorer-default-width'),
+            244
+        );
+        const maxConfiguredWidth = parsePxValue(
+            computed.getPropertyValue('--workbench-explorer-max-resize-width'),
+            560
+        );
+        const editorMinWidth = parsePxValue(
+            computed.getPropertyValue('--workbench-editor-min-width'),
+            520
+        );
+        const gridWidth = grid.getBoundingClientRect().width;
+        const maxWidth = Math.max(
+            minWidth,
+            Math.min(maxConfiguredWidth, gridWidth - editorMinWidth)
+        );
+        const currentWidth = workbenchExplorerSizePx ?? sidebar.getBoundingClientRect().width;
+
+        return {
+            currentWidth,
+            minWidth,
+            maxWidth
+        };
+    }, [workbenchExplorerSizePx]);
+
+    const handleExplorerResizerPointerDown = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            if (event.button !== 0 || !showSchemaBrowser) {
+                return;
+            }
+
+            const bounds = getExplorerResizeBounds();
+            if (!bounds) {
+                return;
+            }
+
+            explorerResizeStateRef.current = {
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startWidth: bounds.currentWidth,
+                minWidth: bounds.minWidth,
+                maxWidth: bounds.maxWidth
+            };
+
+            event.currentTarget.setPointerCapture(event.pointerId);
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+            event.preventDefault();
+        },
+        [getExplorerResizeBounds, showSchemaBrowser]
+    );
+
+    const handleExplorerResizerPointerMove = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            const state = explorerResizeStateRef.current;
+            if (!state || state.pointerId !== event.pointerId) {
+                return;
+            }
+
+            const deltaX = event.clientX - state.startX;
+            const nextWidth = Math.round(state.startWidth + deltaX);
+            const clamped = Math.min(state.maxWidth, Math.max(state.minWidth, nextWidth));
+            setWorkbenchExplorerSizePx(clamped);
+        },
+        []
+    );
+
+    const stopExplorerResize = useCallback((pointerId: number) => {
+        const state = explorerResizeStateRef.current;
+        if (!state || state.pointerId !== pointerId) {
+            return;
+        }
+
+        explorerResizeStateRef.current = null;
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+
+        window.requestAnimationFrame(() => {
+            editorRef.current?.layout();
+        });
+    }, []);
+
+    const handleExplorerResizerPointerUp = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            stopExplorerResize(event.pointerId);
+        },
+        [stopExplorerResize]
+    );
+
+    const handleExplorerResizerPointerCancel = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            stopExplorerResize(event.pointerId);
+        },
+        [stopExplorerResize]
+    );
+
+    const handleExplorerResizerReset = useCallback(() => {
+        setWorkbenchExplorerSizePx(null);
+    }, []);
+
+    const handleExplorerResizerKeyDown = useCallback(
+        (event: ReactKeyboardEvent<HTMLDivElement>) => {
+            if (
+                event.key !== 'ArrowLeft' &&
+                event.key !== 'ArrowRight' &&
+                event.key !== 'Home' &&
+                event.key !== 'End'
+            ) {
+                return;
+            }
+
+            const bounds = getExplorerResizeBounds();
+            if (!bounds) {
+                return;
+            }
+
+            const step = 24;
+            let nextWidth = bounds.currentWidth;
+            if (event.key === 'ArrowRight') {
+                nextWidth = bounds.currentWidth + step;
+            } else if (event.key === 'ArrowLeft') {
+                nextWidth = bounds.currentWidth - step;
+            } else if (event.key === 'Home') {
+                nextWidth = bounds.minWidth;
+            } else if (event.key === 'End') {
+                nextWidth = bounds.maxWidth;
+            }
+
+            const clamped = Math.min(
+                bounds.maxWidth,
+                Math.max(bounds.minWidth, Math.round(nextWidth))
+            );
+            setWorkbenchExplorerSizePx(clamped);
+            event.preventDefault();
+        },
+        [getExplorerResizeBounds]
+    );
 
     const handleResultsResizerPointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -6868,6 +7053,7 @@ export default function WorkspacePage() {
                                     : 'workspace-mode-tab'
                             }
                             aria-selected={activeSection === 'workbench'}
+                            aria-label="Workbench"
                             onClick={() => {
                                 setCollapsedAdminSubmenuOpen(false);
                                 setActiveSection('workbench');
@@ -6888,6 +7074,7 @@ export default function WorkspacePage() {
                                     : 'workspace-mode-tab'
                             }
                             aria-selected={activeSection === 'history'}
+                            aria-label="Query History"
                             onClick={() => {
                                 setCollapsedAdminSubmenuOpen(false);
                                 setActiveSection('history');
@@ -6908,6 +7095,7 @@ export default function WorkspacePage() {
                                     : 'workspace-mode-tab'
                             }
                             aria-selected={activeSection === 'resources'}
+                            aria-label="Scripts"
                             onClick={() => {
                                 setCollapsedAdminSubmenuOpen(false);
                                 setActiveSection('resources');
@@ -6929,6 +7117,7 @@ export default function WorkspacePage() {
                                         : 'workspace-mode-tab'
                                 }
                                 aria-selected={activeSection === 'connections'}
+                                aria-label="Connections"
                                 onClick={() => {
                                     setCollapsedAdminSubmenuOpen(false);
                                     setActiveSection('connections');
@@ -6951,6 +7140,7 @@ export default function WorkspacePage() {
                                         : 'workspace-mode-tab'
                                 }
                                 aria-selected={activeSection === 'audit'}
+                                aria-label="Audit Events"
                                 onClick={() => {
                                     setCollapsedAdminSubmenuOpen(false);
                                     setActiveSection('audit');
@@ -6973,6 +7163,7 @@ export default function WorkspacePage() {
                                         : 'workspace-mode-tab'
                                 }
                                 aria-selected={activeSection === 'health'}
+                                aria-label="System Health"
                                 onClick={() => {
                                     setCollapsedAdminSubmenuOpen(false);
                                     setActiveSection('health');
@@ -6999,6 +7190,7 @@ export default function WorkspacePage() {
                                             : 'workspace-mode-tab'
                                     }
                                     aria-selected={activeSection === 'admin'}
+                                    aria-label="Admin"
                                     onClick={() => {
                                         if (leftRailCollapsed) {
                                             setCollapsedAdminSubmenuOpen((current) => !current);
@@ -7199,10 +7391,19 @@ export default function WorkspacePage() {
                     <div
                         ref={workbenchGridRef}
                         style={
-                            workbenchResultsSizePx === null
+                            workbenchResultsSizePx === null && workbenchExplorerSizePx === null
                                 ? undefined
                                 : ({
-                                      '--workbench-results-size': `${workbenchResultsSizePx}px`
+                                      ...(workbenchResultsSizePx === null
+                                          ? {}
+                                          : {
+                                                '--workbench-results-size': `${workbenchResultsSizePx}px`
+                                            }),
+                                      ...(workbenchExplorerSizePx === null
+                                          ? {}
+                                          : {
+                                                '--workbench-explorer-width': `${workbenchExplorerSizePx}px`
+                                            })
                                   } as CSSProperties)
                         }
                         className={
@@ -7212,7 +7413,10 @@ export default function WorkspacePage() {
                         }
                         hidden={activeSection !== 'workbench'}
                     >
-                        <aside className={showSchemaBrowser ? 'sidebar' : 'sidebar is-collapsed'}>
+                        <aside
+                            ref={schemaBrowserSidebarRef}
+                            className={showSchemaBrowser ? 'sidebar' : 'sidebar is-collapsed'}
+                        >
                             <section
                                 className={
                                     showSchemaBrowser
@@ -7950,6 +8154,22 @@ export default function WorkspacePage() {
                                     )}
                                 </div>
                             </section>
+                            {showSchemaBrowser ? (
+                                <div
+                                    className="schema-browser-width-resizer"
+                                    role="separator"
+                                    tabIndex={0}
+                                    aria-orientation="vertical"
+                                    aria-label="Resize explorer"
+                                    title="Drag to resize explorer"
+                                    onPointerDown={handleExplorerResizerPointerDown}
+                                    onPointerMove={handleExplorerResizerPointerMove}
+                                    onPointerUp={handleExplorerResizerPointerUp}
+                                    onPointerCancel={handleExplorerResizerPointerCancel}
+                                    onDoubleClick={handleExplorerResizerReset}
+                                    onKeyDown={handleExplorerResizerKeyDown}
+                                />
+                            ) : null}
                         </aside>
 
                         <section className="editor" ref={editorSectionRef}>
