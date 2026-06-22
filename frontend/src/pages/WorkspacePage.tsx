@@ -7056,6 +7056,7 @@ export default function WorkspacePage() {
                             aria-label="Workbench"
                             onClick={() => {
                                 setCollapsedAdminSubmenuOpen(false);
+                                setLeftRailCollapsed(true);
                                 setActiveSection('workbench');
                             }}
                             title={leftRailCollapsed ? 'Workbench' : undefined}
@@ -7416,6 +7417,10 @@ export default function WorkspacePage() {
                         <aside
                             ref={schemaBrowserSidebarRef}
                             className={showSchemaBrowser ? 'sidebar' : 'sidebar is-collapsed'}
+                            onClick={
+                                showSchemaBrowser ? undefined : () => setShowSchemaBrowser(true)
+                            }
+                            title={showSchemaBrowser ? undefined : 'Expand explorer'}
                         >
                             <section
                                 className={

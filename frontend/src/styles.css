@@ -1555,9 +1555,9 @@ button:disabled {
     border-radius: 0.66rem;
     border: 1px solid transparent;
     background: transparent;
-    color: #dac8b0;
-    font-size: 0.92rem;
-    font-weight: 380;
+    color: #dfcfba;
+    font-size: 0.91rem;
+    font-weight: 340;
     padding: 0.52rem 0.62rem;
 }
 
@@ -1935,6 +1935,7 @@ button:disabled {
     overflow: hidden;
     margin-right: 0;
     padding-right: 0;
+    cursor: pointer;
 }
 
 .tile-heading {
@@ -1971,9 +1972,11 @@ button:disabled {
 }
 
 .schema-browser.is-collapsed {
-    grid-template-rows: auto;
-    padding: 0.12rem 0 0.12rem 0.04rem;
-    align-content: start;
+    grid-template-rows: minmax(0, 1fr);
+    padding: 0;
+    align-content: stretch;
+    place-items: center;
+    cursor: pointer;
 }
 
 .schema-browser-header {
@@ -1995,7 +1998,10 @@ button:disabled {
 }
 
 .schema-browser.is-collapsed .schema-browser-header {
+    align-self: stretch;
+    justify-self: stretch;
     justify-content: center;
+    align-items: center;
     padding-bottom: 0;
     padding-inline: 0;
 }
@@ -2082,6 +2088,7 @@ button:disabled {
 }
 
 .explorer-body.is-collapsed {
+    display: none;
     opacity: 0;
     transform: translateX(-10px);
     pointer-events: none;
