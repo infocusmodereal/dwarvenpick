@@ -68,6 +68,14 @@ private class QueryRuntimeLimitException(
     override val message: String,
 ) : RuntimeException(message)
 
+private const val RESULT_TRUNCATION_SUFFIX = "..."
+
+private data class BufferedCellValue(
+    val value: String?,
+    val byteSize: Long,
+    val truncated: Boolean,
+)
+
 private data class QueryExecutionRecord(
     val executionId: String,
     val actor: String,
@@ -77,6 +85,8 @@ private data class QueryExecutionRecord(
     val sql: String,
     val queryHash: String,
     val maxRowsPerQuery: Int,
+    val maxBufferedBytes: Long,
+    val maxCellBytes: Int,
     val maxRuntimeSeconds: Int,
     val concurrencyLimit: Int,
     val scriptStatementCount: Int,
@@ -90,6 +100,8 @@ private data class QueryExecutionRecord(
     @Volatile var startedAt: Instant?,
     @Volatile var completedAt: Instant?,
     @Volatile var rowLimitReached: Boolean,
+    @Volatile var resultLimitMessage: String?,
+    @Volatile var bufferedResultBytes: Long,
     val columns: MutableList<QueryResultColumn>,
     val rows: MutableList<List<String?>>,
     @Volatile var lastAccessedAt: Instant,
@@ -165,6 +177,8 @@ class QueryExecutionManager(
         val executionId = UUID.randomUUID().toString()
 
         val maxRows = policy.maxRowsPerQuery.coerceAtLeast(1).coerceAtMost(queryExecutionProperties.maxBufferedRows)
+        val maxBufferedBytes = queryExecutionProperties.maxBufferedBytes.coerceAtLeast(1L)
+        val maxCellBytes = queryExecutionProperties.maxCellBytes.coerceAtLeast(1)
         val maxRuntimeSeconds = policy.maxRuntimeSeconds.coerceAtLeast(1)
         val concurrencyLimit =
             policy.concurrencyLimit.coerceAtLeast(1).coerceAtMost(queryExecutionProperties.maxConcurrencyPerUser.coerceAtLeast(1))
@@ -202,6 +216,8 @@ class QueryExecutionManager(
                     sql = normalizedSql,
                     queryHash = queryHash,
                     maxRowsPerQuery = maxRows,
+                    maxBufferedBytes = maxBufferedBytes,
+                    maxCellBytes = maxCellBytes,
                     maxRuntimeSeconds = maxRuntimeSeconds,
                     concurrencyLimit = concurrencyLimit,
                     scriptStatementCount = statementSegments.size,
@@ -215,6 +231,8 @@ class QueryExecutionManager(
                     startedAt = null,
                     completedAt = null,
                     rowLimitReached = false,
+                    resultLimitMessage = null,
+                    bufferedResultBytes = 0,
                     columns = mutableListOf(),
                     rows = mutableListOf(),
                     lastAccessedAt = Instant.now(),
@@ -866,6 +884,11 @@ class QueryExecutionManager(
         val statement =
             handle.connection.createStatement().apply {
                 queryTimeout = record.maxRuntimeSeconds
+                runCatching {
+                    fetchSize = queryExecutionProperties.jdbcFetchSize.coerceAtLeast(0)
+                }.onFailure { exception ->
+                    logger.debug("JDBC driver rejected query fetch size.", exception)
+                }
             }
         record.activeStatement = statement
         val statementSegments =
@@ -995,6 +1018,8 @@ class QueryExecutionManager(
         }
 
         record.rowLimitReached = false
+        record.resultLimitMessage = null
+        record.bufferedResultBytes = 0
         record.columns.clear()
         synchronized(record.rows) {
             record.rows.clear()
@@ -1018,7 +1043,13 @@ class QueryExecutionManager(
         record.columns.clear()
         record.columns.add(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER"))
         synchronized(record.rows) {
-            record.rows.add(listOf(affectedRows.toString()))
+            val affectedRowsValue = affectedRows.toString()
+            record.rows.add(listOf(affectedRowsValue))
+            record.bufferedResultBytes =
+                affectedRowsValue
+                    .toByteArray(StandardCharsets.UTF_8)
+                    .size
+                    .toLong()
         }
     }
 
@@ -1041,20 +1072,104 @@ class QueryExecutionManager(
             throwIfCanceled(record)
             enforceRuntimeLimit(record)
 
-            synchronized(record.rows) {
-                if (record.rows.size >= record.maxRowsPerQuery) {
-                    record.rowLimitReached = true
-                    return
+            val row =
+                (1..metadata.columnCount).map { index ->
+                    resultSet.getObject(index)
                 }
-
-                val row =
-                    (1..metadata.columnCount).map { index ->
-                        resultSet.getObject(index)?.toString()
-                    }
-                record.rows.add(row)
+            if (!appendBufferedRow(record, row)) {
+                return
             }
         }
     }
+
+    private fun appendBufferedRow(
+        record: QueryExecutionRecord,
+        values: List<Any?>,
+    ): Boolean {
+        val cells = values.map { value -> toBufferedCellValue(value, record.maxCellBytes) }
+        val rowSeparatorBytes = (cells.size - 1).coerceAtLeast(0).toLong()
+        val rowBytes = cells.sumOf { cell -> cell.byteSize } + rowSeparatorBytes
+
+        synchronized(record.rows) {
+            if (record.rows.size >= record.maxRowsPerQuery) {
+                markResultLimit(record, "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows.")
+                return false
+            }
+
+            if (record.bufferedResultBytes + rowBytes > record.maxBufferedBytes) {
+                markResultLimit(record, resultBufferLimitMessage(record.maxBufferedBytes))
+                return false
+            }
+
+            record.rows.add(cells.map { cell -> cell.value })
+            record.bufferedResultBytes += rowBytes
+        }
+
+        if (cells.any { cell -> cell.truncated }) {
+            markResultLimit(
+                record,
+                "Query succeeded. One or more cell values were truncated at " +
+                    "the ${formatBytes(record.maxCellBytes.toLong())} cell size limit.",
+                overwrite = false,
+            )
+        }
+
+        return true
+    }
+
+    private fun toBufferedCellValue(
+        value: Any?,
+        maxCellBytes: Int,
+    ): BufferedCellValue {
+        val text = value?.toString() ?: return BufferedCellValue(value = null, byteSize = 0, truncated = false)
+        val bytes = text.toByteArray(StandardCharsets.UTF_8)
+        if (bytes.size <= maxCellBytes) {
+            return BufferedCellValue(value = text, byteSize = bytes.size.toLong(), truncated = false)
+        }
+
+        val suffix = RESULT_TRUNCATION_SUFFIX.take(maxCellBytes)
+        val suffixBytes = suffix.toByteArray(StandardCharsets.UTF_8).size
+        val valueBudget = (maxCellBytes - suffixBytes).coerceAtLeast(0)
+        val builder = StringBuilder()
+        var usedBytes = 0
+
+        for (character in text) {
+            val characterBytes = character.toString().toByteArray(StandardCharsets.UTF_8).size
+            if (usedBytes + characterBytes > valueBudget) {
+                break
+            }
+            builder.append(character)
+            usedBytes += characterBytes
+        }
+
+        val truncatedValue = builder.append(suffix).toString()
+        return BufferedCellValue(
+            value = truncatedValue,
+            byteSize = truncatedValue.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+            truncated = true,
+        )
+    }
+
+    private fun markResultLimit(
+        record: QueryExecutionRecord,
+        message: String,
+        overwrite: Boolean = true,
+    ) {
+        record.rowLimitReached = true
+        if (overwrite || record.resultLimitMessage == null) {
+            record.resultLimitMessage = message
+        }
+    }
+
+    private fun resultBufferLimitMessage(maxBufferedBytes: Long): String =
+        "Query succeeded. Result truncated at the ${formatBytes(maxBufferedBytes)} result buffer size limit."
+
+    private fun formatBytes(bytes: Long): String =
+        when {
+            bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)}MiB"
+            bytes >= 1024L -> "${bytes / 1024L}KiB"
+            else -> "${bytes}B"
+        }
 
     private fun buildSqlPreview(sql: String): String {
         val normalized = SqlSafety.stripLeadingSqlComments(sql).trim()
@@ -1086,9 +1201,7 @@ class QueryExecutionManager(
                 enforceRuntimeLimit(record)
                 Thread.sleep(100)
             }
-            synchronized(record.rows) {
-                record.rows.add(listOf("0"))
-            }
+            appendBufferedRow(record, listOf("0"))
             return
         }
 
@@ -1098,17 +1211,29 @@ class QueryExecutionManager(
             val end = seriesMatch.groupValues[2].toIntOrNull() ?: start
             record.columns.clear()
             record.columns.add(QueryResultColumn(name = "generate_series", jdbcType = "INTEGER"))
-            synchronized(record.rows) {
-                for (value in start..end) {
-                    throwIfCanceled(record)
-                    enforceRuntimeLimit(record)
-                    if (record.rows.size >= record.maxRowsPerQuery) {
-                        record.rowLimitReached = true
-                        break
-                    }
-                    record.rows.add(listOf(value.toString()))
+            for (value in start..end) {
+                throwIfCanceled(record)
+                enforceRuntimeLimit(record)
+                if (!appendBufferedRow(record, listOf(value.toString()))) {
+                    break
                 }
             }
+            return
+        }
+
+        val repeatMatch =
+            Regex(
+                "^select\\s+repeat\\(\\s*'([^']*)'\\s*,\\s*(\\d+)\\s*\\)(?:\\s+as\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\s*;?$",
+                RegexOption.IGNORE_CASE,
+            ).find(sql)
+        if (repeatMatch != null) {
+            val repeatedText = repeatMatch.groupValues[1]
+            val requestedCount = repeatMatch.groupValues[2].toLongOrNull()?.coerceAtLeast(0) ?: 0L
+            val repeatCount = requestedCount.coerceAtMost(record.maxCellBytes.toLong() + 64L).toInt()
+            val alias = repeatMatch.groupValues.getOrNull(3)?.ifBlank { null } ?: "repeat"
+            record.columns.clear()
+            record.columns.add(QueryResultColumn(name = alias, jdbcType = "VARCHAR"))
+            appendBufferedRow(record, listOf(repeatedText.repeat(repeatCount)))
             return
         }
 
@@ -1117,17 +1242,13 @@ class QueryExecutionManager(
             val alias = selectOneMatch.groupValues.getOrNull(1)?.ifBlank { null } ?: "value"
             record.columns.clear()
             record.columns.add(QueryResultColumn(name = alias, jdbcType = "INTEGER"))
-            synchronized(record.rows) {
-                record.rows.add(listOf("1"))
-            }
+            appendBufferedRow(record, listOf("1"))
             return
         }
 
         record.columns.clear()
         record.columns.add(QueryResultColumn(name = "result", jdbcType = "VARCHAR"))
-        synchronized(record.rows) {
-            record.rows.add(listOf("Query executed in local simulation mode."))
-        }
+        appendBufferedRow(record, listOf("Query executed in local simulation mode."))
     }
 
     private fun markRunning(record: QueryExecutionRecord) {
@@ -1153,11 +1274,12 @@ class QueryExecutionManager(
         record.completedAt = Instant.now()
         record.lastAccessedAt = Instant.now()
         record.message =
-            if (record.rowLimitReached) {
-                "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows."
-            } else {
-                "Query succeeded."
-            }
+            record.resultLimitMessage
+                ?: if (record.rowLimitReached) {
+                    "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows."
+                } else {
+                    "Query succeeded."
+                }
         syncHistoryFromExecution(record)
         publishEvent(record, record.message)
         recordExecutionOutcomeMetric(record, "succeeded")
@@ -1337,6 +1459,7 @@ class QueryExecutionManager(
         val normalizedSql = sql.trim().lowercase(Locale.getDefault())
         return normalizedSql.contains("pg_sleep(") ||
             normalizedSql.contains("generate_series(") ||
+            Regex("^select\\s+repeat\\(").containsMatchIn(normalizedSql) ||
             Regex("^select\\s+1(?:\\s+as\\s+[a-zA-Z_][a-zA-Z0-9_]*)?\\s*;?$").matches(normalizedSql)
     }
 

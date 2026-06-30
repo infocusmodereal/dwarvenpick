@@ -44,7 +44,10 @@ dwarvenpick:
     default-page-size: 500
     max-page-size: 1000
     max-buffered-rows: 5000
+    max-buffered-bytes: 67108864
+    max-cell-bytes: 1048576
     max-export-rows: 5000
+    jdbc-fetch-size: 500
     max-concurrency-per-user: 5
     result-session-ttl-seconds: 600
     execution-retention-seconds: 3600
