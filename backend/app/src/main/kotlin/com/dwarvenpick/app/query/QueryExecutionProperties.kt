@@ -8,6 +8,7 @@ data class QueryExecutionProperties(
     val maxPageSize: Int = 1000,
     val maxBufferedRows: Int = 5000,
     val maxBufferedBytes: Long = 64L * 1024L * 1024L,
+    val maxBufferedBytesPerInstance: Long = 256L * 1024L * 1024L,
     val maxCellBytes: Int = 1024 * 1024,
     val maxExportRows: Int = 5000,
     val jdbcFetchSize: Int = 500,

@@ -251,6 +251,9 @@ Start with:
 Tune based on:
 
 - `dwarvenpick_query_active{status="queued"}`
+- `dwarvenpick_query_buffered_bytes / dwarvenpick_query_buffered_budget_bytes`
 - query timeout/cancel rates
 - pool saturation (`dwarvenpick_pool_active / dwarvenpick_pool_total`)
 - p95 query latency under representative load (`docs/perf-testing.md`)
+
+Use `dwarvenpick.query.max-buffered-bytes-per-instance` to cap the total query result payload retained in one backend process. The default is `256MiB`, which leaves headroom for the chart's default `1Gi` pod memory limit and the JVM's default container-aware heap sizing. Raise it only when the pod memory limit and JVM heap are sized with room for request handling, CSV export, JDBC driver buffers, and application overhead.

@@ -34,6 +34,8 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_query_duration_seconds{outcome=...}`
   - `dwarvenpick_query_cancel_total`
   - `dwarvenpick_query_timeout_total`
+  - `dwarvenpick_query_buffered_bytes`
+  - `dwarvenpick_query_buffered_budget_bytes`
 - Exports:
   - `dwarvenpick_query_export_attempts_total{outcome=...}`
 - Auth:
