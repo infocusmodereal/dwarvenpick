@@ -13,10 +13,15 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import java.io.InputStream
+import java.io.Reader
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.ResultSetMetaData
 import java.sql.Statement
+import java.sql.Types
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -69,6 +74,7 @@ private class QueryRuntimeLimitException(
 ) : RuntimeException(message)
 
 private const val RESULT_TRUNCATION_SUFFIX = "..."
+private val HEX_DIGITS = "0123456789abcdef".toCharArray()
 
 private data class BufferedCellValue(
     val value: String?,
@@ -126,6 +132,7 @@ class QueryExecutionManager(
     private val executions = ConcurrentHashMap<String, QueryExecutionRecord>()
     private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>()
     private val eventCounter = AtomicLong(0)
+    private val instanceBufferedResultBytes = AtomicLong(0)
     private val logger = LoggerFactory.getLogger(QueryExecutionManager::class.java)
 
     @PostConstruct
@@ -135,6 +142,12 @@ class QueryExecutionManager(
         }
         meterRegistry.gauge("dwarvenpick.query.active", Tags.of("status", "running"), this) { manager ->
             manager.countExecutions(QueryExecutionStatus.RUNNING).toDouble()
+        }
+        meterRegistry.gauge("dwarvenpick.query.buffered.bytes", this) { manager ->
+            manager.instanceBufferedResultBytes.get().toDouble()
+        }
+        meterRegistry.gauge("dwarvenpick.query.buffered.budget.bytes", this) { manager ->
+            manager.instanceBufferedResultBudgetBytes().toDouble()
         }
     }
 
@@ -712,10 +725,7 @@ class QueryExecutionManager(
             if (!record.resultsExpired) {
                 val idleForSeconds = Duration.between(record.lastAccessedAt, now).seconds
                 if (idleForSeconds > resultTtlSeconds) {
-                    synchronized(record.rows) {
-                        record.rows.clear()
-                    }
-                    record.columns.clear()
+                    clearBufferedResults(record)
                     record.resultsExpired = true
                     record.message = "Result session expired. Re-run the query."
                     syncHistoryFromExecution(record)
@@ -730,10 +740,7 @@ class QueryExecutionManager(
         }
 
         removableExecutionIds.forEach { executionId ->
-            val removed = executions.remove(executionId)
-            if (removed != null) {
-                closeRuntimeResources(removed)
-            }
+            removeExecution(executionId)
         }
         queryRuntimeRepository.markStaleActiveExecutions(
             staleCutoff,
@@ -885,6 +892,11 @@ class QueryExecutionManager(
             handle.connection.createStatement().apply {
                 queryTimeout = record.maxRuntimeSeconds
                 runCatching {
+                    maxFieldSize = jdbcFieldSizeLimit(record.maxCellBytes)
+                }.onFailure { exception ->
+                    logger.debug("JDBC driver rejected query max field size.", exception)
+                }
+                runCatching {
                     fetchSize = queryExecutionProperties.jdbcFetchSize.coerceAtLeast(0)
                 }.onFailure { exception ->
                     logger.debug("JDBC driver rejected query fetch size.", exception)
@@ -1019,11 +1031,7 @@ class QueryExecutionManager(
 
         record.rowLimitReached = false
         record.resultLimitMessage = null
-        record.bufferedResultBytes = 0
-        record.columns.clear()
-        synchronized(record.rows) {
-            record.rows.clear()
-        }
+        clearBufferedResults(record)
 
         val hasResultSet = statement.execute(sql)
         if (!hasResultSet) {
@@ -1040,22 +1048,13 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         affectedRows: Int,
     ) {
-        record.columns.clear()
-        record.columns.add(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER"))
-        synchronized(record.rows) {
-            val affectedRowsValue = affectedRows.toString()
-            record.rows.add(listOf(affectedRowsValue))
-            record.bufferedResultBytes =
-                affectedRowsValue
-                    .toByteArray(StandardCharsets.UTF_8)
-                    .size
-                    .toLong()
-        }
+        replaceBufferedColumns(record, listOf(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER")))
+        appendBufferedRow(record, listOf(affectedRows.toString()))
     }
 
     private fun bufferResultSet(
         record: QueryExecutionRecord,
-        resultSet: java.sql.ResultSet,
+        resultSet: ResultSet,
     ) {
         val metadata = resultSet.metaData
         val resolvedColumns =
@@ -1065,8 +1064,7 @@ class QueryExecutionManager(
                     jdbcType = metadata.getColumnTypeName(index) ?: "UNKNOWN",
                 )
             }
-        record.columns.clear()
-        record.columns.addAll(resolvedColumns)
+        replaceBufferedColumns(record, resolvedColumns)
 
         while (resultSet.next()) {
             throwIfCanceled(record)
@@ -1074,9 +1072,9 @@ class QueryExecutionManager(
 
             val row =
                 (1..metadata.columnCount).map { index ->
-                    resultSet.getObject(index)
+                    readBufferedCellValue(resultSet, metadata, index, record.maxCellBytes)
                 }
-            if (!appendBufferedRow(record, row)) {
+            if (!appendBufferedCells(record, row)) {
                 return
             }
         }
@@ -1085,8 +1083,16 @@ class QueryExecutionManager(
     private fun appendBufferedRow(
         record: QueryExecutionRecord,
         values: List<Any?>,
+    ): Boolean =
+        appendBufferedCells(
+            record,
+            values.map { value -> toBufferedCellValue(value, record.maxCellBytes) },
+        )
+
+    private fun appendBufferedCells(
+        record: QueryExecutionRecord,
+        cells: List<BufferedCellValue>,
     ): Boolean {
-        val cells = values.map { value -> toBufferedCellValue(value, record.maxCellBytes) }
         val rowSeparatorBytes = (cells.size - 1).coerceAtLeast(0).toLong()
         val rowBytes = cells.sumOf { cell -> cell.byteSize } + rowSeparatorBytes
 
@@ -1098,6 +1104,18 @@ class QueryExecutionManager(
 
             if (record.bufferedResultBytes + rowBytes > record.maxBufferedBytes) {
                 markResultLimit(record, resultBufferLimitMessage(record.maxBufferedBytes))
+                return false
+            }
+
+            val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
+            if (!tryReserveInstanceBufferedBytes(rowBytes, instanceBudgetBytes)) {
+                markResultLimit(record, instanceBufferLimitMessage(instanceBudgetBytes))
+                meterRegistry
+                    .counter(
+                        "dwarvenpick.query.result_buffer.rejections",
+                        "reason",
+                        "instance_budget",
+                    ).increment()
                 return false
             }
 
@@ -1117,37 +1135,238 @@ class QueryExecutionManager(
         return true
     }
 
+    private fun readBufferedCellValue(
+        resultSet: ResultSet,
+        metadata: ResultSetMetaData,
+        index: Int,
+        maxCellBytes: Int,
+    ): BufferedCellValue {
+        val jdbcType = runCatching { metadata.getColumnType(index) }.getOrDefault(Types.OTHER)
+        val jdbcTypeName =
+            runCatching { metadata.getColumnTypeName(index) }
+                .getOrNull()
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+
+        if (isCharacterLikeColumn(jdbcType, jdbcTypeName)) {
+            val reader =
+                runCatching {
+                    if (
+                        jdbcType == Types.NCLOB ||
+                        jdbcType == Types.NCHAR ||
+                        jdbcType == Types.NVARCHAR ||
+                        jdbcType == Types.LONGNVARCHAR
+                    ) {
+                        resultSet.getNCharacterStream(index)
+                    } else {
+                        resultSet.getCharacterStream(index)
+                    }
+                }.getOrNull()
+            if (reader != null) {
+                return reader.use { toBufferedCellValue(it, maxCellBytes) }
+            }
+            if (resultSet.wasNull()) {
+                return nullBufferedCellValue()
+            }
+        }
+
+        if (isBinaryLikeColumn(jdbcType)) {
+            val stream = runCatching { resultSet.getBinaryStream(index) }.getOrNull()
+            if (stream != null) {
+                return stream.use { toBufferedBinaryCellValue(it, maxCellBytes) }
+            }
+            if (resultSet.wasNull()) {
+                return nullBufferedCellValue()
+            }
+        }
+
+        return toBufferedCellValue(resultSet.getObject(index), maxCellBytes)
+    }
+
     private fun toBufferedCellValue(
         value: Any?,
         maxCellBytes: Int,
-    ): BufferedCellValue {
-        val text = value?.toString() ?: return BufferedCellValue(value = null, byteSize = 0, truncated = false)
-        val bytes = text.toByteArray(StandardCharsets.UTF_8)
-        if (bytes.size <= maxCellBytes) {
-            return BufferedCellValue(value = text, byteSize = bytes.size.toLong(), truncated = false)
+    ): BufferedCellValue =
+        when (value) {
+            null -> nullBufferedCellValue()
+            is ByteArray -> value.inputStream().use { stream -> toBufferedBinaryCellValue(stream, maxCellBytes) }
+            is java.sql.Clob -> value.characterStream.use { reader -> toBufferedCellValue(reader, maxCellBytes) }
+            is java.sql.NClob -> value.characterStream.use { reader -> toBufferedCellValue(reader, maxCellBytes) }
+            is java.sql.SQLXML -> value.characterStream.use { reader -> toBufferedCellValue(reader, maxCellBytes) }
+            else -> toBufferedTextCellValue(value.toString(), maxCellBytes)
         }
 
+    private fun toBufferedCellValue(
+        reader: Reader,
+        maxCellBytes: Int,
+    ): BufferedCellValue {
+        val bufferedReader = reader.buffered()
         val suffix = RESULT_TRUNCATION_SUFFIX.take(maxCellBytes)
         val suffixBytes = suffix.toByteArray(StandardCharsets.UTF_8).size
         val valueBudget = (maxCellBytes - suffixBytes).coerceAtLeast(0)
         val builder = StringBuilder()
         var usedBytes = 0
+        var truncated = false
 
-        for (character in text) {
-            val characterBytes = character.toString().toByteArray(StandardCharsets.UTF_8).size
-            if (usedBytes + characterBytes > valueBudget) {
+        while (true) {
+            val next = bufferedReader.read()
+            if (next == -1) {
                 break
             }
+
+            val character = next.toChar()
+            val characterBytes = character.toString().toByteArray(StandardCharsets.UTF_8).size
+            if (usedBytes + characterBytes > valueBudget) {
+                truncated = true
+                break
+            }
+
             builder.append(character)
             usedBytes += characterBytes
         }
 
-        val truncatedValue = builder.append(suffix).toString()
+        val result =
+            if (truncated) {
+                builder.append(suffix).toString()
+            } else {
+                builder.toString()
+            }
+
         return BufferedCellValue(
-            value = truncatedValue,
-            byteSize = truncatedValue.toByteArray(StandardCharsets.UTF_8).size.toLong(),
-            truncated = true,
+            value = result,
+            byteSize = result.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+            truncated = truncated,
         )
+    }
+
+    private fun toBufferedTextCellValue(
+        text: String,
+        maxCellBytes: Int,
+    ): BufferedCellValue = text.reader().use { reader -> toBufferedCellValue(reader, maxCellBytes) }
+
+    private fun toBufferedBinaryCellValue(
+        inputStream: InputStream,
+        maxCellBytes: Int,
+    ): BufferedCellValue {
+        val suffix = RESULT_TRUNCATION_SUFFIX.take(maxCellBytes)
+        val suffixBytes = suffix.toByteArray(StandardCharsets.UTF_8).size
+        val valueBudget = (maxCellBytes - suffixBytes).coerceAtLeast(0)
+        val visibleByteBudget = valueBudget / 2
+        val bytes =
+            if (visibleByteBudget > 0) {
+                inputStream.readNBytes(visibleByteBudget + 1)
+            } else {
+                inputStream.readNBytes(1)
+            }
+        val truncated = bytes.size > visibleByteBudget
+        val visibleLength = bytes.size.coerceAtMost(visibleByteBudget)
+        val builderCapacity =
+            ((visibleLength.toLong() * 2L) + if (truncated) suffix.length.toLong() else 0L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+        val builder = StringBuilder(builderCapacity)
+        for (index in 0 until visibleLength) {
+            val value = bytes[index].toInt() and 0xff
+            builder.append(HEX_DIGITS[value ushr 4])
+            builder.append(HEX_DIGITS[value and 0x0f])
+        }
+        if (truncated) {
+            builder.append(suffix)
+        }
+        val result = builder.toString()
+
+        return BufferedCellValue(
+            value = result,
+            byteSize = result.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+            truncated = truncated,
+        )
+    }
+
+    private fun nullBufferedCellValue(): BufferedCellValue = BufferedCellValue(value = null, byteSize = 0, truncated = false)
+
+    private fun isCharacterLikeColumn(
+        jdbcType: Int,
+        jdbcTypeName: String,
+    ): Boolean =
+        jdbcType in
+            setOf(
+                Types.CHAR,
+                Types.VARCHAR,
+                Types.LONGVARCHAR,
+                Types.NCHAR,
+                Types.NVARCHAR,
+                Types.LONGNVARCHAR,
+                Types.CLOB,
+                Types.NCLOB,
+                Types.SQLXML,
+            ) ||
+            jdbcTypeName.contains("text") ||
+            jdbcTypeName.contains("json") ||
+            jdbcTypeName.contains("xml")
+
+    private fun isBinaryLikeColumn(jdbcType: Int): Boolean =
+        jdbcType in setOf(Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB)
+
+    private fun jdbcFieldSizeLimit(maxCellBytes: Int): Int =
+        (maxCellBytes.toLong() + MAX_FIELD_SIZE_DETECTION_BYTES)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+
+    private fun clearBufferedResults(record: QueryExecutionRecord) {
+        val releasedBytes =
+            synchronized(record.rows) {
+                val currentBytes = record.bufferedResultBytes
+                record.rows.clear()
+                record.bufferedResultBytes = 0
+                record.columns.clear()
+                currentBytes
+            }
+        releaseInstanceBufferedBytes(releasedBytes)
+    }
+
+    private fun removeExecution(executionId: String) {
+        val removed = executions.remove(executionId) ?: return
+        clearBufferedResults(removed)
+        closeRuntimeResources(removed)
+    }
+
+    private fun replaceBufferedColumns(
+        record: QueryExecutionRecord,
+        columns: List<QueryResultColumn>,
+    ) {
+        synchronized(record.rows) {
+            record.columns.clear()
+            record.columns.addAll(columns)
+        }
+    }
+
+    private fun instanceBufferedResultBudgetBytes(): Long = queryExecutionProperties.maxBufferedBytesPerInstance.coerceAtLeast(0)
+
+    private fun tryReserveInstanceBufferedBytes(
+        rowBytes: Long,
+        instanceBudgetBytes: Long,
+    ): Boolean {
+        if (rowBytes <= 0) {
+            return true
+        }
+
+        while (true) {
+            val currentBytes = instanceBufferedResultBytes.get()
+            val nextBytes = currentBytes + rowBytes
+            if (instanceBudgetBytes > 0 && nextBytes > instanceBudgetBytes) {
+                return false
+            }
+            if (instanceBufferedResultBytes.compareAndSet(currentBytes, nextBytes)) {
+                return true
+            }
+        }
+    }
+
+    private fun releaseInstanceBufferedBytes(bytes: Long) {
+        if (bytes <= 0) {
+            return
+        }
+        instanceBufferedResultBytes.updateAndGet { current -> (current - bytes).coerceAtLeast(0) }
     }
 
     private fun markResultLimit(
@@ -1163,6 +1382,10 @@ class QueryExecutionManager(
 
     private fun resultBufferLimitMessage(maxBufferedBytes: Long): String =
         "Query succeeded. Result truncated at the ${formatBytes(maxBufferedBytes)} result buffer size limit."
+
+    private fun instanceBufferLimitMessage(maxBufferedBytesPerInstance: Long): String =
+        "Query succeeded. Result truncated because this backend reached the " +
+            "${formatBytes(maxBufferedBytesPerInstance)} shared result buffer budget."
 
     private fun formatBytes(bytes: Long): String =
         when {
@@ -1194,8 +1417,7 @@ class QueryExecutionManager(
         if (sleepMatch != null) {
             val sleepSeconds = sleepMatch.groupValues[1].toLongOrNull()?.coerceAtLeast(0) ?: 0L
             val endAt = Instant.now().plusSeconds(sleepSeconds)
-            record.columns.clear()
-            record.columns.add(QueryResultColumn(name = "pg_sleep", jdbcType = "DOUBLE"))
+            replaceBufferedColumns(record, listOf(QueryResultColumn(name = "pg_sleep", jdbcType = "DOUBLE")))
             while (Instant.now().isBefore(endAt)) {
                 throwIfCanceled(record)
                 enforceRuntimeLimit(record)
@@ -1209,8 +1431,7 @@ class QueryExecutionManager(
         if (seriesMatch != null) {
             val start = seriesMatch.groupValues[1].toIntOrNull() ?: 1
             val end = seriesMatch.groupValues[2].toIntOrNull() ?: start
-            record.columns.clear()
-            record.columns.add(QueryResultColumn(name = "generate_series", jdbcType = "INTEGER"))
+            replaceBufferedColumns(record, listOf(QueryResultColumn(name = "generate_series", jdbcType = "INTEGER")))
             for (value in start..end) {
                 throwIfCanceled(record)
                 enforceRuntimeLimit(record)
@@ -1231,8 +1452,7 @@ class QueryExecutionManager(
             val requestedCount = repeatMatch.groupValues[2].toLongOrNull()?.coerceAtLeast(0) ?: 0L
             val repeatCount = requestedCount.coerceAtMost(record.maxCellBytes.toLong() + 64L).toInt()
             val alias = repeatMatch.groupValues.getOrNull(3)?.ifBlank { null } ?: "repeat"
-            record.columns.clear()
-            record.columns.add(QueryResultColumn(name = alias, jdbcType = "VARCHAR"))
+            replaceBufferedColumns(record, listOf(QueryResultColumn(name = alias, jdbcType = "VARCHAR")))
             appendBufferedRow(record, listOf(repeatedText.repeat(repeatCount)))
             return
         }
@@ -1240,14 +1460,12 @@ class QueryExecutionManager(
         val selectOneMatch = Regex("^select\\s+1(?:\\s+as\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\s*;?$").find(normalizedSql)
         if (selectOneMatch != null) {
             val alias = selectOneMatch.groupValues.getOrNull(1)?.ifBlank { null } ?: "value"
-            record.columns.clear()
-            record.columns.add(QueryResultColumn(name = alias, jdbcType = "INTEGER"))
+            replaceBufferedColumns(record, listOf(QueryResultColumn(name = alias, jdbcType = "INTEGER")))
             appendBufferedRow(record, listOf("1"))
             return
         }
 
-        record.columns.clear()
-        record.columns.add(QueryResultColumn(name = "result", jdbcType = "VARCHAR"))
+        replaceBufferedColumns(record, listOf(QueryResultColumn(name = "result", jdbcType = "VARCHAR")))
         appendBufferedRow(record, listOf("Query executed in local simulation mode."))
     }
 
@@ -1305,6 +1523,7 @@ class QueryExecutionManager(
         record.errorSummary = message
         record.message = "Query failed."
         record.completedAt = Instant.now()
+        clearBufferedResults(record)
         syncHistoryFromExecution(record)
         publishEvent(record, message)
         recordExecutionOutcomeMetric(record, "failed")
@@ -1328,6 +1547,7 @@ class QueryExecutionManager(
         record.errorSummary = null
         record.message = message
         record.completedAt = Instant.now()
+        clearBufferedResults(record)
         syncHistoryFromExecution(record)
         publishEvent(record, message)
         recordExecutionOutcomeMetric(record, "canceled")
@@ -1830,5 +2050,9 @@ class QueryExecutionManager(
             columns = columns,
             rows = rows,
         )
+    }
+
+    private companion object {
+        private const val MAX_FIELD_SIZE_DETECTION_BYTES = 4L
     }
 }

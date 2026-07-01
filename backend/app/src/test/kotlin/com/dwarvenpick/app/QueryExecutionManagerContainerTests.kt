@@ -11,6 +11,7 @@ import com.dwarvenpick.app.inspector.ObjectInspectorObjectRef
 import com.dwarvenpick.app.inspector.ObjectInspectorSectionStatus
 import com.dwarvenpick.app.inspector.ObjectInspectorService
 import com.dwarvenpick.app.query.QueryExecutionManager
+import com.dwarvenpick.app.query.QueryExecutionProperties
 import com.dwarvenpick.app.query.QueryExecutionRequest
 import com.dwarvenpick.app.query.QueryExecutionStatusResponse
 import com.dwarvenpick.app.query.QueryResultsRequest
@@ -40,6 +41,9 @@ import java.time.Duration
 class QueryExecutionManagerContainerTests {
     @Autowired
     private lateinit var queryExecutionManager: QueryExecutionManager
+
+    @Autowired
+    private lateinit var queryExecutionProperties: QueryExecutionProperties
 
     @Autowired
     private lateinit var datasourceRegistryService: DatasourceRegistryService
@@ -115,6 +119,44 @@ class QueryExecutionManagerContainerTests {
             )
         assertThat(secondPage.rows).hasSize(10)
         assertThat(secondPage.rows[0][0]).isEqualTo("11")
+    }
+
+    @Test
+    fun `postgres oversized text cell is truncated through jdbc result set`() {
+        val datasourceId = registerPostgresDatasource()
+        val actor = "tc-postgres-large-cell-user"
+        val maxCellBytes = queryExecutionProperties.maxCellBytes
+        val requestedBytes = maxCellBytes + 128
+
+        val submitted =
+            queryExecutionManager.submitQuery(
+                actor = actor,
+                ipAddress = "127.0.0.1",
+                request =
+                    QueryExecutionRequest(
+                        datasourceId = datasourceId,
+                        sql = "select repeat('x', $requestedBytes) as payload",
+                    ),
+                policy = defaultPolicy(),
+            )
+
+        val terminal = waitForTerminalStatus(actor, submitted.executionId)
+        assertThat(terminal.status).isEqualTo("SUCCEEDED")
+        assertThat(terminal.message).contains("cell size limit")
+
+        val results =
+            queryExecutionManager.getQueryResults(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+                request = QueryResultsRequest(pageSize = 10),
+            )
+        val payload = results.rows.single().single()
+
+        assertThat(payload).isNotNull()
+        assertThat(payload!!.toByteArray().size).isLessThanOrEqualTo(maxCellBytes)
+        assertThat(payload).endsWith("...")
+        assertThat(results.rowLimitReached).isTrue()
     }
 
     @Test

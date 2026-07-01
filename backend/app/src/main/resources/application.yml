@@ -45,6 +45,7 @@ dwarvenpick:
     max-page-size: 1000
     max-buffered-rows: 5000
     max-buffered-bytes: 67108864
+    max-buffered-bytes-per-instance: 268435456
     max-cell-bytes: 1048576
     max-export-rows: 5000
     jdbc-fetch-size: 500
