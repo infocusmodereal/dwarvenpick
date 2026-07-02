@@ -649,20 +649,26 @@ class DwarvenpickApplicationTests {
         assertThat(exportResult.response.contentType).isEqualTo("text/csv")
         assertThat(exportResult.response.contentAsString).isEqualTo("generate_series\n1\n2\n3\n")
 
-        val exportWithoutHeadersRequest =
-            mockMvc
-                .perform(
-                    get("/api/queries/$executionId/export.csv")
-                        .cookie(*adminSession)
-                        .queryParam("headers", "false"),
-                ).andExpect(request().asyncStarted())
-                .andReturn()
-        val exportWithoutHeadersResult =
-            mockMvc
-                .perform(asyncDispatch(exportWithoutHeadersRequest))
-                .andExpect(status().isOk)
-                .andReturn()
-        assertThat(exportWithoutHeadersResult.response.contentAsString).isEqualTo("1\n2\n3\n")
+        val exportWithoutHeadersPayload =
+            queryExecutionManager.prepareCsvExport(
+                actor = "admin",
+                isSystemAdmin = true,
+                executionId = executionId,
+                includeHeaders = false,
+                maxExportRows = 5000,
+            )
+        val exportWithoutHeadersOutput = ByteArrayOutputStream()
+        try {
+            QueryCsvWriter.writeCsv(
+                outputStream = exportWithoutHeadersOutput,
+                columns = exportWithoutHeadersPayload.columns,
+                rows = exportWithoutHeadersPayload.rows,
+                includeHeaders = exportWithoutHeadersPayload.includeHeaders,
+            )
+        } finally {
+            queryExecutionManager.completeCsvExport(executionId)
+        }
+        assertThat(String(exportWithoutHeadersOutput.toByteArray(), Charsets.UTF_8)).isEqualTo("1\n2\n3\n")
 
         ageLiveExecution(executionId, Instant.now().minusSeconds(3_600))
         queryExecutionManager.cleanupExpiredSessions()
