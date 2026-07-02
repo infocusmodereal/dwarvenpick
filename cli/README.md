@@ -100,9 +100,10 @@ dwarvenpick query \
 ## Query behavior
 
 - The CLI submits the query and polls until it reaches a terminal state.
-- Results are fetched through the paginated results API.
+- Results are fetched through the paginated results API and streamed to the selected output as pages arrive.
 - `--page-size` controls each results request and is capped at `1000`.
 - Output formats are `table`, `json`, and `csv`.
+- `table` output is rendered per page with repeated headers; prefer `json` or `csv` for large result exports.
 - Progress messages go to stderr so stdout remains safe for piping.
 
 ## Security notes

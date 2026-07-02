@@ -1,19 +1,5 @@
 const maxCellWidth = 48;
 
-export function formatResults({ columns, rows, format = 'table', headers = true }) {
-  const normalizedColumns = normalizeColumns(columns);
-  if (format === 'json') {
-    return `${JSON.stringify({ columns: normalizedColumns, rows }, null, 2)}\n`;
-  }
-  if (format === 'csv') {
-    return formatCsv(normalizedColumns, rows, { headers });
-  }
-  if (format === 'table') {
-    return formatTable(normalizedColumns, rows);
-  }
-  throw new Error(`Unsupported output format '${format}'. Use table, json, or csv.`);
-}
-
 export function formatConnections(connections, format = 'table') {
   const rows = connections.map((connection) => [
     connection.id,
@@ -34,17 +20,21 @@ export function formatConnections(connections, format = 'table') {
 export function formatCsv(columns, rows, { headers = true } = {}) {
   const lines = [];
   if (headers) {
-    lines.push(columns.map(escapeCsvCell).join(','));
+    lines.push(formatCsvRow(columns));
   }
   for (const row of rows) {
-    lines.push(row.map(escapeCsvCell).join(','));
+    lines.push(formatCsvRow(row));
   }
   return `${lines.join('\n')}${lines.length > 0 ? '\n' : ''}`;
 }
 
-export function formatTable(columns, rows) {
+export function formatCsvRow(values) {
+  return values.map(escapeCsvCell).join(',');
+}
+
+export function formatTable(columns, rows, { startRow = 1 } = {}) {
   const tableColumns = ['ROW', ...columns];
-  const tableRows = rows.map((row, index) => [String(index + 1), ...row.map((cell) => stringifyCell(cell))]);
+  const tableRows = rows.map((row, index) => [String(startRow + index), ...row.map((cell) => stringifyCell(cell))]);
   const widths = tableColumns.map((column, columnIndex) => {
     const cells = tableRows.map((row) => row[columnIndex] || '');
     return Math.min(maxCellWidth, Math.max(column.length, ...cells.map((cell) => cell.length)));
