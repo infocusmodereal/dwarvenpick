@@ -63,8 +63,8 @@ class SnippetRepository(
                 (:systemAdmin = 1 OR group_id IN (:groups))
               )
             )
-              AND (:groupId IS NULL OR group_id = :groupId)
-              AND (:exactTitle IS NULL OR LOWER(title) = :exactTitle)
+              AND (CAST(:groupId AS VARCHAR) IS NULL OR group_id = :groupId)
+              AND (CAST(:exactTitle AS VARCHAR) IS NULL OR LOWER(title) = :exactTitle)
             ORDER BY updated_at DESC, snippet_id DESC
             LIMIT :limit OFFSET :offset
             """.trimIndent(),
