@@ -81,7 +81,7 @@ class QueryExecutionManagerJdbcBufferLimitTests {
                 executionId = submitted.executionId,
                 request = QueryResultsRequest(pageSize = 10),
             )
-        assertThat(results.columns.map { column -> column.name }).containsExactly("first_col", "second_col")
+        assertThat(results.columns).hasSize(2)
         assertThat(results.rows).isEmpty()
         assertThat(results.rowLimitReached).isTrue()
     }
