@@ -4,6 +4,7 @@ import com.dwarvenpick.app.datasource.ConnectionSpec
 import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.inspector.InspectedObjectNotFoundException
 import com.dwarvenpick.app.inspector.InspectedObjectType
+import com.dwarvenpick.app.inspector.OBJECT_INSPECTOR_TEXT_CHAR_LIMIT
 import com.dwarvenpick.app.inspector.ObjectInspectorKeyValue
 import com.dwarvenpick.app.inspector.ObjectInspectorObjectRef
 import com.dwarvenpick.app.inspector.ObjectInspectorProvider
@@ -47,6 +48,7 @@ class VerticaObjectInspectorProvider : ObjectInspectorProvider {
                             stmt.setString(1, "$schema.$name")
                         },
                         timeoutSeconds = 20,
+                        cellCharLimit = OBJECT_INSPECTOR_TEXT_CHAR_LIMIT,
                     )
                 val ddlText =
                     table.rows

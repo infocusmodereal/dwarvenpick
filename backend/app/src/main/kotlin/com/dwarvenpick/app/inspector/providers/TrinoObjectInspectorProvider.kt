@@ -4,6 +4,7 @@ import com.dwarvenpick.app.datasource.ConnectionSpec
 import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.inspector.InspectedObjectNotFoundException
 import com.dwarvenpick.app.inspector.InspectedObjectType
+import com.dwarvenpick.app.inspector.OBJECT_INSPECTOR_TEXT_CHAR_LIMIT
 import com.dwarvenpick.app.inspector.ObjectInspectorObjectRef
 import com.dwarvenpick.app.inspector.ObjectInspectorProvider
 import com.dwarvenpick.app.inspector.ObjectInspectorSection
@@ -57,7 +58,12 @@ class TrinoObjectInspectorProvider : ObjectInspectorProvider {
                         InspectedObjectType.VIEW -> "SHOW CREATE VIEW $qualified"
                         InspectedObjectType.TABLE -> "SHOW CREATE TABLE $qualified"
                     }
-                val table = runTableQuery(connection, sql)
+                val table =
+                    runTableQuery(
+                        connection = connection,
+                        sql = sql,
+                        cellCharLimit = OBJECT_INSPECTOR_TEXT_CHAR_LIMIT,
+                    )
                 val ddlText =
                     table.rows
                         .firstOrNull()

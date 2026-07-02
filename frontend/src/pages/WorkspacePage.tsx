@@ -12390,11 +12390,20 @@ export default function WorkspacePage() {
                                               );
                                           }
 
+                                          const sectionMessage = activeSection.message?.trim() ? (
+                                              <p className="object-inspector-message">
+                                                  {activeSection.message}
+                                              </p>
+                                          ) : null;
+
                                           if (activeSection.kind === 'TEXT') {
                                               return (
-                                                  <pre className="object-inspector-text">
-                                                      {activeSection.text ?? ''}
-                                                  </pre>
+                                                  <>
+                                                      {sectionMessage}
+                                                      <pre className="object-inspector-text">
+                                                          {activeSection.text ?? ''}
+                                                      </pre>
+                                                  </>
                                               );
                                           }
 
@@ -12404,18 +12413,27 @@ export default function WorkspacePage() {
                                               activeSection.keyValues.length > 0
                                           ) {
                                               return (
-                                                  <table className="object-inspector-table">
-                                                      <tbody>
-                                                          {activeSection.keyValues.map((entry) => (
-                                                              <tr
-                                                                  key={`object-inspector-kv-${entry.key}`}
-                                                              >
-                                                                  <th scope="row">{entry.key}</th>
-                                                                  <td>{entry.value ?? ''}</td>
-                                                              </tr>
-                                                          ))}
-                                                      </tbody>
-                                                  </table>
+                                                  <>
+                                                      {sectionMessage}
+                                                      <table className="object-inspector-table">
+                                                          <tbody>
+                                                              {activeSection.keyValues.map(
+                                                                  (entry) => (
+                                                                      <tr
+                                                                          key={`object-inspector-kv-${entry.key}`}
+                                                                      >
+                                                                          <th scope="row">
+                                                                              {entry.key}
+                                                                          </th>
+                                                                          <td>
+                                                                              {entry.value ?? ''}
+                                                                          </td>
+                                                                      </tr>
+                                                                  )
+                                                              )}
+                                                          </tbody>
+                                                      </table>
+                                                  </>
                                               );
                                           }
 
@@ -12424,43 +12442,50 @@ export default function WorkspacePage() {
                                               activeSection.table
                                           ) {
                                               return (
-                                                  <div className="object-inspector-table-wrap">
-                                                      <table className="object-inspector-table">
-                                                          <thead>
-                                                              <tr>
-                                                                  {activeSection.table.columns.map(
-                                                                      (column) => (
-                                                                          <th
-                                                                              key={`object-inspector-th-${column}`}
-                                                                              scope="col"
+                                                  <>
+                                                      {sectionMessage}
+                                                      <div className="object-inspector-table-wrap">
+                                                          <table className="object-inspector-table">
+                                                              <thead>
+                                                                  <tr>
+                                                                      {activeSection.table.columns.map(
+                                                                          (column) => (
+                                                                              <th
+                                                                                  key={`object-inspector-th-${column}`}
+                                                                                  scope="col"
+                                                                              >
+                                                                                  {column}
+                                                                              </th>
+                                                                          )
+                                                                      )}
+                                                                  </tr>
+                                                              </thead>
+                                                              <tbody>
+                                                                  {activeSection.table.rows.map(
+                                                                      (row, rowIndex) => (
+                                                                          <tr
+                                                                              key={`object-inspector-row-${rowIndex}`}
                                                                           >
-                                                                              {column}
-                                                                          </th>
+                                                                              {row.map(
+                                                                                  (
+                                                                                      cell,
+                                                                                      cellIndex
+                                                                                  ) => (
+                                                                                      <td
+                                                                                          key={`object-inspector-cell-${rowIndex}-${cellIndex}`}
+                                                                                      >
+                                                                                          {cell ??
+                                                                                              ''}
+                                                                                      </td>
+                                                                                  )
+                                                                              )}
+                                                                          </tr>
                                                                       )
                                                                   )}
-                                                              </tr>
-                                                          </thead>
-                                                          <tbody>
-                                                              {activeSection.table.rows.map(
-                                                                  (row, rowIndex) => (
-                                                                      <tr
-                                                                          key={`object-inspector-row-${rowIndex}`}
-                                                                      >
-                                                                          {row.map(
-                                                                              (cell, cellIndex) => (
-                                                                                  <td
-                                                                                      key={`object-inspector-cell-${rowIndex}-${cellIndex}`}
-                                                                                  >
-                                                                                      {cell ?? ''}
-                                                                                  </td>
-                                                                              )
-                                                                          )}
-                                                                      </tr>
-                                                                  )
-                                                              )}
-                                                          </tbody>
-                                                      </table>
-                                                  </div>
+                                                              </tbody>
+                                                          </table>
+                                                      </div>
+                                                  </>
                                               );
                                           }
 

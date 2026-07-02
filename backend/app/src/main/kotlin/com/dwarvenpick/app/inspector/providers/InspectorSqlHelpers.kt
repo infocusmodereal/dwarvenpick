@@ -1,7 +1,10 @@
 package com.dwarvenpick.app.inspector.providers
 
+import com.dwarvenpick.app.inspector.OBJECT_INSPECTOR_CELL_CHAR_LIMIT
+import com.dwarvenpick.app.inspector.OBJECT_INSPECTOR_TABLE_ROW_LIMIT
 import com.dwarvenpick.app.inspector.ObjectInspectorKeyValue
 import com.dwarvenpick.app.inspector.ObjectInspectorTable
+import com.dwarvenpick.app.inspector.limitObjectInspectorText
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
@@ -21,12 +24,21 @@ internal fun runTableQuery(
     sql: String,
     bind: (PreparedStatement) -> Unit = {},
     timeoutSeconds: Int = 10,
+    rowLimit: Int = OBJECT_INSPECTOR_TABLE_ROW_LIMIT,
+    cellCharLimit: Int = OBJECT_INSPECTOR_CELL_CHAR_LIMIT,
 ): ObjectInspectorTable =
     connection.prepareStatement(sql).use { statement ->
         statement.queryTimeout = timeoutSeconds
+        if (rowLimit > 0) {
+            statement.maxRows = rowLimit + 1
+        }
         bind(statement)
         statement.executeQuery().use { resultSet ->
-            toInspectorTable(resultSet)
+            toInspectorTable(
+                resultSet = resultSet,
+                rowLimit = rowLimit,
+                cellCharLimit = cellCharLimit,
+            )
         }
     }
 
@@ -35,6 +47,7 @@ internal fun runKeyValueQuery(
     sql: String,
     bind: (PreparedStatement) -> Unit = {},
     timeoutSeconds: Int = 10,
+    valueCharLimit: Int = OBJECT_INSPECTOR_CELL_CHAR_LIMIT,
 ): List<ObjectInspectorKeyValue> =
     connection.prepareStatement(sql).use { statement ->
         statement.queryTimeout = timeoutSeconds
@@ -53,7 +66,10 @@ internal fun runKeyValueQuery(
                     add(
                         ObjectInspectorKeyValue(
                             key = key,
-                            value = resultSet.getString(index),
+                            value =
+                                resultSet.getString(index)?.let { value ->
+                                    limitObjectInspectorText(value, valueCharLimit).value
+                                },
                         ),
                     )
                 }
@@ -61,7 +77,11 @@ internal fun runKeyValueQuery(
         }
     }
 
-private fun toInspectorTable(resultSet: ResultSet): ObjectInspectorTable {
+private fun toInspectorTable(
+    resultSet: ResultSet,
+    rowLimit: Int,
+    cellCharLimit: Int,
+): ObjectInspectorTable {
     val meta = resultSet.metaData
     val columns =
         (1..meta.columnCount).map { index ->
@@ -69,13 +89,32 @@ private fun toInspectorTable(resultSet: ResultSet): ObjectInspectorTable {
         }
 
     val rows = mutableListOf<List<String?>>()
+    var cellsTruncated = false
+    var truncated = false
     while (resultSet.next()) {
-        val row = (1..meta.columnCount).map { index -> resultSet.getString(index) }
+        if (rowLimit > 0 && rows.size >= rowLimit) {
+            truncated = true
+            break
+        }
+        val row =
+            (1..meta.columnCount).map { index ->
+                resultSet.getString(index)?.let { value ->
+                    val limited = limitObjectInspectorText(value, cellCharLimit)
+                    if (limited.truncated) {
+                        cellsTruncated = true
+                    }
+                    limited.value
+                }
+            }
         rows.add(row)
     }
 
     return ObjectInspectorTable(
         columns = columns,
         rows = rows,
+        rowLimit = rowLimit.takeIf { it > 0 },
+        truncated = truncated,
+        cellLimit = cellCharLimit.takeIf { it > 0 },
+        cellsTruncated = cellsTruncated,
     )
 }
