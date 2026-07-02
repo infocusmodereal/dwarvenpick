@@ -91,6 +91,8 @@ class QueryExecutionManagerSseEmitterTests {
 
         val terminal = waitForTerminalStatus(actor, submitted.executionId)
         assertThat(terminal.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
+        val persistedTerminal = waitForPersistedTerminalStatus(submitted.executionId)
+        assertThat(persistedTerminal.status).isEqualTo(QueryExecutionStatus.SUCCEEDED)
 
         reflectExecutions(queryExecutionManager).clear()
 
@@ -108,6 +110,26 @@ class QueryExecutionManagerSseEmitterTests {
 
         assertThat(status.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
         assertThat(results.rows).containsExactly(listOf("1"))
+    }
+
+    private fun waitForPersistedTerminalStatus(
+        executionId: String,
+        timeoutMs: Long = 5000,
+    ): PersistedQueryRuntimeMetadataRecord {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var lastRecord: PersistedQueryRuntimeMetadataRecord? = null
+        while (System.currentTimeMillis() < deadline) {
+            val record = queryRuntimeRepository.findMetadata(executionId)
+            lastRecord = record
+            if (
+                record != null &&
+                record.status in setOf(QueryExecutionStatus.SUCCEEDED, QueryExecutionStatus.FAILED, QueryExecutionStatus.CANCELED)
+            ) {
+                return record
+            }
+            Thread.sleep(25)
+        }
+        return lastRecord ?: throw AssertionError("Query runtime metadata was not persisted before timeout.")
     }
 
     private fun waitForTerminalStatus(

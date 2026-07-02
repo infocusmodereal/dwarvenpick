@@ -141,7 +141,7 @@ data class QueryCsvExportPayload(
     val includeHeaders: Boolean,
     val rowCount: Int,
     val columns: List<QueryResultColumn>,
-    val rows: List<List<String?>>,
+    val rows: Iterable<List<String?>>,
 )
 
 data class QueryHistoryEntryResponse(

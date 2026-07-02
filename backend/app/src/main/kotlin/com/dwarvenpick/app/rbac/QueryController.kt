@@ -38,9 +38,14 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.context.request.NativeWebRequest
+import org.springframework.web.context.request.async.CallableProcessingInterceptor
+import org.springframework.web.context.request.async.WebAsyncUtils
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import java.io.ByteArrayOutputStream
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import java.time.Instant
+import java.util.concurrent.Callable
+import java.util.concurrent.atomic.AtomicBoolean
 
 @RestController
 @Validated
@@ -217,7 +222,7 @@ class QueryController(
         @RequestParam(name = "headers", required = false, defaultValue = "true") headers: Boolean,
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
-    ): ResponseEntity<ByteArray> {
+    ): ResponseEntity<StreamingResponseBody> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         return try {
             val status =
@@ -245,7 +250,8 @@ class QueryController(
                 )
                 return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
-                    .body(toCsvError("Datasource export access denied for this query."))
+                    .contentType(MediaType.parseMediaType("text/csv"))
+                    .body(csvErrorBody("Datasource export access denied for this query."))
             }
 
             val exportPayload =
@@ -257,54 +263,67 @@ class QueryController(
                     maxExportRows = queryExecutionProperties.maxExportRows,
                 )
 
-            authAuditLogger.log(
-                AuthAuditEvent(
-                    type = "query.export",
-                    actor = principal.username,
-                    outcome = "success",
-                    ipAddress = httpServletRequest.remoteAddr,
-                    details =
-                        mapOf(
-                            "executionId" to executionId,
-                            "datasourceId" to exportPayload.datasourceId,
-                            "rowCount" to exportPayload.rowCount,
-                            "headers" to headers,
-                        ),
-                ),
-            )
-            recordExportMetric(outcome = "success", datasourceId = exportPayload.datasourceId)
+            val exportLease = CsvExportLease(exportPayload.executionId, queryExecutionManager)
+            try {
+                registerCsvExportLease(httpServletRequest, exportLease)
+                authAuditLogger.log(
+                    AuthAuditEvent(
+                        type = "query.export",
+                        actor = principal.username,
+                        outcome = "success",
+                        ipAddress = httpServletRequest.remoteAddr,
+                        details =
+                            mapOf(
+                                "executionId" to executionId,
+                                "datasourceId" to exportPayload.datasourceId,
+                                "rowCount" to exportPayload.rowCount,
+                                "headers" to headers,
+                            ),
+                    ),
+                )
+                recordExportMetric(outcome = "success", datasourceId = exportPayload.datasourceId)
 
-            val outputStream = ByteArrayOutputStream()
-            QueryCsvWriter.writeCsv(
-                outputStream = outputStream,
-                columns = exportPayload.columns,
-                rows = exportPayload.rows,
-                includeHeaders = headers,
-            )
+                val responseBody =
+                    StreamingResponseBody { outputStream ->
+                        try {
+                            QueryCsvWriter.writeCsv(
+                                outputStream = outputStream,
+                                columns = exportPayload.columns,
+                                rows = exportPayload.rows,
+                                includeHeaders = exportPayload.includeHeaders,
+                            )
+                        } finally {
+                            exportLease.release()
+                        }
+                    }
 
-            ResponseEntity
-                .ok()
-                .contentType(MediaType.parseMediaType("text/csv"))
-                .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
-                .body(outputStream.toByteArray())
+                ResponseEntity
+                    .ok()
+                    .contentType(MediaType.parseMediaType("text/csv"))
+                    .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
+                    .body(responseBody)
+            } catch (ex: Throwable) {
+                exportLease.release()
+                throw ex
+            }
         } catch (ex: QueryExecutionNotFoundException) {
-            ResponseEntity.status(HttpStatus.NOT_FOUND).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.NOT_FOUND, ex.message)
         } catch (ex: QueryExecutionForbiddenException) {
-            ResponseEntity.status(HttpStatus.FORBIDDEN).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.FORBIDDEN, ex.message)
         } catch (ex: QueryResultsNotReadyException) {
-            ResponseEntity.status(HttpStatus.CONFLICT).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.CONFLICT, ex.message)
         } catch (ex: QueryResultsExpiredException) {
-            ResponseEntity.status(HttpStatus.GONE).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.GONE, ex.message)
         } catch (ex: QueryInvalidPageTokenException) {
-            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.BAD_REQUEST, ex.message)
         } catch (ex: QueryExportLimitExceededException) {
-            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.BAD_REQUEST, ex.message)
         } catch (ex: QueryAccessDeniedException) {
-            ResponseEntity.status(HttpStatus.FORBIDDEN).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.FORBIDDEN, ex.message)
         } catch (ex: QueryReadOnlyViolationException) {
-            ResponseEntity.status(HttpStatus.FORBIDDEN).body(toCsvError(ex.message))
+            csvErrorResponse(HttpStatus.FORBIDDEN, ex.message)
         } catch (ex: IllegalArgumentException) {
-            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(toCsvError(ex.message ?: "Bad request."))
+            csvErrorResponse(HttpStatus.BAD_REQUEST, ex.message ?: "Bad request.")
         }
     }
 
@@ -449,5 +468,77 @@ class QueryController(
         val safeMessage = message ?: "Bad request."
         val escaped = safeMessage.replace("\"", "\"\"")
         return "error\n\"$escaped\"\n".toByteArray(Charsets.UTF_8)
+    }
+
+    private fun csvErrorResponse(
+        status: HttpStatus,
+        message: String?,
+    ): ResponseEntity<StreamingResponseBody> =
+        ResponseEntity
+            .status(status)
+            .contentType(MediaType.parseMediaType("text/csv"))
+            .body(csvErrorBody(message))
+
+    private fun csvErrorBody(message: String?): StreamingResponseBody =
+        StreamingResponseBody { outputStream ->
+            outputStream.write(toCsvError(message))
+        }
+
+    private fun registerCsvExportLease(
+        httpServletRequest: HttpServletRequest,
+        exportLease: CsvExportLease,
+    ) {
+        WebAsyncUtils
+            .getAsyncManager(httpServletRequest)
+            .registerCallableInterceptor(exportLease, CsvExportLeaseInterceptor(exportLease))
+    }
+}
+
+private class CsvExportLease(
+    private val executionId: String,
+    private val queryExecutionManager: QueryExecutionManager,
+) {
+    private val released = AtomicBoolean(false)
+
+    fun release() {
+        if (released.compareAndSet(false, true)) {
+            queryExecutionManager.completeCsvExport(executionId)
+        }
+    }
+}
+
+private class CsvExportLeaseInterceptor(
+    private val exportLease: CsvExportLease,
+) : CallableProcessingInterceptor {
+    override fun <T> postProcess(
+        request: NativeWebRequest,
+        task: Callable<T>,
+        concurrentResult: Any?,
+    ) {
+        exportLease.release()
+    }
+
+    override fun <T> handleTimeout(
+        request: NativeWebRequest,
+        task: Callable<T>,
+    ): Any {
+        exportLease.release()
+        return CallableProcessingInterceptor.RESULT_NONE
+    }
+
+    override fun <T> handleError(
+        request: NativeWebRequest,
+        task: Callable<T>,
+        t: Throwable,
+    ): Any {
+        exportLease.release()
+        return CallableProcessingInterceptor.RESULT_NONE
+    }
+
+    override fun <T> afterCompletion(
+        request: NativeWebRequest,
+        task: Callable<T>,
+    ) {
+        exportLease.release()
     }
 }
