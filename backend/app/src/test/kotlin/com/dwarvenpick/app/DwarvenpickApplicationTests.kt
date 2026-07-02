@@ -10,7 +10,10 @@ import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import com.dwarvenpick.app.datasource.TlsMode
 import com.dwarvenpick.app.datasource.TlsSettings
 import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
+import com.dwarvenpick.app.query.QueryCsvWriter
+import com.dwarvenpick.app.query.QueryExecutionManager
 import com.dwarvenpick.app.query.QueryHistoryRepository
+import com.dwarvenpick.app.query.QueryResultsExpiredException
 import com.dwarvenpick.app.rbac.CreateGroupRequest
 import com.dwarvenpick.app.rbac.QueryAccessDeniedException
 import com.dwarvenpick.app.rbac.RbacService
@@ -31,6 +34,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
@@ -38,7 +42,10 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.io.ByteArrayOutputStream
+import java.time.Instant
 
 @SpringBootTest(
     properties = [
@@ -77,6 +84,9 @@ class DwarvenpickApplicationTests {
 
     @Autowired
     private lateinit var queryHistoryRepository: QueryHistoryRepository
+
+    @Autowired
+    private lateinit var queryExecutionManager: QueryExecutionManager
 
     @BeforeEach
     fun resetState() {
@@ -601,6 +611,162 @@ class DwarvenpickApplicationTests {
     }
 
     @Test
+    fun `query csv export streams result rows`() {
+        val adminSession = loginLocalUser("admin", "Admin1234!")
+        val submitResult =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(*adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "sql": "select generate_series(1,3)"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isOk)
+                .andReturn()
+        val executionId = jsonPathValue(submitResult, "$.executionId")
+
+        val finalStatus = waitForExecutionTerminalStatus(adminSession, executionId)
+        assertThat(finalStatus).isEqualTo("SUCCEEDED")
+
+        val exportRequest =
+            mockMvc
+                .perform(get("/api/queries/$executionId/export.csv").cookie(*adminSession))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+        val exportResult =
+            mockMvc
+                .perform(asyncDispatch(exportRequest))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Disposition", containsString("query-$executionId.csv")))
+                .andReturn()
+        assertThat(exportResult.response.contentType).isEqualTo("text/csv")
+        assertThat(exportResult.response.contentAsString).isEqualTo("generate_series\n1\n2\n3\n")
+
+        val exportWithoutHeadersRequest =
+            mockMvc
+                .perform(
+                    get("/api/queries/$executionId/export.csv")
+                        .cookie(*adminSession)
+                        .queryParam("headers", "false"),
+                ).andExpect(request().asyncStarted())
+                .andReturn()
+        val exportWithoutHeadersResult =
+            mockMvc
+                .perform(asyncDispatch(exportWithoutHeadersRequest))
+                .andExpect(status().isOk)
+                .andReturn()
+        assertThat(exportWithoutHeadersResult.response.contentAsString).isEqualTo("1\n2\n3\n")
+
+        ageLiveExecution(executionId, Instant.now().minusSeconds(3_600))
+        queryExecutionManager.cleanupExpiredSessions()
+        assertThrows(QueryResultsExpiredException::class.java) {
+            queryExecutionManager.prepareCsvExport(
+                actor = "admin",
+                isSystemAdmin = true,
+                executionId = executionId,
+                includeHeaders = true,
+                maxExportRows = 5000,
+            )
+        }
+    }
+
+    @Test
+    fun `query csv export denial streams csv error`() {
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        val submitResult =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(*analystSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "sql": "select 1"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isOk)
+                .andReturn()
+        val executionId = jsonPathValue(submitResult, "$.executionId")
+
+        val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
+        assertThat(finalStatus).isEqualTo("SUCCEEDED")
+
+        val exportRequest =
+            mockMvc
+                .perform(get("/api/queries/$executionId/export.csv").cookie(*analystSession))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+        val exportResult =
+            mockMvc
+                .perform(asyncDispatch(exportRequest))
+                .andExpect(status().isForbidden)
+                .andReturn()
+        assertThat(exportResult.response.contentType).isEqualTo("text/csv")
+        assertThat(exportResult.response.contentAsString).contains("Datasource export access denied")
+    }
+
+    @Test
+    fun `active csv export keeps live rows through cleanup`() {
+        val adminSession = loginLocalUser("admin", "Admin1234!")
+        val submitResult =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(*adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "sql": "select generate_series(1,2)"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isOk)
+                .andReturn()
+        val executionId = jsonPathValue(submitResult, "$.executionId")
+
+        val finalStatus = waitForExecutionTerminalStatus(adminSession, executionId)
+        assertThat(finalStatus).isEqualTo("SUCCEEDED")
+
+        val payload =
+            queryExecutionManager.prepareCsvExport(
+                actor = "admin",
+                isSystemAdmin = true,
+                executionId = executionId,
+                includeHeaders = true,
+                maxExportRows = 5000,
+            )
+        ageLiveExecution(executionId, Instant.now().minusSeconds(3_600))
+        queryExecutionManager.cleanupExpiredSessions()
+
+        val outputStream = ByteArrayOutputStream()
+        try {
+            QueryCsvWriter.writeCsv(
+                outputStream = outputStream,
+                columns = payload.columns,
+                rows = payload.rows,
+                includeHeaders = payload.includeHeaders,
+            )
+        } finally {
+            queryExecutionManager.completeCsvExport(executionId)
+        }
+        assertThat(String(outputStream.toByteArray(), Charsets.UTF_8)).isEqualTo("generate_series\n1\n2\n")
+    }
+
+    @Test
     fun `query history endpoint returns persisted execution records`() {
         val analystSession = loginLocalUser("analyst", "Analyst123!")
         val submitResult =
@@ -1004,6 +1170,24 @@ class DwarvenpickApplicationTests {
         result: MvcResult,
         path: String,
     ): String = JsonPath.parse(result.response.contentAsString).read(path)
+
+    @Suppress("UNCHECKED_CAST")
+    private fun ageLiveExecution(
+        executionId: String,
+        lastAccessedAt: Instant,
+    ) {
+        val executionsField =
+            QueryExecutionManager::class.java.getDeclaredField("executions").apply {
+                isAccessible = true
+            }
+        val executions = executionsField.get(queryExecutionManager) as Map<String, Any>
+        val record = executions[executionId] ?: throw AssertionError("Expected live execution $executionId")
+        val lastAccessedField =
+            record.javaClass.getDeclaredField("lastAccessedAt").apply {
+                isAccessible = true
+            }
+        lastAccessedField.set(record, lastAccessedAt)
+    }
 
     private fun MvcResult.toSessionCookies(): Array<Cookie> {
         val sessionCookies =

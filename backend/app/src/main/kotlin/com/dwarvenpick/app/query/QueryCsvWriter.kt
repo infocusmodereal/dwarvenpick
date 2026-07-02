@@ -9,7 +9,7 @@ object QueryCsvWriter {
     fun writeCsv(
         outputStream: OutputStream,
         columns: List<QueryResultColumn>,
-        rows: List<List<String?>>,
+        rows: Iterable<List<String?>>,
         includeHeaders: Boolean,
     ) {
         val writer = BufferedWriter(OutputStreamWriter(outputStream, StandardCharsets.UTF_8))

@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 class QueryExecutionNotFoundException(
@@ -116,7 +117,38 @@ private data class QueryExecutionRecord(
     @Volatile var activeStatement: Statement?,
     @Volatile var activeConnection: Connection?,
     @Volatile var executionFuture: Future<*>?,
+    val activeExportCount: AtomicInteger = AtomicInteger(0),
 )
+
+private data class QueryCsvExportData(
+    val rowCount: Int,
+    val columns: List<QueryResultColumn>,
+    val rows: Iterable<List<String?>>,
+)
+
+private class LiveQueryExportRows(
+    private val record: QueryExecutionRecord,
+    private val expectedRowCount: Int,
+) : Iterable<List<String?>> {
+    override fun iterator(): Iterator<List<String?>> =
+        object : Iterator<List<String?>> {
+            private var index = 0
+
+            override fun hasNext(): Boolean = index < expectedRowCount
+
+            override fun next(): List<String?> {
+                if (!hasNext()) {
+                    throw NoSuchElementException()
+                }
+                return synchronized(record.rows) {
+                    if (record.resultsExpired || index >= record.rows.size) {
+                        throw QueryResultsExpiredException("Result session expired. Re-run the query.")
+                    }
+                    record.rows[index++]
+                }
+            }
+        }
+}
 
 @Service
 class QueryExecutionManager(
@@ -596,24 +628,39 @@ class QueryExecutionManager(
             throw QueryResultsNotReadyException("Query was canceled and cannot be exported.")
         }
 
-        val rowsSnapshot = synchronized(record.rows) { record.rows.toList() }
         val resolvedMaxExportRows = maxExportRows.coerceAtLeast(1)
-        if (rowsSnapshot.size > resolvedMaxExportRows) {
-            throw QueryExportLimitExceededException(
-                "Export row limit exceeded (${rowsSnapshot.size} rows > $resolvedMaxExportRows allowed).",
-            )
-        }
+        val exportData =
+            synchronized(record.rows) {
+                val rowCount = record.rows.size
+                if (rowCount > resolvedMaxExportRows) {
+                    throw QueryExportLimitExceededException(
+                        "Export row limit exceeded ($rowCount rows > $resolvedMaxExportRows allowed).",
+                    )
+                }
+                QueryCsvExportData(
+                    rowCount = rowCount,
+                    columns = record.columns.toList(),
+                    rows = LiveQueryExportRows(record, rowCount),
+                )
+            }
 
         record.lastAccessedAt = Instant.now()
         queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
+        record.activeExportCount.incrementAndGet()
         return QueryCsvExportPayload(
             executionId = record.executionId,
             datasourceId = record.datasourceId,
             includeHeaders = includeHeaders,
-            rowCount = rowsSnapshot.size,
-            columns = record.columns.toList(),
-            rows = rowsSnapshot,
+            rowCount = exportData.rowCount,
+            columns = exportData.columns,
+            rows = exportData.rows,
         )
+    }
+
+    fun completeCsvExport(executionId: String) {
+        executions[executionId]
+            ?.activeExportCount
+            ?.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
     }
 
     fun listHistory(
@@ -719,6 +766,12 @@ class QueryExecutionManager(
             }
 
             if (record.status !in terminalStatuses()) {
+                return@forEach
+            }
+
+            if (record.activeExportCount.get() > 0) {
+                record.lastAccessedAt = now
+                queryRuntimeRepository.updateLastAccessed(record.executionId, now)
                 return@forEach
             }
 

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.io.ByteArrayOutputStream
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 
 @RestController
 @Validated
@@ -195,7 +195,7 @@ class ControlPlaneController(
         @PathVariable datasourceId: String,
         @RequestParam(name = "actor", required = false) targetActor: String?,
         authentication: Authentication,
-    ): ResponseEntity<ByteArray> {
+    ): ResponseEntity<StreamingResponseBody> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         val status =
             controlPlaneService.status(
@@ -245,15 +245,17 @@ class ControlPlaneController(
                 )
             }
 
-        val outputStream = ByteArrayOutputStream()
-        QueryCsvWriter.writeCsv(outputStream, columns, rows, includeHeaders = true)
         val filename = "dwarvenpick-active-queries-$datasourceId.csv"
+        val responseBody =
+            StreamingResponseBody { outputStream ->
+                QueryCsvWriter.writeCsv(outputStream, columns, rows, includeHeaders = true)
+            }
 
         return ResponseEntity
             .ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
             .contentType(MediaType.parseMediaType("text/csv"))
-            .body(outputStream.toByteArray())
+            .body(responseBody)
     }
 
     private fun audit(
