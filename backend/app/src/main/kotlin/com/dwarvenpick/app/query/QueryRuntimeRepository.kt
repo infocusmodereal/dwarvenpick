@@ -45,6 +45,44 @@ data class PersistedQueryRuntimeRecord(
     val heartbeatAt: Instant,
 )
 
+data class PersistedQueryRuntimeMetadataRecord(
+    val executionId: String,
+    val actor: String,
+    val ipAddress: String?,
+    val datasourceId: String,
+    val credentialProfile: String,
+    val sql: String?,
+    val sqlRedacted: Boolean,
+    val queryHash: String,
+    val maxRowsPerQuery: Int,
+    val maxRuntimeSeconds: Int,
+    val concurrencyLimit: Int,
+    val scriptStatementCount: Int,
+    val scriptStopOnError: Boolean,
+    val scriptTransactionMode: ScriptTransactionMode,
+    val scriptStatements: List<QueryScriptStatementSummary>,
+    val status: QueryExecutionStatus,
+    val message: String,
+    val errorSummary: String?,
+    val submittedAt: Instant,
+    val startedAt: Instant?,
+    val completedAt: Instant?,
+    val rowCount: Int,
+    val columnCount: Int,
+    val rowLimitReached: Boolean,
+    val lastAccessedAt: Instant,
+    val resultsExpired: Boolean,
+    val cancelRequested: Boolean,
+    val ownerInstanceId: String,
+    val heartbeatAt: Instant,
+)
+
+private data class ExistingQueryRuntimeState(
+    val sql: String?,
+    val sqlRedacted: Boolean,
+    val cancelRequested: Boolean,
+)
+
 @Repository
 class QueryRuntimeRepository(
     jdbcTemplate: JdbcTemplate,
@@ -52,13 +90,14 @@ class QueryRuntimeRepository(
 ) {
     private val namedParameterJdbcTemplate = NamedParameterJdbcTemplate(jdbcTemplate)
     private val rowMapper = RowMapper { resultSet, _ -> resultSet.toRecord() }
+    private val metadataRowMapper = RowMapper { resultSet, _ -> resultSet.toMetadataRecord() }
     private val columnsType = object : TypeReference<List<QueryResultColumn>>() {}
     private val rowsType = object : TypeReference<List<List<String?>>>() {}
     private val statementsType = object : TypeReference<List<QueryScriptStatementSummary>>() {}
 
     @Transactional
     fun save(record: PersistedQueryRuntimeRecord) {
-        val existing = find(record.executionId)
+        val existing = findExistingState(record.executionId)
         val recordToPersist =
             if (existing?.sqlRedacted == true) {
                 record.copy(
@@ -86,6 +125,17 @@ class QueryRuntimeRepository(
                 selectSql("WHERE execution_id = :executionId"),
                 mapOf("executionId" to executionId),
                 rowMapper,
+            )
+        } catch (_: EmptyResultDataAccessException) {
+            null
+        }
+
+    fun findMetadata(executionId: String): PersistedQueryRuntimeMetadataRecord? =
+        try {
+            namedParameterJdbcTemplate.queryForObject(
+                selectMetadataSql("WHERE execution_id = :executionId"),
+                mapOf("executionId" to executionId),
+                metadataRowMapper,
             )
         } catch (_: EmptyResultDataAccessException) {
             null
@@ -121,6 +171,39 @@ class QueryRuntimeRepository(
             selectSql(predicates.joinToString(prefix = "WHERE ", separator = "\n  AND ")),
             parameters,
             rowMapper,
+        )
+    }
+
+    fun listActiveMetadata(
+        actor: String,
+        isSystemAdmin: Boolean,
+        datasourceId: String?,
+        actorFilter: String?,
+    ): List<PersistedQueryRuntimeMetadataRecord> {
+        val parameters = MapSqlParameterSource()
+        val predicates =
+            mutableListOf(
+                "status IN (:activeStatuses)",
+            )
+        parameters.addValue("activeStatuses", listOf(QueryExecutionStatus.QUEUED.name, QueryExecutionStatus.RUNNING.name))
+
+        if (!isSystemAdmin) {
+            predicates.add("actor = :actor")
+            parameters.addValue("actor", actor)
+        } else if (!actorFilter.isNullOrBlank()) {
+            predicates.add("actor = :actorFilter")
+            parameters.addValue("actorFilter", actorFilter.trim())
+        }
+
+        if (!datasourceId.isNullOrBlank()) {
+            predicates.add("datasource_id = :datasourceId")
+            parameters.addValue("datasourceId", datasourceId.trim())
+        }
+
+        return namedParameterJdbcTemplate.query(
+            selectMetadataSql(predicates.joinToString(prefix = "WHERE ", separator = "\n  AND ")),
+            parameters,
+            metadataRowMapper,
         )
     }
 
@@ -315,6 +398,39 @@ class QueryRuntimeRepository(
             heartbeatAt = getRequiredInstant("heartbeat_at"),
         )
 
+    private fun ResultSet.toMetadataRecord(): PersistedQueryRuntimeMetadataRecord =
+        PersistedQueryRuntimeMetadataRecord(
+            executionId = getString("execution_id"),
+            actor = getString("actor"),
+            ipAddress = getString("ip_address"),
+            datasourceId = getString("datasource_id"),
+            credentialProfile = getString("credential_profile"),
+            queryHash = getString("query_hash"),
+            sql = getString("sql_text"),
+            sqlRedacted = getBoolean("sql_text_redacted"),
+            status = QueryExecutionStatus.valueOf(getString("status")),
+            message = getString("message"),
+            errorSummary = getString("error_summary"),
+            rowCount = getInt("row_count"),
+            columnCount = getInt("column_count"),
+            rowLimitReached = getBoolean("row_limit_reached"),
+            maxRowsPerQuery = getInt("max_rows_per_query"),
+            maxRuntimeSeconds = getInt("max_runtime_seconds"),
+            concurrencyLimit = getInt("concurrency_limit"),
+            scriptStatementCount = getInt("script_statement_count"),
+            scriptStopOnError = getBoolean("script_stop_on_error"),
+            scriptTransactionMode = ScriptTransactionMode.valueOf(getString("script_transaction_mode")),
+            scriptStatements = objectMapper.readValue(getString("script_statements_json"), statementsType),
+            submittedAt = getRequiredInstant("submitted_at"),
+            startedAt = getNullableInstant("started_at"),
+            completedAt = getNullableInstant("completed_at"),
+            lastAccessedAt = getRequiredInstant("last_accessed_at"),
+            resultsExpired = getBoolean("results_expired"),
+            cancelRequested = getBoolean("cancel_requested"),
+            ownerInstanceId = getString("owner_instance_id"),
+            heartbeatAt = getRequiredInstant("heartbeat_at"),
+        )
+
     private fun selectSql(whereClause: String): String =
         """
         SELECT execution_id, actor, ip_address, datasource_id, credential_profile, query_hash, sql_text,
@@ -327,6 +443,39 @@ class QueryRuntimeRepository(
         $whereClause
         ORDER BY submitted_at ASC, execution_id ASC
         """.trimIndent()
+
+    private fun selectMetadataSql(whereClause: String): String =
+        """
+        SELECT execution_id, actor, ip_address, datasource_id, credential_profile, query_hash, sql_text,
+               sql_text_redacted, status, message, error_summary, row_count, column_count, row_limit_reached,
+               max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
+               script_stop_on_error, script_transaction_mode, script_statements_json,
+               submitted_at, started_at, completed_at, last_accessed_at, results_expired, cancel_requested,
+               owner_instance_id, heartbeat_at
+        FROM query_runtime_executions
+        $whereClause
+        ORDER BY submitted_at ASC, execution_id ASC
+        """.trimIndent()
+
+    private fun findExistingState(executionId: String): ExistingQueryRuntimeState? =
+        try {
+            namedParameterJdbcTemplate.queryForObject(
+                """
+                SELECT sql_text, sql_text_redacted, cancel_requested
+                FROM query_runtime_executions
+                WHERE execution_id = :executionId
+                """.trimIndent(),
+                mapOf("executionId" to executionId),
+            ) { resultSet, _ ->
+                ExistingQueryRuntimeState(
+                    sql = resultSet.getString("sql_text"),
+                    sqlRedacted = resultSet.getBoolean("sql_text_redacted"),
+                    cancelRequested = resultSet.getBoolean("cancel_requested"),
+                )
+            }
+        } catch (_: EmptyResultDataAccessException) {
+            null
+        }
 
     private fun ResultSet.getRequiredInstant(columnName: String): Instant =
         requireNotNull(getNullableInstant(columnName)) { "$columnName cannot be null." }

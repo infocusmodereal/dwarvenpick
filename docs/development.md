@@ -60,8 +60,8 @@ Query execution is covered by Testcontainers-based integration tests (Postgres, 
 
 `dwarvenpick` uses Git tags for release versions.
 
-- Dev builds default to `0.7.0-SNAPSHOT`.
-- Release builds use the pushed tag name (for example `v0.7.0` becomes version `0.7.0`).
+- Dev builds default to `0.7.1-SNAPSHOT`.
+- Release builds use the pushed tag name (for example `v0.7.1` becomes version `0.7.1`).
 
 To cut a release:
 

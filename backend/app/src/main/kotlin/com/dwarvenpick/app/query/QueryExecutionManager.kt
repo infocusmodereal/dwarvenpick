@@ -199,7 +199,7 @@ class QueryExecutionManager(
         synchronized(this) {
             val activeExecutions =
                 queryRuntimeRepository
-                    .listActive(
+                    .listActiveMetadata(
                         actor = actor,
                         isSystemAdmin = false,
                         datasourceId = null,
@@ -459,7 +459,7 @@ class QueryExecutionManager(
         val now = Instant.now()
 
         return queryRuntimeRepository
-            .listActive(
+            .listActiveMetadata(
                 actor = actor,
                 isSystemAdmin = isSystemAdmin,
                 datasourceId = normalizedDatasourceId,
@@ -497,7 +497,7 @@ class QueryExecutionManager(
             return record.toStatusResponse()
         }
         val persisted =
-            queryRuntimeRepository.find(executionId)
+            queryRuntimeRepository.findMetadata(executionId)
                 ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
         enforceExecutionAccess(actor, isSystemAdmin, persisted)
         return persisted.toStatusResponse()
@@ -1593,13 +1593,23 @@ class QueryExecutionManager(
         }
     }
 
+    private fun enforceExecutionAccess(
+        actor: String,
+        isSystemAdmin: Boolean,
+        record: PersistedQueryRuntimeMetadataRecord,
+    ) {
+        if (!isSystemAdmin && record.actor != actor) {
+            throw QueryExecutionForbiddenException("Query execution '${record.executionId}' is not accessible.")
+        }
+    }
+
     private fun requestRemoteCancel(
         actor: String,
         isSystemAdmin: Boolean,
         executionId: String,
     ): QueryCancelResponse {
         val persisted =
-            queryRuntimeRepository.find(executionId)
+            queryRuntimeRepository.findMetadata(executionId)
                 ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
         enforceExecutionAccess(actor, isSystemAdmin, persisted)
         if (persisted.status in terminalStatuses()) {
@@ -1624,7 +1634,7 @@ class QueryExecutionManager(
         executionId: String,
     ): QueryKillResponse {
         val persisted =
-            queryRuntimeRepository.find(executionId)
+            queryRuntimeRepository.findMetadata(executionId)
                 ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
         if (persisted.status in terminalStatuses()) {
             return QueryKillResponse(
@@ -1773,7 +1783,7 @@ class QueryExecutionManager(
         emitter: SseEmitter,
     ) {
         val inFlightExecutions =
-            queryRuntimeRepository.listActive(
+            queryRuntimeRepository.listActiveMetadata(
                 actor = actor,
                 isSystemAdmin = isSystemAdmin,
                 datasourceId = null,
@@ -1966,6 +1976,36 @@ class QueryExecutionManager(
             errorSummary = errorSummary,
             rowCount = rows.size,
             columnCount = columns.size,
+            rowLimitReached = rowLimitReached,
+            maxRowsPerQuery = maxRowsPerQuery,
+            maxRuntimeSeconds = maxRuntimeSeconds,
+            credentialProfile = credentialProfile,
+            scriptSummary =
+                if (scriptStatementCount > 1 || scriptStatements.isNotEmpty()) {
+                    QueryScriptSummary(
+                        statementCount = scriptStatementCount,
+                        stopOnError = scriptStopOnError,
+                        transactionMode = scriptTransactionMode.name,
+                        statements = scriptStatements,
+                    )
+                } else {
+                    null
+                },
+        )
+
+    private fun PersistedQueryRuntimeMetadataRecord.toStatusResponse(): QueryExecutionStatusResponse =
+        QueryExecutionStatusResponse(
+            executionId = executionId,
+            datasourceId = datasourceId,
+            status = status.name,
+            message = message,
+            submittedAt = submittedAt.toString(),
+            startedAt = startedAt?.toString(),
+            completedAt = completedAt?.toString(),
+            queryHash = queryHash,
+            errorSummary = errorSummary,
+            rowCount = rowCount,
+            columnCount = columnCount,
             rowLimitReached = rowLimitReached,
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,
