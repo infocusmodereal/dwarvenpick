@@ -62,6 +62,7 @@ import type {
     ResourceFormState,
     ResourceManagerMode,
     ResourceScriptResponse,
+    ResourceScriptSummaryResponse,
     ResourceVersionResponse,
     ScriptTransactionMode,
     QueryStatusEventResponse,
@@ -135,6 +136,29 @@ loader.config({ monaco: MonacoModule });
 
 const workbenchResultsSizeStorageKey = 'dwarvenpick.workbench.resultsSizePx';
 const workbenchExplorerSizeStorageKey = 'dwarvenpick.workbench.explorerSizePx';
+const resourceSqlPreviewLength = 240;
+
+const toResourceSummary = (resource: ResourceScriptResponse): ResourceScriptSummaryResponse => ({
+    resourceId: resource.resourceId,
+    title: resource.title,
+    sqlPreview:
+        resource.sql.length > resourceSqlPreviewLength
+            ? `${resource.sql.slice(0, resourceSqlPreviewLength)}...`
+            : resource.sql,
+    sqlLength: resource.sql.length,
+    owner: resource.owner,
+    scope: resource.scope,
+    groupId: resource.groupId,
+    folderPath: resource.folderPath,
+    datasourceId: resource.datasourceId,
+    tags: resource.tags,
+    allowGroupEdit: resource.allowGroupEdit,
+    createdAt: resource.createdAt,
+    updatedAt: resource.updatedAt,
+    currentRevision: resource.currentRevision,
+    versionCount: resource.versionCount,
+    permissions: resource.permissions
+});
 
 const parsePxValue = (rawValue: string, fallback: number): number => {
     const trimmed = rawValue.trim();
@@ -662,7 +686,7 @@ export default function WorkspacePage() {
     const [loadingSchemaBrowser, setLoadingSchemaBrowser] = useState(false);
     const [schemaBrowserError, setSchemaBrowserError] = useState('');
 
-    const [resources, setResources] = useState<ResourceScriptResponse[]>([]);
+    const [resources, setResources] = useState<ResourceScriptSummaryResponse[]>([]);
     const [loadingResources, setLoadingResources] = useState(false);
     const [resourceScopeFilter, setResourceScopeFilter] = useState<'all' | 'private' | 'shared'>(
         'all'
@@ -2253,7 +2277,7 @@ export default function WorkspacePage() {
             }
 
             const nextResources = [...currentResources];
-            nextResources[resourceIndex] = resource;
+            nextResources[resourceIndex] = toResourceSummary(resource);
             return nextResources;
         });
     }, []);
@@ -2943,6 +2967,7 @@ export default function WorkspacePage() {
             if (resourceDatasourceFilter.trim()) {
                 queryParams.set('datasourceId', resourceDatasourceFilter.trim());
             }
+            queryParams.set('limit', '1000');
 
             const response = await fetch(`/api/resources?${queryParams.toString()}`, {
                 method: 'GET',
@@ -2952,7 +2977,7 @@ export default function WorkspacePage() {
                 throw new Error(await readFriendlyError(response));
             }
 
-            const payload = (await response.json()) as ResourceScriptResponse[];
+            const payload = (await response.json()) as ResourceScriptSummaryResponse[];
             setResources(Array.isArray(payload) ? payload : []);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to load scripts.';
@@ -2969,6 +2994,20 @@ export default function WorkspacePage() {
         resourceSearchInput,
         resourceTagFilter
     ]);
+
+    const loadResourceDetail = useCallback(
+        async (resourceId: string): Promise<ResourceScriptResponse> => {
+            const response = await fetch(`/api/resources/${resourceId}`, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error(await readFriendlyError(response));
+            }
+            return (await response.json()) as ResourceScriptResponse;
+        },
+        [readFriendlyError]
+    );
 
     const loadResourceVersions = useCallback(
         async (resourceId: string) => {
@@ -5044,23 +5083,33 @@ export default function WorkspacePage() {
         setCopyFeedback('Script draft loaded. Review the details in Scripts and create it there.');
     }, [activeTab, handleSeedResourceFromActiveTab]);
 
-    const handleEditResource = useCallback((resource: ResourceScriptResponse) => {
-        setResourceError('');
-        setEditingResourceId(resource.resourceId);
-        setResourceEditorMode('edit');
-        setResourceFormSourceTabId('');
-        setResourceFormState({
-            title: resource.title,
-            sql: resource.sql,
-            scope: resource.scope,
-            groupId: resource.groupId ?? '',
-            folderPath: resource.folderPath,
-            datasourceId: resource.datasourceId ?? '',
-            tagsInput: formatResourceTagsInput(resource.tags),
-            allowGroupEdit: resource.allowGroupEdit
-        });
-        setActiveSection('resources');
-    }, []);
+    const handleEditResource = useCallback(
+        async (resource: ResourceScriptSummaryResponse) => {
+            setResourceError('');
+            try {
+                const fullResource = await loadResourceDetail(resource.resourceId);
+                setEditingResourceId(fullResource.resourceId);
+                setResourceEditorMode('edit');
+                setResourceFormSourceTabId('');
+                setResourceFormState({
+                    title: fullResource.title,
+                    sql: fullResource.sql,
+                    scope: fullResource.scope,
+                    groupId: fullResource.groupId ?? '',
+                    folderPath: fullResource.folderPath,
+                    datasourceId: fullResource.datasourceId ?? '',
+                    tagsInput: formatResourceTagsInput(fullResource.tags),
+                    allowGroupEdit: fullResource.allowGroupEdit
+                });
+                setActiveSection('resources');
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to load script details.';
+                setResourceError(message);
+            }
+        },
+        [loadResourceDetail]
+    );
 
     const handleCancelResourceEdit = useCallback(() => {
         setResourceError('');
@@ -5198,8 +5247,17 @@ export default function WorkspacePage() {
     ]);
 
     const handleOpenResource = useCallback(
-        (resource: ResourceScriptResponse, runImmediately: boolean) => {
+        async (resourceSummary: ResourceScriptSummaryResponse, runImmediately: boolean) => {
             setResourceError('');
+            let resource: ResourceScriptResponse;
+            try {
+                resource = await loadResourceDetail(resourceSummary.resourceId);
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to load script details.';
+                setResourceError(message);
+                return;
+            }
 
             const existingTab = workspaceTabsRef.current.find(
                 (tab) => tab.resourceId === resource.resourceId
@@ -5262,38 +5320,43 @@ export default function WorkspacePage() {
             activeTab?.datasourceId,
             buildResourceTabSnapshot,
             executeSqlForTab,
+            loadResourceDetail,
             syncResourceToTabs,
             visibleDatasources
         ]
     );
 
     const handleDuplicateResource = useCallback(
-        async (resource: ResourceScriptResponse) => {
+        async (resource: ResourceScriptSummaryResponse) => {
             setResourceError('');
             try {
+                const fullResource = await loadResourceDetail(resource.resourceId);
                 const csrfToken = await fetchCsrfToken();
-                const response = await fetch(`/api/resources/${resource.resourceId}/duplicate`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [csrfToken.headerName]: csrfToken.token
-                    },
-                    body: JSON.stringify({})
-                });
+                const response = await fetch(
+                    `/api/resources/${fullResource.resourceId}/duplicate`,
+                    {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            [csrfToken.headerName]: csrfToken.token
+                        },
+                        body: JSON.stringify({})
+                    }
+                );
                 if (!response.ok) {
                     throw new Error(await readFriendlyError(response));
                 }
 
                 await loadResources();
-                setCopyFeedback(`Duplicated script "${resource.title}".`);
+                setCopyFeedback(`Duplicated script "${fullResource.title}".`);
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to duplicate script.';
                 setResourceError(message);
             }
         },
-        [fetchCsrfToken, loadResources, readFriendlyError]
+        [fetchCsrfToken, loadResourceDetail, loadResources, readFriendlyError]
     );
 
     const handleDeleteResource = useCallback(

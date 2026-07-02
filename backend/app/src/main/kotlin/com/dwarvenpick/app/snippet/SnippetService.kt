@@ -23,6 +23,21 @@ data class SnippetRecord(
     var updatedAt: Instant,
 )
 
+data class SnippetSummaryRecord(
+    val snippetId: String,
+    val owner: String,
+    val groupId: String?,
+    val title: String,
+    val sqlPreview: String,
+    val sqlLength: Int,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+)
+
+private const val DEFAULT_SNIPPET_LIST_LIMIT = 1000
+private const val MAX_SNIPPET_LIST_LIMIT = 1000
+private const val MAX_SNIPPET_REGEX_SCAN_LIMIT = 1000
+
 @Service
 class SnippetService(
     private val snippetRepository: SnippetRepository,
@@ -33,37 +48,69 @@ class SnippetService(
         title: String?,
         titleMatch: String?,
         groupId: String?,
-    ): List<SnippetResponse> {
+        limit: Int? = null,
+        offset: Int? = null,
+    ): List<SnippetSummaryResponse> {
         val normalizedScope = scope?.trim()?.lowercase()
         val includePersonal = normalizedScope == null || normalizedScope == "all" || normalizedScope == "personal"
         val includeGroup = normalizedScope == null || normalizedScope == "all" || normalizedScope == "group"
         val normalizedGroupId = groupId?.trim()?.takeIf { it.isNotBlank() }
         val titleFilter = title?.trim()?.takeIf { it.isNotBlank() }
         val resolvedTitleMatch = titleMatch?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val resolvedLimit = (limit ?: DEFAULT_SNIPPET_LIST_LIMIT).coerceIn(1, MAX_SNIPPET_LIST_LIMIT)
+        val resolvedOffset = (offset ?: 0).coerceAtLeast(0)
         val titleRegex =
             when {
                 titleFilter == null -> null
                 resolvedTitleMatch == "regex" -> compileTitleRegex(titleFilter, fallbackIgnoreCase = true)
                 else -> parseRegexFilterOrNull(titleFilter)
             }
+        val exactTitle = if (titleFilter != null && titleRegex == null) titleFilter.lowercase() else null
+        val repositoryLimit = if (titleRegex == null) resolvedLimit else MAX_SNIPPET_REGEX_SCAN_LIMIT + 1
+        val repositoryOffset = if (titleRegex == null) resolvedOffset else 0
 
-        return snippetRepository
-            .list()
+        val summaries =
+            snippetRepository
+                .listSummaries(
+                    username = principal.username,
+                    groups = principal.groups,
+                    systemAdmin = principal.roles.contains("SYSTEM_ADMIN"),
+                    includePersonal = includePersonal,
+                    includeGroup = includeGroup,
+                    groupId = normalizedGroupId,
+                    exactTitle = exactTitle,
+                    limit = repositoryLimit,
+                    offset = repositoryOffset,
+                ).filter { record ->
+                    // SQL is a prefilter; keep the exact Kotlin check so case-insensitive DB collations cannot broaden access.
+                    (includePersonal && record.owner == principal.username) ||
+                        (includeGroup && canAccessGroupSnippet(principal, record))
+                }
+        if (titleRegex != null && summaries.size > MAX_SNIPPET_REGEX_SCAN_LIMIT) {
+            throw IllegalArgumentException(
+                "Snippet regex filters scan at most $MAX_SNIPPET_REGEX_SCAN_LIMIT snippets. Narrow the scope, group, or title filter.",
+            )
+        }
+
+        return summaries
             .asSequence()
             .filter { record ->
-                (includePersonal && record.owner == principal.username) ||
-                    (includeGroup && canAccessGroupSnippet(principal, record))
-            }.filter { record ->
-                normalizedGroupId == null || record.groupId == normalizedGroupId
-            }.filter { record ->
-                when {
-                    titleFilter == null -> true
-                    titleRegex != null -> titleRegex.containsMatchIn(record.title)
-                    else -> record.title.equals(titleFilter, ignoreCase = true)
-                }
-            }.sortedByDescending { record -> record.updatedAt }
-            .map { record -> record.toResponse() }
+                titleRegex == null || titleRegex.containsMatchIn(record.title)
+            }.drop(if (titleRegex == null) 0 else resolvedOffset)
+            .take(if (titleRegex == null) Int.MAX_VALUE else resolvedLimit)
+            .map { record -> record.toSummaryResponse() }
             .toList()
+    }
+
+    fun getSnippet(
+        principal: AuthenticatedUserPrincipal,
+        snippetId: String,
+    ): SnippetResponse {
+        val snippet = snippetRepository.find(snippetId) ?: throw SnippetNotFoundException("Snippet '$snippetId' was not found.")
+        if (!canViewSnippet(principal, snippet)) {
+            throw SnippetAccessDeniedException("Snippet view denied for '$snippetId'.")
+        }
+        return snippet.toResponse()
     }
 
     fun createSnippet(
@@ -133,10 +180,20 @@ class SnippetService(
 
     private fun canAccessGroupSnippet(
         principal: AuthenticatedUserPrincipal,
-        snippet: SnippetRecord,
+        snippet: SnippetSummaryRecord,
     ): Boolean =
         snippet.groupId != null &&
             (principal.roles.contains("SYSTEM_ADMIN") || snippet.groupId in principal.groups)
+
+    private fun canViewSnippet(
+        principal: AuthenticatedUserPrincipal,
+        snippet: SnippetRecord,
+    ): Boolean =
+        snippet.owner == principal.username ||
+            (
+                snippet.groupId != null &&
+                    (principal.roles.contains("SYSTEM_ADMIN") || snippet.groupId in principal.groups)
+            )
 
     private fun canManageGroupSnippet(
         principal: AuthenticatedUserPrincipal,
@@ -215,6 +272,18 @@ class SnippetService(
             snippetId = snippetId,
             title = title,
             sql = sql,
+            owner = owner,
+            groupId = groupId,
+            createdAt = createdAt.toString(),
+            updatedAt = updatedAt.toString(),
+        )
+
+    private fun SnippetSummaryRecord.toSummaryResponse(): SnippetSummaryResponse =
+        SnippetSummaryResponse(
+            snippetId = snippetId,
+            title = title,
+            sqlPreview = sqlPreview,
+            sqlLength = sqlLength,
             owner = owner,
             groupId = groupId,
             createdAt = createdAt.toString(),

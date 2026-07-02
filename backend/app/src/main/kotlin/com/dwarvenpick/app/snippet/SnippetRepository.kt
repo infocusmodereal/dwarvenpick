@@ -17,6 +17,7 @@ class SnippetRepository(
 ) {
     private val namedParameterJdbcTemplate = NamedParameterJdbcTemplate(jdbcTemplate)
     private val rowMapper = RowMapper { resultSet, _ -> resultSet.toSnippetRecord() }
+    private val summaryRowMapper = RowMapper { resultSet, _ -> resultSet.toSnippetSummaryRecord() }
 
     fun list(): List<SnippetRecord> =
         namedParameterJdbcTemplate.query(
@@ -27,6 +28,58 @@ class SnippetRepository(
             """.trimIndent(),
             emptyMap<String, Any>(),
             rowMapper,
+        )
+
+    fun listSummaries(
+        username: String,
+        groups: Set<String>,
+        systemAdmin: Boolean,
+        includePersonal: Boolean,
+        includeGroup: Boolean,
+        groupId: String?,
+        exactTitle: String?,
+        limit: Int,
+        offset: Int,
+    ): List<SnippetSummaryRecord> =
+        namedParameterJdbcTemplate.query(
+            """
+            SELECT snippet_id,
+                   owner,
+                   group_id,
+                   title,
+                   CASE
+                     WHEN CHAR_LENGTH(sql_text) > 240 THEN CONCAT(SUBSTR(sql_text, 1, 240), '...')
+                     ELSE sql_text
+                   END AS sql_preview,
+                   CHAR_LENGTH(sql_text) AS sql_length,
+                   created_at,
+                   updated_at
+            FROM snippets
+            WHERE (
+              (:includePersonal = 1 AND owner = :username) OR
+              (
+                :includeGroup = 1 AND
+                group_id IS NOT NULL AND
+                (:systemAdmin = 1 OR group_id IN (:groups))
+              )
+            )
+              AND (:groupId IS NULL OR group_id = :groupId)
+              AND (:exactTitle IS NULL OR LOWER(title) = :exactTitle)
+            ORDER BY updated_at DESC, snippet_id DESC
+            LIMIT :limit OFFSET :offset
+            """.trimIndent(),
+            mapOf(
+                "username" to username,
+                "groups" to groups.ifEmpty { setOf("__no_matching_groups__") },
+                "systemAdmin" to systemAdmin.toIntFlag(),
+                "includePersonal" to includePersonal.toIntFlag(),
+                "includeGroup" to includeGroup.toIntFlag(),
+                "groupId" to groupId,
+                "exactTitle" to exactTitle,
+                "limit" to limit.coerceAtLeast(1),
+                "offset" to offset.coerceAtLeast(0),
+            ),
+            summaryRowMapper,
         )
 
     fun find(snippetId: String): SnippetRecord? =
@@ -101,5 +154,19 @@ class SnippetRepository(
             updatedAt = getTimestamp("updated_at").toInstant(),
         )
 
+    private fun ResultSet.toSnippetSummaryRecord(): SnippetSummaryRecord =
+        SnippetSummaryRecord(
+            snippetId = getString("snippet_id"),
+            owner = getString("owner"),
+            groupId = getString("group_id"),
+            title = getString("title"),
+            sqlPreview = getString("sql_preview"),
+            sqlLength = getInt("sql_length"),
+            createdAt = getTimestamp("created_at").toInstant(),
+            updatedAt = getTimestamp("updated_at").toInstant(),
+        )
+
     private fun Instant.toTimestamp(): Timestamp = Timestamp.from(this)
+
+    private fun Boolean.toIntFlag(): Int = if (this) 1 else 0
 }

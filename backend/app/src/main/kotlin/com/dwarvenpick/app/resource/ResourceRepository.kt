@@ -21,8 +21,117 @@ class ResourceRepository(
 ) {
     private val namedParameterJdbcTemplate = NamedParameterJdbcTemplate(jdbcTemplate)
     private val resourceRowMapper = RowMapper { resultSet, _ -> resultSet.toResourceRecord() }
+    private val resourceSummaryRowMapper = RowMapper { resultSet, _ -> resultSet.toResourceSummaryRecord() }
     private val versionRowMapper = RowMapper { resultSet, _ -> resultSet.toResourceVersionRecord() }
     private val tagsType = object : TypeReference<List<String>>() {}
+
+    fun listResourceSummaries(
+        username: String,
+        groups: Set<String>,
+        systemAdmin: Boolean,
+        query: String?,
+        scope: ResourceScope?,
+        groupId: String?,
+        datasourceId: String?,
+        tag: String?,
+        limit: Int,
+        offset: Int,
+    ): List<ResourceSummaryRecord> {
+        val normalizedQuery = query?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val normalizedTag = tag?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        return namedParameterJdbcTemplate.query(
+            """
+            SELECT page.resource_id,
+                   page.owner,
+                   page.title,
+                   page.sql_preview,
+                   page.sql_length,
+                   page.scope,
+                   page.group_id,
+                   page.folder_path,
+                   page.datasource_id,
+                   page.tags_json,
+                   page.allow_group_edit,
+                   page.created_at,
+                   page.updated_at,
+                   page.current_revision,
+                   COUNT(v.version_id) AS version_count
+            FROM (
+              SELECT r.resource_id,
+                     r.owner,
+                     r.title,
+                     CASE
+                       WHEN CHAR_LENGTH(r.sql_text) > 240 THEN CONCAT(SUBSTR(r.sql_text, 1, 240), '...')
+                       ELSE r.sql_text
+                     END AS sql_preview,
+                     CHAR_LENGTH(r.sql_text) AS sql_length,
+                     r.scope,
+                     r.group_id,
+                     r.folder_path,
+                     r.datasource_id,
+                     r.tags_json,
+                     r.allow_group_edit,
+                     r.created_at,
+                     r.updated_at,
+                     r.current_revision
+              FROM resource_scripts r
+              WHERE (
+                :queryLike IS NULL OR
+                LOWER(r.title) LIKE :queryLike ESCAPE '!' OR
+                LOWER(r.folder_path) LIKE :queryLike ESCAPE '!' OR
+                LOWER(COALESCE(r.datasource_id, '')) LIKE :queryLike ESCAPE '!' OR
+                LOWER(r.owner) LIKE :queryLike ESCAPE '!' OR
+                LOWER(r.sql_text) LIKE :queryLike ESCAPE '!' OR
+                LOWER(COALESCE(r.group_id, '')) LIKE :queryLike ESCAPE '!' OR
+                LOWER(r.tags_json) LIKE :queryLike ESCAPE '!'
+              )
+                AND (
+                  :systemAdmin = 1 OR
+                  r.owner = :username OR
+                  (
+                    r.scope = 'SHARED' AND
+                    r.group_id IN (:groups)
+                  )
+                )
+                AND (:scope IS NULL OR r.scope = :scope)
+                AND (:groupId IS NULL OR r.group_id = :groupId)
+                AND (:datasourceId IS NULL OR r.datasource_id = :datasourceId)
+                AND (:tagLike IS NULL OR LOWER(r.tags_json) LIKE :tagLike ESCAPE '!')
+              ORDER BY r.updated_at DESC, r.resource_id DESC
+              LIMIT :limit OFFSET :offset
+            ) page
+            LEFT JOIN resource_script_versions v ON v.resource_id = page.resource_id
+            GROUP BY page.resource_id,
+                     page.owner,
+                     page.title,
+                     page.sql_preview,
+                     page.sql_length,
+                     page.scope,
+                     page.group_id,
+                     page.folder_path,
+                     page.datasource_id,
+                     page.tags_json,
+                     page.allow_group_edit,
+                     page.created_at,
+                     page.updated_at,
+                     page.current_revision
+            ORDER BY page.updated_at DESC, page.resource_id DESC
+            """.trimIndent(),
+            mapOf(
+                "username" to username,
+                "groups" to groups.ifEmpty { setOf("__no_matching_groups__") },
+                "systemAdmin" to systemAdmin.toIntFlag(),
+                "queryLike" to normalizedQuery?.let { "%${it.escapeLikePattern()}%" },
+                "scope" to scope?.name,
+                "groupId" to groupId,
+                "datasourceId" to datasourceId,
+                "tagLike" to normalizedTag?.let { "%\"${it.escapeLikePattern()}\"%" },
+                "limit" to limit.coerceAtLeast(1),
+                "offset" to offset.coerceAtLeast(0),
+            ),
+            resourceSummaryRowMapper,
+        )
+    }
 
     fun listResources(): List<ResourceRecord> =
         namedParameterJdbcTemplate.query(
@@ -61,6 +170,17 @@ class ResourceRepository(
             mapOf("resourceId" to resourceId),
             versionRowMapper,
         )
+
+    fun countVersions(resourceId: String): Int =
+        namedParameterJdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM resource_script_versions
+            WHERE resource_id = :resourceId
+            """.trimIndent(),
+            mapOf("resourceId" to resourceId),
+            Int::class.java,
+        ) ?: 0
 
     fun findVersion(
         resourceId: String,
@@ -292,6 +412,25 @@ class ResourceRepository(
             currentRevision = getInt("current_revision"),
         )
 
+    private fun ResultSet.toResourceSummaryRecord(): ResourceSummaryRecord =
+        ResourceSummaryRecord(
+            resourceId = getString("resource_id"),
+            owner = getString("owner"),
+            title = getString("title"),
+            sqlPreview = getString("sql_preview"),
+            sqlLength = getInt("sql_length"),
+            scope = ResourceScope.valueOf(getString("scope")),
+            groupId = getString("group_id"),
+            folderPath = getString("folder_path"),
+            datasourceId = getString("datasource_id"),
+            tags = objectMapper.readValue(getString("tags_json"), tagsType),
+            allowGroupEdit = getBoolean("allow_group_edit"),
+            createdAt = getTimestamp("created_at").toInstant(),
+            updatedAt = getTimestamp("updated_at").toInstant(),
+            currentRevision = getInt("current_revision"),
+            versionCount = getInt("version_count"),
+        )
+
     private fun ResultSet.toResourceVersionRecord(): ResourceVersionRecord =
         ResourceVersionRecord(
             versionId = getString("version_id"),
@@ -311,4 +450,16 @@ class ResourceRepository(
         )
 
     private fun Instant.toTimestamp(): Timestamp = Timestamp.from(this)
+
+    private fun Boolean.toIntFlag(): Int = if (this) 1 else 0
+
+    private fun String.escapeLikePattern(): String =
+        buildString {
+            this@escapeLikePattern.forEach { character ->
+                if (character == '!' || character == '%' || character == '_') {
+                    append('!')
+                }
+                append(character)
+            }
+        }
 }

@@ -34,8 +34,10 @@ class SnippetController(
         @RequestParam(required = false) title: String?,
         @RequestParam(required = false) titleMatch: String?,
         @RequestParam(required = false) groupId: String?,
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) offset: Int?,
         authentication: Authentication,
-    ): List<SnippetResponse> {
+    ): List<SnippetSummaryResponse> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         return snippetService.listSnippets(
             principal = principal,
@@ -43,7 +45,18 @@ class SnippetController(
             title = title,
             titleMatch = titleMatch,
             groupId = groupId,
+            limit = limit,
+            offset = offset,
         )
+    }
+
+    @GetMapping("/{snippetId}")
+    fun getSnippet(
+        @PathVariable snippetId: String,
+        authentication: Authentication,
+    ): SnippetResponse {
+        val principal = authenticatedPrincipalResolver.resolve(authentication)
+        return snippetService.getSnippet(principal, snippetId)
     }
 
     @PostMapping

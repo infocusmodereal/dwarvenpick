@@ -41,6 +41,25 @@ data class ResourceScriptResponse(
     val permissions: ResourcePermissionsResponse,
 )
 
+data class ResourceScriptSummaryResponse(
+    val resourceId: String,
+    val title: String,
+    val sqlPreview: String,
+    val sqlLength: Int,
+    val owner: String,
+    val scope: ResourceScope,
+    val groupId: String?,
+    val folderPath: String,
+    val datasourceId: String?,
+    val tags: List<String>,
+    val allowGroupEdit: Boolean,
+    val createdAt: String,
+    val updatedAt: String,
+    val currentRevision: Int,
+    val versionCount: Int,
+    val permissions: ResourcePermissionsResponse,
+)
+
 data class ResourceVersionResponse(
     val versionId: String,
     val resourceId: String,
