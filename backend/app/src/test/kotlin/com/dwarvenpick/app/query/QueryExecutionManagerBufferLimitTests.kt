@@ -1,11 +1,18 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.datasource.ConnectionSpec
+import com.dwarvenpick.app.datasource.DatasourceEngine
+import com.dwarvenpick.app.datasource.DatasourcePoolManager
+import com.dwarvenpick.app.datasource.PoolSettings
+import com.dwarvenpick.app.datasource.QueryConnectionHandle
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import java.sql.Connection
 import java.util.concurrent.ConcurrentHashMap
 
 @SpringBootTest(
@@ -20,6 +27,9 @@ class QueryExecutionManagerBufferLimitTests {
 
     @Autowired
     private lateinit var queryRuntimeRepository: QueryRuntimeRepository
+
+    @Autowired
+    private lateinit var datasourcePoolManager: DatasourcePoolManager
 
     @BeforeEach
     fun resetRuntime() {
@@ -76,6 +86,116 @@ class QueryExecutionManagerBufferLimitTests {
         assertThat(results.rows).containsExactly(listOf("xxxxx..."))
     }
 
+    @Test
+    fun `starrocks mysql connector uses streaming fetch size`() {
+        val fetchSizeFor =
+            QueryExecutionManager::class.java
+                .getDeclaredMethod("jdbcFetchSizeFor", QueryConnectionHandle::class.java)
+                .apply { isAccessible = true }
+
+        val starrocksFetchSize =
+            fetchSizeFor.invoke(
+                queryExecutionManager,
+                queryConnectionHandle(
+                    engine = DatasourceEngine.STARROCKS,
+                    driverClass = "com.mysql.cj.jdbc.Driver",
+                ),
+            )
+        val mysqlFetchSize =
+            fetchSizeFor.invoke(
+                queryExecutionManager,
+                queryConnectionHandle(
+                    engine = DatasourceEngine.MYSQL,
+                    driverClass = "com.mysql.cj.jdbc.Driver",
+                ),
+            )
+        val mismatchedEngineFetchSize =
+            fetchSizeFor.invoke(
+                queryExecutionManager,
+                queryConnectionHandle(
+                    engine = DatasourceEngine.POSTGRESQL,
+                    driverClass = "com.mysql.cj.jdbc.Driver",
+                ),
+            )
+        val mismatchedDriverFetchSize =
+            fetchSizeFor.invoke(
+                queryExecutionManager,
+                queryConnectionHandle(
+                    engine = DatasourceEngine.MYSQL,
+                    driverClass = "org.postgresql.Driver",
+                ),
+            )
+        val postgresFetchSize =
+            fetchSizeFor.invoke(
+                queryExecutionManager,
+                queryConnectionHandle(
+                    engine = DatasourceEngine.POSTGRESQL,
+                    driverClass = "org.postgresql.Driver",
+                ),
+            )
+
+        assertThat(starrocksFetchSize).isEqualTo(Int.MIN_VALUE)
+        assertThat(mysqlFetchSize).isEqualTo(Int.MIN_VALUE)
+        assertThat(mismatchedEngineFetchSize).isEqualTo(500)
+        assertThat(mismatchedDriverFetchSize).isEqualTo(500)
+        assertThat(postgresFetchSize).isEqualTo(500)
+    }
+
+    @Test
+    fun `starrocks mysql connector pools discard unread streaming results`() {
+        val shouldDiscardUnreadResults =
+            DatasourcePoolManager::class.java
+                .getDeclaredMethod("shouldDiscardUnreadMysqlStreamingResults", ConnectionSpec::class.java)
+                .apply { isAccessible = true }
+
+        val starrocksDiscardUnreadResults =
+            shouldDiscardUnreadResults.invoke(
+                datasourcePoolManager,
+                connectionSpec(
+                    engine = DatasourceEngine.STARROCKS,
+                    driverClass = "com.mysql.cj.jdbc.Driver",
+                ),
+            )
+        val mysqlDiscardUnreadResults =
+            shouldDiscardUnreadResults.invoke(
+                datasourcePoolManager,
+                connectionSpec(
+                    engine = DatasourceEngine.MYSQL,
+                    driverClass = "com.mysql.cj.jdbc.Driver",
+                ),
+            )
+        val mismatchedEngineDiscardUnreadResults =
+            shouldDiscardUnreadResults.invoke(
+                datasourcePoolManager,
+                connectionSpec(
+                    engine = DatasourceEngine.POSTGRESQL,
+                    driverClass = "com.mysql.cj.jdbc.Driver",
+                ),
+            )
+        val mismatchedDriverDiscardUnreadResults =
+            shouldDiscardUnreadResults.invoke(
+                datasourcePoolManager,
+                connectionSpec(
+                    engine = DatasourceEngine.MYSQL,
+                    driverClass = "org.postgresql.Driver",
+                ),
+            )
+        val postgresDiscardUnreadResults =
+            shouldDiscardUnreadResults.invoke(
+                datasourcePoolManager,
+                connectionSpec(
+                    engine = DatasourceEngine.POSTGRESQL,
+                    driverClass = "org.postgresql.Driver",
+                ),
+            )
+
+        assertThat(starrocksDiscardUnreadResults).isEqualTo(true)
+        assertThat(mysqlDiscardUnreadResults).isEqualTo(true)
+        assertThat(mismatchedEngineDiscardUnreadResults).isEqualTo(false)
+        assertThat(mismatchedDriverDiscardUnreadResults).isEqualTo(false)
+        assertThat(postgresDiscardUnreadResults).isEqualTo(false)
+    }
+
     private fun testPolicy(maxRowsPerQuery: Int): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "unit-test-profile",
@@ -83,6 +203,33 @@ class QueryExecutionManagerBufferLimitTests {
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = 10,
             concurrencyLimit = 1,
+        )
+
+    private fun queryConnectionHandle(
+        engine: DatasourceEngine,
+        driverClass: String,
+    ): QueryConnectionHandle =
+        QueryConnectionHandle(
+            spec = connectionSpec(engine, driverClass),
+            connection = mock(Connection::class.java),
+        )
+
+    private fun connectionSpec(
+        engine: DatasourceEngine,
+        driverClass: String,
+    ): ConnectionSpec =
+        ConnectionSpec(
+            datasourceId = "test-datasource",
+            datasourceName = "Test datasource",
+            credentialProfile = "unit-test-profile",
+            engine = engine,
+            driverId = "test-driver",
+            driverClass = driverClass,
+            driverSource = "built-in",
+            jdbcUrl = "jdbc:test://localhost",
+            username = "test",
+            password = "test",
+            pool = PoolSettings(),
         )
 
     private fun waitForTerminalStatus(

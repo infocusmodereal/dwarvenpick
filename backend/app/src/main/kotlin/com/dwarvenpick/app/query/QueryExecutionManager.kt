@@ -3,6 +3,8 @@ package com.dwarvenpick.app.query
 import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
+import com.dwarvenpick.app.datasource.QueryConnectionHandle
+import com.dwarvenpick.app.datasource.shouldUseMysqlConnectorStreaming
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import com.dwarvenpick.app.runtime.ApplicationInstanceId
 import io.micrometer.core.instrument.MeterRegistry
@@ -81,6 +83,17 @@ private data class BufferedCellValue(
     val value: String?,
     val byteSize: Long,
     val truncated: Boolean,
+)
+
+private enum class BufferLimitReason {
+    QUERY,
+    INSTANCE,
+}
+
+private data class RemainingBufferCapacity(
+    val bytes: Long,
+    val message: String,
+    val reason: BufferLimitReason,
 )
 
 private data class QueryExecutionRecord(
@@ -572,7 +585,10 @@ class QueryExecutionManager(
                 parsePageToken(executionId, token)
             } ?: 0
 
-        val rowsSnapshot = synchronized(record.rows) { record.rows.toList() }
+        val (columnsSnapshot, rowsSnapshot) =
+            synchronized(record.rows) {
+                record.columns.toList() to record.rows.toList()
+            }
         if (startOffset > rowsSnapshot.size) {
             throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
         }
@@ -591,7 +607,7 @@ class QueryExecutionManager(
         return QueryResultsResponse(
             executionId = executionId,
             status = record.status.name,
-            columns = record.columns.toList(),
+            columns = columnsSnapshot,
             rows = pageRows,
             pageSize = resolvedPageSize,
             nextPageToken = nextPageToken,
@@ -942,7 +958,7 @@ class QueryExecutionManager(
         record.activeConnection = handle.connection
 
         val statement =
-            handle.connection.createStatement().apply {
+            createQueryStatement(handle).apply {
                 queryTimeout = record.maxRuntimeSeconds
                 runCatching {
                     maxFieldSize = jdbcFieldSizeLimit(record.maxCellBytes)
@@ -950,7 +966,7 @@ class QueryExecutionManager(
                     logger.debug("JDBC driver rejected query max field size.", exception)
                 }
                 runCatching {
-                    fetchSize = queryExecutionProperties.jdbcFetchSize.coerceAtLeast(0)
+                    fetchSize = jdbcFetchSizeFor(handle)
                 }.onFailure { exception ->
                     logger.debug("JDBC driver rejected query fetch size.", exception)
                 }
@@ -973,13 +989,14 @@ class QueryExecutionManager(
 
         record.scriptStatements.clear()
         val isScript = statementSegments.size > 1
+        val cancelOnEarlyResultLimit = shouldStreamMysqlResults(handle)
 
         if (!isScript) {
-            executeStatementAndBuffer(record, statement, statementSegments[0].sql)
+            executeStatementAndBuffer(record, statement, statementSegments[0].sql, cancelOnEarlyResultLimit)
             return
         }
 
-        executeScript(record, handle.connection, statement, statementSegments)
+        executeScript(record, handle.connection, statement, statementSegments, cancelOnEarlyResultLimit)
     }
 
     private fun executeScript(
@@ -987,6 +1004,7 @@ class QueryExecutionManager(
         connection: Connection,
         statement: Statement,
         segments: List<SqlStatementSegment>,
+        cancelOnEarlyResultLimit: Boolean,
     ) {
         val failures = mutableListOf<String>()
         val originalAutoCommit = connection.autoCommit
@@ -1009,7 +1027,7 @@ class QueryExecutionManager(
 
                 try {
                     val bufferResults = index == segments.lastIndex
-                    executeStatement(record, statement, segment.sql, bufferResults)
+                    executeStatement(record, statement, segment.sql, bufferResults, cancelOnEarlyResultLimit)
                     record.scriptStatements.add(
                         QueryScriptStatementSummary(
                             index = statementNumber,
@@ -1064,8 +1082,9 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         statement: Statement,
         sql: String,
+        cancelOnEarlyResultLimit: Boolean,
     ) {
-        executeStatement(record, statement, sql, bufferResults = true)
+        executeStatement(record, statement, sql, bufferResults = true, cancelOnEarlyResultLimit)
     }
 
     private fun executeStatement(
@@ -1073,6 +1092,7 @@ class QueryExecutionManager(
         statement: Statement,
         sql: String,
         bufferResults: Boolean,
+        cancelOnEarlyResultLimit: Boolean,
     ) {
         if (!bufferResults) {
             val hasResultSet = statement.execute(sql)
@@ -1092,8 +1112,27 @@ class QueryExecutionManager(
             return
         }
 
-        statement.resultSet.use { resultSet ->
-            bufferResultSet(record, resultSet)
+        val resultSet = statement.resultSet
+        try {
+            val stoppedEarly = !bufferResultSet(record, resultSet)
+            if (stoppedEarly) {
+                if (cancelOnEarlyResultLimit) {
+                    cancelActiveStatementAfterResultLimit(record)
+                }
+                runCatching { resultSet.close() }
+                    .onFailure { exception ->
+                        logger.debug("JDBC driver rejected streaming result close after result limit.", exception)
+                    }
+                return
+            }
+            resultSet.close()
+        } catch (ex: Throwable) {
+            if (cancelOnEarlyResultLimit) {
+                cancelActiveStatementAfterResultLimit(record)
+            }
+            runCatching { resultSet.close() }
+                .onFailure { closeException -> ex.addSuppressed(closeException) }
+            throw ex
         }
     }
 
@@ -1108,7 +1147,7 @@ class QueryExecutionManager(
     private fun bufferResultSet(
         record: QueryExecutionRecord,
         resultSet: ResultSet,
-    ) {
+    ): Boolean {
         val metadata = resultSet.metaData
         val resolvedColumns =
             (1..metadata.columnCount).map { index ->
@@ -1123,14 +1162,46 @@ class QueryExecutionManager(
             throwIfCanceled(record)
             enforceRuntimeLimit(record)
 
-            val row =
-                (1..metadata.columnCount).map { index ->
-                    readBufferedCellValue(resultSet, metadata, index, record.maxCellBytes)
-                }
+            val row = readBufferedRow(record, resultSet, metadata) ?: return false
             if (!appendBufferedCells(record, row)) {
-                return
+                return false
             }
         }
+
+        return true
+    }
+
+    private fun readBufferedRow(
+        record: QueryExecutionRecord,
+        resultSet: ResultSet,
+        metadata: ResultSetMetaData,
+    ): List<BufferedCellValue>? {
+        val cells = mutableListOf<BufferedCellValue>()
+        var rowBytes = 0L
+
+        for (index in 1..metadata.columnCount) {
+            val separatorBytes = if (cells.isEmpty()) 0L else 1L
+            val capacity = remainingBufferCapacity(record, rowBytes + separatorBytes)
+            if (capacity.bytes <= 0) {
+                markBufferLimit(record, capacity)
+                return null
+            }
+
+            val cellLimit =
+                minOf(record.maxCellBytes.toLong(), capacity.bytes)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+            val cell = readBufferedCellValue(resultSet, metadata, index, cellLimit)
+            if (cell.truncated && cellLimit < record.maxCellBytes) {
+                markBufferLimit(record, capacity)
+                return null
+            }
+
+            cells.add(cell)
+            rowBytes += separatorBytes + cell.byteSize
+        }
+
+        return cells
     }
 
     private fun appendBufferedRow(
@@ -1394,6 +1465,74 @@ class QueryExecutionManager(
     }
 
     private fun instanceBufferedResultBudgetBytes(): Long = queryExecutionProperties.maxBufferedBytesPerInstance.coerceAtLeast(0)
+
+    private fun createQueryStatement(handle: QueryConnectionHandle): Statement =
+        handle.connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+
+    private fun jdbcFetchSizeFor(handle: QueryConnectionHandle): Int =
+        if (shouldStreamMysqlResults(handle)) {
+            Int.MIN_VALUE
+        } else {
+            queryExecutionProperties.jdbcFetchSize.coerceAtLeast(0)
+        }
+
+    private fun shouldStreamMysqlResults(handle: QueryConnectionHandle): Boolean =
+        shouldUseMysqlConnectorStreaming(handle.spec.engine, handle.spec.driverClass)
+
+    private fun remainingBufferCapacity(
+        record: QueryExecutionRecord,
+        pendingRowBytes: Long,
+    ): RemainingBufferCapacity {
+        val queryRemaining: Long
+        val instanceRemaining: Long
+        synchronized(record.rows) {
+            queryRemaining = record.maxBufferedBytes - record.bufferedResultBytes - pendingRowBytes
+            val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
+            instanceRemaining =
+                if (instanceBudgetBytes > 0) {
+                    instanceBudgetBytes - instanceBufferedResultBytes.get() - pendingRowBytes
+                } else {
+                    Long.MAX_VALUE
+                }
+        }
+
+        return if (queryRemaining <= instanceRemaining) {
+            RemainingBufferCapacity(
+                bytes = queryRemaining,
+                message = resultBufferLimitMessage(record.maxBufferedBytes),
+                reason = BufferLimitReason.QUERY,
+            )
+        } else {
+            val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
+            RemainingBufferCapacity(
+                bytes = instanceRemaining,
+                message = instanceBufferLimitMessage(instanceBudgetBytes),
+                reason = BufferLimitReason.INSTANCE,
+            )
+        }
+    }
+
+    private fun markBufferLimit(
+        record: QueryExecutionRecord,
+        capacity: RemainingBufferCapacity,
+    ) {
+        markResultLimit(record, capacity.message)
+        if (capacity.reason == BufferLimitReason.INSTANCE) {
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.result_buffer.rejections",
+                    "reason",
+                    "instance_budget",
+                ).increment()
+        }
+    }
+
+    private fun cancelActiveStatementAfterResultLimit(record: QueryExecutionRecord) {
+        runCatching { record.activeStatement?.cancel() }
+            .onFailure { exception ->
+                logger.debug("JDBC driver rejected statement cancel after result limit.", exception)
+            }
+    }
 
     private fun tryReserveInstanceBufferedBytes(
         rowBytes: Long,
@@ -1915,6 +2054,10 @@ class QueryExecutionManager(
     }
 
     private fun syncHistoryFromExecution(record: QueryExecutionRecord) {
+        val (columnsSnapshot, rowsSnapshot) =
+            synchronized(record.rows) {
+                record.columns.toList() to record.rows.toList()
+            }
         queryHistoryRepository.save(
             QueryHistoryRecord(
                 executionId = record.executionId,
@@ -1927,8 +2070,8 @@ class QueryExecutionManager(
                 status = record.status,
                 message = record.message,
                 errorSummary = record.errorSummary,
-                rowCount = synchronized(record.rows) { record.rows.size },
-                columnCount = record.columns.size,
+                rowCount = rowsSnapshot.size,
+                columnCount = columnsSnapshot.size,
                 rowLimitReached = record.rowLimitReached,
                 maxRowsPerQuery = record.maxRowsPerQuery,
                 maxRuntimeSeconds = record.maxRuntimeSeconds,
@@ -1937,10 +2080,13 @@ class QueryExecutionManager(
                 completedAt = record.completedAt,
             ),
         )
-        queryRuntimeRepository.save(record.toPersistedRuntimeRecord())
+        queryRuntimeRepository.save(record.toPersistedRuntimeRecord(columnsSnapshot, rowsSnapshot))
     }
 
-    private fun QueryExecutionRecord.toPersistedRuntimeRecord(): PersistedQueryRuntimeRecord =
+    private fun QueryExecutionRecord.toPersistedRuntimeRecord(
+        columnsSnapshot: List<QueryResultColumn>,
+        rowsSnapshot: List<List<String?>>,
+    ): PersistedQueryRuntimeRecord =
         PersistedQueryRuntimeRecord(
             executionId = executionId,
             actor = actor,
@@ -1964,8 +2110,8 @@ class QueryExecutionManager(
             startedAt = startedAt,
             completedAt = completedAt,
             rowLimitReached = rowLimitReached,
-            columns = columns.toList(),
-            rows = synchronized(rows) { rows.toList() },
+            columns = columnsSnapshot,
+            rows = rowsSnapshot,
             lastAccessedAt = lastAccessedAt,
             resultsExpired = resultsExpired,
             cancelRequested = cancelRequested,

@@ -38,13 +38,9 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.context.request.NativeWebRequest
-import org.springframework.web.context.request.async.CallableProcessingInterceptor
-import org.springframework.web.context.request.async.WebAsyncUtils
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import java.time.Instant
-import java.util.concurrent.Callable
 import java.util.concurrent.atomic.AtomicBoolean
 
 @RestController
@@ -265,7 +261,6 @@ class QueryController(
 
             val exportLease = CsvExportLease(exportPayload.executionId, queryExecutionManager)
             try {
-                registerCsvExportLease(httpServletRequest, exportLease)
                 authAuditLogger.log(
                     AuthAuditEvent(
                         type = "query.export",
@@ -483,15 +478,6 @@ class QueryController(
         StreamingResponseBody { outputStream ->
             outputStream.write(toCsvError(message))
         }
-
-    private fun registerCsvExportLease(
-        httpServletRequest: HttpServletRequest,
-        exportLease: CsvExportLease,
-    ) {
-        WebAsyncUtils
-            .getAsyncManager(httpServletRequest)
-            .registerCallableInterceptor(exportLease, CsvExportLeaseInterceptor(exportLease))
-    }
 }
 
 private class CsvExportLease(
@@ -504,41 +490,5 @@ private class CsvExportLease(
         if (released.compareAndSet(false, true)) {
             queryExecutionManager.completeCsvExport(executionId)
         }
-    }
-}
-
-private class CsvExportLeaseInterceptor(
-    private val exportLease: CsvExportLease,
-) : CallableProcessingInterceptor {
-    override fun <T> postProcess(
-        request: NativeWebRequest,
-        task: Callable<T>,
-        concurrentResult: Any?,
-    ) {
-        exportLease.release()
-    }
-
-    override fun <T> handleTimeout(
-        request: NativeWebRequest,
-        task: Callable<T>,
-    ): Any {
-        exportLease.release()
-        return CallableProcessingInterceptor.RESULT_NONE
-    }
-
-    override fun <T> handleError(
-        request: NativeWebRequest,
-        task: Callable<T>,
-        t: Throwable,
-    ): Any {
-        exportLease.release()
-        return CallableProcessingInterceptor.RESULT_NONE
-    }
-
-    override fun <T> afterCompletion(
-        request: NativeWebRequest,
-        task: Callable<T>,
-    ) {
-        exportLease.release()
     }
 }

@@ -152,10 +152,16 @@ class DatasourcePoolManager(
                 if (spec.engine != DatasourceEngine.AEROSPIKE) {
                     connectionTestQuery = "SELECT 1"
                 }
+                if (shouldDiscardUnreadMysqlStreamingResults(spec)) {
+                    addDataSourceProperty("clobberStreamingResults", "true")
+                }
             }
 
         return HikariDataSource(config)
     }
+
+    private fun shouldDiscardUnreadMysqlStreamingResults(spec: ConnectionSpec): Boolean =
+        shouldUseMysqlConnectorStreaming(spec.engine, spec.driverClass)
 
     private fun runValidation(
         dataSource: HikariDataSource,
