@@ -76,7 +76,7 @@ class ResourceRepository(
                      r.current_revision
               FROM resource_scripts r
               WHERE (
-                :queryLike IS NULL OR
+                CAST(:queryLike AS VARCHAR) IS NULL OR
                 LOWER(r.title) LIKE :queryLike ESCAPE '!' OR
                 LOWER(r.folder_path) LIKE :queryLike ESCAPE '!' OR
                 LOWER(COALESCE(r.datasource_id, '')) LIKE :queryLike ESCAPE '!' OR
@@ -93,10 +93,10 @@ class ResourceRepository(
                     r.group_id IN (:groups)
                   )
                 )
-                AND (:scope IS NULL OR r.scope = :scope)
-                AND (:groupId IS NULL OR r.group_id = :groupId)
-                AND (:datasourceId IS NULL OR r.datasource_id = :datasourceId)
-                AND (:tagLike IS NULL OR LOWER(r.tags_json) LIKE :tagLike ESCAPE '!')
+                AND (CAST(:scope AS VARCHAR) IS NULL OR r.scope = :scope)
+                AND (CAST(:groupId AS VARCHAR) IS NULL OR r.group_id = :groupId)
+                AND (CAST(:datasourceId AS VARCHAR) IS NULL OR r.datasource_id = :datasourceId)
+                AND (CAST(:tagLike AS VARCHAR) IS NULL OR LOWER(r.tags_json) LIKE :tagLike ESCAPE '!')
               ORDER BY r.updated_at DESC, r.resource_id DESC
               LIMIT :limit OFFSET :offset
             ) page
