@@ -36,10 +36,12 @@ class ResourceController(
         @RequestParam(required = false) groupId: String?,
         @RequestParam(required = false) datasourceId: String?,
         @RequestParam(required = false) tag: String?,
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) offset: Int?,
         authentication: Authentication,
-    ): List<ResourceScriptResponse> {
+    ): List<ResourceScriptSummaryResponse> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
-        return resourceService.listResources(principal, scope, query, groupId, datasourceId, tag)
+        return resourceService.listResources(principal, scope, query, groupId, datasourceId, tag, limit, offset)
     }
 
     @GetMapping("/{resourceId}")

@@ -384,6 +384,17 @@ export type SnippetResponse = {
     updatedAt: string;
 };
 
+export type SnippetSummaryResponse = {
+    snippetId: string;
+    title: string;
+    sqlPreview: string;
+    sqlLength: number;
+    owner: string;
+    groupId?: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
 export type ResourceScope = 'PRIVATE' | 'SHARED';
 export type ResourceVersionAction =
     | 'CREATED'
@@ -404,6 +415,25 @@ export type ResourceScriptResponse = {
     resourceId: string;
     title: string;
     sql: string;
+    owner: string;
+    scope: ResourceScope;
+    groupId?: string | null;
+    folderPath: string;
+    datasourceId?: string | null;
+    tags: string[];
+    allowGroupEdit: boolean;
+    createdAt: string;
+    updatedAt: string;
+    currentRevision: number;
+    versionCount: number;
+    permissions: ResourcePermissionsResponse;
+};
+
+export type ResourceScriptSummaryResponse = {
+    resourceId: string;
+    title: string;
+    sqlPreview: string;
+    sqlLength: number;
     owner: string;
     scope: ResourceScope;
     groupId?: string | null;

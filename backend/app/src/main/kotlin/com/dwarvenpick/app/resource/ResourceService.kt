@@ -35,6 +35,24 @@ data class ResourceRecord(
     var currentRevision: Int = 0,
 )
 
+data class ResourceSummaryRecord(
+    val resourceId: String,
+    val owner: String,
+    val title: String,
+    val sqlPreview: String,
+    val sqlLength: Int,
+    val scope: ResourceScope,
+    val groupId: String?,
+    val folderPath: String,
+    val datasourceId: String?,
+    val tags: List<String>,
+    val allowGroupEdit: Boolean,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val currentRevision: Int,
+    val versionCount: Int,
+)
+
 data class ResourceVersionRecord(
     val versionId: String,
     val resourceId: String,
@@ -60,6 +78,8 @@ data class ResourceStorageSnapshot(
 
 private val resourceTitlePattern = Regex("^[A-Za-z0-9][A-Za-z0-9.-]*$")
 private val resourceTagPattern = Regex("^[a-z0-9][a-z0-9.-]*$")
+private const val DEFAULT_RESOURCE_LIST_LIMIT = 500
+private const val MAX_RESOURCE_LIST_LIMIT = 1000
 
 @Service
 class ResourceService(
@@ -82,43 +102,41 @@ class ResourceService(
         groupId: String?,
         datasourceId: String?,
         tag: String?,
-    ): List<ResourceScriptResponse> {
+        limit: Int?,
+        offset: Int?,
+    ): List<ResourceScriptSummaryResponse> {
         val normalizedScope = scope?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-        val normalizedQuery = query?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val normalizedQuery = query?.trim()?.takeIf { it.isNotBlank() }
         val normalizedGroupId = groupId?.trim()?.takeIf { it.isNotBlank() }
         val normalizedDatasourceId = datasourceId?.trim()?.takeIf { it.isNotBlank() }
         val normalizedTag = normalizeTag(tag)
+        val scopeFilter =
+            when (normalizedScope) {
+                null, "all" -> null
+                "private" -> ResourceScope.PRIVATE
+                "shared" -> ResourceScope.SHARED
+                else -> throw IllegalArgumentException("Unsupported resource scope '$scope'.")
+            }
+        val resolvedLimit = (limit ?: DEFAULT_RESOURCE_LIST_LIMIT).coerceIn(1, MAX_RESOURCE_LIST_LIMIT)
+        val resolvedOffset = (offset ?: 0).coerceAtLeast(0)
 
-        return resourceRepository
-            .listResources()
-            .asSequence()
+        return (
+            resourceRepository.listResourceSummaries(
+                username = principal.username,
+                groups = principal.groups,
+                systemAdmin = principal.roles.contains("SYSTEM_ADMIN"),
+                query = normalizedQuery,
+                scope = scopeFilter,
+                groupId = normalizedGroupId,
+                datasourceId = normalizedDatasourceId,
+                tag = normalizedTag,
+                limit = resolvedLimit,
+                offset = resolvedOffset,
+            )
+        ).asSequence()
+            // SQL is a prefilter; keep the exact Kotlin check so case-insensitive DB collations cannot broaden access.
             .filter { record -> canView(principal, record) }
-            .filter { record ->
-                when (normalizedScope) {
-                    null, "all" -> true
-                    "private" -> record.scope == ResourceScope.PRIVATE
-                    "shared" -> record.scope == ResourceScope.SHARED
-                    else -> throw IllegalArgumentException("Unsupported resource scope '$scope'.")
-                }
-            }.filter { record ->
-                normalizedGroupId == null || record.groupId == normalizedGroupId
-            }.filter { record ->
-                normalizedDatasourceId == null || record.datasourceId == normalizedDatasourceId
-            }.filter { record ->
-                normalizedTag == null || record.tags.contains(normalizedTag)
-            }.filter { record ->
-                normalizedQuery == null ||
-                    listOf(
-                        record.title,
-                        record.folderPath,
-                        record.datasourceId.orEmpty(),
-                        record.owner,
-                        record.sql,
-                        record.groupId.orEmpty(),
-                        record.tags.joinToString(" "),
-                    ).any { value -> value.lowercase().contains(normalizedQuery) }
-            }.sortedByDescending { record -> record.updatedAt }
-            .map { record -> record.toResponse(principal) }
+            .map { record -> record.toSummaryResponse(principal) }
             .toList()
     }
 
@@ -505,6 +523,18 @@ class ResourceService(
                     resource.groupId in principal.groups
             )
 
+    private fun canView(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceSummaryRecord,
+    ): Boolean =
+        principal.roles.contains("SYSTEM_ADMIN") ||
+            resource.owner == principal.username ||
+            (
+                resource.scope == ResourceScope.SHARED &&
+                    resource.groupId != null &&
+                    resource.groupId in principal.groups
+            )
+
     private fun canEdit(
         principal: AuthenticatedUserPrincipal,
         resource: ResourceRecord,
@@ -526,6 +556,29 @@ class ResourceService(
     private fun canShare(
         principal: AuthenticatedUserPrincipal,
         resource: ResourceRecord,
+    ): Boolean = principal.roles.contains("SYSTEM_ADMIN") || resource.owner == principal.username
+
+    private fun canEdit(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceSummaryRecord,
+    ): Boolean =
+        principal.roles.contains("SYSTEM_ADMIN") ||
+            resource.owner == principal.username ||
+            (
+                resource.scope == ResourceScope.SHARED &&
+                    resource.allowGroupEdit &&
+                    resource.groupId != null &&
+                    resource.groupId in principal.groups
+            )
+
+    private fun canDelete(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceSummaryRecord,
+    ): Boolean = principal.roles.contains("SYSTEM_ADMIN") || resource.owner == principal.username
+
+    private fun canShare(
+        principal: AuthenticatedUserPrincipal,
+        resource: ResourceSummaryRecord,
     ): Boolean = principal.roles.contains("SYSTEM_ADMIN") || resource.owner == principal.username
 
     private fun enforceCanView(
@@ -579,7 +632,34 @@ class ResourceService(
             createdAt = createdAt.toString(),
             updatedAt = updatedAt.toString(),
             currentRevision = currentRevision,
-            versionCount = resourceRepository.listVersions(resourceId).size,
+            versionCount = resourceRepository.countVersions(resourceId),
+            permissions =
+                ResourcePermissionsResponse(
+                    canView = canView(principal, this),
+                    canEdit = canEdit(principal, this),
+                    canExecute = canView(principal, this),
+                    canDelete = canDelete(principal, this),
+                    canShare = canShare(principal, this),
+                ),
+        )
+
+    private fun ResourceSummaryRecord.toSummaryResponse(principal: AuthenticatedUserPrincipal): ResourceScriptSummaryResponse =
+        ResourceScriptSummaryResponse(
+            resourceId = resourceId,
+            title = title,
+            sqlPreview = sqlPreview,
+            sqlLength = sqlLength,
+            owner = owner,
+            scope = scope,
+            groupId = groupId,
+            folderPath = folderPath,
+            datasourceId = datasourceId,
+            tags = tags,
+            allowGroupEdit = allowGroupEdit,
+            createdAt = createdAt.toString(),
+            updatedAt = updatedAt.toString(),
+            currentRevision = currentRevision,
+            versionCount = versionCount,
             permissions =
                 ResourcePermissionsResponse(
                     canView = canView(principal, this),

@@ -3,7 +3,7 @@ import { IconButton, InfoHint } from '../components/WorkbenchIcons';
 import type {
     ResourceFormState,
     ResourceManagerMode,
-    ResourceScriptResponse,
+    ResourceScriptSummaryResponse,
     ResourceScope,
     ResourceVersionAction,
     ResourceVersionResponse
@@ -41,7 +41,7 @@ type ResourceManagerSectionProps = {
     resourceDatasourceOptions: DatasourceOption[];
     loadingResources: boolean;
     onRefresh: () => void;
-    resources: ResourceScriptResponse[];
+    resources: ResourceScriptSummaryResponse[];
     resourceError: string;
     resourceEditorMode: ResourceManagerMode;
     resourceFormState: ResourceFormState;
@@ -58,9 +58,9 @@ type ResourceManagerSectionProps = {
     activeTabLabel: string;
     onSaveResource: () => void;
     onCancelEdit: () => void;
-    onOpenResource: (resource: ResourceScriptResponse, runImmediately: boolean) => void;
-    onEditResource: (resource: ResourceScriptResponse) => void;
-    onDuplicateResource: (resource: ResourceScriptResponse) => void;
+    onOpenResource: (resource: ResourceScriptSummaryResponse, runImmediately: boolean) => void;
+    onEditResource: (resource: ResourceScriptSummaryResponse) => void;
+    onDuplicateResource: (resource: ResourceScriptSummaryResponse) => void;
     onDeleteResource: (resourceId: string) => void;
 };
 
@@ -77,8 +77,10 @@ const resourceFolderHelpText =
 const resourceTagHelpText =
     'Use lowercase letters, numbers, dots or hyphens. Press comma or Enter to turn a tag into a chip.';
 const resourceTagPattern = /^[a-z0-9][a-z0-9.-]*$/;
+const resourceListLimit = 1000;
+const resourceSqlPreviewLength = 240;
 
-const buildFolderTree = (resources: ResourceScriptResponse[]): FolderTreeNode[] => {
+const buildFolderTree = (resources: ResourceScriptSummaryResponse[]): FolderTreeNode[] => {
     const root = new Map<string, MutableFolderTreeNode>();
 
     resources.forEach((resource) => {
@@ -221,6 +223,7 @@ export default function ResourceManagerSection({
         () => resources.filter((resource) => !resource.folderPath.trim()).length,
         [resources]
     );
+    const resourceListMayBeCapped = resources.length >= resourceListLimit;
     const filteredResources = useMemo(() => {
         if (!selectedFolderPath) {
             return resources;
@@ -791,6 +794,13 @@ export default function ResourceManagerSection({
                 </p>
             ) : null}
 
+            {resourceListMayBeCapped ? (
+                <p className="resource-list-cap-note">
+                    Showing newest {resourceListLimit.toLocaleString()} scripts. Narrow filters to
+                    find older matches.
+                </p>
+            ) : null}
+
             <div className="resource-manager-layout">
                 <aside className="resource-folder-tree">
                     <div className="resource-folder-tree-header">
@@ -877,7 +887,10 @@ export default function ResourceManagerSection({
                                             <div className="resource-title-cell">
                                                 <strong>{resource.title}</strong>
                                                 <span className="resource-sql-preview">
-                                                    {resource.sql || 'Empty script'}
+                                                    {resource.sqlPreview || 'Empty script'}
+                                                    {resource.sqlLength > resourceSqlPreviewLength
+                                                        ? ` (${resource.sqlLength.toLocaleString()} chars)`
+                                                        : ''}
                                                 </span>
                                             </div>
                                         </td>

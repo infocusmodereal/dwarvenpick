@@ -12,6 +12,17 @@ data class SnippetResponse(
     val updatedAt: String,
 )
 
+data class SnippetSummaryResponse(
+    val snippetId: String,
+    val title: String,
+    val sqlPreview: String,
+    val sqlLength: Int,
+    val owner: String,
+    val groupId: String?,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
 data class CreateSnippetRequest(
     @field:NotBlank(message = "title is required.")
     val title: String = "",

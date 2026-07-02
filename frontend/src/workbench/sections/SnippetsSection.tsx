@@ -1,5 +1,9 @@
-import type { SnippetResponse } from '../types';
+import { useState } from 'react';
+import type { SnippetResponse, SnippetSummaryResponse } from '../types';
 import { IconButton } from '../components/WorkbenchIcons';
+
+const snippetListLimit = 1000;
+const snippetSqlPreviewLength = 240;
 
 type SnippetsSectionProps = {
     hidden: boolean;
@@ -13,7 +17,7 @@ type SnippetsSectionProps = {
     loadingSnippets: boolean;
     onRefresh: () => void;
     snippetError: string;
-    snippets: SnippetResponse[];
+    snippets: SnippetSummaryResponse[];
     onOpenSnippet: (snippet: SnippetResponse, run: boolean) => void;
     onDeleteSnippet: (snippetId: string) => void;
 };
@@ -34,6 +38,30 @@ export default function SnippetsSection({
     onOpenSnippet,
     onDeleteSnippet
 }: SnippetsSectionProps) {
+    const [openingSnippetId, setOpeningSnippetId] = useState('');
+    const [snippetDetailError, setSnippetDetailError] = useState('');
+    const snippetListMayBeCapped = snippets.length >= snippetListLimit;
+    const openSnippet = async (snippetId: string, run: boolean) => {
+        setOpeningSnippetId(snippetId);
+        setSnippetDetailError('');
+        try {
+            const response = await fetch(`/api/snippets/${snippetId}`, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error((await response.text()) || 'Failed to load snippet.');
+            }
+            onOpenSnippet((await response.json()) as SnippetResponse, run);
+        } catch (error) {
+            setSnippetDetailError(
+                error instanceof Error ? error.message : 'Failed to load snippet.'
+            );
+        } finally {
+            setOpeningSnippetId('');
+        }
+    };
+
     return (
         <section className="panel snippets-panel" hidden={hidden}>
             <div className="history-filters">
@@ -100,6 +128,19 @@ export default function SnippetsSection({
                 </p>
             ) : null}
 
+            {snippetDetailError ? (
+                <p className="form-error" role="alert">
+                    {snippetDetailError}
+                </p>
+            ) : null}
+
+            {snippetListMayBeCapped ? (
+                <p className="resource-list-cap-note">
+                    Showing newest {snippetListLimit.toLocaleString()} snippets. Narrow filters to
+                    find older matches.
+                </p>
+            ) : null}
+
             <div className="history-table-wrap">
                 <table className="result-table history-table">
                     <thead>
@@ -124,18 +165,29 @@ export default function SnippetsSection({
                                     <td>{snippet.title}</td>
                                     <td>{snippet.owner}</td>
                                     <td>{snippet.groupId ?? '-'}</td>
-                                    <td className="history-query">{snippet.sql}</td>
+                                    <td className="history-query">
+                                        {snippet.sqlPreview}
+                                        {snippet.sqlLength > snippetSqlPreviewLength
+                                            ? ` (${snippet.sqlLength.toLocaleString()} chars)`
+                                            : ''}
+                                    </td>
                                     <td className="history-actions">
                                         <button
                                             type="button"
                                             className="chip"
-                                            onClick={() => onOpenSnippet(snippet, false)}
+                                            onClick={() =>
+                                                void openSnippet(snippet.snippetId, false)
+                                            }
+                                            disabled={openingSnippetId === snippet.snippetId}
                                         >
                                             Open
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => onOpenSnippet(snippet, true)}
+                                            onClick={() =>
+                                                void openSnippet(snippet.snippetId, true)
+                                            }
+                                            disabled={openingSnippetId === snippet.snippetId}
                                         >
                                             Run
                                         </button>
