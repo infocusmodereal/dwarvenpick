@@ -585,7 +585,10 @@ class QueryExecutionManager(
                 parsePageToken(executionId, token)
             } ?: 0
 
-        val rowsSnapshot = synchronized(record.rows) { record.rows.toList() }
+        val (columnsSnapshot, rowsSnapshot) =
+            synchronized(record.rows) {
+                record.columns.toList() to record.rows.toList()
+            }
         if (startOffset > rowsSnapshot.size) {
             throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
         }
@@ -604,7 +607,7 @@ class QueryExecutionManager(
         return QueryResultsResponse(
             executionId = executionId,
             status = record.status.name,
-            columns = record.columns.toList(),
+            columns = columnsSnapshot,
             rows = pageRows,
             pageSize = resolvedPageSize,
             nextPageToken = nextPageToken,
@@ -2051,6 +2054,10 @@ class QueryExecutionManager(
     }
 
     private fun syncHistoryFromExecution(record: QueryExecutionRecord) {
+        val (columnsSnapshot, rowsSnapshot) =
+            synchronized(record.rows) {
+                record.columns.toList() to record.rows.toList()
+            }
         queryHistoryRepository.save(
             QueryHistoryRecord(
                 executionId = record.executionId,
@@ -2063,8 +2070,8 @@ class QueryExecutionManager(
                 status = record.status,
                 message = record.message,
                 errorSummary = record.errorSummary,
-                rowCount = synchronized(record.rows) { record.rows.size },
-                columnCount = record.columns.size,
+                rowCount = rowsSnapshot.size,
+                columnCount = columnsSnapshot.size,
                 rowLimitReached = record.rowLimitReached,
                 maxRowsPerQuery = record.maxRowsPerQuery,
                 maxRuntimeSeconds = record.maxRuntimeSeconds,
@@ -2073,10 +2080,13 @@ class QueryExecutionManager(
                 completedAt = record.completedAt,
             ),
         )
-        queryRuntimeRepository.save(record.toPersistedRuntimeRecord())
+        queryRuntimeRepository.save(record.toPersistedRuntimeRecord(columnsSnapshot, rowsSnapshot))
     }
 
-    private fun QueryExecutionRecord.toPersistedRuntimeRecord(): PersistedQueryRuntimeRecord =
+    private fun QueryExecutionRecord.toPersistedRuntimeRecord(
+        columnsSnapshot: List<QueryResultColumn>,
+        rowsSnapshot: List<List<String?>>,
+    ): PersistedQueryRuntimeRecord =
         PersistedQueryRuntimeRecord(
             executionId = executionId,
             actor = actor,
@@ -2100,8 +2110,8 @@ class QueryExecutionManager(
             startedAt = startedAt,
             completedAt = completedAt,
             rowLimitReached = rowLimitReached,
-            columns = columns.toList(),
-            rows = synchronized(rows) { rows.toList() },
+            columns = columnsSnapshot,
+            rows = rowsSnapshot,
             lastAccessedAt = lastAccessedAt,
             resultsExpired = resultsExpired,
             cancelRequested = cancelRequested,
