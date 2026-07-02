@@ -1,7 +1,9 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { finished } from 'node:stream/promises';
 import { parseArgs, parseDurationMs, parsePositiveInteger, UsageError } from './args.js';
 import { DwarvenpickClient } from './client.js';
-import { formatConnections, formatResults } from './format.js';
+import { formatConnections, formatCsvRow, formatTable, normalizeColumns } from './format.js';
 
 const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 
@@ -70,14 +72,17 @@ export async function runQuery(client, parsed, config, streams = process) {
     throw new Error(`Query ${status.executionId} finished with ${status.status}: ${details}`);
   }
 
-  const results = await collectResults(client, submitResponse.executionId, config.pageSize);
-  const output = formatResults({
-    columns: results.columns,
-    rows: results.rows,
-    format: config.format,
-    headers: !parsed.options['no-headers'],
-  });
-  await emit(output, config.output, streams);
+  await streamResults(
+    client,
+    submitResponse.executionId,
+    {
+      pageSize: config.pageSize,
+      format: config.format,
+      headers: !parsed.options['no-headers'],
+      outputPath: config.output,
+    },
+    streams,
+  );
 }
 
 export function resolveConfig(options, env) {
@@ -142,21 +147,73 @@ export async function waitForQuery(client, executionId, config, streams = proces
   throw new Error(`Timed out waiting for query ${executionId} after ${config.timeoutMs}ms.`);
 }
 
-export async function collectResults(client, executionId, pageSize) {
-  const rows = [];
-  let columns = [];
-  let pageToken = null;
-  let rowLimitReached = false;
+export async function streamResults(client, executionId, options = {}, streams = process) {
+  const {
+    pageSize,
+    format = 'table',
+    headers = true,
+    outputPath,
+  } = options;
 
-  do {
-    const page = await client.queryResults(executionId, { pageSize, pageToken });
-    columns = page.columns || columns;
-    rows.push(...(page.rows || []));
-    pageToken = page.nextPageToken;
-    rowLimitReached = Boolean(page.rowLimitReached);
-  } while (pageToken);
+  if (!['table', 'json', 'csv'].includes(format)) {
+    throw new Error(`Unsupported output format '${format}'. Use table, json, or csv.`);
+  }
 
-  return { columns, rows, rowLimitReached };
+  await withOutputSink(outputPath, streams, async (sink) => {
+    let columns = [];
+    let pageToken = null;
+    let wroteCsvHeaders = false;
+    let wroteJsonOpening = false;
+    let wroteJsonRow = false;
+    let wroteTable = false;
+    let rowNumber = 1;
+
+    do {
+      const page = await client.queryResults(executionId, { pageSize, pageToken });
+      // The results API provides stable column metadata on the first page; later pages may omit it.
+      if (page.columns && (page.columns.length > 0 || columns.length === 0)) {
+        columns = normalizeColumns(page.columns);
+      }
+      const rows = page.rows || [];
+
+      if (format === 'csv') {
+        if (headers && !wroteCsvHeaders) {
+          await writeToSink(sink, `${formatCsvRow(columns)}\n`);
+          wroteCsvHeaders = true;
+        }
+        for (const row of rows) {
+          await writeToSink(sink, `${formatCsvRow(row)}\n`);
+        }
+      } else if (format === 'json') {
+        if (!wroteJsonOpening) {
+          await writeJsonOpeningChunk(sink, columns);
+          wroteJsonOpening = true;
+        }
+        for (const row of rows) {
+          await writeToSink(sink, `${wroteJsonRow ? ',\n' : '\n'}    ${JSON.stringify(row)}`);
+          wroteJsonRow = true;
+        }
+      } else {
+        if (wroteTable && rows.length > 0) {
+          await writeToSink(sink, '\n');
+        }
+        if (!wroteTable || rows.length > 0) {
+          await writeToSink(sink, formatTable(columns, rows, { startRow: rowNumber }));
+          wroteTable = true;
+        }
+        rowNumber += rows.length;
+      }
+
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+
+    if (format === 'json') {
+      if (!wroteJsonOpening) {
+        await writeJsonOpeningChunk(sink, columns);
+      }
+      await writeToSink(sink, `${wroteJsonRow ? '\n' : ''}  ]\n}\n`);
+    }
+  });
 }
 
 function helpText() {
@@ -202,6 +259,67 @@ async function emit(content, outputPath, streams) {
     return;
   }
   streams.stdout.write(content);
+}
+
+async function withOutputSink(outputPath, streams, callback) {
+  if (!outputPath) {
+    await callback(streams.stdout);
+    return;
+  }
+
+  const outputStream = createWriteStream(outputPath, { encoding: 'utf8' });
+  let rejectStreamError;
+  const streamError = new Promise((_, reject) => {
+    rejectStreamError = reject;
+  });
+  streamError.catch(() => {});
+  const onStreamError = (error) => {
+    rejectStreamError(error);
+  };
+  outputStream.once('error', onStreamError);
+
+  try {
+    await Promise.race([callback(outputStream), streamError]);
+    outputStream.end();
+    await Promise.race([finished(outputStream), streamError]);
+  } catch (error) {
+    outputStream.destroy();
+    await unlink(outputPath).catch(() => {});
+    throw error;
+  } finally {
+    outputStream.off('error', onStreamError);
+  }
+}
+
+async function writeJsonOpeningChunk(sink, columns) {
+  const columnsJson = JSON.stringify(columns, null, 2).replaceAll('\n', '\n  ');
+  await writeToSink(sink, `{\n  "columns": ${columnsJson},\n  "rows": [`);
+}
+
+async function writeToSink(sink, content) {
+  if (!content) {
+    return;
+  }
+  const accepted = sink.write(content);
+  if (accepted === false && typeof sink.once === 'function') {
+    await new Promise((resolve, reject) => {
+      const cleanup = () => {
+        sink.off?.('drain', onDrain);
+        sink.off?.('error', onError);
+      };
+      const onDrain = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = (error) => {
+        cleanup();
+        reject(error);
+      };
+
+      sink.once('drain', onDrain);
+      sink.once('error', onError);
+    });
+  }
 }
 
 function sleep(milliseconds) {

@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatConnections, formatCsv, formatResults } from '../src/format.js';
+import { formatConnections, formatCsv, formatCsvRow, formatTable } from '../src/format.js';
 
 test('formatCsv escapes cells', () => {
   assert.equal(formatCsv(['name', 'note'], [['khazad', 'hello, "friend"']]), 'name,note\nkhazad,"hello, ""friend"""\n');
 });
 
-test('formatResults emits JSON payload', () => {
-  const output = formatResults({
-    columns: [{ name: 'value' }],
-    rows: [['1']],
-    format: 'json',
-  });
+test('formatCsvRow escapes a single streaming row', () => {
+  assert.equal(formatCsvRow(['khazad', 'hello, "friend"']), 'khazad,"hello, ""friend"""');
+});
 
-  assert.deepEqual(JSON.parse(output), { columns: ['value'], rows: [['1']] });
+test('formatTable accepts a starting row number', () => {
+  const output = formatTable(['name'], [['nain']], { startRow: 25 });
+
+  assert.match(output, /\|\s+25\s+\|\s+nain\s+\|/);
 });
 
 test('formatConnections emits table with key fields', () => {
