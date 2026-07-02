@@ -78,7 +78,49 @@ class ObjectInspectorService(
             credentialProfile = spec.credentialProfile,
             inspectedAt = inspectedAt.toString(),
             objectRef = objectRef,
-            sections = sections,
+            sections = sections.map { section -> section.withInspectorLimits() },
+        )
+    }
+
+    private fun ObjectInspectorSection.withInspectorLimits(): ObjectInspectorSection {
+        val limitedText =
+            text?.let { current ->
+                limitObjectInspectorText(current, OBJECT_INSPECTOR_TEXT_CHAR_LIMIT)
+            }
+        val limitedTable = table?.let { current -> limitObjectInspectorTable(current) }
+        val textTruncated = limitedText?.truncated == true
+        val tableTruncated = limitedTable?.truncated == true
+        val cellsTruncated = limitedTable?.cellsTruncated == true
+        val limitMessage =
+            buildList {
+                if (textTruncated) {
+                    add(
+                        "Text output was truncated to $OBJECT_INSPECTOR_TEXT_CHAR_LIMIT characters.",
+                    )
+                }
+                if (tableTruncated) {
+                    add(
+                        "Table output was truncated to ${limitedTable?.rowLimit} rows.",
+                    )
+                }
+                if (cellsTruncated) {
+                    add(
+                        "Long cell values were truncated to ${limitedTable?.cellLimit} characters.",
+                    )
+                }
+            }.joinToString(" ")
+                .takeIf { it.isNotBlank() }
+
+        return copy(
+            message =
+                listOfNotNull(
+                    message?.takeIf { it.isNotBlank() },
+                    limitMessage,
+                ).joinToString(" ").takeIf { it.isNotBlank() },
+            text = limitedText?.value ?: text,
+            table = limitedTable,
+            truncated = truncated || textTruncated || tableTruncated || cellsTruncated,
+            textLimit = if (textTruncated) OBJECT_INSPECTOR_TEXT_CHAR_LIMIT else textLimit,
         )
     }
 }

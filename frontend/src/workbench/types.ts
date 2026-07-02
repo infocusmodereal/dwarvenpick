@@ -345,6 +345,10 @@ export type ObjectInspectorKeyValueResponse = {
 export type ObjectInspectorTableResponse = {
     columns: string[];
     rows: Array<Array<string | null>>;
+    rowLimit?: number | null;
+    truncated?: boolean;
+    cellLimit?: number | null;
+    cellsTruncated?: boolean;
 };
 
 export type ObjectInspectorObjectRefResponse = {
@@ -362,6 +366,8 @@ export type ObjectInspectorSectionResponse = {
     text?: string | null;
     table?: ObjectInspectorTableResponse | null;
     keyValues?: ObjectInspectorKeyValueResponse[] | null;
+    truncated?: boolean;
+    textLimit?: number | null;
 };
 
 export type ObjectInspectorResponse = {

@@ -4,6 +4,7 @@ import com.dwarvenpick.app.datasource.ConnectionSpec
 import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.inspector.InspectedObjectNotFoundException
 import com.dwarvenpick.app.inspector.InspectedObjectType
+import com.dwarvenpick.app.inspector.OBJECT_INSPECTOR_TABLE_ROW_LIMIT
 import com.dwarvenpick.app.inspector.ObjectInspectorKeyValue
 import com.dwarvenpick.app.inspector.ObjectInspectorObjectRef
 import com.dwarvenpick.app.inspector.ObjectInspectorProvider
@@ -466,6 +467,13 @@ class PostgresObjectInspectorProvider : ObjectInspectorProvider {
                         appendLine()
                     }
                 }
+            }
+
+            if (columns.truncated || constraints.truncated || indexes.truncated) {
+                appendLine()
+                appendLine(
+                    "-- Inspector metadata was truncated to $OBJECT_INSPECTOR_TABLE_ROW_LIMIT rows per section.",
+                )
             }
         }
     }

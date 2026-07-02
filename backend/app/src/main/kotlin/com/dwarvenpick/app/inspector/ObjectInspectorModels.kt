@@ -34,6 +34,10 @@ data class ObjectInspectorKeyValue(
 data class ObjectInspectorTable(
     val columns: List<String>,
     val rows: List<List<String?>>,
+    val rowLimit: Int? = null,
+    val truncated: Boolean = false,
+    val cellLimit: Int? = null,
+    val cellsTruncated: Boolean = false,
 )
 
 data class ObjectInspectorSection(
@@ -45,6 +49,8 @@ data class ObjectInspectorSection(
     val text: String? = null,
     val table: ObjectInspectorTable? = null,
     val keyValues: List<ObjectInspectorKeyValue>? = null,
+    val truncated: Boolean = false,
+    val textLimit: Int? = null,
 )
 
 data class ObjectInspectorResponse(
