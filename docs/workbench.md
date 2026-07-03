@@ -36,6 +36,8 @@ Use **Validate** to check SQL syntax and planning without running the query. Val
 Notes:
 
 - Validation may still require privileges to read metadata.
+- Validation refuses `EXPLAIN ANALYZE` and `EXPLAIN` of write statements because those plan modes may execute work or
+  validate a write path.
 - Some engines can return line/column information; when available, the editor shows inline markers.
 
 ### Explain vs Analyze

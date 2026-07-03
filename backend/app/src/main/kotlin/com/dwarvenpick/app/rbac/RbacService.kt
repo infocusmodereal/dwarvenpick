@@ -378,13 +378,15 @@ class RbacService(
                 ?: throw QueryAccessDeniedException(
                     "No valid credential profile is configured for datasource '$datasourceId'.",
                 )
+        val selectedAccessRules =
+            matchingAccessRules.filter { access -> access.credentialProfile == selectedCredentialProfile }
 
         return QueryAccessPolicy(
             credentialProfile = selectedCredentialProfile,
-            readOnly = matchingAccessRules.all { access -> access.readOnly },
-            maxRowsPerQuery = resolveLimit(matchingAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
-            maxRuntimeSeconds = resolveLimit(matchingAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
-            concurrencyLimit = resolveLimit(matchingAccessRules.map { access -> access.concurrencyLimit }, 5),
+            readOnly = selectedAccessRules.all { access -> access.readOnly },
+            maxRowsPerQuery = resolveLimit(selectedAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
+            maxRuntimeSeconds = resolveLimit(selectedAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
+            concurrencyLimit = resolveLimit(selectedAccessRules.map { access -> access.concurrencyLimit }, 5),
         )
     }
 

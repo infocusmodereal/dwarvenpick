@@ -19,11 +19,18 @@ class QueryValidationService(
             return QueryValidationResponse(valid = false, message = "SQL is empty.")
         }
 
-        if (policy.readOnly && !SqlSafety.isReadOnlySql(sql)) {
+        if (policy.readOnly && !SqlSafety.isReadOnlyScript(sql)) {
             return QueryValidationResponse(
                 valid = false,
                 message =
                     "Read-only mode is enabled for this connection access mapping. Only SELECT-like statements are allowed.",
+            )
+        }
+
+        if (!SqlSafety.isSafeForValidation(sql)) {
+            return QueryValidationResponse(
+                valid = false,
+                message = "Validation does not run EXPLAIN ANALYZE or EXPLAIN of write statements.",
             )
         }
 
