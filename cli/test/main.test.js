@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { streamResults } from '../src/main.js';
+import { resolveConfig, runQuery, streamResults } from '../src/main.js';
 
 test('streamResults writes CSV rows page by page', async () => {
   const calls = [];
@@ -26,6 +26,52 @@ test('streamResults writes CSV rows page by page', async () => {
     { executionId: 'exec-1', pageSize: 1, pageToken: 'next' },
   ]);
   assert.deepEqual(writes, ['id\n', '1\n', '2\n']);
+});
+
+test('runQuery submits justification from query options', async () => {
+  const submitRequests = [];
+  const client = {
+    async resolveAuthMode() {
+      return 'local';
+    },
+    async login() {
+      return { username: 'analyst', provider: 'local' };
+    },
+    async submitQuery(request) {
+      submitRequests.push(request);
+      return { executionId: 'exec-justification', datasourceId: request.datasourceId, status: 'QUEUED' };
+    },
+    async queryStatus() {
+      return { executionId: 'exec-justification', status: 'SUCCEEDED' };
+    },
+    async queryResults() {
+      return { columns: [{ name: 'value' }], rows: [[1]] };
+    },
+  };
+  const parsed = {
+    command: 'query',
+    options: {
+      connection: 'postgresql-core',
+      sql: 'select 1',
+      justification: 'TOPS-123 maintenance window',
+    },
+    positional: [],
+  };
+  const writes = [];
+
+  await runQuery(client, parsed, queryConfig(), recordingStreams(writes));
+
+  assert.equal(submitRequests.length, 1);
+  assert.equal(submitRequests[0].justification, 'TOPS-123 maintenance window');
+});
+
+test('resolveConfig prefers --justification over DWARVENPICK_JUSTIFICATION', () => {
+  const config = resolveConfig(
+    { justification: 'flag reason' },
+    { DWARVENPICK_JUSTIFICATION: 'env reason', DWARVENPICK_USERNAME: 'analyst', DWARVENPICK_PASSWORD: 'secret' },
+  );
+
+  assert.equal(config.justification, 'flag reason');
 });
 
 test('streamResults omits CSV headers when requested', async () => {
@@ -151,6 +197,25 @@ function pagedClient(calls, pages) {
       index += 1;
       return page;
     },
+  };
+}
+
+function queryConfig(overrides = {}) {
+  return {
+    url: 'http://localhost:3000',
+    auth: 'local',
+    username: 'analyst',
+    password: 'secret',
+    connection: undefined,
+    credentialProfile: undefined,
+    justification: undefined,
+    format: 'json',
+    output: undefined,
+    pageSize: 500,
+    pollIntervalMs: 1,
+    timeoutMs: 1_000,
+    quiet: true,
+    ...overrides,
   };
 }
 

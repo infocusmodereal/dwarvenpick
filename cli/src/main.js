@@ -57,6 +57,7 @@ export async function runQuery(client, parsed, config, streams = process) {
     datasourceId,
     sql,
     credentialProfile: parsed.options['credential-profile'] || config.credentialProfile || null,
+    justification: parsed.options.justification || config.justification || null,
     scriptMode: Boolean(parsed.options.script),
     stopOnError: !parsed.options['continue-on-error'],
     transactionMode: (parsed.options.transaction || 'AUTOCOMMIT').toUpperCase(),
@@ -93,6 +94,7 @@ export function resolveConfig(options, env) {
     password: options.password || env.DWARVENPICK_PASSWORD,
     connection: options.connection || env.DWARVENPICK_CONNECTION,
     credentialProfile: options['credential-profile'] || env.DWARVENPICK_CREDENTIAL_PROFILE,
+    justification: options.justification || env.DWARVENPICK_JUSTIFICATION,
     format: (options.format || env.DWARVENPICK_FORMAT || 'table').toLowerCase(),
     output: options.output,
     pageSize: Math.min(parsePositiveInteger(options['page-size'], '--page-size', 500), 1000),
@@ -234,6 +236,7 @@ Auth options:
 Query options:
   -c, --connection <id>       Connection ID. Default: DWARVENPICK_CONNECTION
   --credential-profile <id>   Credential profile override
+  --justification <text>      Write-access justification. Default: DWARVENPICK_JUSTIFICATION
   -q, --sql <sql>             SQL text
   -f, --file <path>           Read SQL from a file
   --script                    Run as a script

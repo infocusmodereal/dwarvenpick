@@ -17,6 +17,7 @@ import com.dwarvenpick.app.query.QueryExecutionStatus
 import com.dwarvenpick.app.query.QueryExportLimitExceededException
 import com.dwarvenpick.app.query.QueryHistorySortOrder
 import com.dwarvenpick.app.query.QueryInvalidPageTokenException
+import com.dwarvenpick.app.query.QueryJustificationRequiredException
 import com.dwarvenpick.app.query.QueryReadOnlyViolationException
 import com.dwarvenpick.app.query.QueryResultsExpiredException
 import com.dwarvenpick.app.query.QueryResultsNotReadyException
@@ -110,6 +111,8 @@ class QueryController(
                 ipAddress = httpServletRequest.remoteAddr,
             )
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
+        } catch (ex: QueryJustificationRequiredException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse(ex.message ?: "Bad request."),

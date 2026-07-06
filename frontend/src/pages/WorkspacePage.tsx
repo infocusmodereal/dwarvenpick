@@ -353,6 +353,7 @@ const buildWorkspaceTab = (
     resourceAllowGroupEdit: resource?.allowGroupEdit,
     resourceOwner: resource?.owner,
     requestedCredentialProfile: '',
+    queryJustification: '',
     queryText,
     isExecuting: false,
     statusMessage: '',
@@ -2199,6 +2200,7 @@ export default function WorkspacePage() {
                                 ? tab.resourceOwner
                                 : undefined,
                         requestedCredentialProfile: '',
+                        queryJustification: '',
                         queryText: typeof tab.queryText === 'string' ? tab.queryText : 'SELECT 1;',
                         isExecuting: false,
                         statusMessage: '',
@@ -4413,6 +4415,10 @@ export default function WorkspacePage() {
                 if (isSystemAdmin && requestedCredentialProfile) {
                     requestPayload.credentialProfile = requestedCredentialProfile;
                 }
+                const queryJustification = tab.queryJustification.trim();
+                if (queryJustification) {
+                    requestPayload.justification = queryJustification;
+                }
                 if (modeLabel === 'script') {
                     requestPayload.scriptMode = true;
                     requestPayload.stopOnError = scriptStopOnError;
@@ -4760,6 +4766,7 @@ export default function WorkspacePage() {
                 `History ${workspaceTabsRef.current.length + 1}`,
                 sqlText
             );
+            createdTab.queryJustification = entry.justification ?? '';
             setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
             setActiveTabId(createdTab.id);
             setActiveSection('workbench');
@@ -7656,6 +7663,40 @@ export default function WorkspacePage() {
                                                             ))}
                                                         </select>
                                                     </div>
+                                                </div>
+                                            </>
+                                        ) : null}
+                                        {activeTab ? (
+                                            <>
+                                                <div className="explorer-toolbar-label-row">
+                                                    <span className="tile-heading-icon" aria-hidden>
+                                                        <ExplorerIcon glyph="role" />
+                                                    </span>
+                                                    <label
+                                                        htmlFor="tab-query-justification"
+                                                        className="explorer-toolbar-label-text"
+                                                    >
+                                                        Justification
+                                                    </label>
+                                                </div>
+                                                <div className="explorer-toolbar-control-row">
+                                                    <input
+                                                        id="tab-query-justification"
+                                                        type="text"
+                                                        value={activeTab.queryJustification}
+                                                        onChange={(event) => {
+                                                            updateWorkspaceTab(
+                                                                activeTab.id,
+                                                                (currentTab) => ({
+                                                                    ...currentTab,
+                                                                    queryJustification:
+                                                                        event.target.value
+                                                                })
+                                                            );
+                                                        }}
+                                                        placeholder="Change ticket or reason"
+                                                        disabled={activeTab.isExecuting}
+                                                    />
                                                 </div>
                                             </>
                                         ) : null}

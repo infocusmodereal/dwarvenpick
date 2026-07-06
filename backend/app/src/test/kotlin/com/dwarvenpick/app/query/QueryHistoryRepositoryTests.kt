@@ -93,6 +93,7 @@ class QueryHistoryRepositoryTests {
             actor = "analyst",
             datasourceId = "trino-warehouse",
             credentialProfile = "read-only",
+            justification = null,
             queryHash = "hash-$executionId",
             queryText = queryText,
             queryTextRedacted = false,

@@ -702,7 +702,7 @@ textarea::placeholder {
 
 .query-history-table {
     table-layout: fixed;
-    min-width: 1180px;
+    min-width: 1320px;
 }
 
 .history-query {
@@ -730,15 +730,26 @@ textarea::placeholder {
 }
 
 .query-history-table th:nth-child(4),
-.query-history-table td:nth-child(4),
+.query-history-table td:nth-child(4) {
+    width: 14rem;
+}
+
 .query-history-table th:nth-child(5),
-.query-history-table td:nth-child(5) {
+.query-history-table td:nth-child(5),
+.query-history-table th:nth-child(6),
+.query-history-table td:nth-child(6) {
     width: 6rem;
 }
 
-.query-history-table th:nth-child(7),
-.query-history-table td:nth-child(7) {
+.query-history-table th:nth-child(8),
+.query-history-table td:nth-child(8) {
     width: 10rem;
+}
+
+.history-justification-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .history-query-cell {

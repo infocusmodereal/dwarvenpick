@@ -24,4 +24,6 @@ data class QueryExecutionProperties(
     val retentionCleanupIntervalMs: Long = 3_600_000,
     val activeExecutionStaleSeconds: Long = 120,
     val poolMetricsStaleSeconds: Long = 120,
+    val requireWriteJustification: Boolean = false,
+    val maxJustificationLength: Int = 1000,
 )
