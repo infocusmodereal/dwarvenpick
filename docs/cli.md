@@ -42,6 +42,7 @@ export DWARVENPICK_AUTH=ldap
 export DWARVENPICK_USERNAME=<username>
 export DWARVENPICK_PASSWORD=<password>
 export DWARVENPICK_CONNECTION=<connection-id>
+export DWARVENPICK_JUSTIFICATION=<change-ticket-or-reason>
 ```
 
 `DWARVENPICK_AUTH=auto` prefers LDAP when it is enabled and falls back to Local auth.
@@ -84,6 +85,16 @@ dwarvenpick query \
   --connection mariadb-dev-viper2 \
   --credential-profile read-only \
   --sql 'SELECT COUNT(*) FROM warehouse.customers;'
+```
+
+Use a governed write-capable profile:
+
+```bash
+dwarvenpick query \
+  --connection mariadb-dev-viper2 \
+  --credential-profile read-write \
+  --justification 'TOPS-123 maintenance window' \
+  --sql 'UPDATE warehouse.job_control SET enabled = 0 WHERE job_id = 42;'
 ```
 
 Run a multi-statement script:

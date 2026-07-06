@@ -35,6 +35,7 @@ export DWARVENPICK_AUTH=ldap
 export DWARVENPICK_USERNAME=ivan.torres
 export DWARVENPICK_PASSWORD='...'
 export DWARVENPICK_CONNECTION=starrocks-dev-adhoc
+export DWARVENPICK_JUSTIFICATION='TOPS-123 maintenance window'
 ```
 
 Supported auth values:
@@ -87,6 +88,16 @@ dwarvenpick query \
   --sql 'SELECT COUNT(*) FROM warehouse.customers;'
 ```
 
+Use a governed write-capable profile:
+
+```bash
+dwarvenpick query \
+  --connection mariadb-dev-viper2 \
+  --credential-profile read-write \
+  --justification 'TOPS-123 maintenance window' \
+  --sql 'UPDATE warehouse.job_control SET enabled = 0 WHERE job_id = 42;'
+```
+
 Run a script:
 
 ```bash
@@ -111,6 +122,8 @@ dwarvenpick query \
 - Prefer `DWARVENPICK_PASSWORD` or a short-lived shell secret over putting passwords in shell history.
 - The CLI never bypasses RBAC. The backend still resolves the effective credential profile and enforces read-only rules,
   row limits, runtime limits, concurrency limits, audit logging, and export permissions.
+- Deployments can require `--justification` or `DWARVENPICK_JUSTIFICATION` for non-read-only credential profiles and
+  write-like scripts.
 - OIDC providers such as Keycloak or JumpCloud are supported by the web UI. Use Local or LDAP for CLI password login.
 
 ## Development

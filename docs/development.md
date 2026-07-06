@@ -60,7 +60,7 @@ Query execution is covered by Testcontainers-based integration tests (Postgres, 
 
 `dwarvenpick` uses Git tags for release versions.
 
-- Dev builds default to `0.7.3-SNAPSHOT`.
+- Dev builds default to the `defaultDevVersion` value in `build.gradle.kts`.
 - Release builds use the pushed tag name (for example `v0.7.3` becomes version `0.7.3`).
 
 To cut a release:

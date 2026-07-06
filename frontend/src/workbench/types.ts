@@ -144,6 +144,7 @@ export type QueryExecutionStatusResponse = {
     maxRowsPerQuery: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
+    justification?: string;
     scriptSummary?: QueryScriptSummary | null;
 };
 
@@ -195,6 +196,7 @@ export type QueryHistoryEntryResponse = {
     maxRowsPerQuery: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
+    justification?: string;
     submittedAt: string;
     startedAt?: string;
     completedAt?: string;
@@ -500,6 +502,7 @@ export type PersistentWorkspaceTab = {
 
 export type WorkspaceTab = PersistentWorkspaceTab & {
     requestedCredentialProfile: string;
+    queryJustification: string;
     isExecuting: boolean;
     statusMessage: string;
     errorMessage: string;

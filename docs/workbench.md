@@ -96,6 +96,7 @@ Read-only access rules apply to **every** statement in a script.
 - Filter by connection/status/time range and sort by newest/oldest.
 - Query history, active query status, and buffered result pages are stored in the application database, so they survive
   backend restarts, redeployments, and routing to a different backend replica.
+- When configured, governed write-capable requests store the submitted justification in status, history, and audit.
 - Paginate through persisted history and export the current page as CSV.
 - History retention is controlled by `dwarvenpick.query.history-retention-days`.
 - Optional SQL text redaction is controlled by `dwarvenpick.query.query-text-redaction-days`.

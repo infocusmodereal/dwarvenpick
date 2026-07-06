@@ -29,6 +29,12 @@ data class QueryExecutionRequest(
      */
     val credentialProfile: String? = null,
     /**
+     * Optional operator justification for governed non-read-only execution paths.
+     *
+     * The backend decides when this is required after RBAC resolves the effective credential profile.
+     */
+    val justification: String? = null,
+    /**
      * When true, the backend will split SQL into statements and execute them sequentially.
      *
      * Notes:
@@ -86,6 +92,7 @@ data class QueryExecutionStatusResponse(
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val credentialProfile: String,
+    val justification: String? = null,
     val scriptSummary: QueryScriptSummary? = null,
 )
 
@@ -94,6 +101,7 @@ data class ActiveQueryExecutionResponse(
     val actor: String,
     val datasourceId: String,
     val credentialProfile: String,
+    val justification: String? = null,
     val status: String,
     val message: String,
     val queryHash: String,
@@ -160,6 +168,7 @@ data class QueryHistoryEntryResponse(
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val credentialProfile: String,
+    val justification: String? = null,
     val submittedAt: String,
     val startedAt: String?,
     val completedAt: String?,

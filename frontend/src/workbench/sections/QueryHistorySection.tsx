@@ -284,6 +284,7 @@ export default function QueryHistorySection({
                             entry.submittedAt,
                             entry.status,
                             entry.datasourceId,
+                            entry.justification ?? '',
                             typeof entry.durationMs === 'number' ? entry.durationMs.toString() : '',
                             entry.rowCount.toString(),
                             entry.queryTextRedacted ? '[REDACTED]' : (entry.queryText ?? '[empty]')
@@ -296,6 +297,7 @@ export default function QueryHistorySection({
                                     'Submitted',
                                     'Status',
                                     'Connection',
+                                    'Justification',
                                     'DurationMs',
                                     'Rows',
                                     'Query'
@@ -354,6 +356,7 @@ export default function QueryHistorySection({
                             <th>Submitted</th>
                             <th>Status</th>
                             <th>Connection</th>
+                            <th>Justification</th>
                             <th>Duration</th>
                             <th>Rows</th>
                             <th>Query</th>
@@ -363,13 +366,14 @@ export default function QueryHistorySection({
                     <tbody>
                         {entries.length === 0 ? (
                             <tr>
-                                <td colSpan={7}>No history entries found for current filters.</td>
+                                <td colSpan={8}>No history entries found for current filters.</td>
                             </tr>
                         ) : (
                             entries.map((entry) => {
                                 const queryPreview = entry.queryTextRedacted
                                     ? '[REDACTED]'
                                     : (entry.queryText ?? '[empty]');
+                                const justificationPreview = entry.justification?.trim() || '-';
                                 const canUseQuery = Boolean(
                                     entry.queryText && !entry.queryTextRedacted
                                 );
@@ -383,6 +387,12 @@ export default function QueryHistorySection({
                                             </span>
                                         </td>
                                         <td>{entry.datasourceId}</td>
+                                        <td
+                                            className="history-justification-cell"
+                                            title={justificationPreview}
+                                        >
+                                            {justificationPreview}
+                                        </td>
                                         <td>
                                             {typeof entry.durationMs === 'number'
                                                 ? `${entry.durationMs} ms`

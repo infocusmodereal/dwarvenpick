@@ -19,6 +19,7 @@ data class PersistedQueryRuntimeRecord(
     val ipAddress: String?,
     val datasourceId: String,
     val credentialProfile: String,
+    val justification: String?,
     val sql: String?,
     val sqlRedacted: Boolean,
     val queryHash: String,
@@ -51,6 +52,7 @@ data class PersistedQueryRuntimeMetadataRecord(
     val ipAddress: String?,
     val datasourceId: String,
     val credentialProfile: String,
+    val justification: String?,
     val sql: String?,
     val sqlRedacted: Boolean,
     val queryHash: String,
@@ -338,6 +340,7 @@ class QueryRuntimeRepository(
             .addValue("ipAddress", ipAddress)
             .addValue("datasourceId", datasourceId)
             .addValue("credentialProfile", credentialProfile)
+            .addValue("justification", justification)
             .addValue("queryHash", queryHash)
             .addValue("sqlText", sql)
             .addValue("sqlTextRedacted", sqlRedacted)
@@ -372,6 +375,7 @@ class QueryRuntimeRepository(
             ipAddress = getString("ip_address"),
             datasourceId = getString("datasource_id"),
             credentialProfile = getString("credential_profile"),
+            justification = getString("justification"),
             queryHash = getString("query_hash"),
             sql = getString("sql_text"),
             sqlRedacted = getBoolean("sql_text_redacted"),
@@ -405,6 +409,7 @@ class QueryRuntimeRepository(
             ipAddress = getString("ip_address"),
             datasourceId = getString("datasource_id"),
             credentialProfile = getString("credential_profile"),
+            justification = getString("justification"),
             queryHash = getString("query_hash"),
             sql = getString("sql_text"),
             sqlRedacted = getBoolean("sql_text_redacted"),
@@ -433,7 +438,7 @@ class QueryRuntimeRepository(
 
     private fun selectSql(whereClause: String): String =
         """
-        SELECT execution_id, actor, ip_address, datasource_id, credential_profile, query_hash, sql_text,
+        SELECT execution_id, actor, ip_address, datasource_id, credential_profile, justification, query_hash, sql_text,
                sql_text_redacted, status, message, error_summary, row_count, column_count, row_limit_reached,
                max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
                script_stop_on_error, script_transaction_mode, script_statements_json, columns_json, rows_json,
@@ -446,7 +451,7 @@ class QueryRuntimeRepository(
 
     private fun selectMetadataSql(whereClause: String): String =
         """
-        SELECT execution_id, actor, ip_address, datasource_id, credential_profile, query_hash, sql_text,
+        SELECT execution_id, actor, ip_address, datasource_id, credential_profile, justification, query_hash, sql_text,
                sql_text_redacted, status, message, error_summary, row_count, column_count, row_limit_reached,
                max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
                script_stop_on_error, script_transaction_mode, script_statements_json,
@@ -488,14 +493,14 @@ class QueryRuntimeRepository(
         val insertSql =
             """
             INSERT INTO query_runtime_executions (
-              execution_id, actor, ip_address, datasource_id, credential_profile, query_hash, sql_text,
+              execution_id, actor, ip_address, datasource_id, credential_profile, justification, query_hash, sql_text,
               sql_text_redacted, status, message, error_summary, row_count, column_count, row_limit_reached,
               max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
               script_stop_on_error, script_transaction_mode, script_statements_json, columns_json, rows_json,
               submitted_at, started_at, completed_at, last_accessed_at, results_expired, cancel_requested,
               owner_instance_id, heartbeat_at
             ) VALUES (
-              :executionId, :actor, :ipAddress, :datasourceId, :credentialProfile, :queryHash, :sqlText,
+              :executionId, :actor, :ipAddress, :datasourceId, :credentialProfile, :justification, :queryHash, :sqlText,
               :sqlTextRedacted, :status, :message, :errorSummary, :rowCount, :columnCount, :rowLimitReached,
               :maxRowsPerQuery, :maxRuntimeSeconds, :concurrencyLimit, :scriptStatementCount,
               :scriptStopOnError, :scriptTransactionMode, :scriptStatementsJson, :columnsJson, :rowsJson,

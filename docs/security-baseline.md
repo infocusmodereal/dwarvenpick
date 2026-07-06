@@ -39,6 +39,10 @@ The backend sets baseline security headers on responses, including:
 - Role-protected routes return `403` for authenticated users without required permissions.
 - Connection visibility is user-scoped (`GET /api/datasources`) based on group-to-connection grants.
 - Query execution requests (`POST /api/queries`) are denied with `403` when connection access is not granted.
+- Deployments can require a query justification for non-read-only credential profiles and write-like scripts with
+  `dwarvenpick.query.require-write-justification` or `DWARVENPICK_QUERY_REQUIRE_WRITE_JUSTIFICATION`.
+- Justifications are trimmed, control characters are normalized, capped by `dwarvenpick.query.max-justification-length`,
+  and stored with query status, history, and audit events.
 
 ## Audit events
 
@@ -52,6 +56,7 @@ Authentication, RBAC, and query governance actions produce audit events:
 - group create/update/member add/member remove
 - connection access mapping create/update/delete
 - query execution allowed/denied decisions
+- query justification rejection for governed write-capable requests
 
 Audit events are stored in the application database and pruned by `dwarvenpick.query.audit-retention-days`.
 

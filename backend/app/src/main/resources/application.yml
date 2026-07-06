@@ -61,6 +61,8 @@ dwarvenpick:
     retention-cleanup-interval-ms: 3600000
     active-execution-stale-seconds: 120
     pool-metrics-stale-seconds: 120
+    require-write-justification: ${DWARVENPICK_QUERY_REQUIRE_WRITE_JUSTIFICATION:false}
+    max-justification-length: ${DWARVENPICK_QUERY_MAX_JUSTIFICATION_LENGTH:1000}
   resources:
     version-retention-days: 180
     max-versions-per-resource: 100

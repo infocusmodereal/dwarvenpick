@@ -71,6 +71,7 @@ class QueryRuntimeRepositoryTests {
             ipAddress = "127.0.0.1",
             datasourceId = "unit-test-datasource",
             credentialProfile = "read-only",
+            justification = null,
             sql = "select 'value'",
             sqlRedacted = false,
             queryHash = "hash-$executionId",

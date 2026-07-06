@@ -68,6 +68,10 @@ class QueryReadOnlyViolationException(
     override val message: String,
 ) : RuntimeException(message)
 
+class QueryJustificationRequiredException(
+    override val message: String,
+) : RuntimeException(message)
+
 private class QueryCanceledException(
     override val message: String,
 ) : RuntimeException(message)
@@ -102,6 +106,7 @@ private data class QueryExecutionRecord(
     val ipAddress: String?,
     val datasourceId: String,
     val credentialProfile: String,
+    val justification: String?,
     val sql: String,
     val queryHash: String,
     val maxRowsPerQuery: Int,
@@ -218,7 +223,8 @@ class QueryExecutionManager(
             throw IllegalArgumentException("SQL is empty.")
         }
 
-        if (policy.readOnly && statementSegments.any { segment -> !SqlSafety.isReadOnlySql(segment.sql) }) {
+        val hasWriteIntent = statementSegments.any { segment -> !SqlSafety.isReadOnlySql(segment.sql) }
+        if (policy.readOnly && hasWriteIntent) {
             meterRegistry
                 .counter(
                     "dwarvenpick.query.execute.attempts",
@@ -231,6 +237,15 @@ class QueryExecutionManager(
                 "Read-only mode is enabled for this datasource access mapping. Only SELECT-like statements are allowed.",
             )
         }
+        val justification = normalizeQueryJustification(request.justification)
+        enforceWriteJustification(
+            actor = actor,
+            ipAddress = ipAddress,
+            datasourceId = request.datasourceId.trim(),
+            policy = policy,
+            hasWriteIntent = hasWriteIntent,
+            justification = justification,
+        )
         val queryHash = sha256Hex(normalizedSql)
         val executionId = UUID.randomUUID().toString()
 
@@ -271,6 +286,7 @@ class QueryExecutionManager(
                     ipAddress = ipAddress,
                     datasourceId = request.datasourceId.trim(),
                     credentialProfile = policy.credentialProfile,
+                    justification = justification,
                     sql = normalizedSql,
                     queryHash = queryHash,
                     maxRowsPerQuery = maxRows,
@@ -516,6 +532,7 @@ class QueryExecutionManager(
                     actor = record.actor,
                     datasourceId = record.datasourceId,
                     credentialProfile = record.credentialProfile,
+                    justification = record.justification,
                     status = record.status.name,
                     message = record.message,
                     queryHash = record.queryHash,
@@ -2042,13 +2059,24 @@ class QueryExecutionManager(
         outcome: String,
         details: Map<String, Any?>,
     ) {
+        val enrichedDetails =
+            details
+                .toMutableMap()
+                .apply {
+                    putIfAbsent("executionId", record.executionId)
+                    putIfAbsent("datasourceId", record.datasourceId)
+                    putIfAbsent("credentialProfile", record.credentialProfile)
+                    if (record.justification != null) {
+                        putIfAbsent("justification", record.justification)
+                    }
+                }
         authAuditLogger.log(
             AuthAuditEvent(
                 type = type,
                 actor = record.actor,
                 outcome = outcome,
                 ipAddress = record.ipAddress,
-                details = details,
+                details = enrichedDetails,
             ),
         )
     }
@@ -2064,6 +2092,7 @@ class QueryExecutionManager(
                 actor = record.actor,
                 datasourceId = record.datasourceId,
                 credentialProfile = record.credentialProfile,
+                justification = record.justification,
                 queryHash = record.queryHash,
                 queryText = record.sql,
                 queryTextRedacted = false,
@@ -2093,6 +2122,7 @@ class QueryExecutionManager(
             ipAddress = ipAddress,
             datasourceId = datasourceId,
             credentialProfile = credentialProfile,
+            justification = justification,
             sql = sql,
             sqlRedacted = false,
             queryHash = queryHash,
@@ -2132,6 +2162,66 @@ class QueryExecutionManager(
             .replace(Regex("jdbc:[^\\s]+", RegexOption.IGNORE_CASE), "jdbc:***")
             .ifBlank { "Query execution failed." }
 
+    private fun normalizeQueryJustification(justification: String?): String? {
+        val normalized =
+            justification
+                ?.replace(controlCharacterRegex, " ")
+                ?.replace(whitespaceRegex, " ")
+                ?.trim()
+                ?.takeIf { value -> value.isNotBlank() }
+                ?: return null
+        val maxLength = queryExecutionProperties.maxJustificationLength.coerceAtLeast(1)
+        if (normalized.length > maxLength) {
+            throw IllegalArgumentException("justification must be $maxLength characters or fewer.")
+        }
+        return normalized
+    }
+
+    private fun enforceWriteJustification(
+        actor: String,
+        ipAddress: String?,
+        datasourceId: String,
+        policy: QueryAccessPolicy,
+        hasWriteIntent: Boolean,
+        justification: String?,
+    ) {
+        if (!queryExecutionProperties.requireWriteJustification) {
+            return
+        }
+        val requiresJustification = !policy.readOnly || hasWriteIntent
+        if (!requiresJustification || justification != null) {
+            return
+        }
+
+        meterRegistry
+            .counter(
+                "dwarvenpick.query.execute.attempts",
+                "outcome",
+                "blocked_missing_justification",
+                "datasourceId",
+                datasourceId,
+            ).increment()
+        authAuditLogger.log(
+            AuthAuditEvent(
+                type = "query.execute",
+                actor = actor,
+                outcome = "denied",
+                ipAddress = ipAddress,
+                details =
+                    mapOf(
+                        "datasourceId" to datasourceId,
+                        "credentialProfile" to policy.credentialProfile,
+                        "readOnly" to policy.readOnly,
+                        "writeLikeSql" to hasWriteIntent,
+                        "reason" to "missing_write_justification",
+                    ),
+            ),
+        )
+        throw QueryJustificationRequiredException(
+            "A justification is required for non-read-only credential profiles or write-like scripts.",
+        )
+    }
+
     private fun QueryExecutionRecord.toStatusResponse(): QueryExecutionStatusResponse =
         QueryExecutionStatusResponse(
             executionId = executionId,
@@ -2149,6 +2239,7 @@ class QueryExecutionManager(
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,
             credentialProfile = credentialProfile,
+            justification = justification,
             scriptSummary =
                 if (scriptStatementCount > 1 || scriptStatements.isNotEmpty()) {
                     QueryScriptSummary(
@@ -2179,6 +2270,7 @@ class QueryExecutionManager(
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,
             credentialProfile = credentialProfile,
+            justification = justification,
             scriptSummary =
                 if (scriptStatementCount > 1 || scriptStatements.isNotEmpty()) {
                     QueryScriptSummary(
@@ -2209,6 +2301,7 @@ class QueryExecutionManager(
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,
             credentialProfile = credentialProfile,
+            justification = justification,
             scriptSummary =
                 if (scriptStatementCount > 1 || scriptStatements.isNotEmpty()) {
                     QueryScriptSummary(
@@ -2293,5 +2386,7 @@ class QueryExecutionManager(
 
     private companion object {
         private const val MAX_FIELD_SIZE_DETECTION_BYTES = 4L
+        private val controlCharacterRegex = Regex("[\\u0000-\\u001F\\u007F]+")
+        private val whitespaceRegex = Regex("\\s+")
     }
 }
