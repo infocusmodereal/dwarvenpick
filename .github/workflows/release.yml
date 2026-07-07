@@ -55,7 +55,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            cli/package-lock.json
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
@@ -72,6 +74,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm audit --omit=dev
           npm run lint
           npm run format:check
           npm run test
@@ -80,6 +83,8 @@ jobs:
       - name: Run CLI checks
         working-directory: cli
         run: |
+          npm ci
+          npm audit --omit=dev
           npm test
           npm pack --dry-run
 
@@ -96,10 +101,15 @@ jobs:
             --version "${{ steps.version.outputs.version }}" \
             --app-version "${{ steps.version.outputs.version }}"
 
+      - name: Package CLI (versioned)
+        working-directory: cli
+        run: npm pack --pack-destination ../dist
+
       - name: Collect artifacts
         shell: bash
         run: |
           cp backend/app/build/libs/*.jar dist/
+          (cd dist && sha256sum * > SHA256SUMS)
           ls -lah dist
 
       - name: Create GitHub Release

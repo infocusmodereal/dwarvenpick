@@ -123,6 +123,44 @@ class QueryJustificationGovernanceTests {
     }
 
     @Test
+    fun `script mode request persists justification for governed non-read-only profiles`() {
+        val submitted =
+            queryExecutionManager.submitQuery(
+                actor = "analyst",
+                ipAddress = "127.0.0.1",
+                request =
+                    QueryExecutionRequest(
+                        datasourceId = "simulated",
+                        sql = "select generate_series(1,2)",
+                        justification = "Script window TOPS-123",
+                        scriptMode = true,
+                    ),
+                policy = queryPolicy(readOnly = false),
+            )
+
+        val status = waitForTerminalStatus(submitted.executionId)
+        val history =
+            queryHistoryRepository.list(
+                QueryHistoryFilter(
+                    actor = "analyst",
+                    isSystemAdmin = false,
+                    datasourceId = null,
+                    status = null,
+                    from = null,
+                    to = null,
+                    limit = 10,
+                    offset = 0,
+                    actorFilter = null,
+                    sortOrder = QueryHistorySortOrder.NEWEST,
+                ),
+            )
+
+        assertThat(status.status).isEqualTo("SUCCEEDED")
+        assertThat(status.justification).isEqualTo("Script window TOPS-123")
+        assertThat(history.single().justification).isEqualTo("Script window TOPS-123")
+    }
+
+    @Test
     fun `over-length justification is rejected before execution`() {
         assertThatThrownBy {
             queryExecutionManager.submitQuery(

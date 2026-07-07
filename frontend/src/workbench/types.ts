@@ -28,13 +28,7 @@ export type CatalogDatasourceResponse = {
 };
 
 export type DatasourceEngine =
-    | 'POSTGRESQL'
-    | 'MYSQL'
-    | 'MARIADB'
-    | 'TRINO'
-    | 'STARROCKS'
-    | 'VERTICA'
-    | 'AEROSPIKE';
+    'POSTGRESQL' | 'MYSQL' | 'MARIADB' | 'TRINO' | 'STARROCKS' | 'VERTICA' | 'AEROSPIKE';
 
 export type TlsMode = 'DISABLE' | 'REQUIRE';
 
@@ -50,12 +44,7 @@ export type DriverDescriptorResponse = {
 };
 
 export type MavenDriverPreset =
-    | 'POSTGRESQL'
-    | 'MYSQL'
-    | 'MARIADB'
-    | 'TRINO'
-    | 'STARROCKS_MYSQL'
-    | 'STARROCKS_MARIADB';
+    'POSTGRESQL' | 'MYSQL' | 'MARIADB' | 'TRINO' | 'STARROCKS_MYSQL' | 'STARROCKS_MARIADB';
 
 export type PoolSettings = {
     maximumPoolSize: number;
@@ -332,10 +321,7 @@ export type DatasourceSchemaBrowserResponse = {
 export type InspectedObjectType = 'TABLE' | 'VIEW';
 
 export type ObjectInspectorSectionStatus =
-    | 'OK'
-    | 'UNSUPPORTED'
-    | 'INSUFFICIENT_PRIVILEGES'
-    | 'ERROR';
+    'OK' | 'UNSUPPORTED' | 'INSUFFICIENT_PRIVILEGES' | 'ERROR';
 
 export type ObjectInspectorSectionKind = 'TEXT' | 'TABLE' | 'KEY_VALUES';
 
@@ -405,11 +391,7 @@ export type SnippetSummaryResponse = {
 
 export type ResourceScope = 'PRIVATE' | 'SHARED';
 export type ResourceVersionAction =
-    | 'CREATED'
-    | 'UPDATED_METADATA'
-    | 'UPDATED_CONTENT'
-    | 'RESTORED'
-    | 'DUPLICATED';
+    'CREATED' | 'UPDATED_METADATA' | 'UPDATED_CONTENT' | 'RESTORED' | 'DUPLICATED';
 
 export type ResourcePermissionsResponse = {
     canView: boolean;
@@ -560,13 +542,7 @@ export type QueryScriptSummary = {
     statements: QueryScriptStatementSummary[];
 };
 export type WorkspaceSection =
-    | 'workbench'
-    | 'history'
-    | 'resources'
-    | 'audit'
-    | 'health'
-    | 'admin'
-    | 'connections';
+    'workbench' | 'history' | 'resources' | 'audit' | 'health' | 'admin' | 'connections';
 export type AdminSubsection = 'users' | 'groups' | 'access';
 export type IconGlyph =
     | 'new'

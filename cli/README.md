@@ -12,7 +12,20 @@ CLI password login.
 - A running dwarvenpick backend reachable from your terminal
 - Local or LDAP authentication enabled on the target instance
 
-## Install from a checkout
+## Install from a release tarball
+
+Download the `dwarvenpick-cli-<version>.tgz` asset and `SHA256SUMS` from the matching GitHub Release, then verify and
+install it:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+npm install -g ./dwarvenpick-cli-<version>.tgz
+dwarvenpick --version
+```
+
+The CLI version should match the app release version shown by `/api/version` and the web UI version button.
+
+## Install from a checkout for development
 
 ```bash
 cd dwarvenpick/cli
@@ -116,6 +129,7 @@ dwarvenpick query \
 - Output formats are `table`, `json`, and `csv`.
 - `table` output is rendered per page with repeated headers; prefer `json` or `csv` for large result exports.
 - Progress messages go to stderr so stdout remains safe for piping.
+- On timeout or `Ctrl-C`, the CLI requests backend cancellation before returning a non-zero exit.
 
 ## Security notes
 

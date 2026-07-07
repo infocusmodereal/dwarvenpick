@@ -5,7 +5,23 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  osv-scan:
+    name: OSV Dependency Scan
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8
+    with:
+      upload-sarif: false
+      scan-args: |-
+        --recursive
+        ./
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
   backend:
     name: Backend Lint + Build
     runs-on: ubuntu-latest
@@ -26,6 +42,37 @@ jobs:
       - name: Run backend checks
         run: ./gradlew clean ktlintCheck test
 
+      - name: Generate backend runtime dependency report
+        run: |
+          mkdir -p build/reports/security
+          ./gradlew :backend:app:dependencies --configuration runtimeClasspath > build/reports/security/backend-runtime-dependencies.txt
+
+      - name: Upload backend dependency report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-runtime-dependencies
+          path: build/reports/security/backend-runtime-dependencies.txt
+
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate repository SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cyclonedx.json
+
   frontend:
     name: Frontend Lint + Build
     runs-on: ubuntu-latest
@@ -45,6 +92,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
 
       - name: Lint
         run: npm run lint
@@ -72,6 +122,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
 
       - name: Test
         run: npm test

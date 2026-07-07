@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class QueryExecutionProperties(
     val defaultPageSize: Int = 500,
     val maxPageSize: Int = 1000,
+    val resultChunkRows: Int = 500,
     val maxBufferedRows: Int = 5000,
     val maxBufferedBytes: Long = 64L * 1024L * 1024L,
     val maxBufferedBytesPerInstance: Long = 256L * 1024L * 1024L,

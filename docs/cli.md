@@ -21,7 +21,20 @@ The CLI supports password login with:
 OIDC is browser-based in dwarvenpick, so the CLI does not perform OIDC password login. If your deployment is OIDC-only,
 enable a secure LDAP or Local break-glass path before using the CLI.
 
-## Install from source
+## Install from a release tarball
+
+Download the `dwarvenpick-cli-<version>.tgz` asset and `SHA256SUMS` from the matching GitHub Release, then verify and
+install it:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+npm install -g ./dwarvenpick-cli-<version>.tgz
+dwarvenpick --version
+```
+
+The CLI version should match the app release version shown by `/api/version` and the web UI version button.
+
+## Install from source for development
 
 ```bash
 cd cli
@@ -113,6 +126,7 @@ dwarvenpick query \
 - Query output is written to stdout unless `--output` is set.
 - `--page-size` controls results pagination and is capped at `1000`.
 - `--timeout` and `--poll-interval` accept durations like `500ms`, `5s`, or `2m`.
+- On timeout or `Ctrl-C`, the CLI requests backend cancellation before returning a non-zero exit.
 - Failed or canceled queries return a non-zero exit code.
 
 ## Package README

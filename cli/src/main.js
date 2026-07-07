@@ -7,6 +7,14 @@ import { formatConnections, formatCsvRow, formatTable, normalizeColumns } from '
 
 const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 
+export class QueryInterruptedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'QueryInterruptedError';
+    this.exitCode = 130;
+  }
+}
+
 export async function main(argv = process.argv.slice(2), env = process.env, streams = process) {
   const parsed = parseArgs(argv);
 
@@ -132,21 +140,51 @@ export async function resolveSql(options, positional) {
   throw new UsageError('SQL is required. Use --sql, --file, or pass SQL as an argument.');
 }
 
-export async function waitForQuery(client, executionId, config, streams = process) {
+export async function waitForQuery(client, executionId, config, streams = process, signalTarget = process) {
   const deadline = Date.now() + config.timeoutMs;
+  let interrupted = false;
+  const onInterrupt = () => {
+    interrupted = true;
+  };
 
-  while (Date.now() <= deadline) {
-    const status = await client.queryStatus(executionId);
-    if (!['QUEUED', 'RUNNING'].includes(status.status)) {
-      return status;
+  signalTarget.once?.('SIGINT', onInterrupt);
+
+  try {
+    while (Date.now() <= deadline) {
+      if (interrupted) {
+        await requestBackendCancel(client, executionId, config, streams, 'interrupt');
+        throw new QueryInterruptedError(`Interrupted while waiting for query ${executionId}; backend cancellation requested.`);
+      }
+
+      const status = await client.queryStatus(executionId);
+      if (!['QUEUED', 'RUNNING'].includes(status.status)) {
+        return status;
+      }
+      if (!config.quiet) {
+        streams.stderr.write(`Query ${executionId} is ${status.status.toLowerCase()}...\n`);
+      }
+      await sleep(config.pollIntervalMs);
     }
-    if (!config.quiet) {
-      streams.stderr.write(`Query ${executionId} is ${status.status.toLowerCase()}...\n`);
-    }
-    await sleep(config.pollIntervalMs);
+
+    await requestBackendCancel(client, executionId, config, streams, 'timeout');
+    throw new Error(`Timed out waiting for query ${executionId} after ${config.timeoutMs}ms; backend cancellation requested.`);
+  } finally {
+    signalTarget.off?.('SIGINT', onInterrupt);
   }
+}
 
-  throw new Error(`Timed out waiting for query ${executionId} after ${config.timeoutMs}ms.`);
+async function requestBackendCancel(client, executionId, config, streams, reason) {
+  try {
+    await client.cancelQuery(executionId);
+    if (!config.quiet) {
+      streams.stderr.write(`Requested backend cancellation for query ${executionId} after ${reason}.\n`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!config.quiet) {
+      streams.stderr.write(`Failed to request backend cancellation for query ${executionId}: ${message}\n`);
+    }
+  }
 }
 
 export async function streamResults(client, executionId, options = {}, streams = process) {

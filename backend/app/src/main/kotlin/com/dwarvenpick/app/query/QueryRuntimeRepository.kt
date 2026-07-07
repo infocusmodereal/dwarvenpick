@@ -72,6 +72,7 @@ data class PersistedQueryRuntimeMetadataRecord(
     val rowCount: Int,
     val columnCount: Int,
     val rowLimitReached: Boolean,
+    val columns: List<QueryResultColumn>,
     val lastAccessedAt: Instant,
     val resultsExpired: Boolean,
     val cancelRequested: Boolean,
@@ -85,10 +86,17 @@ private data class ExistingQueryRuntimeState(
     val cancelRequested: Boolean,
 )
 
+private data class PersistedQueryResultPage(
+    val startRow: Int,
+    val rowCount: Int,
+    val rows: List<List<String?>>,
+)
+
 @Repository
 class QueryRuntimeRepository(
     jdbcTemplate: JdbcTemplate,
     private val objectMapper: ObjectMapper,
+    private val queryExecutionProperties: QueryExecutionProperties,
 ) {
     private val namedParameterJdbcTemplate = NamedParameterJdbcTemplate(jdbcTemplate)
     private val rowMapper = RowMapper { resultSet, _ -> resultSet.toRecord() }
@@ -119,6 +127,7 @@ class QueryRuntimeRepository(
             mapOf("executionId" to record.executionId),
         )
         namedParameterJdbcTemplate.update(insertSql, recordToPersist.toParameters())
+        insertResultPages(recordToPersist)
     }
 
     fun find(executionId: String): PersistedQueryRuntimeRecord? =
@@ -142,6 +151,89 @@ class QueryRuntimeRepository(
         } catch (_: EmptyResultDataAccessException) {
             null
         }
+
+    fun fetchRows(
+        executionId: String,
+        startOffset: Int,
+        limit: Int,
+    ): List<List<String?>> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+        val normalizedStartOffset = startOffset.coerceAtLeast(0)
+        val endOffset = normalizedStartOffset + limit
+        val pages =
+            namedParameterJdbcTemplate.query(
+                """
+                SELECT start_row, row_count, rows_json
+                FROM query_runtime_result_pages
+                WHERE execution_id = :executionId
+                  AND start_row < :endOffset
+                  AND (start_row + row_count) > :startOffset
+                ORDER BY start_row ASC
+                """.trimIndent(),
+                mapOf(
+                    "executionId" to executionId,
+                    "startOffset" to normalizedStartOffset,
+                    "endOffset" to endOffset,
+                ),
+            ) { resultSet, _ ->
+                PersistedQueryResultPage(
+                    startRow = resultSet.getInt("start_row"),
+                    rowCount = resultSet.getInt("row_count"),
+                    rows = objectMapper.readValue(resultSet.getString("rows_json"), rowsType),
+                )
+            }
+
+        return pages
+            .flatMap { page ->
+                val fromIndex = (normalizedStartOffset - page.startRow).coerceAtLeast(0)
+                val toIndex = (endOffset - page.startRow).coerceAtMost(page.rows.size)
+                if (fromIndex >= toIndex) {
+                    emptyList()
+                } else {
+                    page.rows.subList(fromIndex, toIndex)
+                }
+            }.take(limit)
+    }
+
+    fun rowIterable(executionId: String): Iterable<List<String?>> =
+        Iterable {
+            object : Iterator<List<String?>> {
+                private var nextPageIndex = 0
+                private var currentRows: List<List<String?>> = emptyList()
+                private var currentRowIndex = 0
+                private var exhausted = false
+
+                override fun hasNext(): Boolean {
+                    while (!exhausted && currentRowIndex >= currentRows.size) {
+                        val nextPage = findResultPage(executionId, nextPageIndex)
+                        nextPageIndex += 1
+                        if (nextPage == null) {
+                            exhausted = true
+                        } else {
+                            currentRows = nextPage.rows
+                            currentRowIndex = 0
+                        }
+                    }
+                    return currentRowIndex < currentRows.size
+                }
+
+                override fun next(): List<String?> {
+                    if (!hasNext()) {
+                        throw NoSuchElementException()
+                    }
+                    return currentRows[currentRowIndex++]
+                }
+            }
+        }
+
+    fun countResultPages(executionId: String): Int =
+        namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM query_runtime_result_pages WHERE execution_id = :executionId",
+            mapOf("executionId" to executionId),
+            Int::class.java,
+        ) ?: 0
 
     fun listActive(
         actor: String,
@@ -272,11 +364,16 @@ class QueryRuntimeRepository(
             Boolean::class.java,
         ) ?: false
 
+    @Transactional
     fun expireResults(
         executionId: String,
         message: String,
-    ): Int =
+    ): Int {
         namedParameterJdbcTemplate.update(
+            "DELETE FROM query_runtime_result_pages WHERE execution_id = :executionId",
+            mapOf("executionId" to executionId),
+        )
+        return namedParameterJdbcTemplate.update(
             """
             UPDATE query_runtime_executions
             SET rows_json = '[]',
@@ -289,6 +386,7 @@ class QueryRuntimeRepository(
             """.trimIndent(),
             mapOf("executionId" to executionId, "message" to message),
         )
+    }
 
     fun pruneOlderThan(cutoff: Instant): Int =
         namedParameterJdbcTemplate.update(
@@ -330,7 +428,75 @@ class QueryRuntimeRepository(
         )
 
     fun clear() {
+        namedParameterJdbcTemplate.update("DELETE FROM query_runtime_result_pages", emptyMap<String, Any>())
         namedParameterJdbcTemplate.update("DELETE FROM query_runtime_executions", emptyMap<String, Any>())
+    }
+
+    private fun insertResultPages(record: PersistedQueryRuntimeRecord) {
+        if (record.rows.isEmpty()) {
+            return
+        }
+        val chunkRows = queryExecutionProperties.resultChunkRows.coerceAtLeast(1)
+        record.rows.chunked(chunkRows).forEachIndexed { pageIndex, rows ->
+            val rowsJson = objectMapper.writeValueAsString(rows)
+            namedParameterJdbcTemplate.update(
+                """
+                INSERT INTO query_runtime_result_pages (
+                  execution_id, page_index, start_row, row_count, rows_json, byte_count, created_at
+                ) VALUES (
+                  :executionId, :pageIndex, :startRow, :rowCount, :rowsJson, :byteCount, :createdAt
+                )
+                """.trimIndent(),
+                mapOf(
+                    "executionId" to record.executionId,
+                    "pageIndex" to pageIndex,
+                    "startRow" to pageIndex * chunkRows,
+                    "rowCount" to rows.size,
+                    "rowsJson" to rowsJson,
+                    "byteCount" to rowsJson.toByteArray(Charsets.UTF_8).size.toLong(),
+                    "createdAt" to (record.completedAt ?: record.startedAt ?: record.submittedAt).toTimestamp(),
+                ),
+            )
+        }
+    }
+
+    private fun findResultPage(
+        executionId: String,
+        pageIndex: Int,
+    ): PersistedQueryResultPage? =
+        try {
+            namedParameterJdbcTemplate.queryForObject(
+                """
+                SELECT start_row, row_count, rows_json
+                FROM query_runtime_result_pages
+                WHERE execution_id = :executionId
+                  AND page_index = :pageIndex
+                """.trimIndent(),
+                mapOf("executionId" to executionId, "pageIndex" to pageIndex),
+            ) { resultSet, _ ->
+                PersistedQueryResultPage(
+                    startRow = resultSet.getInt("start_row"),
+                    rowCount = resultSet.getInt("row_count"),
+                    rows = objectMapper.readValue(resultSet.getString("rows_json"), rowsType),
+                )
+            }
+        } catch (_: EmptyResultDataAccessException) {
+            null
+        }
+
+    private fun readPersistedRows(
+        executionId: String,
+        rowsJson: String,
+        expectedRowCount: Int,
+    ): List<List<String?>> {
+        if (expectedRowCount <= 0) {
+            return emptyList()
+        }
+        val pageRows = fetchRows(executionId, startOffset = 0, limit = expectedRowCount)
+        if (pageRows.isNotEmpty()) {
+            return pageRows
+        }
+        return objectMapper.readValue(rowsJson, rowsType)
     }
 
     private fun PersistedQueryRuntimeRecord.toParameters(): MapSqlParameterSource =
@@ -358,7 +524,7 @@ class QueryRuntimeRepository(
             .addValue("scriptTransactionMode", scriptTransactionMode.name)
             .addValue("scriptStatementsJson", objectMapper.writeValueAsString(scriptStatements))
             .addValue("columnsJson", objectMapper.writeValueAsString(columns))
-            .addValue("rowsJson", objectMapper.writeValueAsString(rows))
+            .addValue("rowsJson", EMPTY_ROWS_JSON)
             .addValue("submittedAt", submittedAt.toTimestamp())
             .addValue("startedAt", startedAt?.toTimestamp())
             .addValue("completedAt", completedAt?.toTimestamp())
@@ -368,9 +534,11 @@ class QueryRuntimeRepository(
             .addValue("ownerInstanceId", ownerInstanceId)
             .addValue("heartbeatAt", heartbeatAt.toTimestamp())
 
-    private fun ResultSet.toRecord(): PersistedQueryRuntimeRecord =
-        PersistedQueryRuntimeRecord(
-            executionId = getString("execution_id"),
+    private fun ResultSet.toRecord(): PersistedQueryRuntimeRecord {
+        val executionId = getString("execution_id")
+        val rowCount = getInt("row_count")
+        return PersistedQueryRuntimeRecord(
+            executionId = executionId,
             actor = getString("actor"),
             ipAddress = getString("ip_address"),
             datasourceId = getString("datasource_id"),
@@ -394,13 +562,14 @@ class QueryRuntimeRepository(
             startedAt = getNullableInstant("started_at"),
             completedAt = getNullableInstant("completed_at"),
             columns = objectMapper.readValue(getString("columns_json"), columnsType),
-            rows = objectMapper.readValue(getString("rows_json"), rowsType),
+            rows = readPersistedRows(executionId, getString("rows_json"), rowCount),
             lastAccessedAt = getRequiredInstant("last_accessed_at"),
             resultsExpired = getBoolean("results_expired"),
             cancelRequested = getBoolean("cancel_requested"),
             ownerInstanceId = getString("owner_instance_id"),
             heartbeatAt = getRequiredInstant("heartbeat_at"),
         )
+    }
 
     private fun ResultSet.toMetadataRecord(): PersistedQueryRuntimeMetadataRecord =
         PersistedQueryRuntimeMetadataRecord(
@@ -419,6 +588,7 @@ class QueryRuntimeRepository(
             rowCount = getInt("row_count"),
             columnCount = getInt("column_count"),
             rowLimitReached = getBoolean("row_limit_reached"),
+            columns = objectMapper.readValue(getString("columns_json"), columnsType),
             maxRowsPerQuery = getInt("max_rows_per_query"),
             maxRuntimeSeconds = getInt("max_runtime_seconds"),
             concurrencyLimit = getInt("concurrency_limit"),
@@ -454,7 +624,7 @@ class QueryRuntimeRepository(
         SELECT execution_id, actor, ip_address, datasource_id, credential_profile, justification, query_hash, sql_text,
                sql_text_redacted, status, message, error_summary, row_count, column_count, row_limit_reached,
                max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
-               script_stop_on_error, script_transaction_mode, script_statements_json,
+               script_stop_on_error, script_transaction_mode, script_statements_json, columns_json,
                submitted_at, started_at, completed_at, last_accessed_at, results_expired, cancel_requested,
                owner_instance_id, heartbeat_at
         FROM query_runtime_executions
@@ -490,6 +660,7 @@ class QueryRuntimeRepository(
     private fun Instant.toTimestamp(): Timestamp = Timestamp.from(this)
 
     private companion object {
+        private const val EMPTY_ROWS_JSON = "[]"
         val insertSql =
             """
             INSERT INTO query_runtime_executions (
