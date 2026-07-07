@@ -18,7 +18,9 @@ jobs:
         --recursive
         ./
     permissions:
+      actions: read
       contents: read
+      security-events: write
 
   backend:
     name: Backend Lint + Build
