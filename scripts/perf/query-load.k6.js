@@ -48,6 +48,12 @@ function login() {
   return fetchCsrf();
 }
 
+function queryString(params) {
+  return Object.entries(params)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+}
+
 function runQuery(csrf) {
   const sql = queryMix[(__ITER + __VU - 1) % queryMix.length];
   const body = {
@@ -113,7 +119,7 @@ export default function () {
       if (nextPageToken) {
         params.pageToken = nextPageToken;
       }
-      const resultsRes = http.get(`${baseUrl}/api/queries/${executionId}/results`, { params });
+      const resultsRes = http.get(`${baseUrl}/api/queries/${executionId}/results?${queryString(params)}`);
       if (!check(resultsRes, { 'results ok': (r) => r.status === 200 })) {
         break;
       }
