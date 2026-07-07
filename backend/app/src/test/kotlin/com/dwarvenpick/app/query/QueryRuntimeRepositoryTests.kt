@@ -8,7 +8,11 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import java.time.Instant
 
-@SpringBootTest
+@SpringBootTest(
+    properties = [
+        "dwarvenpick.query.result-chunk-rows=2",
+    ],
+)
 class QueryRuntimeRepositoryTests {
     @Autowired
     private lateinit var queryRuntimeRepository: QueryRuntimeRepository
@@ -29,14 +33,12 @@ class QueryRuntimeRepositoryTests {
             """
             UPDATE query_runtime_executions
             SET rows_json = :rowsJson,
-                columns_json = :columnsJson,
                 cancel_requested = TRUE
             WHERE execution_id = :executionId
             """.trimIndent(),
             mapOf(
                 "executionId" to record.executionId,
                 "rowsJson" to "not-json",
-                "columnsJson" to "not-json",
             ),
         )
 
@@ -61,6 +63,61 @@ class QueryRuntimeRepositoryTests {
         val savedFullRecord = queryRuntimeRepository.find(record.executionId)
         assertThat(savedMetadata?.cancelRequested).isTrue()
         assertThat(savedFullRecord?.rows).containsExactly(listOf("value"))
+    }
+
+    @Test
+    fun `result rows are persisted and fetched in bounded pages`() {
+        val rows = (1..5).map { index -> listOf("value-$index") }
+        val record =
+            runtimeRecord(executionId = "paged-exec")
+                .copy(
+                    status = QueryExecutionStatus.SUCCEEDED,
+                    completedAt = Instant.now(),
+                    rows = rows,
+                )
+
+        queryRuntimeRepository.save(record)
+
+        val storedRowsJson =
+            namedParameterJdbcTemplate.queryForObject(
+                "SELECT rows_json FROM query_runtime_executions WHERE execution_id = :executionId",
+                mapOf("executionId" to record.executionId),
+                String::class.java,
+            )
+        assertThat(storedRowsJson).isEqualTo("[]")
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isEqualTo(3)
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.rowCount).isEqualTo(5)
+
+        namedParameterJdbcTemplate.update(
+            """
+            UPDATE query_runtime_result_pages
+            SET rows_json = :rowsJson
+            WHERE execution_id = :executionId
+              AND page_index = 2
+            """.trimIndent(),
+            mapOf("executionId" to record.executionId, "rowsJson" to "not-json"),
+        )
+
+        assertThat(queryRuntimeRepository.fetchRows(record.executionId, startOffset = 1, limit = 2))
+            .containsExactly(listOf("value-2"), listOf("value-3"))
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.rowCount).isEqualTo(5)
+    }
+
+    @Test
+    fun `expiring results clears result pages`() {
+        val record =
+            runtimeRecord(executionId = "expire-pages-exec")
+                .copy(rows = (1..3).map { index -> listOf("value-$index") })
+        queryRuntimeRepository.save(record)
+
+        queryRuntimeRepository.expireResults(record.executionId, "expired")
+
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isZero()
+        val metadata = queryRuntimeRepository.findMetadata(record.executionId)
+        assertThat(metadata?.resultsExpired).isTrue()
+        assertThat(metadata?.rowCount).isZero()
+        assertThat(metadata?.columnCount).isZero()
+        assertThat(metadata?.columns).isEmpty()
     }
 
     private fun runtimeRecord(executionId: String): PersistedQueryRuntimeRecord {

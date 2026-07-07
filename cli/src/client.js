@@ -59,6 +59,14 @@ export class DwarvenpickClient {
     return this.request(`/api/queries/${encodeURIComponent(executionId)}`);
   }
 
+  async cancelQuery(executionId) {
+    await this.ensureCsrfToken();
+    return this.request(`/api/queries/${encodeURIComponent(executionId)}/cancel`, {
+      method: 'POST',
+      csrf: true,
+    });
+  }
+
   async queryResults(executionId, { pageSize, pageToken } = {}) {
     const params = new URLSearchParams();
     if (pageSize) {

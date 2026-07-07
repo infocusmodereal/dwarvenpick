@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { resolveConfig, runQuery, streamResults } from '../src/main.js';
+import { QueryInterruptedError, resolveConfig, runQuery, streamResults, waitForQuery } from '../src/main.js';
 
 test('streamResults writes CSV rows page by page', async () => {
   const calls = [];
@@ -72,6 +72,69 @@ test('resolveConfig prefers --justification over DWARVENPICK_JUSTIFICATION', () 
   );
 
   assert.equal(config.justification, 'flag reason');
+});
+
+test('waitForQuery requests backend cancel on timeout', async () => {
+  const calls = [];
+  const writes = [];
+  const client = {
+    async queryStatus(executionId) {
+      calls.push(['status', executionId]);
+      return { executionId, status: 'RUNNING' };
+    },
+    async cancelQuery(executionId) {
+      calls.push(['cancel', executionId]);
+      return { executionId, status: 'CANCELED' };
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      waitForQuery(
+        client,
+        'exec-timeout',
+        queryConfig({ quiet: false, timeoutMs: 2, pollIntervalMs: 1 }),
+        recordingStreams(writes),
+        new EventEmitter(),
+      ),
+    /Timed out waiting for query exec-timeout.*backend cancellation requested/,
+  );
+
+  assert.ok(calls.some(([type]) => type === 'status'));
+  assert.deepEqual(calls.at(-1), ['cancel', 'exec-timeout']);
+  assert.match(writes.join(''), /Requested backend cancellation/);
+});
+
+test('waitForQuery requests backend cancel on SIGINT and exits as interrupted', async () => {
+  const signalTarget = new EventEmitter();
+  const calls = [];
+  const client = {
+    async queryStatus(executionId) {
+      calls.push(['status', executionId]);
+      return { executionId, status: 'RUNNING' };
+    },
+    async cancelQuery(executionId) {
+      calls.push(['cancel', executionId]);
+      return { executionId, status: 'CANCELED' };
+    },
+  };
+
+  const waitPromise = waitForQuery(
+    client,
+    'exec-sigint',
+    queryConfig({ timeoutMs: 100, pollIntervalMs: 1 }),
+    recordingStreams([]),
+    signalTarget,
+  );
+  signalTarget.emit('SIGINT');
+
+  await assert.rejects(waitPromise, (error) => {
+    assert.ok(error instanceof QueryInterruptedError);
+    assert.equal(error.exitCode, 130);
+    assert.match(error.message, /backend cancellation requested/);
+    return true;
+  });
+  assert.deepEqual(calls.at(-1), ['cancel', 'exec-sigint']);
 });
 
 test('streamResults omits CSV headers when requested', async () => {
@@ -222,6 +285,12 @@ function queryConfig(overrides = {}) {
 function recordingStreams(writes) {
   return {
     stdout: {
+      write(chunk) {
+        writes.push(chunk);
+        return true;
+      },
+    },
+    stderr: {
       write(chunk) {
         writes.push(chunk);
         return true;

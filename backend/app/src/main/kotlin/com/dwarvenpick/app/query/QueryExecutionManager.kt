@@ -574,7 +574,7 @@ class QueryExecutionManager(
         val record = executions[executionId]
         if (record == null) {
             val persisted =
-                queryRuntimeRepository.find(executionId)
+                queryRuntimeRepository.findMetadata(executionId)
                     ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
             enforceExecutionAccess(actor, isSystemAdmin, persisted)
             return persisted.toResultsResponse(request)
@@ -602,18 +602,23 @@ class QueryExecutionManager(
                 parsePageToken(executionId, token)
             } ?: 0
 
-        val (columnsSnapshot, rowsSnapshot) =
+        val (columnsSnapshot, rowCount, pageRows) =
             synchronized(record.rows) {
-                record.columns.toList() to record.rows.toList()
+                val rowCount = record.rows.size
+                if (startOffset > rowCount) {
+                    throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
+                }
+                val endOffset = (startOffset + resolvedPageSize).coerceAtMost(rowCount)
+                Triple(
+                    record.columns.toList(),
+                    rowCount,
+                    record.rows.subList(startOffset, endOffset).map { row -> row.toList() },
+                )
             }
-        if (startOffset > rowsSnapshot.size) {
-            throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
-        }
 
-        val endOffset = (startOffset + resolvedPageSize).coerceAtMost(rowsSnapshot.size)
-        val pageRows = rowsSnapshot.subList(startOffset, endOffset)
+        val endOffset = startOffset + pageRows.size
         val nextPageToken =
-            if (endOffset < rowsSnapshot.size) {
+            if (endOffset < rowCount) {
                 buildPageToken(executionId, endOffset)
             } else {
                 null
@@ -642,7 +647,7 @@ class QueryExecutionManager(
         val record = executions[executionId]
         if (record == null) {
             val persisted =
-                queryRuntimeRepository.find(executionId)
+                queryRuntimeRepository.findMetadata(executionId)
                     ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
             enforceExecutionAccess(actor, isSystemAdmin, persisted)
             return persisted.toCsvExportPayload(includeHeaders, maxExportRows)
@@ -2315,7 +2320,7 @@ class QueryExecutionManager(
                 },
         )
 
-    private fun PersistedQueryRuntimeRecord.toResultsResponse(request: QueryResultsRequest): QueryResultsResponse {
+    private fun PersistedQueryRuntimeMetadataRecord.toResultsResponse(request: QueryResultsRequest): QueryResultsResponse {
         if (status == QueryExecutionStatus.QUEUED || status == QueryExecutionStatus.RUNNING) {
             throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${status.name}.")
         }
@@ -2333,24 +2338,25 @@ class QueryExecutionManager(
             request.pageSize?.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
                 ?: queryExecutionProperties.defaultPageSize.coerceAtLeast(1)
         val startOffset = request.pageToken?.let { token -> parsePageToken(executionId, token) } ?: 0
-        if (startOffset > rows.size) {
+        if (startOffset > rowCount) {
             throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
         }
-        val endOffset = (startOffset + resolvedPageSize).coerceAtMost(rows.size)
-        val nextPageToken = if (endOffset < rows.size) buildPageToken(executionId, endOffset) else null
+        val rows = queryRuntimeRepository.fetchRows(executionId, startOffset, resolvedPageSize)
+        val endOffset = startOffset + rows.size
+        val nextPageToken = if (endOffset < rowCount) buildPageToken(executionId, endOffset) else null
         queryRuntimeRepository.updateLastAccessed(executionId, Instant.now())
         return QueryResultsResponse(
             executionId = executionId,
             status = status.name,
             columns = columns,
-            rows = rows.subList(startOffset, endOffset),
+            rows = rows,
             pageSize = resolvedPageSize,
             nextPageToken = nextPageToken,
             rowLimitReached = rowLimitReached,
         )
     }
 
-    private fun PersistedQueryRuntimeRecord.toCsvExportPayload(
+    private fun PersistedQueryRuntimeMetadataRecord.toCsvExportPayload(
         includeHeaders: Boolean,
         maxExportRows: Int,
     ): QueryCsvExportPayload {
@@ -2368,9 +2374,9 @@ class QueryExecutionManager(
         }
 
         val resolvedMaxExportRows = maxExportRows.coerceAtLeast(1)
-        if (rows.size > resolvedMaxExportRows) {
+        if (rowCount > resolvedMaxExportRows) {
             throw QueryExportLimitExceededException(
-                "Export row limit exceeded (${rows.size} rows > $resolvedMaxExportRows allowed).",
+                "Export row limit exceeded ($rowCount rows > $resolvedMaxExportRows allowed).",
             )
         }
         queryRuntimeRepository.updateLastAccessed(executionId, Instant.now())
@@ -2378,9 +2384,9 @@ class QueryExecutionManager(
             executionId = executionId,
             datasourceId = datasourceId,
             includeHeaders = includeHeaders,
-            rowCount = rows.size,
+            rowCount = rowCount,
             columns = columns,
-            rows = rows,
+            rows = queryRuntimeRepository.rowIterable(executionId),
         )
     }
 

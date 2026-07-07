@@ -23,6 +23,7 @@ const historyEntry: QueryHistoryEntryResponse = {
     maxRowsPerQuery: 5000,
     maxRuntimeSeconds: 300,
     credentialProfile: 'read-only',
+    justification: 'TOPS-123 maintenance window',
     submittedAt: '2026-06-18T10:00:00Z',
     completedAt: '2026-06-18T10:00:01Z',
     durationMs: 1000
@@ -57,6 +58,13 @@ const renderQueryHistorySection = () =>
     );
 
 describe('QueryHistorySection', () => {
+    it('renders governed query justification in history rows', () => {
+        renderQueryHistorySection();
+
+        expect(screen.getByText('Justification')).toBeInTheDocument();
+        expect(screen.getByText('TOPS-123 maintenance window')).toBeInTheDocument();
+    });
+
     it('renders query hover card outside the scrollable table wrapper', () => {
         const { container } = renderQueryHistorySection();
         const preview = container.querySelector<HTMLElement>('.history-query-preview');

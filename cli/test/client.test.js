@@ -59,6 +59,33 @@ test('login posts LDAP credentials to the LDAP endpoint', async () => {
   assert.deepEqual(paths, ['/api/auth/csrf', '/api/auth/ldap/login']);
 });
 
+test('cancelQuery posts cancellation with CSRF cookie and header', async () => {
+  const requests = [];
+  const client = new DwarvenpickClient({
+    baseUrl: 'http://dwarvenpick.local',
+    fetchImpl: async (url, init = {}) => {
+      requests.push({ url, init });
+      if (url.endsWith('/api/auth/csrf')) {
+        return jsonResponse({
+          body: { token: 'csrf-token', headerName: 'X-XSRF-TOKEN', parameterName: '_csrf' },
+          setCookies: ['XSRF-TOKEN=csrf-token; Path=/'],
+        });
+      }
+      return jsonResponse({
+        body: { executionId: 'exec-cancel', status: 'CANCELED', message: 'Query canceled.' },
+      });
+    },
+  });
+
+  const response = await client.cancelQuery('exec-cancel');
+
+  assert.equal(response.status, 'CANCELED');
+  assert.equal(requests[1].url, 'http://dwarvenpick.local/api/queries/exec-cancel/cancel');
+  assert.equal(requests[1].init.method, 'POST');
+  assert.equal(requests[1].init.headers['X-XSRF-TOKEN'], 'csrf-token');
+  assert.match(requests[1].init.headers.Cookie, /XSRF-TOKEN=csrf-token/);
+});
+
 function jsonResponse({ body, setCookies = [] }) {
   return {
     ok: true,

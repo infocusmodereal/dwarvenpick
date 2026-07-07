@@ -77,7 +77,7 @@ class QueryExecutionManagerSseEmitterTests {
                 request =
                     QueryExecutionRequest(
                         datasourceId = "unit-test-datasource",
-                        sql = "select 1 as one",
+                        sql = "select generate_series(1,5) as one",
                     ),
                 policy =
                     QueryAccessPolicy(
@@ -102,14 +102,42 @@ class QueryExecutionManagerSseEmitterTests {
                 isSystemAdmin = false,
                 executionId = submitted.executionId,
             )
-        val results =
-            waitForQueryResults(
+        val firstPage = waitForQueryResults(actor = actor, executionId = submitted.executionId, pageSize = 2)
+        val secondPage =
+            queryExecutionManager.getQueryResults(
                 actor = actor,
+                isSystemAdmin = false,
                 executionId = submitted.executionId,
+                request = QueryResultsRequest(pageToken = firstPage.nextPageToken, pageSize = 2),
+            )
+        val thirdPage =
+            queryExecutionManager.getQueryResults(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+                request = QueryResultsRequest(pageToken = secondPage.nextPageToken, pageSize = 2),
+            )
+        val export =
+            queryExecutionManager.prepareCsvExport(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+                includeHeaders = true,
+                maxExportRows = 10,
             )
 
         assertThat(status.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
-        assertThat(results.rows).containsExactly(listOf("1"))
+        assertThat(firstPage.rows).containsExactly(listOf("1"), listOf("2"))
+        assertThat(secondPage.rows).containsExactly(listOf("3"), listOf("4"))
+        assertThat(thirdPage.rows).containsExactly(listOf("5"))
+        assertThat(thirdPage.nextPageToken).isNull()
+        assertThat(export.rows.toList()).containsExactly(
+            listOf("1"),
+            listOf("2"),
+            listOf("3"),
+            listOf("4"),
+            listOf("5"),
+        )
     }
 
     private fun waitForPersistedTerminalStatus(
@@ -160,6 +188,7 @@ class QueryExecutionManagerSseEmitterTests {
     private fun waitForQueryResults(
         actor: String,
         executionId: String,
+        pageSize: Int = 10,
         timeoutMs: Long = 5000,
     ): QueryResultsResponse {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -170,7 +199,7 @@ class QueryExecutionManagerSseEmitterTests {
                     actor = actor,
                     isSystemAdmin = false,
                     executionId = executionId,
-                    request = QueryResultsRequest(pageSize = 10),
+                    request = QueryResultsRequest(pageSize = pageSize),
                 )
             } catch (error: QueryResultsNotReadyException) {
                 lastError = error
