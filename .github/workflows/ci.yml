@@ -9,18 +9,16 @@ permissions:
   contents: read
 
 jobs:
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Review dependency advisories
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
+  osv-scan:
+    name: OSV Dependency Scan
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8
+    with:
+      upload-sarif: false
+      scan-args: |-
+        --recursive
+        ./
+    permissions:
+      contents: read
 
   backend:
     name: Backend Lint + Build
