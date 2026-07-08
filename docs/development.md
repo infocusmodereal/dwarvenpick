@@ -65,7 +65,7 @@ Query execution is covered by Testcontainers-based integration tests (Postgres, 
 
 To cut a release:
 
-   1. Create a tag:
+1. Create a tag:
 
    ```bash
    git tag v0.6.3
@@ -80,4 +80,15 @@ To build a versioned jar locally without tagging:
 
 ```bash
 DWARVENPICK_VERSION=0.6.3 ./gradlew :backend:app:bootJar
+```
+
+To include release identity metadata in `/api/version`, also pass:
+
+```bash
+DWARVENPICK_VERSION=0.6.3 \
+DWARVENPICK_SOURCE_REF=v0.6.3 \
+DWARVENPICK_SOURCE_SHA="$(git rev-parse HEAD)" \
+DWARVENPICK_IMAGE_TAG=local-dev \
+DWARVENPICK_BUILD_TAG=local-dev \
+./gradlew :backend:app:bootJar
 ```

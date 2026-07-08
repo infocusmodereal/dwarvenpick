@@ -47,12 +47,12 @@ import type {
     GroupAdminMode,
     GroupResponse,
     InspectedObjectType,
+    ControlPlaneDatasourceStatusResponse,
     ManagedDatasourceFormState,
     ManagedCredentialProfileResponse,
     ManagedDatasourceResponse,
     MavenDriverPreset,
     ObjectInspectorResponse,
-    PersistentWorkspaceTab,
     QueryExecutionResponse,
     QueryExecutionStatusResponse,
     QueryHistoryEntryResponse,
@@ -69,7 +69,6 @@ import type {
     ReencryptCredentialsResponse,
     ResultSortDirection,
     ResultSortState,
-    ControlPlaneDatasourceStatusResponse,
     SystemHealthResponse,
     TestConnectionResponse,
     TlsMode,
@@ -79,8 +78,6 @@ import type {
     WorkspaceTab
 } from '../workbench/types';
 import {
-    builtInAuditActions,
-    builtInAuditOutcomes,
     defaultPoolSettings,
     defaultPortByEngine,
     defaultTlsSettings,
@@ -90,8 +87,7 @@ import {
     queryStatusPollingMaxAttempts,
     resultRowHeightPx,
     resultViewportHeightPx,
-    sqlKeywordSuggestions,
-    workspaceTabsStorageKey
+    sqlKeywordSuggestions
 } from '../workbench/constants';
 import {
     adminIdentifierPattern,
@@ -107,6 +103,18 @@ import {
     optionsToInput,
     parseOptionsInput
 } from '../workbench/connectionUtils';
+import { prepareTabForQueryExecution } from '../workbench/queryExecutionState';
+import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
+import {
+    buildCsvExportUrl,
+    buildResultPageUrl,
+    csvExportFileName,
+    nextResultPageRequest,
+    previousResultPageRequest
+} from '../workbench/queryResults';
+import { useControlPlaneState } from '../workbench/useControlPlaneState';
+import { useHistoryAuditFilters } from '../workbench/useHistoryAuditFilters';
+import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
 import {
     EditorTabCloseIcon,
     EditorTabMenuIcon,
@@ -326,75 +334,6 @@ const parseResourceTagsInput = (value: string): string[] =>
 const formatResourceTagsInput = (tags: string[]): string =>
     tags.length > 0 ? `${tags.join(', ')}, ` : '';
 
-const createTabId = (): string => {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-    }
-
-    return `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-const buildWorkspaceTab = (
-    datasourceId: string,
-    title: string,
-    queryText = 'SELECT 1;',
-    resource?: ResourceScriptResponse | null
-): WorkspaceTab => ({
-    id: createTabId(),
-    title,
-    datasourceId,
-    schema: '',
-    resourceId: resource?.resourceId,
-    resourceTitle: resource?.title,
-    resourceScope: resource?.scope,
-    resourceGroupId: resource?.groupId ?? undefined,
-    resourceFolderPath: resource?.folderPath,
-    resourceTags: resource?.tags ?? [],
-    resourceAllowGroupEdit: resource?.allowGroupEdit,
-    resourceOwner: resource?.owner,
-    requestedCredentialProfile: '',
-    queryJustification: '',
-    queryText,
-    isExecuting: false,
-    statusMessage: '',
-    errorMessage: '',
-    lastRunKind: 'query',
-    executionId: '',
-    executionStatus: '',
-    queryHash: '',
-    resultColumns: [],
-    resultRows: [],
-    nextPageToken: '',
-    currentPageToken: '',
-    previousPageTokens: [],
-    rowLimitReached: false,
-    submittedAt: '',
-    startedAt: '',
-    completedAt: '',
-    rowCount: 0,
-    columnCount: 0,
-    maxRowsPerQuery: 0,
-    maxRuntimeSeconds: 0,
-    credentialProfile: '',
-    scriptSummary: null
-});
-
-const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
-    id: tab.id,
-    title: tab.title,
-    datasourceId: tab.datasourceId,
-    schema: tab.schema,
-    queryText: tab.queryText,
-    resourceId: tab.resourceId,
-    resourceTitle: tab.resourceTitle,
-    resourceScope: tab.resourceScope,
-    resourceGroupId: tab.resourceGroupId,
-    resourceFolderPath: tab.resourceFolderPath,
-    resourceTags: tab.resourceTags,
-    resourceAllowGroupEdit: tab.resourceAllowGroupEdit,
-    resourceOwner: tab.resourceOwner
-});
-
 const DetailsSummary = ({ children }: { children: ReactNode }) => (
     <summary className="managed-advanced-summary">
         <span className="managed-advanced-summary-icon" aria-hidden>
@@ -482,13 +421,20 @@ export default function WorkspacePage() {
     const [visibleDatasources, setVisibleDatasources] = useState<CatalogDatasourceResponse[]>([]);
     const [workspaceError, setWorkspaceError] = useState('');
     const [loadingWorkspace, setLoadingWorkspace] = useState(true);
-    const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>([]);
-    const [activeTabId, setActiveTabId] = useState('');
-    const [tabsHydrated, setTabsHydrated] = useState(false);
+    const {
+        activeTab,
+        activeTabId,
+        hydrateWorkspaceTabs,
+        setActiveTabId,
+        setWorkspaceTabs,
+        tabsHydrated,
+        updateWorkspaceTab,
+        workspaceTabs,
+        workspaceTabsRef
+    } = useWorkspaceTabs(visibleDatasources);
     const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
-    const workspaceTabsRef = useRef<WorkspaceTab[]>([]);
     const queryStatusPollingTimersRef = useRef<
         Record<string, ReturnType<typeof setTimeout> | undefined>
     >({});
@@ -643,25 +589,46 @@ export default function WorkspacePage() {
         maxWidth: number;
     } | null>(null);
 
-    const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
-    const [loadingQueryHistory, setLoadingQueryHistory] = useState(false);
-    const [historyDatasourceFilter, setHistoryDatasourceFilter] = useState('');
-    const [historyStatusFilter, setHistoryStatusFilter] = useState('');
-    const [historyFromFilter, setHistoryFromFilter] = useState('');
-    const [historyToFilter, setHistoryToFilter] = useState('');
-    const [historySortOrder, setHistorySortOrder] = useState<'newest' | 'oldest'>('newest');
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize, setHistoryPageSize] = useState(100);
-    const [historyHasNextPage, setHistoryHasNextPage] = useState(false);
-
-    const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
-    const [loadingAuditEvents, setLoadingAuditEvents] = useState(false);
-    const [auditTypeFilter, setAuditTypeFilter] = useState('');
-    const [auditActorFilter, setAuditActorFilter] = useState('');
-    const [auditOutcomeFilter, setAuditOutcomeFilter] = useState('');
-    const [auditFromFilter, setAuditFromFilter] = useState('');
-    const [auditToFilter, setAuditToFilter] = useState('');
-    const [auditSortOrder, setAuditSortOrder] = useState<'newest' | 'oldest'>('newest');
+    const {
+        auditActionOptions,
+        auditActorFilter,
+        auditFromFilter,
+        auditOutcomeFilter,
+        auditOutcomeOptions,
+        auditSortOrder,
+        auditToFilter,
+        auditTypeFilter,
+        historyDatasourceFilter,
+        historyFromFilter,
+        historyHasNextPage,
+        historyPageIndex,
+        historyPageSize,
+        historySortOrder,
+        historyStatusFilter,
+        historyToFilter,
+        loadingAuditEvents,
+        loadingQueryHistory,
+        setAuditActorFilter,
+        setAuditEvents,
+        setAuditFromFilter,
+        setAuditOutcomeFilter,
+        setAuditSortOrder,
+        setAuditToFilter,
+        setAuditTypeFilter,
+        setHistoryDatasourceFilter,
+        setHistoryFromFilter,
+        setHistoryHasNextPage,
+        setHistoryPageIndex,
+        setHistoryPageSize,
+        setHistorySortOrder,
+        setHistoryStatusFilter,
+        setHistoryToFilter,
+        setLoadingAuditEvents,
+        setLoadingQueryHistory,
+        setQueryHistoryEntries,
+        sortedAuditEvents,
+        sortedQueryHistoryEntries
+    } = useHistoryAuditFilters();
 
     const [systemHealthDatasourceId, setSystemHealthDatasourceId] = useState('');
     const [systemHealthCredentialProfile, setSystemHealthCredentialProfile] = useState('');
@@ -671,15 +638,22 @@ export default function WorkspacePage() {
     const [loadingSystemHealth, setLoadingSystemHealth] = useState(false);
     const [systemHealthError, setSystemHealthError] = useState('');
 
-    const [controlPlaneWindowSeconds, setControlPlaneWindowSeconds] = useState(900);
-    const [controlPlaneActorFilter, setControlPlaneActorFilter] = useState('');
-    const [controlPlaneResponse, setControlPlaneResponse] =
-        useState<ControlPlaneDatasourceStatusResponse | null>(null);
-    const [loadingControlPlane, setLoadingControlPlane] = useState(false);
-    const [controlPlaneError, setControlPlaneError] = useState('');
-    const [controlPlaneAutoRefresh, setControlPlaneAutoRefresh] = useState(true);
-    const controlPlanePollingTimerRef = useRef<number | null>(null);
-    const controlPlaneRequestInFlightRef = useRef(false);
+    const {
+        controlPlaneActorFilter,
+        controlPlaneAutoRefresh,
+        controlPlaneError,
+        controlPlanePollingTimerRef,
+        controlPlaneRequestInFlightRef,
+        controlPlaneResponse,
+        controlPlaneWindowSeconds,
+        loadingControlPlane,
+        setControlPlaneActorFilter,
+        setControlPlaneAutoRefresh,
+        setControlPlaneError,
+        setControlPlaneResponse,
+        setControlPlaneWindowSeconds,
+        setLoadingControlPlane
+    } = useControlPlaneState();
 
     const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(
         null
@@ -1544,15 +1518,6 @@ export default function WorkspacePage() {
         };
     }, [activeSection, editorRenderKey, monacoReady]);
 
-    const activeTab = useMemo(
-        () => workspaceTabs.find((tab) => tab.id === activeTabId) ?? null,
-        [activeTabId, workspaceTabs]
-    );
-
-    useEffect(() => {
-        workspaceTabsRef.current = workspaceTabs;
-    }, [workspaceTabs]);
-
     useEffect(() => {
         const activeTabIds = new Set(workspaceTabs.map((tab) => tab.id));
         Object.entries(resourceAutosaveTimerRef.current).forEach(([tabId, timer]) => {
@@ -2042,50 +2007,6 @@ export default function WorkspacePage() {
         [visibleDatasources]
     );
 
-    const auditActionOptions = useMemo(() => {
-        const options = new Set<string>(builtInAuditActions);
-        auditEvents.forEach((event) => {
-            if (event.type.trim()) {
-                options.add(event.type.trim());
-            }
-        });
-        return Array.from(options).sort((left, right) => left.localeCompare(right));
-    }, [auditEvents]);
-
-    const auditOutcomeOptions = useMemo(() => {
-        const options = new Set<string>(builtInAuditOutcomes);
-        auditEvents.forEach((event) => {
-            if (event.outcome.trim()) {
-                options.add(event.outcome.trim());
-            }
-        });
-        return Array.from(options).sort((left, right) => left.localeCompare(right));
-    }, [auditEvents]);
-
-    const sortedQueryHistoryEntries = useMemo(() => {
-        const rows = [...queryHistoryEntries];
-        rows.sort((left, right) => {
-            const leftTimestamp = new Date(left.submittedAt).getTime();
-            const rightTimestamp = new Date(right.submittedAt).getTime();
-            const safeLeft = Number.isFinite(leftTimestamp) ? leftTimestamp : 0;
-            const safeRight = Number.isFinite(rightTimestamp) ? rightTimestamp : 0;
-            return historySortOrder === 'newest' ? safeRight - safeLeft : safeLeft - safeRight;
-        });
-        return rows;
-    }, [historySortOrder, queryHistoryEntries]);
-
-    const sortedAuditEvents = useMemo(() => {
-        const rows = [...auditEvents];
-        rows.sort((left, right) => {
-            const leftTimestamp = new Date(left.timestamp).getTime();
-            const rightTimestamp = new Date(right.timestamp).getTime();
-            const safeLeft = Number.isFinite(leftTimestamp) ? leftTimestamp : 0;
-            const safeRight = Number.isFinite(rightTimestamp) ? rightTimestamp : 0;
-            return auditSortOrder === 'newest' ? safeRight - safeLeft : safeLeft - safeRight;
-        });
-        return rows;
-    }, [auditEvents, auditSortOrder]);
-
     const managedDatasourcesByEngine = useMemo(() => {
         const rows = [...adminManagedDatasources];
         rows.sort((left, right) => {
@@ -2130,126 +2051,6 @@ export default function WorkspacePage() {
         managedDatasourceForm.verifyServerCertificate,
         managedFormOptions
     ]);
-
-    const hydrateWorkspaceTabs = useCallback(
-        (datasources: CatalogDatasourceResponse[]) => {
-            const allowedDatasourceIds = new Set(datasources.map((datasource) => datasource.id));
-            const fallbackDatasourceId = datasources[0]?.id ?? '';
-
-            type PersistedTabsPayload = {
-                activeTabId: string;
-                tabs: PersistentWorkspaceTab[];
-            };
-
-            const fromStorage = (): PersistedTabsPayload | null => {
-                try {
-                    const raw = localStorage.getItem(workspaceTabsStorageKey);
-                    if (!raw) {
-                        return null;
-                    }
-
-                    const parsed = JSON.parse(raw) as PersistedTabsPayload;
-                    if (!Array.isArray(parsed.tabs)) {
-                        return null;
-                    }
-
-                    return parsed;
-                } catch {
-                    return null;
-                }
-            };
-
-            const stored = fromStorage();
-            const hydratedTabs =
-                stored?.tabs
-                    .filter((tab) => typeof tab.id === 'string' && typeof tab.title === 'string')
-                    .map<WorkspaceTab>((tab) => ({
-                        id: tab.id,
-                        title: tab.title.trim() || 'Query',
-                        datasourceId: allowedDatasourceIds.has(tab.datasourceId)
-                            ? tab.datasourceId
-                            : fallbackDatasourceId,
-                        schema: typeof tab.schema === 'string' ? tab.schema : '',
-                        resourceId:
-                            typeof tab.resourceId === 'string' && tab.resourceId.trim()
-                                ? tab.resourceId
-                                : undefined,
-                        resourceTitle:
-                            typeof tab.resourceTitle === 'string' && tab.resourceTitle.trim()
-                                ? tab.resourceTitle
-                                : undefined,
-                        resourceScope:
-                            tab.resourceScope === 'PRIVATE' || tab.resourceScope === 'SHARED'
-                                ? tab.resourceScope
-                                : undefined,
-                        resourceGroupId:
-                            typeof tab.resourceGroupId === 'string' && tab.resourceGroupId.trim()
-                                ? tab.resourceGroupId
-                                : undefined,
-                        resourceFolderPath:
-                            typeof tab.resourceFolderPath === 'string'
-                                ? tab.resourceFolderPath
-                                : undefined,
-                        resourceTags: Array.isArray(tab.resourceTags) ? tab.resourceTags : [],
-                        resourceAllowGroupEdit:
-                            typeof tab.resourceAllowGroupEdit === 'boolean'
-                                ? tab.resourceAllowGroupEdit
-                                : undefined,
-                        resourceOwner:
-                            typeof tab.resourceOwner === 'string' && tab.resourceOwner.trim()
-                                ? tab.resourceOwner
-                                : undefined,
-                        requestedCredentialProfile: '',
-                        queryJustification: '',
-                        queryText: typeof tab.queryText === 'string' ? tab.queryText : 'SELECT 1;',
-                        isExecuting: false,
-                        statusMessage: '',
-                        errorMessage: '',
-                        lastRunKind: 'query',
-                        executionId: '',
-                        executionStatus: '',
-                        queryHash: '',
-                        resultColumns: [],
-                        resultRows: [],
-                        nextPageToken: '',
-                        currentPageToken: '',
-                        previousPageTokens: [],
-                        rowLimitReached: false,
-                        submittedAt: '',
-                        startedAt: '',
-                        completedAt: '',
-                        rowCount: 0,
-                        columnCount: 0,
-                        maxRowsPerQuery: 0,
-                        maxRuntimeSeconds: 0,
-                        credentialProfile: '',
-                        scriptSummary: null
-                    })) ?? [];
-
-            const tabsToUse =
-                hydratedTabs.length > 0
-                    ? hydratedTabs
-                    : [buildWorkspaceTab(fallbackDatasourceId, 'Query 1')];
-            const activeCandidate = stored?.activeTabId ?? '';
-            const resolvedActiveTabId = tabsToUse.some((tab) => tab.id === activeCandidate)
-                ? activeCandidate
-                : tabsToUse[0].id;
-
-            setWorkspaceTabs(tabsToUse);
-            setActiveTabId(resolvedActiveTabId);
-            setTabsHydrated(true);
-        },
-        [setActiveTabId, setTabsHydrated, setWorkspaceTabs]
-    );
-
-    const updateWorkspaceTab = useCallback(
-        (tabId: string, updater: (tab: WorkspaceTab) => WorkspaceTab) => {
-            setWorkspaceTabs((currentTabs) =>
-                currentTabs.map((tab) => (tab.id === tabId ? updater(tab) : tab))
-            );
-        },
-        []
-    );
 
     const buildResourceTabSnapshot = useCallback((tab: WorkspaceTab): string => {
         const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim() || 'Untitled Script';
@@ -2314,86 +2115,40 @@ export default function WorkspacePage() {
                 })
             );
         },
-        []
+        [setWorkspaceTabs]
     );
 
-    const unlinkResourceFromTabs = useCallback((resourceId: string) => {
-        setWorkspaceTabs((currentTabs) =>
-            currentTabs.map((tab) => {
-                if (tab.resourceId !== resourceId) {
-                    return tab;
-                }
+    const unlinkResourceFromTabs = useCallback(
+        (resourceId: string) => {
+            setWorkspaceTabs((currentTabs) =>
+                currentTabs.map((tab) => {
+                    if (tab.resourceId !== resourceId) {
+                        return tab;
+                    }
 
-                delete resourceAutosaveSnapshotRef.current[tab.id];
-                const timer = resourceAutosaveTimerRef.current[tab.id];
-                if (timer) {
-                    window.clearTimeout(timer);
-                    delete resourceAutosaveTimerRef.current[tab.id];
-                }
+                    delete resourceAutosaveSnapshotRef.current[tab.id];
+                    const timer = resourceAutosaveTimerRef.current[tab.id];
+                    if (timer) {
+                        window.clearTimeout(timer);
+                        delete resourceAutosaveTimerRef.current[tab.id];
+                    }
 
-                return {
-                    ...tab,
-                    resourceId: undefined,
-                    resourceTitle: undefined,
-                    resourceScope: undefined,
-                    resourceGroupId: undefined,
-                    resourceFolderPath: undefined,
-                    resourceTags: [],
-                    resourceAllowGroupEdit: undefined,
-                    resourceOwner: undefined
-                };
-            })
-        );
-    }, []);
-
-    useEffect(() => {
-        if (!tabsHydrated) {
-            return;
-        }
-
-        const payload = {
-            activeTabId,
-            tabs: workspaceTabs.map(toPersistentTab)
-        };
-        localStorage.setItem(workspaceTabsStorageKey, JSON.stringify(payload));
-    }, [activeTabId, tabsHydrated, workspaceTabs]);
-
-    useEffect(() => {
-        if (workspaceTabs.length === 0) {
-            return;
-        }
-
-        if (!workspaceTabs.some((tab) => tab.id === activeTabId)) {
-            setActiveTabId(workspaceTabs[0].id);
-        }
-    }, [activeTabId, workspaceTabs]);
-
-    useEffect(() => {
-        if (!tabsHydrated) {
-            return;
-        }
-
-        const permittedDatasourceIds = new Set(
-            visibleDatasources.map((datasource) => datasource.id)
-        );
-        const fallbackDatasourceId = visibleDatasources[0]?.id ?? '';
-
-        setWorkspaceTabs((currentTabs) =>
-            currentTabs.map((tab) => {
-                if (!tab.datasourceId || permittedDatasourceIds.has(tab.datasourceId)) {
-                    return tab;
-                }
-
-                return {
-                    ...tab,
-                    datasourceId: fallbackDatasourceId,
-                    errorMessage:
-                        'Connection access changed. Select a permitted connection before running.',
-                    statusMessage: ''
-                };
-            })
-        );
-    }, [tabsHydrated, visibleDatasources]);
+                    return {
+                        ...tab,
+                        resourceId: undefined,
+                        resourceTitle: undefined,
+                        resourceScope: undefined,
+                        resourceGroupId: undefined,
+                        resourceFolderPath: undefined,
+                        resourceTags: [],
+                        resourceAllowGroupEdit: undefined,
+                        resourceOwner: undefined
+                    };
+                })
+            );
+        },
+        [setWorkspaceTabs]
+    );
 
     useEffect(() => {
         setDatasourceHealthById((current) => {
@@ -3099,7 +2854,10 @@ export default function WorkspacePage() {
         historySortOrder,
         historyStatusFilter,
         historyToFilter,
-        readFriendlyError
+        readFriendlyError,
+        setHistoryHasNextPage,
+        setLoadingQueryHistory,
+        setQueryHistoryEntries
     ]);
 
     const loadAuditEvents = useCallback(async () => {
@@ -3153,7 +2911,9 @@ export default function WorkspacePage() {
         auditToFilter,
         auditTypeFilter,
         isSystemAdmin,
-        readFriendlyError
+        readFriendlyError,
+        setAuditEvents,
+        setLoadingAuditEvents
     ]);
 
     const loadSystemHealth = useCallback(async () => {
@@ -3241,7 +3001,16 @@ export default function WorkspacePage() {
                 setLoadingControlPlane(false);
             }
         },
-        [controlPlaneWindowSeconds, isSystemAdmin, readFriendlyError, systemHealthDatasourceId]
+        [
+            controlPlaneRequestInFlightRef,
+            controlPlaneWindowSeconds,
+            isSystemAdmin,
+            readFriendlyError,
+            setControlPlaneError,
+            setControlPlaneResponse,
+            setLoadingControlPlane,
+            systemHealthDatasourceId
+        ]
     );
 
     const handleControlPlanePause = useCallback(async () => {
@@ -3275,7 +3044,14 @@ export default function WorkspacePage() {
         } finally {
             setLoadingControlPlane(false);
         }
-    }, [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError, systemHealthDatasourceId]);
+    }, [
+        fetchCsrfToken,
+        loadControlPlaneStatus,
+        readFriendlyError,
+        setControlPlaneError,
+        setLoadingControlPlane,
+        systemHealthDatasourceId
+    ]);
 
     const handleControlPlaneResume = useCallback(async () => {
         const resolvedDatasourceId = systemHealthDatasourceId.trim();
@@ -3308,7 +3084,14 @@ export default function WorkspacePage() {
         } finally {
             setLoadingControlPlane(false);
         }
-    }, [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError, systemHealthDatasourceId]);
+    }, [
+        fetchCsrfToken,
+        loadControlPlaneStatus,
+        readFriendlyError,
+        setControlPlaneError,
+        setLoadingControlPlane,
+        systemHealthDatasourceId
+    ]);
 
     const handleControlPlaneCancelAll = useCallback(async () => {
         const resolvedDatasourceId = systemHealthDatasourceId.trim();
@@ -3352,6 +3135,8 @@ export default function WorkspacePage() {
         fetchCsrfToken,
         loadControlPlaneStatus,
         readFriendlyError,
+        setControlPlaneError,
+        setLoadingControlPlane,
         systemHealthDatasourceId
     ]);
 
@@ -3397,6 +3182,8 @@ export default function WorkspacePage() {
         fetchCsrfToken,
         loadControlPlaneStatus,
         readFriendlyError,
+        setControlPlaneError,
+        setLoadingControlPlane,
         systemHealthDatasourceId
     ]);
 
@@ -3431,7 +3218,13 @@ export default function WorkspacePage() {
                 setLoadingControlPlane(false);
             }
         },
-        [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError]
+        [
+            fetchCsrfToken,
+            loadControlPlaneStatus,
+            readFriendlyError,
+            setControlPlaneError,
+            setLoadingControlPlane
+        ]
     );
 
     const handleControlPlaneKillExecution = useCallback(
@@ -3468,7 +3261,13 @@ export default function WorkspacePage() {
                 setLoadingControlPlane(false);
             }
         },
-        [fetchCsrfToken, loadControlPlaneStatus, readFriendlyError]
+        [
+            fetchCsrfToken,
+            loadControlPlaneStatus,
+            readFriendlyError,
+            setControlPlaneError,
+            setLoadingControlPlane
+        ]
     );
 
     const handleControlPlaneExportCsv = useCallback(() => {
@@ -3551,6 +3350,7 @@ export default function WorkspacePage() {
     }, [
         activeSection,
         controlPlaneAutoRefresh,
+        controlPlanePollingTimerRef,
         isSystemAdmin,
         loadControlPlaneStatus,
         systemHealthDatasourceId
@@ -3974,7 +3774,7 @@ export default function WorkspacePage() {
             });
             setActiveSection('workbench');
         },
-        [visibleDatasources]
+        [setActiveTabId, setWorkspaceTabs, visibleDatasources]
     );
 
     const handleOpenNewTab = useCallback(() => {
@@ -4007,20 +3807,23 @@ export default function WorkspacePage() {
         [updateWorkspaceTab, workspaceTabs]
     );
 
-    const handleDuplicateTab = useCallback((tabId: string) => {
-        const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
-        if (!tab) {
-            return;
-        }
+    const handleDuplicateTab = useCallback(
+        (tabId: string) => {
+            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            if (!tab) {
+                return;
+            }
 
-        const duplicateTab: WorkspaceTab = {
-            ...buildWorkspaceTab(tab.datasourceId, `${tab.title} Copy`, tab.queryText),
-            schema: tab.schema
-        };
+            const duplicateTab: WorkspaceTab = {
+                ...buildWorkspaceTab(tab.datasourceId, `${tab.title} Copy`, tab.queryText),
+                schema: tab.schema
+            };
 
-        setWorkspaceTabs((currentTabs) => [...currentTabs, duplicateTab]);
-        setActiveTabId(duplicateTab.id);
-    }, []);
+            setWorkspaceTabs((currentTabs) => [...currentTabs, duplicateTab]);
+            setActiveTabId(duplicateTab.id);
+        },
+        [setActiveTabId, setWorkspaceTabs, workspaceTabsRef]
+    );
 
     const clearQueryStatusPolling = useCallback((tabId: string) => {
         const timer = queryStatusPollingTimersRef.current[tabId];
@@ -4037,14 +3840,8 @@ export default function WorkspacePage() {
             pageToken = firstPageToken,
             previousPageTokens?: string[]
         ) => {
-            const queryParams = new URLSearchParams();
-            queryParams.set('pageSize', resultsPageSize.toString());
-            if (pageToken) {
-                queryParams.set('pageToken', pageToken);
-            }
-
             const response = await fetch(
-                `/api/queries/${executionId}/results?${queryParams.toString()}`,
+                buildResultPageUrl(executionId, resultsPageSize, pageToken),
                 {
                     method: 'GET',
                     credentials: 'include'
@@ -4216,7 +4013,13 @@ export default function WorkspacePage() {
 
             void poll();
         },
-        [clearQueryStatusPolling, fetchExecutionStatus, loadQueryHistory, updateWorkspaceTab]
+        [
+            clearQueryStatusPolling,
+            fetchExecutionStatus,
+            loadQueryHistory,
+            updateWorkspaceTab,
+            workspaceTabsRef
+        ]
     );
 
     const handleCancelRun = useCallback(
@@ -4262,7 +4065,8 @@ export default function WorkspacePage() {
             fetchCsrfToken,
             fetchExecutionStatus,
             readFriendlyError,
-            updateWorkspaceTab
+            updateWorkspaceTab,
+            workspaceTabsRef
         ]
     );
 
@@ -4305,7 +4109,15 @@ export default function WorkspacePage() {
                 return remainingTabs;
             });
         },
-        [activeTabId, clearQueryStatusPolling, handleCancelRun, visibleDatasources, workspaceTabs]
+        [
+            activeTabId,
+            clearQueryStatusPolling,
+            handleCancelRun,
+            setActiveTabId,
+            setWorkspaceTabs,
+            visibleDatasources,
+            workspaceTabs
+        ]
     );
 
     const clearValidationMarkers = useCallback(() => {
@@ -4368,62 +4180,23 @@ export default function WorkspacePage() {
             }
 
             clearValidationMarkers();
-            updateWorkspaceTab(tabId, (currentTab) => ({
-                ...currentTab,
-                isExecuting: true,
-                executionId: '',
-                executionStatus: '',
-                queryHash: '',
-                lastRunKind: runKind,
-                resultColumns: [],
-                resultRows: [],
-                nextPageToken: '',
-                currentPageToken: firstPageToken,
-                previousPageTokens: [],
-                rowLimitReached: false,
-                submittedAt: '',
-                startedAt: '',
-                completedAt: '',
-                rowCount: 0,
-                columnCount: 0,
-                maxRowsPerQuery: 0,
-                maxRuntimeSeconds: 0,
-                credentialProfile: '',
-                scriptSummary: null,
-                statusMessage:
-                    modeLabel === 'selection'
-                        ? 'Running selected SQL...'
-                        : modeLabel === 'statement'
-                          ? 'Running statement at cursor...'
-                          : modeLabel === 'script'
-                            ? 'Running script...'
-                            : modeLabel === 'explain'
-                              ? 'Running EXPLAIN...'
-                              : modeLabel === 'analyze'
-                                ? 'Running analysis...'
-                                : 'Running full tab SQL...',
-                errorMessage: ''
-            }));
+            updateWorkspaceTab(tabId, (currentTab) =>
+                prepareTabForQueryExecution(currentTab, modeLabel, runKind)
+            );
 
             try {
                 const csrfToken = await fetchCsrfToken();
-                const requestPayload: Record<string, unknown> = {
+                const requestPayload = buildQueryExecutionPayload(
+                    tab,
                     datasourceId,
-                    sql: normalizedSql
-                };
-                const requestedCredentialProfile = tab.requestedCredentialProfile.trim();
-                if (isSystemAdmin && requestedCredentialProfile) {
-                    requestPayload.credentialProfile = requestedCredentialProfile;
-                }
-                const queryJustification = tab.queryJustification.trim();
-                if (queryJustification) {
-                    requestPayload.justification = queryJustification;
-                }
-                if (modeLabel === 'script') {
-                    requestPayload.scriptMode = true;
-                    requestPayload.stopOnError = scriptStopOnError;
-                    requestPayload.transactionMode = scriptTransactionMode;
-                }
+                    normalizedSql,
+                    {
+                        includeCredentialProfile: isSystemAdmin,
+                        modeLabel,
+                        scriptStopOnError,
+                        scriptTransactionMode
+                    }
+                );
                 const response = await fetch('/api/queries', {
                     method: 'POST',
                     credentials: 'include',
@@ -4469,7 +4242,8 @@ export default function WorkspacePage() {
             scriptTransactionMode,
             startQueryStatusPolling,
             updateWorkspaceTab,
-            visibleDatasources
+            visibleDatasources,
+            workspaceTabsRef
         ]
     );
 
@@ -4569,31 +4343,38 @@ export default function WorkspacePage() {
     }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, selectedDatasource?.engine]);
 
     const handleLoadNextResults = useCallback(() => {
-        if (!activeTab || !activeTab.executionId || !activeTab.nextPageToken) {
+        if (!activeTab) {
             return;
         }
 
-        const updatedHistory = [...activeTab.previousPageTokens, activeTab.currentPageToken];
+        const request = nextResultPageRequest(activeTab);
+        if (!request) {
+            return;
+        }
+
         void fetchQueryResultsPage(
             activeTab.id,
             activeTab.executionId,
-            activeTab.nextPageToken,
-            updatedHistory
+            request.pageToken,
+            request.previousPageTokens
         );
     }, [activeTab, fetchQueryResultsPage]);
 
     const handleLoadPreviousResults = useCallback(() => {
-        if (!activeTab || !activeTab.executionId || activeTab.previousPageTokens.length === 0) {
+        if (!activeTab) {
             return;
         }
 
-        const updatedHistory = [...activeTab.previousPageTokens];
-        const previousToken = updatedHistory.pop() ?? firstPageToken;
+        const request = previousResultPageRequest(activeTab);
+        if (!request) {
+            return;
+        }
+
         void fetchQueryResultsPage(
             activeTab.id,
             activeTab.executionId,
-            previousToken,
-            updatedHistory
+            request.pageToken,
+            request.previousPageTokens
         );
     }, [activeTab, fetchQueryResultsPage]);
 
@@ -4707,11 +4488,8 @@ export default function WorkspacePage() {
 
         setExportingCsv(true);
         try {
-            const queryParams = new URLSearchParams();
-            queryParams.set('headers', exportIncludeHeaders ? 'true' : 'false');
-
             const response = await fetch(
-                `/api/queries/${activeTab.executionId}/export.csv?${queryParams.toString()}`,
+                buildCsvExportUrl(activeTab.executionId, exportIncludeHeaders),
                 {
                     method: 'GET',
                     credentials: 'include'
@@ -4723,9 +4501,10 @@ export default function WorkspacePage() {
 
             const blob = await response.blob();
             const fallbackName = `query-${activeTab.executionId}.csv`;
-            const disposition = response.headers.get('Content-Disposition') ?? '';
-            const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
-            const fileName = fileNameMatch?.[1] ?? fallbackName;
+            const fileName = csvExportFileName(
+                response.headers.get('Content-Disposition'),
+                fallbackName
+            );
 
             const objectUrl = window.URL.createObjectURL(blob);
             const anchor = document.createElement('a');
@@ -4777,7 +4556,7 @@ export default function WorkspacePage() {
                 }, 0);
             }
         },
-        [executeSqlForTab, visibleDatasources]
+        [executeSqlForTab, setActiveTabId, setWorkspaceTabs, visibleDatasources, workspaceTabsRef]
     );
 
     const handleInsertTextIntoActiveQuery = useCallback(
@@ -4933,14 +4712,12 @@ export default function WorkspacePage() {
         setValidatingSql(true);
         try {
             const csrfToken = await fetchCsrfToken();
-            const requestPayload: Record<string, unknown> = {
+            const requestPayload = buildQueryValidationPayload(
+                activeTab,
                 datasourceId,
-                sql
-            };
-            const requestedCredentialProfile = activeTab.requestedCredentialProfile.trim();
-            if (isSystemAdmin && requestedCredentialProfile) {
-                requestPayload.credentialProfile = requestedCredentialProfile;
-            }
+                sql,
+                isSystemAdmin
+            );
 
             const response = await fetch('/api/queries/validate', {
                 method: 'POST',
@@ -5039,7 +4816,8 @@ export default function WorkspacePage() {
             fetchCsrfToken,
             readFriendlyError,
             replaceVisibleResource,
-            syncResourceToTabs
+            syncResourceToTabs,
+            workspaceTabsRef
         ]
     );
 
@@ -5249,8 +5027,10 @@ export default function WorkspacePage() {
         resourceEditorMode,
         resourceFormSourceTabId,
         resourceFormState,
+        setActiveTabId,
         syncResourceToTabs,
-        updateWorkspaceTab
+        updateWorkspaceTab,
+        workspaceTabsRef
     ]);
 
     const handleOpenResource = useCallback(
@@ -5328,8 +5108,11 @@ export default function WorkspacePage() {
             buildResourceTabSnapshot,
             executeSqlForTab,
             loadResourceDetail,
+            setActiveTabId,
+            setWorkspaceTabs,
             syncResourceToTabs,
-            visibleDatasources
+            visibleDatasources,
+            workspaceTabsRef
         ]
     );
 
@@ -5499,7 +5282,8 @@ export default function WorkspacePage() {
             loadResources,
             readFriendlyError,
             replaceVisibleResource,
-            updateWorkspaceTab
+            updateWorkspaceTab,
+            workspaceTabsRef
         ]
     );
 
@@ -5827,7 +5611,13 @@ export default function WorkspacePage() {
                 queryEventsRef.current = null;
             }
         };
-    }, [clearQueryStatusPolling, fetchExecutionStatus, tabsHydrated, updateWorkspaceTab]);
+    }, [
+        clearQueryStatusPolling,
+        fetchExecutionStatus,
+        tabsHydrated,
+        updateWorkspaceTab,
+        workspaceTabsRef
+    ]);
 
     useEffect(
         () => () => {

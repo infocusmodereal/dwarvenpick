@@ -236,6 +236,58 @@ class QueryExecutionManagerContainerTests {
     }
 
     @Test
+    fun `mysql execution applies default schema for unqualified table names`() {
+        val datasourceId = registerMysqlDatasourceWithoutDatabase()
+        val actor = "tc-mysql-default-schema-user"
+        val schemaName = mysqlContainer.databaseName
+
+        DriverManager
+            .getConnection(
+                mysqlContainer.jdbcUrl,
+                mysqlContainer.username,
+                mysqlContainer.password,
+            ).use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS adUnits (
+                            adUnitId int primary key,
+                            name varchar(32) not null
+                        )
+                        """.trimIndent(),
+                    )
+                    statement.execute("DELETE FROM adUnits")
+                    statement.execute("INSERT INTO adUnits VALUES (1, 'leaderboard')")
+                }
+            }
+
+        val submitted =
+            queryExecutionManager.submitQuery(
+                actor = actor,
+                ipAddress = "127.0.0.1",
+                request =
+                    QueryExecutionRequest(
+                        datasourceId = datasourceId,
+                        sql = "select * from adUnits limit 50",
+                        defaultSchema = schemaName,
+                    ),
+                policy = defaultPolicy(),
+            )
+
+        val terminal = waitForTerminalStatus(actor, submitted.executionId)
+        assertThat(terminal.status).isEqualTo("SUCCEEDED")
+
+        val results =
+            queryExecutionManager.getQueryResults(
+                actor = actor,
+                isSystemAdmin = false,
+                executionId = submitted.executionId,
+                request = QueryResultsRequest(pageSize = 10),
+            )
+        assertThat(results.rows).containsExactly(listOf("1", "leaderboard"))
+    }
+
+    @Test
     fun `trino execution succeeds against containerized datasource`() {
         val datasourceId = registerTrinoDatasource()
         val actor = "tc-trino-user"
@@ -437,6 +489,31 @@ class QueryExecutionManagerContainerTests {
                     username = mysqlContainer.username,
                     password = mysqlContainer.password,
                     description = "Testcontainers mysql profile",
+                ),
+        )
+        return created.id
+    }
+
+    private fun registerMysqlDatasourceWithoutDatabase(): String {
+        val created =
+            datasourceRegistryService.createDatasource(
+                CreateDatasourceRequest(
+                    name = "MySQL TC No Database",
+                    engine = DatasourceEngine.MYSQL,
+                    host = mysqlContainer.host,
+                    port = mysqlContainer.getMappedPort(MySQLContainer.MYSQL_PORT),
+                    database = null,
+                    driverId = "mysql-default",
+                ),
+            )
+        datasourceRegistryService.upsertCredentialProfile(
+            datasourceId = created.id,
+            profileId = "admin-ro",
+            request =
+                UpsertCredentialProfileRequest(
+                    username = mysqlContainer.username,
+                    password = mysqlContainer.password,
+                    description = "Testcontainers mysql profile without default database",
                 ),
         )
         return created.id

@@ -17,6 +17,10 @@ export type VersionResponse = {
     artifact: string;
     group: string;
     buildTime: string;
+    sourceSha: string;
+    sourceRef: string;
+    imageTag: string;
+    buildTag: string;
 };
 
 export type CatalogDatasourceResponse = {

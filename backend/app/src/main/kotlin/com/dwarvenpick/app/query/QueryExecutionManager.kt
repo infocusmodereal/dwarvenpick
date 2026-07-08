@@ -107,6 +107,7 @@ private data class QueryExecutionRecord(
     val datasourceId: String,
     val credentialProfile: String,
     val justification: String?,
+    val defaultSchema: String?,
     val sql: String,
     val queryHash: String,
     val maxRowsPerQuery: Int,
@@ -133,6 +134,8 @@ private data class QueryExecutionRecord(
     @Volatile var resultsExpired: Boolean,
     @Volatile var cancelRequested: Boolean,
     @Volatile var activeStatement: Statement?,
+    @Volatile var activeConnectionHandle: QueryConnectionHandle?,
+    @Volatile var activeConnectionRequiresEviction: Boolean,
     @Volatile var activeConnection: Connection?,
     @Volatile var executionFuture: Future<*>?,
     val activeExportCount: AtomicInteger = AtomicInteger(0),
@@ -238,6 +241,7 @@ class QueryExecutionManager(
             )
         }
         val justification = normalizeQueryJustification(request.justification)
+        val defaultSchema = QueryDefaultSchema.normalize(request.defaultSchema)
         enforceWriteJustification(
             actor = actor,
             ipAddress = ipAddress,
@@ -287,6 +291,7 @@ class QueryExecutionManager(
                     datasourceId = request.datasourceId.trim(),
                     credentialProfile = policy.credentialProfile,
                     justification = justification,
+                    defaultSchema = defaultSchema,
                     sql = normalizedSql,
                     queryHash = queryHash,
                     maxRowsPerQuery = maxRows,
@@ -313,6 +318,8 @@ class QueryExecutionManager(
                     resultsExpired = false,
                     cancelRequested = false,
                     activeStatement = null,
+                    activeConnectionHandle = null,
+                    activeConnectionRequiresEviction = false,
                     activeConnection = null,
                     executionFuture = null,
                 )
@@ -406,7 +413,7 @@ class QueryExecutionManager(
         if (graceDelayMs > 0) {
             Thread.sleep(graceDelayMs.coerceAtMost(1000))
         }
-        runCatching { record.activeConnection?.close() }
+        closeActiveConnection(record)
         record.executionFuture?.cancel(true)
 
         if (record.status == QueryExecutionStatus.RUNNING) {
@@ -481,7 +488,7 @@ class QueryExecutionManager(
         }
 
         runCatching { record.activeStatement?.cancel() }
-        runCatching { record.activeConnection?.close() }
+        closeActiveConnection(record)
         record.executionFuture?.cancel(true)
 
         if (record.status == QueryExecutionStatus.RUNNING) {
@@ -861,7 +868,7 @@ class QueryExecutionManager(
         inFlightExecutions.forEach { record ->
             record.cancelRequested = true
             runCatching { record.activeStatement?.cancel() }
-            runCatching { record.activeConnection?.close() }
+            closeActiveConnection(record)
             record.executionFuture?.cancel(true)
         }
 
@@ -977,48 +984,64 @@ class QueryExecutionManager(
                 datasourceId = record.datasourceId,
                 credentialProfile = record.credentialProfile,
             )
+        record.activeConnectionHandle = handle
         record.activeConnection = handle.connection
 
-        val statement =
-            createQueryStatement(handle).apply {
-                queryTimeout = record.maxRuntimeSeconds
-                runCatching {
-                    maxFieldSize = jdbcFieldSizeLimit(record.maxCellBytes)
-                }.onFailure { exception ->
-                    logger.debug("JDBC driver rejected query max field size.", exception)
+        val defaultSchemaScope =
+            QueryDefaultSchema.apply(
+                connection = handle.connection,
+                engine = handle.spec.engine,
+                defaultSchema = record.defaultSchema,
+            )
+        record.activeConnectionRequiresEviction = defaultSchemaScope.evictConnectionOnClose
+
+        try {
+            val statement =
+                createQueryStatement(handle).apply {
+                    queryTimeout = record.maxRuntimeSeconds
+                    runCatching {
+                        maxFieldSize = jdbcFieldSizeLimit(record.maxCellBytes)
+                    }.onFailure { exception ->
+                        logger.debug("JDBC driver rejected query max field size.", exception)
+                    }
+                    runCatching {
+                        fetchSize = jdbcFetchSizeFor(handle)
+                    }.onFailure { exception ->
+                        logger.debug("JDBC driver rejected query fetch size.", exception)
+                    }
                 }
-                runCatching {
-                    fetchSize = jdbcFetchSizeFor(handle)
-                }.onFailure { exception ->
-                    logger.debug("JDBC driver rejected query fetch size.", exception)
-                }
+            record.activeStatement = statement
+            val statementSegments =
+                SqlStatementSplitter
+                    .splitSqlStatements(record.sql)
+                    .filter { segment ->
+                        SqlSafety
+                            .stripLeadingSqlComments(segment.sql)
+                            .trim()
+                            .trimStart(';')
+                            .isNotBlank()
+                    }
+
+            if (statementSegments.isEmpty()) {
+                throw IllegalArgumentException("SQL is empty.")
             }
-        record.activeStatement = statement
-        val statementSegments =
-            SqlStatementSplitter
-                .splitSqlStatements(record.sql)
-                .filter { segment ->
-                    SqlSafety
-                        .stripLeadingSqlComments(segment.sql)
-                        .trim()
-                        .trimStart(';')
-                        .isNotBlank()
-                }
 
-        if (statementSegments.isEmpty()) {
-            throw IllegalArgumentException("SQL is empty.")
+            record.scriptStatements.clear()
+            val isScript = statementSegments.size > 1
+            val cancelOnEarlyResultLimit = shouldStreamMysqlResults(handle)
+
+            if (!isScript) {
+                executeStatementAndBuffer(record, statement, statementSegments[0].sql, cancelOnEarlyResultLimit)
+                return
+            }
+
+            executeScript(record, handle.connection, statement, statementSegments, cancelOnEarlyResultLimit)
+        } finally {
+            defaultSchemaScope.close()
+            if (defaultSchemaScope.evictConnectionOnClose) {
+                record.activeConnectionRequiresEviction = true
+            }
         }
-
-        record.scriptStatements.clear()
-        val isScript = statementSegments.size > 1
-        val cancelOnEarlyResultLimit = shouldStreamMysqlResults(handle)
-
-        if (!isScript) {
-            executeStatementAndBuffer(record, statement, statementSegments[0].sql, cancelOnEarlyResultLimit)
-            return
-        }
-
-        executeScript(record, handle.connection, statement, statementSegments, cancelOnEarlyResultLimit)
     }
 
     private fun executeScript(
@@ -1928,8 +1951,19 @@ class QueryExecutionManager(
 
     private fun closeRuntimeResources(record: QueryExecutionRecord) {
         runCatching { record.activeStatement?.close() }
-        runCatching { record.activeConnection?.close() }
         record.activeStatement = null
+        closeActiveConnection(record)
+    }
+
+    private fun closeActiveConnection(record: QueryExecutionRecord) {
+        val handle = record.activeConnectionHandle
+        if (handle != null) {
+            runCatching { handle.close(evict = record.activeConnectionRequiresEviction) }
+        } else {
+            runCatching { record.activeConnection?.close() }
+        }
+        record.activeConnectionHandle = null
+        record.activeConnectionRequiresEviction = false
         record.activeConnection = null
     }
 

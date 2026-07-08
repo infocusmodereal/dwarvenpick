@@ -91,6 +91,9 @@ jobs:
       - name: Build backend jar (versioned)
         env:
           DWARVENPICK_VERSION: ${{ steps.version.outputs.version }}
+          DWARVENPICK_SOURCE_SHA: ${{ github.sha }}
+          DWARVENPICK_SOURCE_REF: ${{ steps.version.outputs.tag }}
+          DWARVENPICK_BUILD_TAG: github-${{ github.run_id }}
         run: ./gradlew :backend:app:bootJar
 
       - name: Package Helm chart (versioned)

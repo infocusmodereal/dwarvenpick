@@ -35,6 +35,10 @@ data class QueryExecutionRequest(
      */
     val justification: String? = null,
     /**
+     * Optional default schema/database to apply for unqualified object names during this execution.
+     */
+    val defaultSchema: String? = null,
+    /**
      * When true, the backend will split SQL into statements and execute them sequentially.
      *
      * Notes:

@@ -7,6 +7,8 @@ plugins {
 
 extra["testcontainers.version"] = "1.21.0"
 
+fun releaseMetadataValue(name: String): String = System.getenv(name)?.trim()?.takeIf { it.isNotBlank() } ?: "unknown"
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
@@ -42,7 +44,17 @@ dependencies {
 }
 
 springBoot {
-    buildInfo()
+    buildInfo {
+        properties {
+            additional =
+                mapOf(
+                    "source.sha" to releaseMetadataValue("DWARVENPICK_SOURCE_SHA"),
+                    "source.ref" to releaseMetadataValue("DWARVENPICK_SOURCE_REF"),
+                    "image.tag" to releaseMetadataValue("DWARVENPICK_IMAGE_TAG"),
+                    "build.tag" to releaseMetadataValue("DWARVENPICK_BUILD_TAG"),
+                )
+        }
+    }
 }
 
 kotlin {
