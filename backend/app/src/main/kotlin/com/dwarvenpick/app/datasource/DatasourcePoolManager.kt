@@ -14,7 +14,16 @@ import java.util.concurrent.ConcurrentHashMap
 data class QueryConnectionHandle(
     val spec: ConnectionSpec,
     val connection: Connection,
-)
+) {
+    internal var pool: HikariDataSource? = null
+
+    fun close(evict: Boolean = false) {
+        if (evict) {
+            pool?.evictConnection(connection)
+        }
+        connection.close()
+    }
+}
 
 @Service
 class DatasourcePoolManager(
@@ -118,7 +127,7 @@ class DatasourcePoolManager(
         return QueryConnectionHandle(
             spec = spec,
             connection = pool.connection,
-        )
+        ).also { handle -> handle.pool = pool }
     }
 
     private fun getOrCreatePool(spec: ConnectionSpec): HikariDataSource {

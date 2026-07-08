@@ -34,32 +34,49 @@ class QueryValidationService(
             )
         }
 
+        val defaultSchema = QueryDefaultSchema.normalize(request.defaultSchema)
         val handle =
             datasourcePoolManager.openConnection(
                 datasourceId = request.datasourceId.trim(),
                 credentialProfile = policy.credentialProfile,
             )
 
-        return handle.connection.use { connection ->
+        var evictConnection = false
+        return try {
+            val defaultSchemaScope =
+                QueryDefaultSchema.apply(
+                    connection = handle.connection,
+                    engine = handle.spec.engine,
+                    defaultSchema = defaultSchema,
+                )
+            evictConnection = defaultSchemaScope.evictConnectionOnClose
             // Prefer EXPLAIN-based validation for SELECT-like statements so we avoid executing work.
             val explainSql = buildExplainSql(engine = handle.spec.engine, sql = sql)
-            runCatching {
-                connection.createStatement().use { statement ->
-                    statement.queryTimeout = 10
-                    statement.execute(explainSql)
+            val response =
+                runCatching {
+                    handle.connection.createStatement().use { statement ->
+                        statement.queryTimeout = 10
+                        statement.execute(explainSql)
+                    }
+                    QueryValidationResponse(valid = true, message = "Validation succeeded.")
+                }.getOrElse { exception ->
+                    val message = sanitizeErrorMessage(exception.message ?: "Validation failed.")
+                    val position = extractErrorPosition(sql, exception)
+                    QueryValidationResponse(
+                        valid = false,
+                        message = message,
+                        line = position?.line,
+                        column = position?.column,
+                        position = position?.position,
+                    )
                 }
-                QueryValidationResponse(valid = true, message = "Validation succeeded.")
-            }.getOrElse { exception ->
-                val message = sanitizeErrorMessage(exception.message ?: "Validation failed.")
-                val position = extractErrorPosition(sql, exception)
-                QueryValidationResponse(
-                    valid = false,
-                    message = message,
-                    line = position?.line,
-                    column = position?.column,
-                    position = position?.position,
-                )
+            defaultSchemaScope.close()
+            if (defaultSchemaScope.evictConnectionOnClose) {
+                evictConnection = true
             }
+            response
+        } finally {
+            handle.close(evict = evictConnection)
         }
     }
 

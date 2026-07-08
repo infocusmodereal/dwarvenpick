@@ -13,6 +13,10 @@ data class QueryValidationRequest(
      * When omitted, the backend resolves the effective credential profile via RBAC rules (or SYSTEM_ADMIN defaults).
      */
     val credentialProfile: String? = null,
+    /**
+     * Optional default schema/database to apply for unqualified object names while validating.
+     */
+    val defaultSchema: String? = null,
 )
 
 data class QueryValidationResponse(

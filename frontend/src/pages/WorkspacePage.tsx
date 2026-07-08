@@ -107,6 +107,7 @@ import {
     optionsToInput,
     parseOptionsInput
 } from '../workbench/connectionUtils';
+import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
 import {
     EditorTabCloseIcon,
     EditorTabMenuIcon,
@@ -4407,23 +4408,17 @@ export default function WorkspacePage() {
 
             try {
                 const csrfToken = await fetchCsrfToken();
-                const requestPayload: Record<string, unknown> = {
+                const requestPayload = buildQueryExecutionPayload(
+                    tab,
                     datasourceId,
-                    sql: normalizedSql
-                };
-                const requestedCredentialProfile = tab.requestedCredentialProfile.trim();
-                if (isSystemAdmin && requestedCredentialProfile) {
-                    requestPayload.credentialProfile = requestedCredentialProfile;
-                }
-                const queryJustification = tab.queryJustification.trim();
-                if (queryJustification) {
-                    requestPayload.justification = queryJustification;
-                }
-                if (modeLabel === 'script') {
-                    requestPayload.scriptMode = true;
-                    requestPayload.stopOnError = scriptStopOnError;
-                    requestPayload.transactionMode = scriptTransactionMode;
-                }
+                    normalizedSql,
+                    {
+                        includeCredentialProfile: isSystemAdmin,
+                        modeLabel,
+                        scriptStopOnError,
+                        scriptTransactionMode
+                    }
+                );
                 const response = await fetch('/api/queries', {
                     method: 'POST',
                     credentials: 'include',
@@ -4933,14 +4928,12 @@ export default function WorkspacePage() {
         setValidatingSql(true);
         try {
             const csrfToken = await fetchCsrfToken();
-            const requestPayload: Record<string, unknown> = {
+            const requestPayload = buildQueryValidationPayload(
+                activeTab,
                 datasourceId,
-                sql
-            };
-            const requestedCredentialProfile = activeTab.requestedCredentialProfile.trim();
-            if (isSystemAdmin && requestedCredentialProfile) {
-                requestPayload.credentialProfile = requestedCredentialProfile;
-            }
+                sql,
+                isSystemAdmin
+            );
 
             const response = await fetch('/api/queries/validate', {
                 method: 'POST',
