@@ -10,6 +10,8 @@ class StarRocksSqlNamesTests {
 
         assertThat(schema.displayName).isEqualTo("warehouse")
         assertThat(schema.qualifiedSchemaName()).isEqualTo("`warehouse`")
+        assertThat(schema.qualifiedSchemaName(includeDefaultCatalog = true))
+            .isEqualTo("`default_catalog`.`warehouse`")
         assertThat(schema.qualifiedObjectName("customers")).isEqualTo("`warehouse`.`customers`")
     }
 
@@ -19,6 +21,8 @@ class StarRocksSqlNamesTests {
 
         assertThat(schema.displayName).isEqualTo("message_archiver_lakehouse.platform_events")
         assertThat(schema.qualifiedSchemaName())
+            .isEqualTo("`message_archiver_lakehouse`.`platform_events`")
+        assertThat(schema.qualifiedSchemaName(includeDefaultCatalog = true))
             .isEqualTo("`message_archiver_lakehouse`.`platform_events`")
         assertThat(schema.qualifiedObjectName("deals__events"))
             .isEqualTo("`message_archiver_lakehouse`.`platform_events`.`deals__events`")
