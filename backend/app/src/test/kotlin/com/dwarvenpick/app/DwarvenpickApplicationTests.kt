@@ -124,6 +124,10 @@ class DwarvenpickApplicationTests {
             .andExpect(jsonPath("$.artifact").isString())
             .andExpect(jsonPath("$.group").isString())
             .andExpect(jsonPath("$.buildTime").isString())
+            .andExpect(jsonPath("$.sourceSha").isString())
+            .andExpect(jsonPath("$.sourceRef").isString())
+            .andExpect(jsonPath("$.imageTag").isString())
+            .andExpect(jsonPath("$.buildTag").isString())
     }
 
     @Test
