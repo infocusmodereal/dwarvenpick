@@ -36,9 +36,13 @@ internal fun quoteStarRocksIdentifier(identifier: String): String = "`" + identi
 
 internal fun buildStarRocksQualifiedName(parts: List<String>): String = parts.joinToString(".") { part -> quoteStarRocksIdentifier(part) }
 
-internal fun StarRocksSchemaRef.qualifiedSchemaName(): String =
+internal fun StarRocksSchemaRef.qualifiedSchemaName(includeDefaultCatalog: Boolean = false): String =
     if (catalog.isNullOrBlank() || isStarRocksDefaultCatalog(catalog)) {
-        buildStarRocksQualifiedName(listOf(database))
+        if (includeDefaultCatalog) {
+            buildStarRocksQualifiedName(listOf(STARROCKS_DEFAULT_CATALOG, database))
+        } else {
+            buildStarRocksQualifiedName(listOf(database))
+        }
     } else {
         buildStarRocksQualifiedName(listOf(catalog, database))
     }

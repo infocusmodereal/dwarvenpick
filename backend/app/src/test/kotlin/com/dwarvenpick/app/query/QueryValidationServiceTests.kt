@@ -104,7 +104,7 @@ class QueryValidationServiceTests {
             )
 
         assertThat(response.valid).isTrue()
-        verify(schemaStatement).execute("USE `Viper2`")
+        verify(schemaStatement).execute("USE `default_catalog`.`Viper2`")
         verify(explainStatement).execute("EXPLAIN select * from adUnits limit 50")
         verify(connection).close()
     }

@@ -47,7 +47,10 @@ internal object QueryDefaultSchema {
             -> applyUseSchema(connection, quoteBacktickIdentifier(normalized))
 
             DatasourceEngine.STARROCKS ->
-                applyUseSchema(connection, parseStarRocksExplorerSchema(normalized).qualifiedSchemaName())
+                applyUseSchema(
+                    connection,
+                    parseStarRocksExplorerSchema(normalized).qualifiedSchemaName(includeDefaultCatalog = true),
+                )
 
             DatasourceEngine.POSTGRESQL,
             DatasourceEngine.TRINO,

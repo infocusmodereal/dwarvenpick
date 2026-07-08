@@ -12,7 +12,7 @@ import java.sql.Statement
 
 class QueryDefaultSchemaTests {
     @Test
-    fun `starrocks default schema uses quoted USE and evicts pooled connection`() {
+    fun `starrocks default schema uses explicit default catalog and evicts pooled connection`() {
         val connection = mock(Connection::class.java)
         val statement = mock(Statement::class.java)
         `when`(connection.createStatement()).thenReturn(statement)
@@ -24,9 +24,24 @@ class QueryDefaultSchemaTests {
                 defaultSchema = "Viper2",
             )
 
-        verify(statement).execute("USE `Viper2`")
+        verify(statement).execute("USE `default_catalog`.`Viper2`")
         verify(statement).close()
         assertThat(applied.evictConnectionOnClose).isTrue()
+    }
+
+    @Test
+    fun `starrocks explicit default catalog is preserved for USE`() {
+        val connection = mock(Connection::class.java)
+        val statement = mock(Statement::class.java)
+        `when`(connection.createStatement()).thenReturn(statement)
+
+        QueryDefaultSchema.apply(
+            connection = connection,
+            engine = DatasourceEngine.STARROCKS,
+            defaultSchema = "default_catalog.Viper2",
+        )
+
+        verify(statement).execute("USE `default_catalog`.`Viper2`")
     }
 
     @Test
