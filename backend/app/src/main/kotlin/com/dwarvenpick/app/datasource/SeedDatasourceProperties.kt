@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "dwarvenpick.seed")
 data class SeedDatasourceProperties(
-    val enabled: Boolean = true,
+    val enabled: Boolean = false,
     val postgres: SeedJdbcProperties =
         SeedJdbcProperties(
             host = "localhost",

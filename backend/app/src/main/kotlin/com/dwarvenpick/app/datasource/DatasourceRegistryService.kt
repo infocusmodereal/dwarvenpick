@@ -414,6 +414,7 @@ class DatasourceRegistryService(
     fun upsertManagedDatasource(
         request: CreateDatasourceRequest,
         source: String = "config",
+        allowUnresolvedHost: Boolean = false,
     ): ManagedDatasourceResponse {
         val datasourceId = slugify(request.name)
         return persistDatasource(
@@ -421,6 +422,7 @@ class DatasourceRegistryService(
             request = request,
             existing = datasourceRegistryRepository.find(datasourceId),
             source = source,
+            allowUnresolvedHost = allowUnresolvedHost,
         )
     }
 
@@ -429,13 +431,14 @@ class DatasourceRegistryService(
         request: CreateDatasourceRequest,
         existing: ManagedDatasourceRecord?,
         source: String,
+        allowUnresolvedHost: Boolean = false,
     ): ManagedDatasourceResponse {
         val driver = driverRegistryService.resolveDriver(request.engine, request.driverId)
         val sanitizedHost = request.host.trim()
         if (sanitizedHost.isBlank()) {
             throw IllegalArgumentException("Datasource host is required.")
         }
-        datasourceNetworkGuard.validateHost(sanitizedHost)
+        datasourceNetworkGuard.validateHost(sanitizedHost, allowUnresolvedHost = allowUnresolvedHost)
 
         val datasource =
             existing
