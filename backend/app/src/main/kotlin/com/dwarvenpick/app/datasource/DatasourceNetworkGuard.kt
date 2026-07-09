@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.datasource
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.net.InetAddress
 import java.net.UnknownHostException
@@ -12,6 +13,8 @@ class ForbiddenNetworkTargetException(
 class DatasourceNetworkGuard(
     private val properties: DatasourceNetworkGuardProperties,
 ) {
+    private val logger = LoggerFactory.getLogger(DatasourceNetworkGuard::class.java)
+
     fun validateHost(host: String) {
         if (!properties.enabled) {
             return
@@ -23,13 +26,21 @@ class DatasourceNetworkGuard(
         }
 
         if (matchesAnyHostPattern(normalizedHost, properties.denyHostPatterns)) {
-            throw ForbiddenNetworkTargetException("Datasource host '$host' is blocked by denylist rules.")
+            throw forbidden(
+                "Datasource host is blocked by network guard policy.",
+                host,
+                "denyHostPatterns",
+            )
         }
         if (
             properties.allowHostPatterns.isNotEmpty() &&
             !matchesAnyHostPattern(normalizedHost, properties.allowHostPatterns)
         ) {
-            throw ForbiddenNetworkTargetException("Datasource host '$host' is not allowed by hostname allowlist rules.")
+            throw forbidden(
+                "Datasource host is not allowed by network guard policy.",
+                host,
+                "allowHostPatterns",
+            )
         }
 
         val resolvedAddresses =
@@ -41,8 +52,12 @@ class DatasourceNetworkGuard(
                     properties.allowCidrs.isNotEmpty() ||
                     properties.denyCidrs.isNotEmpty()
                 ) {
+                    logger.warn(
+                        "Datasource host could not be resolved for network guard validation: host={}",
+                        sanitizeLogValue(host),
+                    )
                     throw IllegalArgumentException(
-                        "Datasource host '$host' could not be resolved for network policy validation.",
+                        "Datasource host could not be resolved for network guard validation.",
                     )
                 }
                 emptyList()
@@ -52,24 +67,41 @@ class DatasourceNetworkGuard(
             val ipAddress = address.hostAddress.substringBefore('%')
 
             if (!properties.allowPrivateNetworks && isPrivateOrLocalAddress(address)) {
-                throw ForbiddenNetworkTargetException(
-                    "Datasource host '$host' resolves to private/local address '$ipAddress', which is blocked.",
+                throw forbidden(
+                    "Datasource host resolves to a private or local address blocked by network guard policy.",
+                    host,
+                    "privateOrLocal:$ipAddress",
                 )
             }
 
             if (matchesAnyCidr(ipAddress, properties.denyCidrs)) {
-                throw ForbiddenNetworkTargetException(
-                    "Datasource host '$host' resolves to '$ipAddress', which is blocked by IP denylist rules.",
+                throw forbidden(
+                    "Datasource host resolves to an address blocked by network guard policy.",
+                    host,
+                    "denyCidrs:$ipAddress",
                 )
             }
 
             if (properties.allowCidrs.isNotEmpty() && !matchesAnyCidr(ipAddress, properties.allowCidrs)) {
-                throw ForbiddenNetworkTargetException(
-                    "Datasource host '$host' resolves to '$ipAddress', which is outside allowed IP ranges.",
+                throw forbidden(
+                    "Datasource host resolves outside allowed network guard ranges.",
+                    host,
+                    "allowCidrs:$ipAddress",
                 )
             }
         }
     }
+
+    private fun forbidden(
+        message: String,
+        host: String,
+        detail: String,
+    ): ForbiddenNetworkTargetException {
+        logger.warn("Datasource host rejected by network guard: host={} detail={}", sanitizeLogValue(host), detail)
+        return ForbiddenNetworkTargetException(message)
+    }
+
+    private fun sanitizeLogValue(value: String): String = value.filterNot { character -> character.isISOControl() }
 
     private fun matchesAnyHostPattern(
         host: String,
@@ -82,7 +114,7 @@ class DatasourceNetworkGuard(
             .any { pattern ->
                 val regex =
                     Regex(
-                        "^" + Regex.escape(pattern).replace("\\*", ".*") + "$",
+                        "^" + pattern.split("*").joinToString(".*") { segment -> Regex.escape(segment) } + "$",
                         RegexOption.IGNORE_CASE,
                     )
                 regex.matches(host)
