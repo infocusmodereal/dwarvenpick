@@ -155,6 +155,23 @@ auth enabled alongside LDAP (for example in local development), set:
 
 - `DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_LDAP=true`
 
+## Datasource network guard
+
+Configure the datasource network guard explicitly in shared deployments:
+
+- `DWARVENPICK_DATASOURCE_NETWORK_GUARD_ENABLED=true`
+- `DWARVENPICK_DATASOURCE_NETWORK_GUARD_ALLOW_PRIVATE_NETWORKS=true` when approved datasource hosts resolve to internal
+  data-platform networks.
+- `DWARVENPICK_DATASOURCE_NETWORK_GUARD_DENY_CIDRS=<comma-separated-cidrs>` for loopback, link-local, metadata, and
+  multicast ranges.
+- `DWARVENPICK_DATASOURCE_NETWORK_GUARD_DENY_HOST_PATTERNS=<comma-separated-patterns>` for names such as `localhost`,
+  `*.localhost`, and cloud metadata hostnames.
+
+The guard runs on managed datasource create/update, query validation, and again before asynchronous query execution
+resolves a connection spec.
+Wildcard host patterns are enforced as glob-style matches, so audit configured allow/deny patterns against known-good
+datasource hosts before enabling a new deployment policy.
+
 ## Local user administration
 
 When local auth is enabled (`DWARVENPICK_AUTH_LOCAL_ENABLED=true`), `SYSTEM_ADMIN` users can manage local users in the Governance UI:

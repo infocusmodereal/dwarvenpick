@@ -6,6 +6,7 @@ import com.dwarvenpick.app.auth.AuthenticatedPrincipalResolver
 import com.dwarvenpick.app.auth.ErrorResponse
 import com.dwarvenpick.app.controlplane.DatasourcePauseService
 import com.dwarvenpick.app.datasource.DriverNotAvailableException
+import com.dwarvenpick.app.datasource.ForbiddenNetworkTargetException
 import com.dwarvenpick.app.query.QueryConcurrencyLimitException
 import com.dwarvenpick.app.query.QueryCsvWriter
 import com.dwarvenpick.app.query.QueryExecutionForbiddenException
@@ -140,6 +141,8 @@ class QueryController(
         } catch (ex: DatasourceNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
         } catch (ex: DriverNotAvailableException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
+        } catch (ex: ForbiddenNetworkTargetException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(

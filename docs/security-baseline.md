@@ -62,3 +62,18 @@ Audit events are stored in the application database and pruned by `dwarvenpick.q
 
 Query text is redacted from persisted query history and runtime records after
 `dwarvenpick.query.query-text-redaction-days` days. The default is 7 days.
+
+## Datasource network guard
+
+Dwarvenpick validates datasource hosts when admins create or update managed datasources, when users validate SQL, and
+again before resolving a connection for asynchronous query execution. The guard can deny host patterns and CIDR ranges,
+require allowlisted hosts or CIDRs, and reject private/local networks when configured to do so.
+
+IX deployments keep private networks allowed because approved data-platform endpoints resolve to internal RFC1918 or
+cluster service addresses. They explicitly deny loopback, link-local, metadata, and multicast ranges such as
+`127.0.0.0/8`, `169.254.0.0/16`, `::1/128`, and `fe80::/10`, plus hostname patterns like `localhost` and
+`metadata.google.internal`.
+
+Rejected datasource hosts on synchronous admin and validation paths return a generic `400` response. If an existing
+datasource is blocked during asynchronous query execution, the execution is marked failed with a sanitized error.
+Detailed rejected host and resolved-address context is kept in backend logs for operator debugging.
