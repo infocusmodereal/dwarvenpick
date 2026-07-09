@@ -45,6 +45,60 @@ class DatasourceNetworkGuardTests {
     }
 
     @Test
+    fun `restricted local addresses are blocked even without explicit deny cidrs`() {
+        val guard = networkGuard(allowPrivateNetworks = true)
+
+        assertThatThrownBy { guard.validateHost("127.0.0.1") }
+            .isInstanceOf(ForbiddenNetworkTargetException::class.java)
+            .hasMessage("Datasource host resolves to a restricted local address blocked by network guard policy.")
+        assertThatThrownBy { guard.validateHost("169.254.169.254") }
+            .isInstanceOf(ForbiddenNetworkTargetException::class.java)
+            .hasMessage("Datasource host resolves to a restricted local address blocked by network guard policy.")
+    }
+
+    @Test
+    fun `unresolved host fails by default when address policy requires resolution`() {
+        val guard =
+            networkGuard(
+                allowPrivateNetworks = true,
+                denyCidrs = listOf("169.254.0.0/16"),
+            )
+
+        assertThatThrownBy { guard.validateHost("unresolved.datasource.invalid") }
+            .isInstanceOf(UnresolvedNetworkTargetException::class.java)
+            .hasMessage("Datasource host could not be resolved for network guard validation.")
+    }
+
+    @Test
+    fun `unresolved host can be deferred by explicit bootstrap validation mode`() {
+        val guard =
+            networkGuard(
+                allowPrivateNetworks = true,
+                denyCidrs = listOf("169.254.0.0/16"),
+            )
+
+        assertThatCode {
+            guard.validateHost("unresolved.datasource.invalid", allowUnresolvedHost = true)
+        }.doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `deferred unresolved validation still enforces host pattern and literal address blocks`() {
+        val guard =
+            networkGuard(
+                allowPrivateNetworks = true,
+                denyHostPatterns = listOf("metadata.*"),
+            )
+
+        assertThatThrownBy { guard.validateHost("metadata.google.internal", allowUnresolvedHost = true) }
+            .isInstanceOf(ForbiddenNetworkTargetException::class.java)
+            .hasMessage("Datasource host is blocked by network guard policy.")
+        assertThatThrownBy { guard.validateHost("169.254.169.254", allowUnresolvedHost = true) }
+            .isInstanceOf(ForbiddenNetworkTargetException::class.java)
+            .hasMessage("Datasource host resolves to a restricted local address blocked by network guard policy.")
+    }
+
+    @Test
     fun `approved private and public literal addresses pass when outside denied ranges`() {
         val guard =
             networkGuard(

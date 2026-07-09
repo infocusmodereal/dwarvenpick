@@ -29,11 +29,14 @@ Sample Helm deployments live under `deploy/helm/examples`:
 
 ## Seeding sample connections
 
-For local demos, the backend can seed a small set of sample connections on startup.
+For local demos, the backend can seed a small set of sample connections on startup. Seeding is disabled by default and
+must be enabled explicitly for local demo/runtime environments:
+
+- `DWARVENPICK_SEED_ENABLED=true`
 
 Disable in production:
 
-- `DWARVENPICK_SEED_ENABLED=false` (default in Helm)
+- `DWARVENPICK_SEED_ENABLED=false` (default)
 
 ## Application state persistence
 
@@ -167,8 +170,13 @@ Configure the datasource network guard explicitly in shared deployments:
 - `DWARVENPICK_DATASOURCE_NETWORK_GUARD_DENY_HOST_PATTERNS=<comma-separated-patterns>` for names such as `localhost`,
   `*.localhost`, and cloud metadata hostnames.
 
-The guard runs on managed datasource create/update, query validation, and again before asynchronous query execution
-resolves a connection spec.
+Loopback, link-local, any-local, and multicast addresses are blocked even when private networks are allowed. Site-local
+private ranges are allowed only when `DWARVENPICK_DATASOURCE_NETWORK_GUARD_ALLOW_PRIVATE_NETWORKS=true`.
+
+The guard runs on managed datasource create/update, connection testing, query validation, and again before asynchronous
+query execution resolves a connection spec.
+Connections bootstrapped from a reviewed config file may be persisted when DNS is temporarily unresolved at startup; those
+connections are still re-validated by the guard before connection testing, validation, and query execution.
 Wildcard host patterns are enforced as glob-style matches, so audit configured allow/deny patterns against known-good
 datasource hosts before enabling a new deployment policy.
 

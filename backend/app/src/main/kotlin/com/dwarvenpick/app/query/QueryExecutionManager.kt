@@ -3,7 +3,9 @@ package com.dwarvenpick.app.query
 import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
+import com.dwarvenpick.app.datasource.ForbiddenNetworkTargetException
 import com.dwarvenpick.app.datasource.QueryConnectionHandle
+import com.dwarvenpick.app.datasource.UnresolvedNetworkTargetException
 import com.dwarvenpick.app.datasource.shouldUseMysqlConnectorStreaming
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import com.dwarvenpick.app.runtime.ApplicationInstanceId
@@ -951,6 +953,42 @@ class QueryExecutionManager(
                     mapOf(
                         "executionId" to record.executionId,
                         "reason" to "runtime_limit",
+                    ),
+            )
+        } catch (ex: ForbiddenNetworkTargetException) {
+            markFailed(record, sanitizeErrorMessage(ex.message ?: "Datasource host is blocked by network guard policy."))
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.network_guard.blocked.total",
+                    "datasourceId",
+                    record.datasourceId,
+                ).increment()
+            auditExecution(
+                record = record,
+                type = "query.execute",
+                outcome = "failed",
+                details =
+                    mapOf(
+                        "executionId" to record.executionId,
+                        "reason" to "network_blocked",
+                    ),
+            )
+        } catch (ex: UnresolvedNetworkTargetException) {
+            markFailed(record, sanitizeErrorMessage(ex.message ?: "Datasource host could not be resolved for network guard validation."))
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.network_guard.unresolved.total",
+                    "datasourceId",
+                    record.datasourceId,
+                ).increment()
+            auditExecution(
+                record = record,
+                type = "query.execute",
+                outcome = "failed",
+                details =
+                    mapOf(
+                        "executionId" to record.executionId,
+                        "reason" to "network_unresolved",
                     ),
             )
         } catch (ex: Throwable) {

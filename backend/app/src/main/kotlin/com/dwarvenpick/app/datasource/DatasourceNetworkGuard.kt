@@ -9,13 +9,20 @@ class ForbiddenNetworkTargetException(
     override val message: String,
 ) : RuntimeException(message)
 
+class UnresolvedNetworkTargetException(
+    override val message: String,
+) : IllegalArgumentException(message)
+
 @Component
 class DatasourceNetworkGuard(
     private val properties: DatasourceNetworkGuardProperties,
 ) {
     private val logger = LoggerFactory.getLogger(DatasourceNetworkGuard::class.java)
 
-    fun validateHost(host: String) {
+    fun validateHost(
+        host: String,
+        allowUnresolvedHost: Boolean = false,
+    ) {
         if (!properties.enabled) {
             return
         }
@@ -47,16 +54,19 @@ class DatasourceNetworkGuard(
             try {
                 InetAddress.getAllByName(normalizedHost).toList()
             } catch (_: UnknownHostException) {
+                logger.warn(
+                    "Datasource host could not be resolved for network guard validation: host={}",
+                    sanitizeLogValue(host),
+                )
+                if (allowUnresolvedHost) {
+                    return
+                }
                 if (
                     !properties.allowPrivateNetworks ||
                     properties.allowCidrs.isNotEmpty() ||
                     properties.denyCidrs.isNotEmpty()
                 ) {
-                    logger.warn(
-                        "Datasource host could not be resolved for network guard validation: host={}",
-                        sanitizeLogValue(host),
-                    )
-                    throw IllegalArgumentException(
+                    throw UnresolvedNetworkTargetException(
                         "Datasource host could not be resolved for network guard validation.",
                     )
                 }
@@ -79,6 +89,14 @@ class DatasourceNetworkGuard(
                     "Datasource host resolves to an address blocked by network guard policy.",
                     host,
                     "denyCidrs:$ipAddress",
+                )
+            }
+
+            if (isRestrictedLocalAddress(address)) {
+                throw forbidden(
+                    "Datasource host resolves to a restricted local address blocked by network guard policy.",
+                    host,
+                    "restrictedLocal:$ipAddress",
                 )
             }
 
@@ -181,5 +199,11 @@ class DatasourceNetworkGuard(
             address.isLoopbackAddress ||
             address.isLinkLocalAddress ||
             address.isSiteLocalAddress ||
+            address.isMulticastAddress
+
+    private fun isRestrictedLocalAddress(address: InetAddress): Boolean =
+        address.isAnyLocalAddress ||
+            address.isLoopbackAddress ||
+            address.isLinkLocalAddress ||
             address.isMulticastAddress
 }

@@ -58,6 +58,7 @@ class ConnectionsConfigBootstrap(
                         options = spec.options,
                     ),
                     source = "config",
+                    allowUnresolvedHost = true,
                 )
             desiredDatasourceIds.add(datasource.id)
             val datasourceProfiles = desiredCredentialProfiles.computeIfAbsent(datasource.id) { mutableSetOf() }
