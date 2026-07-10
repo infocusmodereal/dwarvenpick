@@ -27,6 +27,7 @@ const backendMetricNames = [
   'dwarvenpick_query_export_attempts_total',
   'dwarvenpick_pool_active',
   'dwarvenpick_pool_total',
+  'dwarvenpick_pool',
 ];
 
 const profiles = {
@@ -38,6 +39,8 @@ const profiles = {
       http_req_failed: ['rate<0.02'],
       http_req_duration: ['p(95)<2000', 'p(99)<5000'],
       dwarvenpick_k6_query_completed: ['rate>0.95'],
+      dwarvenpick_k6_query_submit_duration: ['p(95)<1500'],
+      dwarvenpick_k6_query_completion_duration: ['p(95)<5000', 'p(99)<8000'],
       dwarvenpick_k6_result_page_duration: ['p(95)<1500'],
       dwarvenpick_k6_csv_export_duration: ['p(95)<5000'],
     },
@@ -50,6 +53,8 @@ const profiles = {
       http_req_failed: ['rate<0.03'],
       http_req_duration: ['p(95)<3000', 'p(99)<8000'],
       dwarvenpick_k6_query_completed: ['rate>0.95'],
+      dwarvenpick_k6_query_submit_duration: ['p(95)<2000'],
+      dwarvenpick_k6_query_completion_duration: ['p(95)<8000', 'p(99)<15000'],
       dwarvenpick_k6_result_page_duration: ['p(95)<2000'],
       dwarvenpick_k6_csv_export_duration: ['p(95)<8000'],
     },
@@ -62,6 +67,8 @@ if (!exportCsv) {
 }
 
 const queryCompleted = new Rate('dwarvenpick_k6_query_completed');
+const querySubmitDuration = new Trend('dwarvenpick_k6_query_submit_duration');
+const queryCompletionDuration = new Trend('dwarvenpick_k6_query_completion_duration');
 const resultPageDuration = new Trend('dwarvenpick_k6_result_page_duration');
 const csvExportDuration = new Trend('dwarvenpick_k6_csv_export_duration');
 const resultPagesFetched = new Counter('dwarvenpick_k6_result_pages_fetched');
@@ -90,12 +97,25 @@ function fetchAppMetrics(label) {
     return;
   }
 
-  const presentMetrics = backendMetricNames.filter((metricName) => metricsRes.body.includes(metricName));
+  const presentMetrics = backendMetricNames.filter((metricName) =>
+    new RegExp(`^${metricName}(?:\\{|\\s)`, 'm').test(metricsRes.body)
+  );
+  const eagerMetrics = [
+    'dwarvenpick_query_active',
+    'dwarvenpick_query_buffered_bytes',
+    'dwarvenpick_query_buffered_budget_bytes',
+  ];
   check(presentMetrics, {
-    [`app metrics ${label} include query, pool, and buffer signals`]: (names) =>
-      names.includes('dwarvenpick_query_execution_total') &&
-      names.includes('dwarvenpick_query_buffered_bytes') &&
-      names.includes('dwarvenpick_pool_total'),
+    [`app metrics ${label} include expected signals`]: (names) => {
+      if (label === 'before') {
+        return eagerMetrics.every((metricName) => names.includes(metricName));
+      }
+      return (
+        eagerMetrics.every((metricName) => names.includes(metricName)) &&
+        names.includes('dwarvenpick_query_execution_total') &&
+        (names.includes('dwarvenpick_pool_total') || names.includes('dwarvenpick_pool'))
+      );
+    },
   });
   console.log(`[app-metrics:${label}] ${presentMetrics.join(', ')}`);
 }
@@ -157,6 +177,7 @@ function runQuery(csrf) {
       },
     }
   );
+  querySubmitDuration.add(submitRes.timings.duration);
 
   if (!check(submitRes, { 'submit query': (r) => r.status === 200 })) {
     return null;
@@ -165,6 +186,7 @@ function runQuery(csrf) {
 }
 
 function waitForCompletion(executionId) {
+  const startedAt = Date.now();
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const statusRes = http.get(`${baseUrl}/api/queries/${executionId}`);
     if (!check(statusRes, { 'status available': (r) => r.status === 200 })) {
@@ -173,13 +195,16 @@ function waitForCompletion(executionId) {
 
     const status = statusRes.json('status');
     if (status === 'SUCCEEDED') {
+      queryCompletionDuration.add(Date.now() - startedAt);
       return true;
     }
     if (status === 'FAILED' || status === 'CANCELED') {
+      queryCompletionDuration.add(Date.now() - startedAt);
       return false;
     }
     sleep(0.2);
   }
+  queryCompletionDuration.add(Date.now() - startedAt);
   return false;
 }
 
@@ -226,4 +251,59 @@ export default function () {
 
 export function teardown() {
   fetchAppMetrics('after');
+}
+
+const summaryMetricNames = [
+  'checks',
+  'http_req_failed',
+  'http_req_duration',
+  'http_reqs',
+  'iterations',
+  'dwarvenpick_k6_query_completed',
+  'dwarvenpick_k6_query_submit_duration',
+  'dwarvenpick_k6_query_completion_duration',
+  'dwarvenpick_k6_result_page_duration',
+  'dwarvenpick_k6_csv_export_duration',
+  'dwarvenpick_k6_result_pages_fetched',
+  'dwarvenpick_k6_csv_exports_attempted',
+];
+
+function compactMetric(metric) {
+  const allowedValueKeys = ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)', 'rate', 'count'];
+  const values = {};
+  for (const key of allowedValueKeys) {
+    if (Number.isFinite(metric.values?.[key])) {
+      values[key] = metric.values[key];
+    }
+  }
+  const thresholds = {};
+  for (const [name, result] of Object.entries(metric.thresholds || {})) {
+    thresholds[name] = result.ok === true;
+  }
+  return { type: metric.type, contains: metric.contains, values, thresholds };
+}
+
+export function handleSummary(data) {
+  const metrics = {};
+  for (const name of summaryMetricNames) {
+    if (data.metrics[name]) {
+      metrics[name] = compactMetric(data.metrics[name]);
+    }
+  }
+  const outputPath = __ENV.K6_SUMMARY_PATH || 'build/reports/perf/query-smoke-summary.json';
+  return {
+    [outputPath]: JSON.stringify(
+      {
+        schemaVersion: 1,
+        run: {
+          profile: perfProfile,
+          vus: options.vus,
+          duration: options.duration,
+        },
+        metrics,
+      },
+      null,
+      2
+    ),
+  };
 }
