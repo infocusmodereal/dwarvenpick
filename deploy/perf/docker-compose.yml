@@ -27,9 +27,22 @@ services:
             DWARVENPICK_SEED_POSTGRES_DATABASE: dwarvenpick
             DWARVENPICK_SEED_POSTGRES_USERNAME: dwarvenpick
             DWARVENPICK_SEED_POSTGRES_PASSWORD: dwarvenpick
+            # Unresolved inert seeds require the default empty CIDR policy and allow-private-networks=true.
             DWARVENPICK_SEED_MYSQL_HOST: mysql.unavailable.invalid
+            DWARVENPICK_SEED_MYSQL_PORT: 3306
+            DWARVENPICK_SEED_MYSQL_DATABASE: unavailable
+            DWARVENPICK_SEED_MYSQL_USERNAME: unavailable
+            DWARVENPICK_SEED_MYSQL_PASSWORD: unavailable
             DWARVENPICK_SEED_MARIADB_HOST: mariadb.unavailable.invalid
+            DWARVENPICK_SEED_MARIADB_PORT: 3306
+            DWARVENPICK_SEED_MARIADB_DATABASE: unavailable
+            DWARVENPICK_SEED_MARIADB_USERNAME: unavailable
+            DWARVENPICK_SEED_MARIADB_PASSWORD: unavailable
             DWARVENPICK_SEED_STARROCKS_HOST: starrocks.unavailable.invalid
+            DWARVENPICK_SEED_STARROCKS_PORT: 9030
+            DWARVENPICK_SEED_STARROCKS_DATABASE: unavailable
+            DWARVENPICK_SEED_STARROCKS_USERNAME: unavailable
+            DWARVENPICK_SEED_STARROCKS_PASSWORD: unavailable
             DWARVENPICK_SEED_TRINO_ENABLED: "false"
             DWARVENPICK_METRICS_PROMETHEUS_ENABLED: "true"
             SERVER_PORT: 8080
