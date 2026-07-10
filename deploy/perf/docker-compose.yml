@@ -43,6 +43,16 @@ services:
             DWARVENPICK_SEED_STARROCKS_DATABASE: unavailable
             DWARVENPICK_SEED_STARROCKS_USERNAME: unavailable
             DWARVENPICK_SEED_STARROCKS_PASSWORD: unavailable
+            DWARVENPICK_SEED_VERTICA_HOST: vertica.unavailable.invalid
+            DWARVENPICK_SEED_VERTICA_PORT: 5433
+            DWARVENPICK_SEED_VERTICA_DATABASE: unavailable
+            DWARVENPICK_SEED_VERTICA_USERNAME: unavailable
+            DWARVENPICK_SEED_VERTICA_PASSWORD: unavailable
+            DWARVENPICK_SEED_AEROSPIKE_HOST: aerospike.unavailable.invalid
+            DWARVENPICK_SEED_AEROSPIKE_PORT: 3000
+            DWARVENPICK_SEED_AEROSPIKE_DATABASE: unavailable
+            DWARVENPICK_SEED_AEROSPIKE_USERNAME: unavailable
+            DWARVENPICK_SEED_AEROSPIKE_PASSWORD: unavailable
             DWARVENPICK_SEED_TRINO_ENABLED: "false"
             DWARVENPICK_METRICS_PROMETHEUS_ENABLED: "true"
             SERVER_PORT: 8080
