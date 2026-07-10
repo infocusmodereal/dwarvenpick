@@ -88,13 +88,13 @@ function delta(samples, name) {
     return Math.max(0, last - first);
 }
 
-function analyzePrometheus(prometheus) {
+function analyzePrometheus(prometheus, requireCsvExport) {
     if (!prometheus.available) {
         return { available: false };
     }
-    if (!Array.isArray(prometheus.samples) || prometheus.samples.length === 0) {
+    if (!Array.isArray(prometheus.samples) || prometheus.samples.length < 2) {
         throw new Error(
-            "Prometheus was configured but no samples were captured.",
+            "Prometheus was configured but fewer than two samples were captured.",
         );
     }
     const samples = prometheus.samples;
@@ -109,6 +109,14 @@ function analyzePrometheus(prometheus) {
             : null;
     const durationCount = delta(samples, "queryDurationSecondsCount");
     const durationSum = delta(samples, "queryDurationSecondsSum");
+    const queryExecutions = delta(samples, "queryExecutions");
+    const csvExportAttempts = delta(samples, "csvExportAttempts");
+    if (queryExecutions <= 0) {
+        throw new Error("Prometheus captured no query executions during the smoke.");
+    }
+    if (requireCsvExport && csvExportAttempts <= 0) {
+        throw new Error("Prometheus captured no CSV export attempts during the smoke.");
+    }
     return {
         available: true,
         namespace: prometheus.namespace,
@@ -128,14 +136,12 @@ function analyzePrometheus(prometheus) {
                 ratio(sample.metrics.poolActive, sample.metrics.poolTotal),
             ),
         ),
-        queryExecutions: delta(samples, "queryExecutions"),
+        queryExecutions,
         queryExecutionsPerSecond:
-            elapsedSeconds === null
-                ? null
-                : delta(samples, "queryExecutions") / elapsedSeconds,
+            elapsedSeconds === null ? null : queryExecutions / elapsedSeconds,
         backendAverageDurationMs:
             durationCount > 0 ? (durationSum / durationCount) * 1000 : null,
-        csvExportAttempts: delta(samples, "csvExportAttempts"),
+        csvExportAttempts,
         resultBufferRejections: delta(samples, "resultBufferRejections"),
     };
 }
@@ -214,7 +220,7 @@ try {
                 "dwarvenpick_k6_result_pages_fetched",
             ),
         },
-        prometheus: analyzePrometheus(prometheus),
+        prometheus: analyzePrometheus(prometheus, exportEnabled),
     };
 
     await mkdir(dirname(jsonOutputPath), { recursive: true });
