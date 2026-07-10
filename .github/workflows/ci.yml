@@ -136,3 +136,26 @@ jobs:
 
       - name: Package smoke test
         run: npm pack --dry-run
+
+  perf-tooling:
+    name: Performance Tooling Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: "0.53.0"
+
+      - name: Test performance tooling
+        run: node --test scripts/perf/*.test.mjs
+
+      - name: Inspect k6 workload
+        run: k6 inspect scripts/perf/query-load.k6.js

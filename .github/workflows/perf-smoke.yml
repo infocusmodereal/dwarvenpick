@@ -1,0 +1,74 @@
+name: Manual Query Performance Smoke
+
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    local-query-smoke:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            - name: Setup k6
+              uses: grafana/setup-k6-action@v1
+              with:
+                  k6-version: "0.53.0"
+
+            - name: Start minimal Dwarvenpick stack
+              run: docker compose -f deploy/perf/docker-compose.yml up --build -d
+
+            - name: Wait for backend health
+              run: |
+                  for attempt in $(seq 1 120); do
+                    if curl -fsS http://127.0.0.1:8080/api/health >/dev/null; then
+                      exit 0
+                    fi
+                    sleep 5
+                  done
+                  docker compose -f deploy/perf/docker-compose.yml logs backend
+                  exit 1
+
+            - name: Run local query smoke
+              env:
+                  PERF_TARGET_ENV: local
+                  BASE_URL: http://127.0.0.1:8080
+                  DWARVENPICK_AUTH: local
+                  DWARVENPICK_USER: admin
+                  DWARVENPICK_PASSWORD: Admin1234!
+                  DATASOURCE_ID: postgresql-core
+                  CREDENTIAL_PROFILE: admin-ro
+                  SQL: SELECT generate_series(1, 250) AS value;
+                  PAGE_SIZE: "100"
+                  MAX_RESULT_PAGES: "3"
+                  PERF_PROFILE: smoke
+                  VUS: "1"
+                  DURATION: 15s
+                  CAPTURE_APP_METRICS: "true"
+                  REPORT_DIR: build/reports/perf
+              run: scripts/perf/run-query-smoke.sh
+
+            - name: Capture compose logs on failure
+              if: failure()
+              run: docker compose -f deploy/perf/docker-compose.yml logs --no-color
+
+            - name: Upload sanitized performance artifacts
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: query-performance-smoke
+                  path: build/reports/perf
+                  if-no-files-found: warn
+
+            - name: Stop minimal Dwarvenpick stack
+              if: always()
+              run: docker compose -f deploy/perf/docker-compose.yml down -v

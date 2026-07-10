@@ -1,0 +1,40 @@
+services:
+    postgres:
+        image: postgres:15-alpine
+        environment:
+            POSTGRES_USER: dwarvenpick
+            POSTGRES_PASSWORD: dwarvenpick
+            POSTGRES_DB: dwarvenpick
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U dwarvenpick -d dwarvenpick"]
+            interval: 2s
+            timeout: 2s
+            retries: 30
+
+    backend:
+        build:
+            context: ../..
+            dockerfile: deploy/docker/Dockerfile.backend
+        environment:
+            SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dwarvenpick
+            SPRING_DATASOURCE_USERNAME: dwarvenpick
+            SPRING_DATASOURCE_PASSWORD: dwarvenpick
+            DWARVENPICK_AUTH_OIDC_ENABLED: "false"
+            DWARVENPICK_AUTH_LOCAL_ENABLED: "true"
+            DWARVENPICK_SEED_ENABLED: "true"
+            DWARVENPICK_SEED_POSTGRES_HOST: postgres
+            DWARVENPICK_SEED_POSTGRES_PORT: 5432
+            DWARVENPICK_SEED_POSTGRES_DATABASE: dwarvenpick
+            DWARVENPICK_SEED_POSTGRES_USERNAME: dwarvenpick
+            DWARVENPICK_SEED_POSTGRES_PASSWORD: dwarvenpick
+            DWARVENPICK_SEED_MYSQL_HOST: mysql.unavailable.invalid
+            DWARVENPICK_SEED_MARIADB_HOST: mariadb.unavailable.invalid
+            DWARVENPICK_SEED_STARROCKS_HOST: starrocks.unavailable.invalid
+            DWARVENPICK_SEED_TRINO_ENABLED: "false"
+            DWARVENPICK_METRICS_PROMETHEUS_ENABLED: "true"
+            SERVER_PORT: 8080
+        ports:
+            - "8080:8080"
+        depends_on:
+            postgres:
+                condition: service_healthy

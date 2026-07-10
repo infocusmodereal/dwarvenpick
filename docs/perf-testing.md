@@ -22,22 +22,39 @@ This repository includes a repeatable load harness for concurrent query executio
 
 ## CI-safe smoke
 
+The manual `Manual Query Performance Smoke` GitHub Actions workflow builds a minimal PostgreSQL and backend stack. It
+uses only seeded local credentials and uploads a sanitized report artifact. It never targets dev or prod.
+
+Run the same profile locally with Docker Compose:
+
 ```bash
-BASE_URL=http://localhost:3000 \
+docker compose -f deploy/perf/docker-compose.yml up --build -d
+
+PERF_TARGET_ENV=local \
+BASE_URL=http://127.0.0.1:8080 \
 DWARVENPICK_AUTH=local \
 DWARVENPICK_USER=admin \
 DWARVENPICK_PASSWORD=Admin1234! \
 DATASOURCE_ID=postgresql-core \
-SQL='SELECT 1 AS value;' \
+SQL='SELECT generate_series(1, 250) AS value;' \
+PAGE_SIZE=100 \
+MAX_RESULT_PAGES=3 \
+CAPTURE_APP_METRICS=true \
 scripts/perf/run-query-smoke.sh
+
+docker compose -f deploy/perf/docker-compose.yml down -v
 ```
 
-The smoke profile defaults to 2 VUs for 30 seconds and writes:
+The smoke profile defaults to 2 VUs for 30 seconds. The workflow uses 1 VU for 15 seconds to keep the manual CI check
+small. Both write:
 
 - `build/reports/perf/query-smoke-summary.json`
-- `build/reports/perf/prometheus-before.prom`
-- `build/reports/perf/prometheus-after.prom`
+- `build/reports/perf/prometheus-samples.json`
+- `build/reports/perf/query-smoke-report.json`
 - `build/reports/perf/query-smoke-report.txt`
+
+These artifacts contain only aggregate timings, counters, ratios, threshold results, and the validated namespace name.
+They exclude credentials, cookies, query text, result rows, PromQL, and source-series labels such as pod or instance.
 
 Default smoke thresholds:
 
@@ -54,7 +71,8 @@ Default smoke thresholds:
 PERF_PROFILE=regression \
 VUS=10 \
 DURATION=2m \
-BASE_URL=http://localhost:3000 \
+PERF_TARGET_ENV=local \
+BASE_URL=http://127.0.0.1:8080 \
 DWARVENPICK_AUTH=local \
 DWARVENPICK_USER=admin \
 DWARVENPICK_PASSWORD=Admin1234! \
@@ -72,24 +90,25 @@ The regression profile keeps the same flow but loosens latency thresholds for su
 - result page p95 < 2s
 - CSV export p95 < 8s
 
-## Direct k6 run
+## Dev smoke
 
 ```bash
-k6 run \
-  -e PERF_PROFILE=smoke \
-  -e BASE_URL=http://localhost:3000 \
-  -e DWARVENPICK_AUTH=local \
-  -e DWARVENPICK_USER=admin \
-  -e DWARVENPICK_PASSWORD=Admin1234! \
-  -e DATASOURCE_ID=postgresql-core \
-  -e SQL='SELECT 1 AS value;' \
-  -e PAGE_SIZE=100 \
-  -e VUS=10 \
-  -e DURATION=2m \
-  scripts/perf/query-load.k6.js
+PERF_TARGET_ENV=dev \
+PERF_ALLOWED_HOSTS=dwarvenpick-dev.indexexchange.com \
+BASE_URL=https://dwarvenpick-dev.indexexchange.com \
+DWARVENPICK_AUTH=ldap \
+DWARVENPICK_USER="$DWARVENPICK_DEV_USER" \
+DWARVENPICK_PASSWORD="$DWARVENPICK_DEV_PASSWORD" \
+DATASOURCE_ID=starrocks-dev-adhoc \
+CREDENTIAL_PROFILE=read-only \
+SQL='SELECT 1 AS value;' \
+PROMETHEUS_URL=https://pandora-internal-prometheus.indexexchange.com \
+PROMETHEUS_NAMESPACE=dwarvenpick-dev \
+scripts/perf/run-query-smoke.sh
 ```
 
-Use `DWARVENPICK_AUTH=ldap` for LDAP-backed environments. For governed non-read-only profiles, pass
+The wrapper accepts only loopback URLs for `PERF_TARGET_ENV=local` and exact `PERF_ALLOWED_HOSTS` membership for
+`PERF_TARGET_ENV=dev`. The canonical production hostname is always rejected. For governed non-read-only profiles, pass
 `CREDENTIAL_PROFILE` and `JUSTIFICATION`; the harness forwards the same CSRF/session context used for login into query
 submission. Use `CAPTURE_APP_METRICS=false` when the target intentionally blocks `/actuator/prometheus` from the client
 path.
@@ -98,12 +117,16 @@ Separate representative query mixes with a line containing only dashes:
 
 ```bash
 SQL_MIX=$'SELECT 1 AS value;\n---\nSELECT generate_series(1, 25);' \
-k6 run scripts/perf/query-load.k6.js
+PERF_TARGET_ENV=local \
+BASE_URL=http://127.0.0.1:8080 \
+scripts/perf/run-query-smoke.sh
 ```
 
 ## Output to capture
 
 - `http_req_duration` p50/p95/p99
+- `dwarvenpick_k6_query_submit_duration` p50/p95/p99
+- `dwarvenpick_k6_query_completion_duration` p50/p95/p99
 - `http_req_failed` error rate
 - request rate (`http_reqs`)
 - `dwarvenpick_k6_query_completed`
@@ -119,7 +142,7 @@ k6 run scripts/perf/query-load.k6.js
   - `dwarvenpick_query_buffered_bytes`
   - `dwarvenpick_query_buffered_budget_bytes`
   - `dwarvenpick_pool_active`
-  - `dwarvenpick_pool_total`
+  - `dwarvenpick_pool_total`, with `dwarvenpick_pool` as the compatibility fallback
 
 ## Manual gate expectations
 
@@ -130,12 +153,17 @@ k6 run scripts/perf/query-load.k6.js
   `dwarvenpick_query_buffered_bytes / dwarvenpick_query_buffered_budget_bytes`.
 - Pool saturation remains below alert thresholds:
   `dwarvenpick_pool_active / dwarvenpick_pool_total`.
-- The report includes sanitized timings only. Do not store query text containing sensitive predicates or result payloads.
+- A run without Prometheus access remains valid for local functional timings, but the report marks backend metrics as
+  unavailable. Rollout evidence requires the Prometheus snapshot.
+- Keep reports under `build/reports/perf`, which is gitignored. Never upload raw Prometheus responses, Compose logs,
+  query text containing sensitive predicates, or result payloads.
 
 ## Reporting template
 
-- Environment: local/dev/stage
+- Environment: local/dev
 - Workload: VUs + duration + query mix
 - Latency: p50/p95/p99
 - Error rate: %
+- Pressure: max queued/running queries, buffer ratio, and pool ratio
+- Counters: completed executions, exports, and result-buffer rejections
 - Notable bottlenecks and suggested mitigations
