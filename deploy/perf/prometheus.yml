@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 2s
+  scrape_timeout: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: dwarvenpick-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:8080"]
+        labels:
+          namespace: dwarvenpick-local

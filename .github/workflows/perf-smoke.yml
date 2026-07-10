@@ -42,6 +42,20 @@ jobs:
                   docker compose -f deploy/perf/docker-compose.yml logs backend
                   exit 1
 
+            - name: Wait for Prometheus scrape
+              run: |
+                  for attempt in $(seq 1 30); do
+                      if curl -fsS --get \
+                          --data-urlencode 'query=up{job="dwarvenpick-backend"}' \
+                          http://127.0.0.1:9090/api/v1/query \
+                          | jq -e '.data.result[0].value[1] == "1"' >/dev/null; then
+                          exit 0
+                      fi
+                      sleep 2
+                  done
+                  docker compose -f deploy/perf/docker-compose.yml logs prometheus
+                  exit 1
+
             - name: Run local query smoke
               env:
                   PERF_TARGET_ENV: local
@@ -56,8 +70,10 @@ jobs:
                   MAX_RESULT_PAGES: "3"
                   PERF_PROFILE: smoke
                   VUS: "1"
-                  DURATION: 15s
+                  DURATION: 30s
                   CAPTURE_APP_METRICS: "true"
+                  PROMETHEUS_URL: http://127.0.0.1:9090
+                  PROMETHEUS_NAMESPACE: dwarvenpick-local
                   REPORT_DIR: build/reports/perf
               run: scripts/perf/run-query-smoke.sh
 

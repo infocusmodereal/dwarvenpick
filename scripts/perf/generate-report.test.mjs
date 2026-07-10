@@ -146,6 +146,33 @@ test("supports no-Prometheus local mode", async () => {
     assert.deepEqual(output.report.prometheus, { available: false });
 });
 
+test("fails closed when Prometheus captures fewer than two samples", async () => {
+    const payload = prometheus();
+    payload.samples = payload.samples.slice(0, 1);
+    const output = await runGenerator({ prometheusPayload: payload });
+    assert.notEqual(output.result.status, 0);
+    assert.equal(output.report.status, "incomplete");
+    assert.match(output.report.reason, /fewer than two samples/);
+});
+
+test("fails closed when Prometheus captures no query executions", async () => {
+    const payload = prometheus();
+    payload.samples[1].metrics.queryExecutions =
+        payload.samples[0].metrics.queryExecutions;
+    const output = await runGenerator({ prometheusPayload: payload });
+    assert.notEqual(output.result.status, 0);
+    assert.match(output.report.reason, /no query executions/);
+});
+
+test("fails closed when Prometheus captures no CSV export attempts", async () => {
+    const payload = prometheus();
+    payload.samples[1].metrics.csvExportAttempts =
+        payload.samples[0].metrics.csvExportAttempts;
+    const output = await runGenerator({ prometheusPayload: payload });
+    assert.notEqual(output.result.status, 0);
+    assert.match(output.report.reason, /no CSV export attempts/);
+});
+
 test("reports the effective k6 profile instead of process defaults", async () => {
     const payload = summary();
     payload.run = { profile: "regression", vus: 10, duration: "2m" };
