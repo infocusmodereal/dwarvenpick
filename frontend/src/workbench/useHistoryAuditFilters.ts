@@ -54,17 +54,6 @@ export const buildAuditOutcomeOptions = (events: AuditEventResponse[]): string[]
 };
 
 export const useHistoryAuditFilters = () => {
-    const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
-    const [loadingQueryHistory, setLoadingQueryHistory] = useState(false);
-    const [historyDatasourceFilter, setHistoryDatasourceFilter] = useState('');
-    const [historyStatusFilter, setHistoryStatusFilter] = useState('');
-    const [historyFromFilter, setHistoryFromFilter] = useState('');
-    const [historyToFilter, setHistoryToFilter] = useState('');
-    const [historySortOrder, setHistorySortOrder] = useState<SortOrder>('newest');
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize, setHistoryPageSize] = useState(100);
-    const [historyHasNextPage, setHistoryHasNextPage] = useState(false);
-
     const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
     const [loadingAuditEvents, setLoadingAuditEvents] = useState(false);
     const [auditTypeFilter, setAuditTypeFilter] = useState('');
@@ -76,10 +65,6 @@ export const useHistoryAuditFilters = () => {
 
     const auditActionOptions = useMemo(() => buildAuditActionOptions(auditEvents), [auditEvents]);
     const auditOutcomeOptions = useMemo(() => buildAuditOutcomeOptions(auditEvents), [auditEvents]);
-    const sortedQueryHistoryEntries = useMemo(
-        () => sortQueryHistoryEntries(queryHistoryEntries, historySortOrder),
-        [historySortOrder, queryHistoryEntries]
-    );
     const sortedAuditEvents = useMemo(
         () => sortAuditEvents(auditEvents, auditSortOrder),
         [auditEvents, auditSortOrder]
@@ -95,17 +80,7 @@ export const useHistoryAuditFilters = () => {
         auditSortOrder,
         auditToFilter,
         auditTypeFilter,
-        historyDatasourceFilter,
-        historyFromFilter,
-        historyHasNextPage,
-        historyPageIndex,
-        historyPageSize,
-        historySortOrder,
-        historyStatusFilter,
-        historyToFilter,
         loadingAuditEvents,
-        loadingQueryHistory,
-        queryHistoryEntries,
         setAuditActorFilter,
         setAuditEvents,
         setAuditFromFilter,
@@ -113,18 +88,7 @@ export const useHistoryAuditFilters = () => {
         setAuditSortOrder,
         setAuditToFilter,
         setAuditTypeFilter,
-        setHistoryDatasourceFilter,
-        setHistoryFromFilter,
-        setHistoryHasNextPage,
-        setHistoryPageIndex,
-        setHistoryPageSize,
-        setHistorySortOrder,
-        setHistoryStatusFilter,
-        setHistoryToFilter,
         setLoadingAuditEvents,
-        setLoadingQueryHistory,
-        setQueryHistoryEntries,
-        sortedAuditEvents,
-        sortedQueryHistoryEntries
+        sortedAuditEvents
     };
 };
