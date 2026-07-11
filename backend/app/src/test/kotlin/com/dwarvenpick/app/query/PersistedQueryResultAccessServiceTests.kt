@@ -156,6 +156,7 @@ class PersistedQueryResultAccessServiceTests {
             ipAddress = "127.0.0.1",
             datasourceId = "postgresql-core",
             credentialProfile = "read-only",
+            defaultSchema = "analytics",
             justification = null,
             sql = "select value",
             sqlRedacted = false,

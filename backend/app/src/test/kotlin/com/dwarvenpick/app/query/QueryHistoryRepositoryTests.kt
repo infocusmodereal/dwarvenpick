@@ -43,6 +43,7 @@ class QueryHistoryRepositoryTests {
 
         assertThat(firstPage.map { record -> record.executionId }).containsExactly("exec-3", "exec-2")
         assertThat(secondPage.map { record -> record.executionId }).containsExactly("exec-1")
+        assertThat(firstPage.first().defaultSchema).isEqualTo("Viper2")
     }
 
     @Test
@@ -93,6 +94,7 @@ class QueryHistoryRepositoryTests {
             actor = "analyst",
             datasourceId = "trino-warehouse",
             credentialProfile = "read-only",
+            defaultSchema = "Viper2",
             justification = null,
             queryHash = "hash-$executionId",
             queryText = queryText,

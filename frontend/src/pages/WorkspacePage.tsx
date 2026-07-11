@@ -22,6 +22,7 @@ import AppShell from '../components/AppShell';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
+import { buildHistoryWorkspaceTab } from '../workbench/queryHistoryContext';
 import { useTheme } from '../theme/ThemeContext';
 import { createPortal } from 'react-dom';
 import type {
@@ -4456,25 +4457,32 @@ export default function WorkspacePage() {
                 return;
             }
 
-            const resolvedDatasourceId = visibleDatasources.some((d) => d.id === entry.datasourceId)
-                ? entry.datasourceId
-                : (visibleDatasources[0]?.id ?? '');
-            if (!resolvedDatasourceId) {
+            const resolvedDatasource =
+                visibleDatasources.find((datasource) => datasource.id === entry.datasourceId) ??
+                visibleDatasources[0];
+            if (!resolvedDatasource) {
                 setWorkspaceError('No permitted connection is available for rerun.');
                 return;
             }
 
-            const createdTab = buildWorkspaceTab(
-                resolvedDatasourceId,
+            const { tab: createdTab, datasourceFallback } = buildHistoryWorkspaceTab(
+                entry,
+                resolvedDatasource.id,
+                resolvedDatasource.credentialProfiles,
                 `History ${workspaceTabsRef.current.length + 1}`,
                 sqlText
             );
-            createdTab.queryJustification = entry.justification ?? '';
             setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
             setActiveTabId(createdTab.id);
             setActiveSection('workbench');
 
-            if (runImmediately) {
+            if (datasourceFallback) {
+                setCopyFeedback(
+                    'The historical connection is no longer available. We opened the query with your current connection and cleared its schema and credential profile.'
+                );
+            }
+
+            if (runImmediately && !datasourceFallback) {
                 window.setTimeout(() => {
                     void executeSqlForTab(createdTab.id, sqlText, 'all');
                 }, 0);

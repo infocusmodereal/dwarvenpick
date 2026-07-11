@@ -172,6 +172,7 @@ data class QueryHistoryEntryResponse(
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val credentialProfile: String,
+    val defaultSchema: String? = null,
     val justification: String? = null,
     val submittedAt: String,
     val startedAt: String?,
