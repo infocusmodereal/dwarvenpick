@@ -1,6 +1,7 @@
 package com.dwarvenpick.app.inspector
 
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
 
@@ -13,6 +14,8 @@ class ObjectInspectorService(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val providers: List<ObjectInspectorProvider>,
 ) {
+    private val logger = LoggerFactory.getLogger(ObjectInspectorService::class.java)
+
     fun inspect(
         datasourceId: String,
         credentialProfile: String,
@@ -32,6 +35,11 @@ class ObjectInspectorService(
             }
 
         if (provider == null) {
+            logger.warn(
+                "No object inspector provider is registered for datasourceId={} engine={}.",
+                spec.datasourceId,
+                spec.engine,
+            )
             handle.connection.close()
             return ObjectInspectorResponse(
                 datasourceId = spec.datasourceId,
@@ -46,7 +54,9 @@ class ObjectInspectorService(
                             id = "overview",
                             title = "Overview",
                             status = ObjectInspectorSectionStatus.UNSUPPORTED,
-                            message = "Object inspector is not implemented yet for engine ${spec.engine}.",
+                            message =
+                                "No object inspector provider is registered for engine ${spec.engine}. " +
+                                    "Contact a Dwarvenpick administrator.",
                         ),
                     ),
             )

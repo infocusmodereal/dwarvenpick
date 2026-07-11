@@ -158,7 +158,9 @@ class TrinoObjectInspectorProvider : ObjectInspectorProvider {
                 id = "partitions",
                 title = "Partitions",
                 status = ObjectInspectorSectionStatus.UNSUPPORTED,
-                message = "Partition inspection is connector-specific for Trino and is not implemented yet.",
+                message =
+                    "Trino does not expose connector-independent partition metadata. " +
+                        "Use the selected catalog connector's metadata tables or procedures.",
             )
 
         val sizeSection =
@@ -166,7 +168,9 @@ class TrinoObjectInspectorProvider : ObjectInspectorProvider {
                 id = "size",
                 title = "Size",
                 status = ObjectInspectorSectionStatus.UNSUPPORTED,
-                message = "Size inspection is connector-specific for Trino and is not implemented yet.",
+                message =
+                    "Trino does not expose connector-independent object size metadata. " +
+                        "Use the selected catalog connector's metadata tables or procedures.",
             )
 
         return listOf(

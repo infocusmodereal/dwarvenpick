@@ -20,6 +20,7 @@ import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
+import ObjectInspectorSectionContent from '../workbench/components/ObjectInspectorSectionContent';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
 import { buildHistoryWorkspaceTab } from '../workbench/queryHistoryContext';
@@ -12144,118 +12145,10 @@ export default function WorkspacePage() {
                                                       section.id === objectInspectorActiveSectionId
                                               ) ?? sections[0];
 
-                                          if (activeSection.status !== 'OK') {
-                                              return (
-                                                  <p className="explorer-empty">
-                                                      {activeSection.message ??
-                                                          'Inspector data is not available.'}
-                                                  </p>
-                                              );
-                                          }
-
-                                          const sectionMessage = activeSection.message?.trim() ? (
-                                              <p className="object-inspector-message">
-                                                  {activeSection.message}
-                                              </p>
-                                          ) : null;
-
-                                          if (activeSection.kind === 'TEXT') {
-                                              return (
-                                                  <>
-                                                      {sectionMessage}
-                                                      <pre className="object-inspector-text">
-                                                          {activeSection.text ?? ''}
-                                                      </pre>
-                                                  </>
-                                              );
-                                          }
-
-                                          if (
-                                              activeSection.kind === 'KEY_VALUES' &&
-                                              activeSection.keyValues &&
-                                              activeSection.keyValues.length > 0
-                                          ) {
-                                              return (
-                                                  <>
-                                                      {sectionMessage}
-                                                      <table className="object-inspector-table">
-                                                          <tbody>
-                                                              {activeSection.keyValues.map(
-                                                                  (entry) => (
-                                                                      <tr
-                                                                          key={`object-inspector-kv-${entry.key}`}
-                                                                      >
-                                                                          <th scope="row">
-                                                                              {entry.key}
-                                                                          </th>
-                                                                          <td>
-                                                                              {entry.value ?? ''}
-                                                                          </td>
-                                                                      </tr>
-                                                                  )
-                                                              )}
-                                                          </tbody>
-                                                      </table>
-                                                  </>
-                                              );
-                                          }
-
-                                          if (
-                                              activeSection.kind === 'TABLE' &&
-                                              activeSection.table
-                                          ) {
-                                              return (
-                                                  <>
-                                                      {sectionMessage}
-                                                      <div className="object-inspector-table-wrap">
-                                                          <table className="object-inspector-table">
-                                                              <thead>
-                                                                  <tr>
-                                                                      {activeSection.table.columns.map(
-                                                                          (column) => (
-                                                                              <th
-                                                                                  key={`object-inspector-th-${column}`}
-                                                                                  scope="col"
-                                                                              >
-                                                                                  {column}
-                                                                              </th>
-                                                                          )
-                                                                      )}
-                                                                  </tr>
-                                                              </thead>
-                                                              <tbody>
-                                                                  {activeSection.table.rows.map(
-                                                                      (row, rowIndex) => (
-                                                                          <tr
-                                                                              key={`object-inspector-row-${rowIndex}`}
-                                                                          >
-                                                                              {row.map(
-                                                                                  (
-                                                                                      cell,
-                                                                                      cellIndex
-                                                                                  ) => (
-                                                                                      <td
-                                                                                          key={`object-inspector-cell-${rowIndex}-${cellIndex}`}
-                                                                                      >
-                                                                                          {cell ??
-                                                                                              ''}
-                                                                                      </td>
-                                                                                  )
-                                                                              )}
-                                                                          </tr>
-                                                                      )
-                                                                  )}
-                                                              </tbody>
-                                                          </table>
-                                                      </div>
-                                                  </>
-                                              );
-                                          }
-
                                           return (
-                                              <p className="explorer-empty">
-                                                  Inspector data is not available.
-                                              </p>
+                                              <ObjectInspectorSectionContent
+                                                  section={activeSection}
+                                              />
                                           );
                                       })()
                                   ) : (
