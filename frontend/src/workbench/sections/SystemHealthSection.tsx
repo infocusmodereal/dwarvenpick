@@ -5,11 +5,7 @@ import type {
     SystemHealthResponse
 } from '../types';
 import { IconButton } from '../components/WorkbenchIcons';
-import AerospikeSystemHealthView from '../systemHealth/AerospikeSystemHealthView';
-import MariaDbSystemHealthView from '../systemHealth/MariaDbSystemHealthView';
-import PostgresSystemHealthView from '../systemHealth/PostgresSystemHealthView';
-import StarRocksSystemHealthView from '../systemHealth/StarRocksSystemHealthView';
-import TrinoSystemHealthView from '../systemHealth/TrinoSystemHealthView';
+import SystemHealthEngineView from '../systemHealth/SystemHealthEngineView';
 
 type ControlPlanePanelProps = {
     loading: boolean;
@@ -218,25 +214,7 @@ export default function SystemHealthSection({
                         </p>
                     ) : null}
 
-                    {response.engine === 'POSTGRESQL' ? (
-                        <PostgresSystemHealthView response={response} />
-                    ) : response.engine === 'STARROCKS' ? (
-                        <StarRocksSystemHealthView response={response} />
-                    ) : response.engine === 'MARIADB' || response.engine === 'MYSQL' ? (
-                        <MariaDbSystemHealthView response={response} />
-                    ) : response.engine === 'TRINO' ? (
-                        <TrinoSystemHealthView response={response} />
-                    ) : response.engine === 'AEROSPIKE' ? (
-                        <AerospikeSystemHealthView response={response} />
-                    ) : (
-                        <div className="panel-inner">
-                            <h3>System Health</h3>
-                            <p className="muted-id">
-                                No engine-specific health view is available yet for{' '}
-                                {response.engine}.
-                            </p>
-                        </div>
-                    )}
+                    <SystemHealthEngineView response={response} />
                 </>
             ) : null}
 

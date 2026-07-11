@@ -1,6 +1,7 @@
 package com.dwarvenpick.app.systemhealth
 
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
 
@@ -9,6 +10,8 @@ class SystemHealthService(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val providers: List<SystemHealthProvider>,
 ) {
+    private val logger = LoggerFactory.getLogger(SystemHealthService::class.java)
+
     fun check(
         datasourceId: String,
         credentialProfile: String,
@@ -23,6 +26,11 @@ class SystemHealthService(
         val spec = handle.spec
         val provider = providers.firstOrNull { candidate -> spec.engine in candidate.engines }
         if (provider == null) {
+            logger.warn(
+                "No system health provider is registered for datasourceId={} engine={}.",
+                spec.datasourceId,
+                spec.engine,
+            )
             handle.connection.close()
             return SystemHealthResponse(
                 datasourceId = spec.datasourceId,
@@ -31,7 +39,9 @@ class SystemHealthService(
                 credentialProfile = spec.credentialProfile,
                 checkedAt = checkedAt.toString(),
                 status = SystemHealthStatus.UNSUPPORTED,
-                message = "System health checks are not implemented yet for engine ${spec.engine}.",
+                message =
+                    "No system health provider is registered for engine ${spec.engine}. " +
+                        "Contact a Dwarvenpick administrator.",
                 nodeCount = 0,
                 healthyNodeCount = 0,
             )
