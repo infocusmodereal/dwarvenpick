@@ -189,6 +189,7 @@ export type QueryHistoryEntryResponse = {
     maxRowsPerQuery: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
+    defaultSchema?: string;
     justification?: string;
     submittedAt: string;
     startedAt?: string;

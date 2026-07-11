@@ -87,6 +87,7 @@ class QueryHistoryRepository(
               actor,
               datasource_id,
               credential_profile,
+              default_schema,
               justification,
               query_hash,
               query_text,
@@ -143,6 +144,7 @@ class QueryHistoryRepository(
                   actor,
                   datasource_id,
                   credential_profile,
+                  default_schema,
                   justification,
                   query_hash,
                   query_text,
@@ -174,6 +176,7 @@ class QueryHistoryRepository(
             .addValue("actor", actor)
             .addValue("datasourceId", datasourceId)
             .addValue("credentialProfile", credentialProfile)
+            .addValue("defaultSchema", defaultSchema)
             .addValue("justification", justification)
             .addValue("queryHash", queryHash)
             .addValue("queryText", queryText)
@@ -196,6 +199,7 @@ class QueryHistoryRepository(
             actor = getString("actor"),
             datasourceId = getString("datasource_id"),
             credentialProfile = getString("credential_profile"),
+            defaultSchema = getString("default_schema"),
             justification = getString("justification"),
             queryHash = getString("query_hash"),
             queryText = getString("query_text"),
@@ -228,6 +232,7 @@ class QueryHistoryRepository(
               actor,
               datasource_id,
               credential_profile,
+              default_schema,
               justification,
               query_hash,
               query_text,
@@ -248,6 +253,7 @@ class QueryHistoryRepository(
               :actor,
               :datasourceId,
               :credentialProfile,
+              :defaultSchema,
               :justification,
               :queryHash,
               :queryText,

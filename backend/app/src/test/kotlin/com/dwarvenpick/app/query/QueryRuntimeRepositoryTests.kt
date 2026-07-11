@@ -62,6 +62,8 @@ class QueryRuntimeRepositoryTests {
         val savedMetadata = queryRuntimeRepository.findMetadata(record.executionId)
         val savedFullRecord = queryRuntimeRepository.find(record.executionId)
         assertThat(savedMetadata?.cancelRequested).isTrue()
+        assertThat(savedMetadata?.defaultSchema).isEqualTo("analytics")
+        assertThat(savedFullRecord?.defaultSchema).isEqualTo("analytics")
         assertThat(savedFullRecord?.rows).containsExactly(listOf("value"))
     }
 
@@ -128,6 +130,7 @@ class QueryRuntimeRepositoryTests {
             ipAddress = "127.0.0.1",
             datasourceId = "unit-test-datasource",
             credentialProfile = "read-only",
+            defaultSchema = "analytics",
             justification = null,
             sql = "select 'value'",
             sqlRedacted = false,

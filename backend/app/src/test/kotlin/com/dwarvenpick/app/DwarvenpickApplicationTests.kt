@@ -12,7 +12,9 @@ import com.dwarvenpick.app.datasource.TlsSettings
 import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
 import com.dwarvenpick.app.query.QueryCsvWriter
 import com.dwarvenpick.app.query.QueryExecutionManager
+import com.dwarvenpick.app.query.QueryHistoryFilter
 import com.dwarvenpick.app.query.QueryHistoryRepository
+import com.dwarvenpick.app.query.QueryHistorySortOrder
 import com.dwarvenpick.app.query.QueryResultsExpiredException
 import com.dwarvenpick.app.rbac.CreateGroupRequest
 import com.dwarvenpick.app.rbac.QueryAccessDeniedException
@@ -790,7 +792,8 @@ class DwarvenpickApplicationTests {
                             """
                             {
                               "datasourceId": "trino-warehouse",
-                              "sql": "select generate_series(1,3)"
+                              "sql": "select generate_series(1,3)",
+                              "defaultSchema": "Viper2"
                             }
                             """.trimIndent(),
                         ),
@@ -800,6 +803,24 @@ class DwarvenpickApplicationTests {
 
         val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
         assertThat(finalStatus).isEqualTo("SUCCEEDED")
+        assertThat(
+            queryHistoryRepository
+                .list(
+                    QueryHistoryFilter(
+                        actor = "analyst",
+                        isSystemAdmin = false,
+                        datasourceId = null,
+                        status = null,
+                        from = null,
+                        to = null,
+                        limit = 1,
+                        offset = 0,
+                        actorFilter = null,
+                        sortOrder = QueryHistorySortOrder.NEWEST,
+                    ),
+                ).single()
+                .defaultSchema,
+        ).isEqualTo("Viper2")
 
         mockMvc
             .perform(
@@ -813,6 +834,7 @@ class DwarvenpickApplicationTests {
             .andExpect(jsonPath("$[0].queryText").value("select generate_series(1,3)"))
             .andExpect(jsonPath("$[0].queryTextRedacted").value(false))
             .andExpect(jsonPath("$[0].rowCount").value(3))
+            .andExpect(jsonPath("$[0].defaultSchema").value("Viper2"))
     }
 
     @Test
