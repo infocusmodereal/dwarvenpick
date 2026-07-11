@@ -96,7 +96,8 @@ import {
     formatExecutionTimestamp,
     isTerminalExecutionStatus,
     isValidEmailAddress,
-    normalizeAdminIdentifier
+    normalizeAdminIdentifier,
+    toIsoTimestamp
 } from '../workbench/utils';
 import {
     buildJdbcUrlPreview,
@@ -114,6 +115,7 @@ import {
 } from '../workbench/queryResults';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useHistoryAuditFilters } from '../workbench/useHistoryAuditFilters';
+import { useQueryHistory } from '../workbench/useQueryHistory';
 import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
 import {
     EditorTabCloseIcon,
@@ -598,16 +600,7 @@ export default function WorkspacePage() {
         auditSortOrder,
         auditToFilter,
         auditTypeFilter,
-        historyDatasourceFilter,
-        historyFromFilter,
-        historyHasNextPage,
-        historyPageIndex,
-        historyPageSize,
-        historySortOrder,
-        historyStatusFilter,
-        historyToFilter,
         loadingAuditEvents,
-        loadingQueryHistory,
         setAuditActorFilter,
         setAuditEvents,
         setAuditFromFilter,
@@ -615,19 +608,8 @@ export default function WorkspacePage() {
         setAuditSortOrder,
         setAuditToFilter,
         setAuditTypeFilter,
-        setHistoryDatasourceFilter,
-        setHistoryFromFilter,
-        setHistoryHasNextPage,
-        setHistoryPageIndex,
-        setHistoryPageSize,
-        setHistorySortOrder,
-        setHistoryStatusFilter,
-        setHistoryToFilter,
         setLoadingAuditEvents,
-        setLoadingQueryHistory,
-        setQueryHistoryEntries,
-        sortedAuditEvents,
-        sortedQueryHistoryEntries
+        sortedAuditEvents
     } = useHistoryAuditFilters();
 
     const [systemHealthDatasourceId, setSystemHealthDatasourceId] = useState('');
@@ -2516,6 +2498,31 @@ export default function WorkspacePage() {
         [navigate]
     );
 
+    const {
+        historyDatasourceFilter,
+        historyFromFilter,
+        historyHasNextPage,
+        historyPageIndex,
+        historyPageSize,
+        historySortOrder,
+        historyStatusFilter,
+        historyToFilter,
+        loadQueryHistory,
+        loadingQueryHistory,
+        setHistoryDatasourceFilter,
+        setHistoryFromFilter,
+        setHistoryPageIndex,
+        setHistoryPageSize,
+        setHistorySortOrder,
+        setHistoryStatusFilter,
+        setHistoryToFilter,
+        sortedQueryHistoryEntries
+    } = useQueryHistory({
+        enabled: Boolean(currentUser),
+        readFriendlyError,
+        onError: setWorkspaceError
+    });
+
     const fetchCsrfToken = useCallback(async (): Promise<CsrfTokenResponse> => {
         const response = await fetch('/api/auth/csrf', {
             method: 'GET',
@@ -2545,20 +2552,6 @@ export default function WorkspacePage() {
             navigate('/login', { replace: true });
         }
     }, [fetchCsrfToken, navigate]);
-
-    const toIsoTimestamp = (value: string): string | null => {
-        const trimmed = value.trim();
-        if (!trimmed) {
-            return null;
-        }
-
-        const parsed = new Date(trimmed);
-        if (Number.isNaN(parsed.getTime())) {
-            return null;
-        }
-
-        return parsed.toISOString();
-    };
 
     const loadSchemaBrowser = useCallback(
         async (datasourceId: string, refresh = false) => {
@@ -2798,67 +2791,6 @@ export default function WorkspacePage() {
         },
         [currentUser, readFriendlyError]
     );
-
-    const loadQueryHistory = useCallback(async () => {
-        if (!currentUser) {
-            return;
-        }
-
-        setLoadingQueryHistory(true);
-        try {
-            const queryParams = new URLSearchParams();
-            if (historyDatasourceFilter.trim()) {
-                queryParams.set('datasourceId', historyDatasourceFilter.trim());
-            }
-            if (historyStatusFilter.trim()) {
-                queryParams.set('status', historyStatusFilter.trim());
-            }
-
-            const fromIso = toIsoTimestamp(historyFromFilter);
-            if (fromIso) {
-                queryParams.set('from', fromIso);
-            }
-            const toIso = toIsoTimestamp(historyToFilter);
-            if (toIso) {
-                queryParams.set('to', toIso);
-            }
-            queryParams.set('limit', String(historyPageSize + 1));
-            queryParams.set('offset', String(historyPageIndex * historyPageSize));
-            queryParams.set('sort', historySortOrder);
-
-            const response = await fetch(`/api/queries/history?${queryParams.toString()}`, {
-                method: 'GET',
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
-            }
-
-            const payload = (await response.json()) as QueryHistoryEntryResponse[];
-            const rows = Array.isArray(payload) ? payload : [];
-            setHistoryHasNextPage(rows.length > historyPageSize);
-            setQueryHistoryEntries(rows.slice(0, historyPageSize));
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : 'Failed to load query history.';
-            setWorkspaceError(message);
-        } finally {
-            setLoadingQueryHistory(false);
-        }
-    }, [
-        currentUser,
-        historyDatasourceFilter,
-        historyFromFilter,
-        historyPageIndex,
-        historyPageSize,
-        historySortOrder,
-        historyStatusFilter,
-        historyToFilter,
-        readFriendlyError,
-        setHistoryHasNextPage,
-        setLoadingQueryHistory,
-        setQueryHistoryEntries
-    ]);
 
     const loadAuditEvents = useCallback(async () => {
         if (!isSystemAdmin) {
@@ -3290,14 +3222,6 @@ export default function WorkspacePage() {
         anchor.click();
         anchor.remove();
     }, [controlPlaneActorFilter, systemHealthDatasourceId]);
-
-    useEffect(() => {
-        if (!currentUser) {
-            return;
-        }
-
-        void loadQueryHistory();
-    }, [currentUser, loadQueryHistory]);
 
     useEffect(() => {
         if (!isSystemAdmin) {

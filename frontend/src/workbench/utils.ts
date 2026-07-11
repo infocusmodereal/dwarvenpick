@@ -49,6 +49,16 @@ export const isValidEmailAddress = (value: string): boolean =>
 export const isTerminalExecutionStatus = (status: string): boolean =>
     status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELED';
 
+export const toIsoTimestamp = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
 export const formatExecutionTimestamp = (value: string): string => {
     const trimmed = value.trim();
     if (!trimmed) {
