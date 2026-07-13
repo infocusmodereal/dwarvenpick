@@ -39,15 +39,29 @@ trap stop_sampler EXIT
 trap 'handle_signal 130' INT
 trap 'handle_signal 143' TERM
 
+unset K6_HTTP_DEBUG K6_CONSOLE_OUTPUT K6_LOG_OUTPUT
+
 if [ -n "${PROMETHEUS_URL:-}" ] || [ -n "${PROMETHEUS_NAMESPACE:-}" ]; then
-  node "$ROOT_DIR/scripts/perf/prometheus-sampler.mjs" "$PROMETHEUS_SNAPSHOT_PATH" &
+  env \
+    -u DWARVENPICK_USER \
+    -u DWARVENPICK_PASSWORD \
+    -u SQL \
+    -u SQL_MIX \
+    -u JUSTIFICATION \
+    node "$ROOT_DIR/scripts/perf/prometheus-sampler.mjs" "$PROMETHEUS_SNAPSHOT_PATH" &
   sampler_pid="$!"
 else
-  node "$ROOT_DIR/scripts/perf/prometheus-sampler.mjs" "$PROMETHEUS_SNAPSHOT_PATH"
+  env \
+    -u DWARVENPICK_USER \
+    -u DWARVENPICK_PASSWORD \
+    -u SQL \
+    -u SQL_MIX \
+    -u JUSTIFICATION \
+    node "$ROOT_DIR/scripts/perf/prometheus-sampler.mjs" "$PROMETHEUS_SNAPSHOT_PATH"
 fi
 
 set +e
-"$K6_BIN" run "$ROOT_DIR/scripts/perf/query-load.k6.js"
+"$K6_BIN" run --log-output=none "$ROOT_DIR/scripts/perf/query-load.k6.js"
 k6_status="$?"
 set -e
 

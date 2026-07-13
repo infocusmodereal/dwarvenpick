@@ -90,10 +90,10 @@ function prometheus(available = true) {
         schemaVersion: 1,
         available: true,
         namespace: "dwarvenpick-dev",
-        samples: [
-            { capturedAt: "2026-07-10T10:00:00.000Z", metrics: metrics(0) },
-            { capturedAt: "2026-07-10T10:00:10.000Z", metrics: metrics(1) },
-        ],
+        samples: Array.from({ length: 6 }, (_, index) => ({
+            capturedAt: `2026-07-10T10:00:${String(index * 2).padStart(2, "0")}.000Z`,
+            metrics: metrics(index),
+        })),
     };
 }
 
@@ -135,9 +135,12 @@ test("reports k6 percentiles and derived Prometheus pressure", async () => {
     assert.equal(output.report.k6.http.p50Ms, 5);
     assert.equal(output.report.k6.http.p95Ms, 15);
     assert.equal(output.report.k6.http.p99Ms, 25);
-    assert.equal(output.report.prometheus.maxQueuedQueries, 1);
+    assert.equal(output.report.prometheus.maxQueuedQueries, 5);
     assert.equal(output.report.prometheus.maxPoolSaturation, 0.5);
-    assert.equal(output.report.prometheus.queryExecutions, 1);
+    assert.equal(output.report.prometheus.queryExecutions, 5);
+    assert.equal(output.report.prometheus.sampleCount, 6);
+    assert.equal(output.report.environmentScope, "shared");
+    assert.equal(output.report.prometheus.scope, "namespace-wide");
 });
 
 test("supports no-Prometheus local mode", async () => {
@@ -146,18 +149,18 @@ test("supports no-Prometheus local mode", async () => {
     assert.deepEqual(output.report.prometheus, { available: false });
 });
 
-test("fails closed when Prometheus captures fewer than two samples", async () => {
+test("fails closed when Prometheus captures fewer than six samples", async () => {
     const payload = prometheus();
-    payload.samples = payload.samples.slice(0, 1);
+    payload.samples = payload.samples.slice(0, 5);
     const output = await runGenerator({ prometheusPayload: payload });
     assert.notEqual(output.result.status, 0);
     assert.equal(output.report.status, "incomplete");
-    assert.match(output.report.reason, /fewer than two samples/);
+    assert.match(output.report.reason, /fewer than 6 samples/);
 });
 
 test("fails closed when Prometheus captures no query executions", async () => {
     const payload = prometheus();
-    payload.samples[1].metrics.queryExecutions =
+    payload.samples.at(-1).metrics.queryExecutions =
         payload.samples[0].metrics.queryExecutions;
     const output = await runGenerator({ prometheusPayload: payload });
     assert.notEqual(output.result.status, 0);
@@ -166,7 +169,7 @@ test("fails closed when Prometheus captures no query executions", async () => {
 
 test("fails closed when Prometheus captures no CSV export attempts", async () => {
     const payload = prometheus();
-    payload.samples[1].metrics.csvExportAttempts =
+    payload.samples.at(-1).metrics.csvExportAttempts =
         payload.samples[0].metrics.csvExportAttempts;
     const output = await runGenerator({ prometheusPayload: payload });
     assert.notEqual(output.result.status, 0);
@@ -201,7 +204,13 @@ test("fails closed when a required metric is absent", async () => {
 });
 
 test("never writes SQL or password values", async () => {
-    const output = await runGenerator();
+    const summaryPayload = summary();
+    summaryPayload.unexpectedSecret = secretPassword;
+    summaryPayload.metrics.http_req_duration.responseBody = secretSql;
+    const prometheusPayload = prometheus();
+    prometheusPayload.samples[0].unexpectedLabel = secretPassword;
+    prometheusPayload.samples[0].metrics.unexpectedSeries = secretSql;
+    const output = await runGenerator({ summaryPayload, prometheusPayload });
     const serialized = `${JSON.stringify(output.report)}${output.text}`;
     assert.equal(serialized.includes(secretSql), false);
     assert.equal(serialized.includes(secretPassword), false);
