@@ -90,6 +90,7 @@ data class PasswordPolicyProperties(
 data class LdapAuthProperties(
     val enabled: Boolean = false,
     val url: String = "",
+    val transport: LdapTransport = LdapTransport.AUTO,
     val bindDn: String = "",
     val bindPassword: String = "",
     val userSearchBase: String = "",
@@ -99,6 +100,13 @@ data class LdapAuthProperties(
     val systemAdminGroups: Set<String> = emptySet(),
     val mock: LdapMockProperties = LdapMockProperties(),
 )
+
+enum class LdapTransport {
+    AUTO,
+    PLAIN,
+    START_TLS,
+    LDAPS,
+}
 
 data class LdapAttributeMappingProperties(
     val username: String = "uid",

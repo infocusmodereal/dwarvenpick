@@ -67,6 +67,8 @@ spec:
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_ENABLED | quote }}
             - name: DWARVENPICK_AUTH_LDAP_URL
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_URL | quote }}
+            - name: DWARVENPICK_AUTH_LDAP_TRANSPORT
+              value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_TRANSPORT | quote }}
             - name: DWARVENPICK_AUTH_LDAP_BIND_DN
               value: {{ .Values.env.DWARVENPICK_AUTH_LDAP_BIND_DN | quote }}
             - name: DWARVENPICK_AUTH_LDAP_BIND_PASSWORD
