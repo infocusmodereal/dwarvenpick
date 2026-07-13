@@ -40,7 +40,7 @@ import javax.sql.DataSource
         "dwarvenpick.query.admission-timeout-seconds=1",
     ],
 )
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 class QueryAdmissionPostgresTests {
     @Autowired
     private lateinit var queryAdmissionRepository: QueryAdmissionRepository
