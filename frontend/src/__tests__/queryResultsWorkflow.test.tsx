@@ -223,6 +223,40 @@ describe('useQueryResultsWorkflow', () => {
         expect(result.current.view.resultSortState).toBeNull();
     });
 
+    it('applies an active sort only to the current server page', () => {
+        const firstPage = {
+            ...tab('tab-a'),
+            currentPageToken: '',
+            resultRows: [['3'], ['1']]
+        };
+        const { result, rerender } = renderHook(
+            ({ activeTab }: { activeTab: WorkspaceTab }) =>
+                useQueryResultsWorkflow({
+                    activeTab,
+                    activeTabId: activeTab.id,
+                    onFeedback: vi.fn(),
+                    readFriendlyError: vi.fn(),
+                    updateWorkspaceTab: vi.fn()
+                }),
+            { initialProps: { activeTab: firstPage } }
+        );
+
+        act(() => result.current.view.onToggleResultSort(0));
+        expect(result.current.view.visibleResultRows.rows).toEqual([['1'], ['3']]);
+
+        rerender({
+            activeTab: {
+                ...firstPage,
+                currentPageToken: 'page-2',
+                previousPageTokens: [''],
+                resultRows: [['4'], ['2']]
+            }
+        });
+
+        expect(result.current.view.resultSortState).toEqual({ columnIndex: 0, direction: 'asc' });
+        expect(result.current.view.visibleResultRows.rows).toEqual([['2'], ['4']]);
+    });
+
     it('does not start an export without an execution ID', async () => {
         const onFeedback = vi.fn();
         const activeTab = tab('tab-a');
@@ -276,10 +310,12 @@ describe('useQueryResultsWorkflow', () => {
         act(() => {
             result.current.view.onToggleExportMenu();
             result.current.view.onExportIncludeHeadersChange(false);
+            result.current.view.onToggleResultSort(0);
         });
 
         await act(async () => result.current.view.onExportCsv());
 
+        expect(result.current.view.resultSortState).toEqual({ columnIndex: 0, direction: 'asc' });
         expect(fetchMock).toHaveBeenCalledWith('/api/queries/exec-a/export.csv?headers=false', {
             method: 'GET',
             credentials: 'include'
