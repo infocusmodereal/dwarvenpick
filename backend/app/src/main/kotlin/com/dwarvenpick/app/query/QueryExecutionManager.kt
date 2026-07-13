@@ -179,6 +179,7 @@ class QueryExecutionManager(
     private val queryExecutionProperties: QueryExecutionProperties,
     private val queryHistoryRepository: QueryHistoryRepository,
     private val queryRuntimeRepository: QueryRuntimeRepository,
+    private val queryAdmissionRepository: QueryAdmissionRepository,
     private val persistedQueryResultAccessService: PersistedQueryResultAccessService,
     private val pageTokenCodec: QueryResultPageTokenCodec,
     private val applicationInstanceId: ApplicationInstanceId,
@@ -263,102 +264,97 @@ class QueryExecutionManager(
         val concurrencyLimit =
             policy.concurrencyLimit.coerceAtLeast(1).coerceAtMost(queryExecutionProperties.maxConcurrencyPerUser.coerceAtLeast(1))
 
-        synchronized(this) {
-            val activeExecutions =
-                queryRuntimeRepository
-                    .listActiveMetadata(
-                        actor = actor,
-                        isSystemAdmin = false,
-                        datasourceId = null,
-                        actorFilter = null,
-                    ).size
-            if (activeExecutions >= concurrencyLimit) {
-                meterRegistry
-                    .counter(
-                        "dwarvenpick.query.execute.attempts",
-                        "outcome",
-                        "blocked_concurrency",
-                        "datasourceId",
-                        request.datasourceId.trim(),
-                    ).increment()
-                throw QueryConcurrencyLimitException(
-                    "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
-                )
-            }
-
-            val record =
-                QueryExecutionRecord(
-                    executionId = executionId,
-                    actor = actor,
-                    ipAddress = ipAddress,
-                    datasourceId = request.datasourceId.trim(),
-                    credentialProfile = policy.credentialProfile,
-                    justification = justification,
-                    defaultSchema = defaultSchema,
-                    sql = normalizedSql,
-                    queryHash = queryHash,
-                    maxRowsPerQuery = maxRows,
-                    maxBufferedBytes = maxBufferedBytes,
-                    maxCellBytes = maxCellBytes,
-                    maxRuntimeSeconds = maxRuntimeSeconds,
-                    concurrencyLimit = concurrencyLimit,
-                    scriptStatementCount = statementSegments.size,
-                    scriptStopOnError = request.stopOnError,
-                    scriptTransactionMode = request.transactionMode,
-                    scriptStatements = mutableListOf(),
-                    status = QueryExecutionStatus.QUEUED,
-                    message = "Query accepted and queued.",
-                    errorSummary = null,
-                    submittedAt = Instant.now(),
-                    startedAt = null,
-                    completedAt = null,
-                    rowLimitReached = false,
-                    resultLimitMessage = null,
-                    bufferedResultBytes = 0,
-                    columns = mutableListOf(),
-                    rows = mutableListOf(),
-                    lastAccessedAt = Instant.now(),
-                    resultsExpired = false,
-                    cancelRequested = false,
-                    activeStatement = null,
-                    activeConnectionHandle = null,
-                    activeConnectionRequiresEviction = false,
-                    activeConnection = null,
-                    executionFuture = null,
-                )
-            executions[executionId] = record
-            syncHistoryFromExecution(record)
-            publishEvent(record, "Query queued.")
-            logger.info(
-                "query_execution queued executionId={} actor={} datasourceId={} queryHash={}",
-                executionId,
-                actor,
-                record.datasourceId,
-                queryHash,
+        val record =
+            QueryExecutionRecord(
+                executionId = executionId,
+                actor = actor,
+                ipAddress = ipAddress,
+                datasourceId = request.datasourceId.trim(),
+                credentialProfile = policy.credentialProfile,
+                justification = justification,
+                defaultSchema = defaultSchema,
+                sql = normalizedSql,
+                queryHash = queryHash,
+                maxRowsPerQuery = maxRows,
+                maxBufferedBytes = maxBufferedBytes,
+                maxCellBytes = maxCellBytes,
+                maxRuntimeSeconds = maxRuntimeSeconds,
+                concurrencyLimit = concurrencyLimit,
+                scriptStatementCount = statementSegments.size,
+                scriptStopOnError = request.stopOnError,
+                scriptTransactionMode = request.transactionMode,
+                scriptStatements = mutableListOf(),
+                status = QueryExecutionStatus.QUEUED,
+                message = "Query accepted and queued.",
+                errorSummary = null,
+                submittedAt = Instant.now(),
+                startedAt = null,
+                completedAt = null,
+                rowLimitReached = false,
+                resultLimitMessage = null,
+                bufferedResultBytes = 0,
+                columns = mutableListOf(),
+                rows = mutableListOf(),
+                lastAccessedAt = Instant.now(),
+                resultsExpired = false,
+                cancelRequested = false,
+                activeStatement = null,
+                activeConnectionHandle = null,
+                activeConnectionRequiresEviction = false,
+                activeConnection = null,
+                executionFuture = null,
             )
-            auditExecution(
-                record = record,
-                type = "query.execute",
-                outcome = "queued",
-                details =
-                    mapOf(
-                        "datasourceId" to record.datasourceId,
-                        "executionId" to executionId,
-                        "queryHash" to queryHash,
-                    ),
+        val admissionResult =
+            queryAdmissionRepository.reserve(
+                record = record.toPersistedRuntimeRecord(emptyList(), emptyList()),
+                concurrencyLimit = concurrencyLimit,
             )
+        if (admissionResult == QueryAdmissionResult.LIMIT_REACHED) {
             meterRegistry
                 .counter(
                     "dwarvenpick.query.execute.attempts",
                     "outcome",
-                    "queued",
+                    "blocked_concurrency",
                     "datasourceId",
                     record.datasourceId,
                 ).increment()
-
-            val future = virtualExecutor.submit { executeQueuedQuery(record) }
-            record.executionFuture = future
+            throw QueryConcurrencyLimitException(
+                "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
+            )
         }
+
+        executions[executionId] = record
+        syncHistoryOnly(record)
+        publishEvent(record, "Query queued.")
+        logger.info(
+            "query_execution queued executionId={} actor={} datasourceId={} queryHash={}",
+            executionId,
+            actor,
+            record.datasourceId,
+            queryHash,
+        )
+        auditExecution(
+            record = record,
+            type = "query.execute",
+            outcome = "queued",
+            details =
+                mapOf(
+                    "datasourceId" to record.datasourceId,
+                    "executionId" to executionId,
+                    "queryHash" to queryHash,
+                ),
+        )
+        meterRegistry
+            .counter(
+                "dwarvenpick.query.execute.attempts",
+                "outcome",
+                "queued",
+                "datasourceId",
+                record.datasourceId,
+            ).increment()
+
+        val future = virtualExecutor.submit { executeQueuedQuery(record) }
+        record.executionFuture = future
 
         return QueryExecutionResponse(
             executionId = executionId,
@@ -2132,6 +2128,23 @@ class QueryExecutionManager(
             synchronized(record.rows) {
                 record.columns.toList() to record.rows.toList()
             }
+        saveHistory(record, columnsSnapshot, rowsSnapshot)
+        queryRuntimeRepository.save(record.toPersistedRuntimeRecord(columnsSnapshot, rowsSnapshot))
+    }
+
+    private fun syncHistoryOnly(record: QueryExecutionRecord) {
+        val (columnsSnapshot, rowsSnapshot) =
+            synchronized(record.rows) {
+                record.columns.toList() to record.rows.toList()
+            }
+        saveHistory(record, columnsSnapshot, rowsSnapshot)
+    }
+
+    private fun saveHistory(
+        record: QueryExecutionRecord,
+        columnsSnapshot: List<QueryResultColumn>,
+        rowsSnapshot: List<List<String?>>,
+    ) {
         queryHistoryRepository.save(
             QueryHistoryRecord(
                 executionId = record.executionId,
@@ -2156,7 +2169,6 @@ class QueryExecutionManager(
                 completedAt = record.completedAt,
             ),
         )
-        queryRuntimeRepository.save(record.toPersistedRuntimeRecord(columnsSnapshot, rowsSnapshot))
     }
 
     private fun QueryExecutionRecord.toPersistedRuntimeRecord(

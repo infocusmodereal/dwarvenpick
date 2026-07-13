@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.sql.ResultSet
 import java.sql.Timestamp
@@ -130,6 +131,11 @@ class QueryRuntimeRepository(
         )
         namedParameterJdbcTemplate.update(insertSql, recordToPersist.toParameters())
         insertResultPages(recordToPersist)
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    fun insertInitial(record: PersistedQueryRuntimeRecord) {
+        namedParameterJdbcTemplate.update(insertSql, record.toParameters())
     }
 
     fun find(executionId: String): PersistedQueryRuntimeRecord? =

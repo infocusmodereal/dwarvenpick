@@ -57,6 +57,11 @@ state, configure a shared PostgreSQL metadata DB:
 - `SPRING_DATASOURCE_USERNAME=<user>`
 - `SPRING_DATASOURCE_PASSWORD=<password>`
 
+The shared PostgreSQL metadata database also coordinates per-actor query admission across backend replicas. Admission
+uses a transaction-scoped advisory lock, then counts active `QUEUED`/`RUNNING` executions and inserts the new `QUEUED`
+record in the same transaction. `DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS` bounds lock waits and defaults to 10
+seconds. Embedded H2 uses an in-process transaction gate and remains suitable only for a single local backend process.
+
 Schema changes are managed by Flyway migrations. Existing deployments with pre-created state tables are baselined and
 migrated forward on startup.
 

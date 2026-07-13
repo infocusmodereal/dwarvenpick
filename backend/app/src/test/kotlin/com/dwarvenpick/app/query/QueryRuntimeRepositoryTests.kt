@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 
 @SpringBootTest(
     properties = [
@@ -19,6 +21,9 @@ class QueryRuntimeRepositoryTests {
 
     @Autowired
     private lateinit var namedParameterJdbcTemplate: NamedParameterJdbcTemplate
+
+    @Autowired
+    private lateinit var queryAdmissionRepository: QueryAdmissionRepository
 
     @BeforeEach
     fun resetRuntime() {
@@ -120,6 +125,55 @@ class QueryRuntimeRepositoryTests {
         assertThat(metadata?.rowCount).isZero()
         assertThat(metadata?.columnCount).isZero()
         assertThat(metadata?.columns).isEmpty()
+    }
+
+    @Test
+    fun `local admission serializes count insert and commit`() {
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val results =
+                listOf("local-admission-1", "local-admission-2")
+                    .map { executionId ->
+                        executor.submit<QueryAdmissionResult> {
+                            start.await()
+                            queryAdmissionRepository.reserve(
+                                runtimeRecord(executionId)
+                                    .copy(
+                                        actor = "local-admission-user",
+                                        status = QueryExecutionStatus.QUEUED,
+                                        startedAt = null,
+                                        columns = emptyList(),
+                                        rows = emptyList(),
+                                    ),
+                                concurrencyLimit = 1,
+                            )
+                        }
+                    }
+            start.countDown()
+
+            assertThat(results.map { it.get() })
+                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+            assertThat(
+                queryRuntimeRepository.listActiveMetadata(
+                    actor = "local-admission-user",
+                    isSystemAdmin = false,
+                    datasourceId = null,
+                    actorFilter = null,
+                ),
+            ).hasSize(1)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `admission lock key is stable and actor specific`() {
+        assertThat(QueryAdmissionLockKey.forActor("admission-user"))
+            .isEqualTo(QueryAdmissionLockKey.forActor("admission-user"))
+            .isNotEqualTo(QueryAdmissionLockKey.forActor("other-user"))
+        assertThat(QueryAdmissionLockKey.NAMESPACE).isEqualTo(0x44575051)
+        assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("LOCAL")
     }
 
     private fun runtimeRecord(executionId: String): PersistedQueryRuntimeRecord {
