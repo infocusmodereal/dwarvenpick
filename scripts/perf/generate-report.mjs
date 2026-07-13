@@ -22,6 +22,7 @@ const requiredMetrics = [
     "dwarvenpick_k6_result_page_duration",
     "dwarvenpick_k6_result_pages_fetched",
 ];
+const minimumPrometheusSamples = 6;
 
 function finite(value, label) {
     if (!Number.isFinite(value)) {
@@ -92,9 +93,12 @@ function analyzePrometheus(prometheus, requireCsvExport) {
     if (!prometheus.available) {
         return { available: false };
     }
-    if (!Array.isArray(prometheus.samples) || prometheus.samples.length < 2) {
+    if (
+        !Array.isArray(prometheus.samples) ||
+        prometheus.samples.length < minimumPrometheusSamples
+    ) {
         throw new Error(
-            "Prometheus was configured but fewer than two samples were captured.",
+            `Prometheus was configured but fewer than ${minimumPrometheusSamples} samples were captured.`,
         );
     }
     const samples = prometheus.samples;
@@ -112,14 +116,19 @@ function analyzePrometheus(prometheus, requireCsvExport) {
     const queryExecutions = delta(samples, "queryExecutions");
     const csvExportAttempts = delta(samples, "csvExportAttempts");
     if (queryExecutions <= 0) {
-        throw new Error("Prometheus captured no query executions during the smoke.");
+        throw new Error(
+            "Prometheus captured no query executions during the smoke.",
+        );
     }
     if (requireCsvExport && csvExportAttempts <= 0) {
-        throw new Error("Prometheus captured no CSV export attempts during the smoke.");
+        throw new Error(
+            "Prometheus captured no CSV export attempts during the smoke.",
+        );
     }
     return {
         available: true,
         namespace: prometheus.namespace,
+        scope: "namespace-wide",
         sampleCount: samples.length,
         maxQueuedQueries: maxMetric(samples, "queuedQueries"),
         maxRunningQueries: maxMetric(samples, "runningQueries"),
@@ -192,6 +201,8 @@ try {
         schemaVersion: 1,
         status: thresholdsPassed(summary) ? "passed" : "failed",
         targetEnvironment: process.env.PERF_TARGET_ENV,
+        environmentScope:
+            process.env.PERF_TARGET_ENV === "dev" ? "shared" : "isolated",
         profile: run.profile,
         vus: run.vus,
         duration: run.duration,
@@ -229,6 +240,7 @@ try {
         "Dwarvenpick query performance report",
         `status=${report.status}`,
         `target_environment=${report.targetEnvironment}`,
+        `environment_scope=${report.environmentScope}`,
         `profile=${report.profile}`,
         `vus=${report.vus}`,
         `duration=${report.duration}`,

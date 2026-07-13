@@ -55,6 +55,8 @@ small. Both write:
 
 These artifacts contain only aggregate timings, counters, ratios, threshold results, and the validated namespace name.
 They exclude credentials, cookies, query text, result rows, PromQL, and source-series labels such as pod or instance.
+The wrapper disables k6 HTTP debug output and external log sinks, and the Prometheus sampler does not inherit query or
+application credential environment variables.
 
 Default smoke thresholds:
 
@@ -155,6 +157,9 @@ scripts/perf/run-query-smoke.sh
   `dwarvenpick_pool_active / dwarvenpick_pool_total`.
 - A run without Prometheus access remains valid for local functional timings, but the report marks backend metrics as
   unavailable. Rollout evidence requires the Prometheus snapshot.
+- Prometheus-backed evidence requires at least six samples. Dev pressure metrics are namespace-wide observations from a
+  shared environment; record whether the window was otherwise quiet and do not attribute unrelated ambient load to the
+  smoke.
 - Keep reports under `build/reports/perf`, which is gitignored. Never upload raw Prometheus responses, Compose logs,
   query text containing sensitive predicates, or result payloads.
 
