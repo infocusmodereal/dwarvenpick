@@ -55,11 +55,17 @@ describe('QueryResultsSection', () => {
         expect(workflow.onToggleExportMenu).toHaveBeenCalledOnce();
         expect(workflow.onExportIncludeHeadersChange).toHaveBeenCalledWith(false);
         expect(workflow.onExportCsv).toHaveBeenCalledOnce();
+        expect(
+            screen.getByText('CSV exports the full result in its original order.')
+        ).toBeInTheDocument();
 
         fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '250' } });
         expect(workflow.onResultsPageSizeChange).toHaveBeenCalledWith(250);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Sort by value' }));
+        const sortButton = screen.getByRole('button', { name: 'Sort current page by value' });
+        expect(sortButton.closest('th')).toHaveAttribute('aria-sort', 'none');
+        expect(screen.getByText('Current page sort: none')).toBeInTheDocument();
+        fireEvent.click(sortButton);
         expect(workflow.onToggleResultSort).toHaveBeenCalledWith(0);
 
         const copyButtons = screen.getAllByRole('button', { name: 'Copy cell value' });
@@ -90,5 +96,21 @@ describe('QueryResultsSection', () => {
         expect(screen.getByRole('button', { name: 'Next Page' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Exporting...' })).toBeDisabled();
+    });
+
+    it('announces the active current-page sort direction', () => {
+        render(
+            <QueryResultsSection
+                tab={resultTab}
+                view={view({
+                    resultSortState: { columnIndex: 0, direction: 'desc' }
+                })}
+                onCopyCell={vi.fn().mockResolvedValue(undefined)}
+            />
+        );
+
+        const sortButton = screen.getByRole('button', { name: 'Sort current page by value' });
+        expect(sortButton.closest('th')).toHaveAttribute('aria-sort', 'descending');
+        expect(screen.getByText('Current page sort: value descending')).toBeInTheDocument();
     });
 });

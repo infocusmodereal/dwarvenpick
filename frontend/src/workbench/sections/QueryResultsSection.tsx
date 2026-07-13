@@ -46,6 +46,13 @@ export default function QueryResultsSection({ onCopyCell, tab, view }: QueryResu
         showExportMenu,
         visibleResultRows
     } = view;
+    const activeSortColumn = resultSortState
+        ? tab.resultColumns[resultSortState.columnIndex]?.name
+        : undefined;
+    const sortStatus =
+        activeSortColumn && resultSortState
+            ? `${activeSortColumn} ${resultSortState.direction === 'asc' ? 'ascending' : 'descending'}`
+            : 'none';
 
     return (
         <div className="results-body">
@@ -87,10 +94,16 @@ export default function QueryResultsSection({ onCopyCell, tab, view }: QueryResu
                                 >
                                     {exportingCsv ? 'Exporting...' : 'Download CSV'}
                                 </button>
+                                <p className="result-export-note">
+                                    CSV exports the full result in its original order.
+                                </p>
                             </div>
                         ) : null}
                     </div>
                 </div>
+                <span className="result-sort-scope" aria-live="polite">
+                    Current page sort: {sortStatus}
+                </span>
                 <div className="result-page-size-inline">
                     <label htmlFor="result-page-size">Rows per page</label>
                     <div className="select-wrap">
@@ -125,13 +138,22 @@ export default function QueryResultsSection({ onCopyCell, tab, view }: QueryResu
                                         : null;
 
                                 return (
-                                    <th key={`${column.name}-${column.jdbcType}-${columnIndex}`}>
+                                    <th
+                                        key={`${column.name}-${column.jdbcType}-${columnIndex}`}
+                                        aria-sort={
+                                            direction === 'asc'
+                                                ? 'ascending'
+                                                : direction === 'desc'
+                                                  ? 'descending'
+                                                  : 'none'
+                                        }
+                                    >
                                         <button
                                             type="button"
                                             className="result-sort-trigger"
                                             onClick={() => onToggleResultSort(columnIndex)}
-                                            title={`Sort by ${column.name}`}
-                                            aria-label={`Sort by ${column.name}`}
+                                            title={`Sort current page by ${column.name}`}
+                                            aria-label={`Sort current page by ${column.name}`}
                                         >
                                             <span>{column.name}</span>
                                             <ResultSortIcon direction={direction} />

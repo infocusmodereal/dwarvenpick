@@ -3446,6 +3446,21 @@ button:disabled {
     width: 100%;
 }
 
+.result-export-note {
+    margin: 0;
+    max-width: 13rem;
+    color: var(--muted);
+    font-size: 0.62rem;
+    line-height: 1.35;
+}
+
+.result-sort-scope {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 620;
+    white-space: nowrap;
+}
+
 .result-meta-heading {
     background: var(--surface-alt) !important;
     color: var(--muted);
