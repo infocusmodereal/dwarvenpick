@@ -28,6 +28,9 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
 
 ## Key metrics
 
+- Build and scrape identity:
+  - `dwarvenpick_build_info{service=...,version=...,source_ref=...,source_sha=...,image_tag=...,build_tag=...}`
+  - The constant value is `1`; use the Prometheus sample timestamp for freshness checks.
 - Query lifecycle:
   - `dwarvenpick_query_active{status="queued|running"}`
   - `dwarvenpick_query_execution_total{outcome=...}`
@@ -44,6 +47,8 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_pool_active`
   - `dwarvenpick_pool_idle`
   - `dwarvenpick_pool_total`
+
+Keep `/actuator/prometheus` enabled for internal Prometheus scraping. Public exposure must be restricted at the ingress or network boundary; disabling the endpoint also removes `dwarvenpick_build_info` and all operational metrics.
 
 ## Recommended alerts
 
