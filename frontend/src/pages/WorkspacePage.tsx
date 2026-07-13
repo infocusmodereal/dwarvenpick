@@ -58,7 +58,6 @@ import type {
     QueryExecutionResponse,
     QueryExecutionStatusResponse,
     QueryHistoryEntryResponse,
-    QueryResultsResponse,
     QueryRunMode,
     QueryValidationResponse,
     ResourceFormState,
@@ -69,8 +68,6 @@ import type {
     ScriptTransactionMode,
     QueryStatusEventResponse,
     ReencryptCredentialsResponse,
-    ResultSortDirection,
-    ResultSortState,
     SystemHealthResponse,
     TestConnectionResponse,
     TlsMode,
@@ -87,13 +84,10 @@ import {
     protectedGroupIds,
     queryStatusPollingIntervalMs,
     queryStatusPollingMaxAttempts,
-    resultRowHeightPx,
-    resultViewportHeightPx,
     sqlKeywordSuggestions
 } from '../workbench/constants';
 import {
     adminIdentifierPattern,
-    compareResultValues,
     formatExecutionDuration,
     formatExecutionTimestamp,
     isTerminalExecutionStatus,
@@ -108,16 +102,10 @@ import {
 } from '../workbench/connectionUtils';
 import { prepareTabForQueryExecution } from '../workbench/queryExecutionState';
 import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
-import {
-    buildCsvExportUrl,
-    buildResultPageUrl,
-    csvExportFileName,
-    nextResultPageRequest,
-    previousResultPageRequest
-} from '../workbench/queryResults';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useHistoryAuditFilters } from '../workbench/useHistoryAuditFilters';
 import { useQueryHistory } from '../workbench/useQueryHistory';
+import { useQueryResultsWorkflow } from '../workbench/useQueryResultsWorkflow';
 import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
 import {
     EditorTabCloseIcon,
@@ -133,16 +121,10 @@ import {
 } from '../workbench/components/WorkbenchIcons';
 import AuditEventsSection from '../workbench/sections/AuditEventsSection';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
+import QueryResultsSection from '../workbench/sections/QueryResultsSection';
 import ResourceManagerSection from '../workbench/sections/ResourceManagerSection';
 import SystemHealthSection from '../workbench/sections/SystemHealthSection';
-import {
-    chevronDownIcon,
-    chevronRightIcon,
-    resolveDatasourceIcon,
-    sortDownIcon,
-    sortNeutralIcon,
-    sortUpIcon
-} from '../workbench/icons';
+import { chevronDownIcon, chevronRightIcon, resolveDatasourceIcon } from '../workbench/icons';
 
 loader.config({ monaco: MonacoModule });
 
@@ -354,21 +336,6 @@ const DetailsSummary = ({ children }: { children: ReactNode }) => (
     </summary>
 );
 
-const ResultSortIcon = ({ direction }: { direction: ResultSortDirection | null }) => (
-    <span
-        className={`result-sort-icon ${direction ? `is-${direction}` : 'is-none'}`}
-        aria-hidden
-        dangerouslySetInnerHTML={{
-            __html:
-                direction === 'asc'
-                    ? sortUpIcon
-                    : direction === 'desc'
-                      ? sortDownIcon
-                      : sortNeutralIcon
-        }}
-    />
-);
-
 const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <span
         className="explorer-icon-glyph"
@@ -530,18 +497,12 @@ export default function WorkspacePage() {
     const [testConnectionOutcome, setTestConnectionOutcome] = useState<'success' | 'failure' | ''>(
         ''
     );
-    const [exportIncludeHeaders, setExportIncludeHeaders] = useState(true);
-    const [exportingCsv, setExportingCsv] = useState(false);
-    const [showExportMenu, setShowExportMenu] = useState(false);
     const [scriptStopOnError, setScriptStopOnError] = useState(true);
     const [scriptTransactionMode, setScriptTransactionMode] =
         useState<ScriptTransactionMode>('AUTOCOMMIT');
     const [showScriptOptions, setShowScriptOptions] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
     const [validatingSql, setValidatingSql] = useState(false);
-    const [resultsPageSize, setResultsPageSize] = useState(500);
-    const [resultSortState, setResultSortState] = useState<ResultSortState>(null);
-    const [resultGridScrollTop, setResultGridScrollTop] = useState(0);
     const [workbenchResultsSizePx, setWorkbenchResultsSizePx] = useState<number | null>(() => {
         try {
             const raw = window.localStorage.getItem(workbenchResultsSizeStorageKey);
@@ -689,7 +650,6 @@ export default function WorkspacePage() {
         left: number;
     } | null>(null);
     const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
-    const exportMenuRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsAnchorRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1385,23 +1345,6 @@ export default function WorkspacePage() {
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
             const target = event.target as Node | null;
-            if (!target || !exportMenuRef.current?.contains(target)) {
-                setShowExportMenu(false);
-            }
-        };
-
-        if (showExportMenu) {
-            document.addEventListener('mousedown', handleOutsideClick);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleOutsideClick);
-        };
-    }, [showExportMenu]);
-
-    useEffect(() => {
-        const handleOutsideClick = (event: MouseEvent) => {
-            const target = event.target as Node | null;
             if (
                 !target ||
                 (!scriptOptionsRef.current?.contains(target) &&
@@ -1464,7 +1407,6 @@ export default function WorkspacePage() {
     useEffect(() => {
         setActiveTabMenuOpen(false);
         setActiveTabMenuPosition(null);
-        setShowExportMenu(false);
         setShowScriptOptions(false);
         setScriptOptionsPosition(null);
     }, [activeTabId]);
@@ -1529,57 +1471,6 @@ export default function WorkspacePage() {
         },
         []
     );
-
-    useEffect(() => {
-        setResultGridScrollTop(0);
-        setResultSortState(null);
-    }, [activeTabId]);
-
-    const sortedResultRows = useMemo(() => {
-        const rows = activeTab?.resultRows ?? [];
-        if (!resultSortState) {
-            return rows;
-        }
-
-        const sortedRows = [...rows];
-        sortedRows.sort((left, right) =>
-            compareResultValues(
-                left[resultSortState.columnIndex] ?? null,
-                right[resultSortState.columnIndex] ?? null,
-                resultSortState.direction
-            )
-        );
-        return sortedRows;
-    }, [activeTab?.resultRows, resultSortState]);
-
-    const visibleResultRows = useMemo(() => {
-        const rows = sortedResultRows;
-        if (rows.length === 0) {
-            return {
-                start: 0,
-                end: 0,
-                topSpacerPx: 0,
-                bottomSpacerPx: 0,
-                rows: [] as Array<Array<string | null>>
-            };
-        }
-
-        const viewportRows = Math.ceil(resultViewportHeightPx / resultRowHeightPx);
-        const overscanRows = 8;
-        const start = Math.max(
-            0,
-            Math.floor(resultGridScrollTop / resultRowHeightPx) - overscanRows
-        );
-        const end = Math.min(rows.length, start + viewportRows + overscanRows * 2);
-
-        return {
-            start,
-            end,
-            topSpacerPx: start * resultRowHeightPx,
-            bottomSpacerPx: Math.max(0, (rows.length - end) * resultRowHeightPx),
-            rows: rows.slice(start, end)
-        };
-    }, [resultGridScrollTop, sortedResultRows]);
 
     const selectedDatasource = useMemo(
         () =>
@@ -2499,6 +2390,14 @@ export default function WorkspacePage() {
         },
         [navigate]
     );
+
+    const { fetchQueryResultsPage, view: queryResultsView } = useQueryResultsWorkflow({
+        activeTab,
+        activeTabId,
+        onFeedback: setCopyFeedback,
+        readFriendlyError,
+        updateWorkspaceTab
+    });
 
     const {
         historyDatasourceFilter,
@@ -3759,45 +3658,6 @@ export default function WorkspacePage() {
         delete queryStatusPollingTimersRef.current[tabId];
     }, []);
 
-    const fetchQueryResultsPage = useCallback(
-        async (
-            tabId: string,
-            executionId: string,
-            pageToken = firstPageToken,
-            previousPageTokens?: string[]
-        ) => {
-            const response = await fetch(
-                buildResultPageUrl(executionId, resultsPageSize, pageToken),
-                {
-                    method: 'GET',
-                    credentials: 'include'
-                }
-            );
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
-            }
-
-            const payload = (await response.json()) as QueryResultsResponse;
-            updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId && currentTab.executionId !== executionId) {
-                    return currentTab;
-                }
-
-                return {
-                    ...currentTab,
-                    resultColumns: payload.columns,
-                    resultRows: payload.rows,
-                    nextPageToken: payload.nextPageToken ?? '',
-                    currentPageToken: pageToken,
-                    previousPageTokens: previousPageTokens ?? currentTab.previousPageTokens,
-                    rowLimitReached: payload.rowLimitReached,
-                    errorMessage: ''
-                };
-            });
-        },
-        [readFriendlyError, resultsPageSize, updateWorkspaceTab]
-    );
-
     const fetchExecutionStatus = useCallback(
         async (
             tabId: string,
@@ -3848,6 +3708,7 @@ export default function WorkspacePage() {
             }
 
             if (payload.status === 'SUCCEEDED' && loadFirstResultsPageOnSuccess) {
+                // The active-tab effect cannot populate a completed background tab.
                 await fetchQueryResultsPage(tabId, executionId, firstPageToken, []);
             }
 
@@ -4268,69 +4129,6 @@ export default function WorkspacePage() {
         void executeSqlForTab(activeTab.id, analyzeSql, 'analyze', 'analyze');
     }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, selectedDatasource?.engine]);
 
-    const handleLoadNextResults = useCallback(() => {
-        if (!activeTab) {
-            return;
-        }
-
-        const request = nextResultPageRequest(activeTab);
-        if (!request) {
-            return;
-        }
-
-        void fetchQueryResultsPage(
-            activeTab.id,
-            activeTab.executionId,
-            request.pageToken,
-            request.previousPageTokens
-        );
-    }, [activeTab, fetchQueryResultsPage]);
-
-    const handleLoadPreviousResults = useCallback(() => {
-        if (!activeTab) {
-            return;
-        }
-
-        const request = previousResultPageRequest(activeTab);
-        if (!request) {
-            return;
-        }
-
-        void fetchQueryResultsPage(
-            activeTab.id,
-            activeTab.executionId,
-            request.pageToken,
-            request.previousPageTokens
-        );
-    }, [activeTab, fetchQueryResultsPage]);
-
-    useEffect(() => {
-        if (!activeTab?.executionId || activeTab.executionStatus !== 'SUCCEEDED') {
-            return;
-        }
-
-        setResultGridScrollTop(0);
-        void fetchQueryResultsPage(activeTab.id, activeTab.executionId, firstPageToken, []);
-    }, [
-        activeTab?.executionId,
-        activeTab?.executionStatus,
-        activeTab?.id,
-        fetchQueryResultsPage,
-        resultsPageSize
-    ]);
-
-    const handleToggleResultSort = useCallback((columnIndex: number) => {
-        setResultSortState((current) => {
-            if (!current || current.columnIndex !== columnIndex) {
-                return { columnIndex, direction: 'asc' };
-            }
-            if (current.direction === 'asc') {
-                return { columnIndex, direction: 'desc' };
-            }
-            return null;
-        });
-    }, []);
-
     const writeTextToClipboard = useCallback(async (value: string) => {
         if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(value);
@@ -4405,50 +4203,6 @@ export default function WorkspacePage() {
             window.clearTimeout(timeout);
         };
     }, [copyFeedback]);
-
-    const handleExportCsv = useCallback(async () => {
-        if (!activeTab?.executionId) {
-            setCopyFeedback('Run a query first to export CSV.');
-            return;
-        }
-
-        setExportingCsv(true);
-        try {
-            const response = await fetch(
-                buildCsvExportUrl(activeTab.executionId, exportIncludeHeaders),
-                {
-                    method: 'GET',
-                    credentials: 'include'
-                }
-            );
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
-            }
-
-            const blob = await response.blob();
-            const fallbackName = `query-${activeTab.executionId}.csv`;
-            const fileName = csvExportFileName(
-                response.headers.get('Content-Disposition'),
-                fallbackName
-            );
-
-            const objectUrl = window.URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = objectUrl;
-            anchor.download = fileName;
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            window.URL.revokeObjectURL(objectUrl);
-            setCopyFeedback(`CSV export downloaded: ${fileName}`);
-            setShowExportMenu(false);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'CSV export failed.';
-            setCopyFeedback(message);
-        } finally {
-            setExportingCsv(false);
-        }
-    }, [activeTab, exportIncludeHeaders, readFriendlyError]);
 
     const handleOpenHistoryEntry = useCallback(
         (entry: QueryHistoryEntryResponse, runImmediately: boolean) => {
@@ -8716,225 +8470,11 @@ export default function WorkspacePage() {
                                 </div>
 
                                 {activeTab?.resultColumns.length ? (
-                                    <div className="results-body">
-                                        <div className="result-actions row">
-                                            <div className="result-pagination-controls row">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleLoadPreviousResults}
-                                                    disabled={
-                                                        activeTab.previousPageTokens.length === 0
-                                                    }
-                                                >
-                                                    Previous Page
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleLoadNextResults}
-                                                    disabled={!activeTab.nextPageToken}
-                                                >
-                                                    Next Page
-                                                </button>
-                                                <div
-                                                    className="result-export-wrapper"
-                                                    ref={exportMenuRef}
-                                                >
-                                                    <IconButton
-                                                        icon="download"
-                                                        title="Export CSV"
-                                                        onClick={() =>
-                                                            setShowExportMenu((current) => !current)
-                                                        }
-                                                        disabled={exportingCsv}
-                                                    />
-                                                    {showExportMenu ? (
-                                                        <div
-                                                            className="result-export-popover"
-                                                            role="dialog"
-                                                        >
-                                                            <label className="checkbox-row">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={exportIncludeHeaders}
-                                                                    onChange={(event) =>
-                                                                        setExportIncludeHeaders(
-                                                                            event.target.checked
-                                                                        )
-                                                                    }
-                                                                />
-                                                                <span>Include headers</span>
-                                                            </label>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    void handleExportCsv()
-                                                                }
-                                                                disabled={exportingCsv}
-                                                            >
-                                                                {exportingCsv
-                                                                    ? 'Exporting...'
-                                                                    : 'Download CSV'}
-                                                            </button>
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                            <div className="result-page-size-inline">
-                                                <label htmlFor="result-page-size">
-                                                    Rows per page
-                                                </label>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="result-page-size"
-                                                        value={resultsPageSize}
-                                                        onChange={(event) => {
-                                                            setResultsPageSize(
-                                                                Number(event.target.value)
-                                                            );
-                                                            setResultGridScrollTop(0);
-                                                        }}
-                                                    >
-                                                        <option value={10}>10</option>
-                                                        <option value={100}>100</option>
-                                                        <option value={250}>250</option>
-                                                        <option value={500}>500</option>
-                                                        <option value={1000}>1000</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div
-                                            className="result-table-wrap"
-                                            onScroll={(event) =>
-                                                setResultGridScrollTop(
-                                                    event.currentTarget.scrollTop
-                                                )
-                                            }
-                                        >
-                                            <table className="result-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th className="result-meta-heading">Row</th>
-                                                        {activeTab.resultColumns.map(
-                                                            (column, columnIndex) => {
-                                                                const direction =
-                                                                    resultSortState?.columnIndex ===
-                                                                    columnIndex
-                                                                        ? resultSortState.direction
-                                                                        : null;
-
-                                                                return (
-                                                                    <th
-                                                                        key={`${column.name}-${column.jdbcType}-${columnIndex}`}
-                                                                    >
-                                                                        <button
-                                                                            type="button"
-                                                                            className="result-sort-trigger"
-                                                                            onClick={() =>
-                                                                                handleToggleResultSort(
-                                                                                    columnIndex
-                                                                                )
-                                                                            }
-                                                                            title={`Sort by ${column.name}`}
-                                                                            aria-label={`Sort by ${column.name}`}
-                                                                        >
-                                                                            <span>
-                                                                                {column.name}
-                                                                            </span>
-                                                                            <ResultSortIcon
-                                                                                direction={
-                                                                                    direction
-                                                                                }
-                                                                            />
-                                                                        </button>
-                                                                    </th>
-                                                                );
-                                                            }
-                                                        )}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {visibleResultRows.topSpacerPx > 0 ? (
-                                                        <tr>
-                                                            <td
-                                                                colSpan={
-                                                                    activeTab.resultColumns.length +
-                                                                    1
-                                                                }
-                                                                style={{
-                                                                    height: `${visibleResultRows.topSpacerPx}px`,
-                                                                    padding: 0,
-                                                                    border: 'none'
-                                                                }}
-                                                            />
-                                                        </tr>
-                                                    ) : null}
-                                                    {visibleResultRows.rows.map(
-                                                        (row, relativeIndex) => {
-                                                            const absoluteIndex =
-                                                                visibleResultRows.start +
-                                                                relativeIndex;
-                                                            const pageOffset =
-                                                                (activeTab?.previousPageTokens
-                                                                    ?.length ?? 0) *
-                                                                resultsPageSize;
-                                                            return (
-                                                                <tr key={`row-${absoluteIndex}`}>
-                                                                    <td className="result-row-index">
-                                                                        {pageOffset +
-                                                                            absoluteIndex +
-                                                                            1}
-                                                                    </td>
-                                                                    {row.map(
-                                                                        (value, columnIndex) => (
-                                                                            <td
-                                                                                key={`cell-${absoluteIndex}-${columnIndex}`}
-                                                                            >
-                                                                                <div className="result-cell">
-                                                                                    <span>
-                                                                                        {value ??
-                                                                                            'NULL'}
-                                                                                    </span>
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        className="result-copy-icon"
-                                                                                        onClick={() =>
-                                                                                            void handleCopyCell(
-                                                                                                value
-                                                                                            )
-                                                                                        }
-                                                                                        title="Copy cell value"
-                                                                                        aria-label="Copy cell value"
-                                                                                    >
-                                                                                        <IconGlyph icon="copy" />
-                                                                                    </button>
-                                                                                </div>
-                                                                            </td>
-                                                                        )
-                                                                    )}
-                                                                </tr>
-                                                            );
-                                                        }
-                                                    )}
-                                                    {visibleResultRows.bottomSpacerPx > 0 ? (
-                                                        <tr>
-                                                            <td
-                                                                colSpan={
-                                                                    activeTab.resultColumns.length +
-                                                                    1
-                                                                }
-                                                                style={{
-                                                                    height: `${visibleResultRows.bottomSpacerPx}px`,
-                                                                    padding: 0,
-                                                                    border: 'none'
-                                                                }}
-                                                            />
-                                                        </tr>
-                                                    ) : null}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
+                                    <QueryResultsSection
+                                        tab={activeTab}
+                                        view={queryResultsView}
+                                        onCopyCell={handleCopyCell}
+                                    />
                                 ) : null}
                             </section>
                         </section>
