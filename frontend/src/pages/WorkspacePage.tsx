@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import ObjectInspectorSectionContent from '../workbench/components/ObjectInspectorSectionContent';
+import QueryTabsBar from '../workbench/components/QueryTabsBar';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
 import { buildHistoryWorkspaceTab } from '../workbench/queryHistoryContext';
@@ -108,8 +109,6 @@ import { useQueryHistory } from '../workbench/useQueryHistory';
 import { useQueryResultsWorkflow } from '../workbench/useQueryResultsWorkflow';
 import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
 import {
-    EditorTabCloseIcon,
-    EditorTabMenuIcon,
     ExplorerIcon,
     ExplorerInspectIcon,
     ExplorerInsertIcon,
@@ -642,13 +641,6 @@ export default function WorkspacePage() {
     const versionInfoRef = useRef<HTMLDivElement | null>(null);
     const collapsedAdminSubmenuRef = useRef<HTMLDivElement | null>(null);
     const collapsedAdminAnchorRef = useRef<HTMLDivElement | null>(null);
-    const [activeTabMenuOpen, setActiveTabMenuOpen] = useState(false);
-    const activeTabMenuRef = useRef<HTMLDivElement | null>(null);
-    const activeTabMenuAnchorRef = useRef<HTMLDivElement | null>(null);
-    const [activeTabMenuPosition, setActiveTabMenuPosition] = useState<{
-        top: number;
-        left: number;
-    } | null>(null);
     const editorShortcutsRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsRef = useRef<HTMLDivElement | null>(null);
     const scriptOptionsAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -1303,28 +1295,6 @@ export default function WorkspacePage() {
             const target = event.target as Node | null;
             if (
                 !target ||
-                (!activeTabMenuRef.current?.contains(target) &&
-                    !activeTabMenuAnchorRef.current?.contains(target))
-            ) {
-                setActiveTabMenuOpen(false);
-                setActiveTabMenuPosition(null);
-            }
-        };
-
-        if (activeTabMenuOpen) {
-            document.addEventListener('mousedown', handleOutsideClick);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleOutsideClick);
-        };
-    }, [activeTabMenuOpen]);
-
-    useEffect(() => {
-        const handleOutsideClick = (event: MouseEvent) => {
-            const target = event.target as Node | null;
-            if (
-                !target ||
                 (!editorShortcutsRef.current?.contains(target) &&
                     !editorShortcutsPopoverRef.current?.contains(target))
             ) {
@@ -1405,29 +1375,9 @@ export default function WorkspacePage() {
     }, [showScriptOptions, updateScriptOptionsPosition]);
 
     useEffect(() => {
-        setActiveTabMenuOpen(false);
-        setActiveTabMenuPosition(null);
         setShowScriptOptions(false);
         setScriptOptionsPosition(null);
     }, [activeTabId]);
-
-    useEffect(() => {
-        if (!activeTabMenuOpen) {
-            return;
-        }
-
-        const handleViewportChange = () => {
-            setActiveTabMenuOpen(false);
-            setActiveTabMenuPosition(null);
-        };
-
-        window.addEventListener('resize', handleViewportChange);
-        window.addEventListener('scroll', handleViewportChange, true);
-        return () => {
-            window.removeEventListener('resize', handleViewportChange);
-            window.removeEventListener('scroll', handleViewportChange, true);
-        };
-    }, [activeTabMenuOpen]);
 
     useEffect(() => {
         if (activeSection !== 'workbench' || monacoReady) {
@@ -7760,152 +7710,16 @@ export default function WorkspacePage() {
 
                         <section className="editor" ref={editorSectionRef}>
                             <div className="editor-toolbar">
-                                <div className="editor-tabs-row" ref={editorTabsRowRef}>
-                                    <div
-                                        className="editor-tabs"
-                                        role="tablist"
-                                        aria-label="SQL tabs"
-                                    >
-                                        {workspaceTabs.map((tab) => (
-                                            <div
-                                                key={tab.id}
-                                                role="presentation"
-                                                className={
-                                                    tab.id === activeTabId
-                                                        ? 'editor-tab active'
-                                                        : 'editor-tab'
-                                                }
-                                            >
-                                                <button
-                                                    type="button"
-                                                    role="tab"
-                                                    className="editor-tab-trigger"
-                                                    aria-selected={tab.id === activeTabId}
-                                                    onClick={() => setActiveTabId(tab.id)}
-                                                    title={tab.title}
-                                                >
-                                                    <span>{tab.title}</span>
-                                                    {tab.isExecuting ? (
-                                                        <span className="editor-tab-running">
-                                                            Running
-                                                        </span>
-                                                    ) : null}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="editor-tab-close"
-                                                    title="Close tab"
-                                                    aria-label={`Close ${tab.title}`}
-                                                    disabled={workspaceTabs.length <= 1}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        handleCloseTab(tab.id);
-                                                    }}
-                                                >
-                                                    <EditorTabCloseIcon />
-                                                </button>
-                                                {tab.id === activeTabId ? (
-                                                    <div
-                                                        className="editor-tab-menu-anchor"
-                                                        ref={activeTabMenuAnchorRef}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            className="editor-tab-menu-trigger"
-                                                            title="Tab actions"
-                                                            aria-label="Tab actions"
-                                                            onClick={(event) => {
-                                                                const triggerRect =
-                                                                    event.currentTarget.getBoundingClientRect();
-                                                                setActiveTabMenuOpen((current) => {
-                                                                    const next = !current;
-                                                                    if (next) {
-                                                                        setActiveTabMenuPosition({
-                                                                            top:
-                                                                                triggerRect.bottom +
-                                                                                6,
-                                                                            left: Math.max(
-                                                                                12,
-                                                                                triggerRect.right -
-                                                                                    188
-                                                                            )
-                                                                        });
-                                                                    } else {
-                                                                        setActiveTabMenuPosition(
-                                                                            null
-                                                                        );
-                                                                    }
-                                                                    return next;
-                                                                });
-                                                            }}
-                                                        >
-                                                            <EditorTabMenuIcon />
-                                                        </button>
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        ))}
-                                        <button
-                                            type="button"
-                                            className="editor-tab-add"
-                                            onClick={handleOpenNewTab}
-                                            title="New tab"
-                                            aria-label="New tab"
-                                        >
-                                            <svg
-                                                viewBox="0 0 20 20"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="1.8"
-                                            >
-                                                <path d="M10 4v12" />
-                                                <path d="M4 10h12" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                {activeTabMenuOpen && activeTab && activeTabMenuPosition ? (
-                                    <div
-                                        className="editor-tab-menu is-floating"
-                                        role="menu"
-                                        ref={activeTabMenuRef}
-                                        style={{
-                                            top: `${activeTabMenuPosition.top}px`,
-                                            left: `${activeTabMenuPosition.left}px`
-                                        }}
-                                    >
-                                        <button
-                                            type="button"
-                                            role="menuitem"
-                                            className="editor-tab-menu-item"
-                                            onClick={() => {
-                                                setActiveTabMenuOpen(false);
-                                                setActiveTabMenuPosition(null);
-                                                handleRenameTab(activeTab.id);
-                                            }}
-                                        >
-                                            <span className="editor-tab-menu-item-icon" aria-hidden>
-                                                <IconGlyph icon="rename" />
-                                            </span>
-                                            <span>Rename</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            role="menuitem"
-                                            className="editor-tab-menu-item"
-                                            onClick={() => {
-                                                setActiveTabMenuOpen(false);
-                                                setActiveTabMenuPosition(null);
-                                                handleDuplicateTab(activeTab.id);
-                                            }}
-                                        >
-                                            <span className="editor-tab-menu-item-icon" aria-hidden>
-                                                <IconGlyph icon="duplicate" />
-                                            </span>
-                                            <span>Duplicate</span>
-                                        </button>
-                                    </div>
-                                ) : null}
+                                <QueryTabsBar
+                                    workspaceTabs={workspaceTabs}
+                                    activeTabId={activeTabId}
+                                    editorTabsRowRef={editorTabsRowRef}
+                                    onSelectTab={setActiveTabId}
+                                    onCloseTab={handleCloseTab}
+                                    onNewTab={handleOpenNewTab}
+                                    onRenameTab={handleRenameTab}
+                                    onDuplicateTab={handleDuplicateTab}
+                                />
                             </div>
 
                             <div className="monaco-host" ref={monacoHostRef}>
