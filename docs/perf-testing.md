@@ -104,6 +104,7 @@ DWARVENPICK_PASSWORD="$DWARVENPICK_DEV_PASSWORD" \
 DATASOURCE_ID=starrocks-dev-adhoc \
 CREDENTIAL_PROFILE=read-only \
 SQL='SELECT 1 AS value;' \
+CAPTURE_APP_METRICS=false \
 PROMETHEUS_URL=https://pandora-internal-prometheus.indexexchange.com \
 PROMETHEUS_NAMESPACE=dwarvenpick-dev \
 scripts/perf/run-query-smoke.sh
