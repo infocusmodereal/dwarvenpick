@@ -146,7 +146,8 @@ Detailed rotation guidance: `docs/ops/credential-rotation.md`.
 Configure LDAP only when directory authentication is required:
 
 - `DWARVENPICK_AUTH_LDAP_ENABLED=true`
-- `DWARVENPICK_AUTH_LDAP_URL=ldap://<host>:389` (or `ldaps://...`)
+- `DWARVENPICK_AUTH_LDAP_TRANSPORT=START_TLS`
+- `DWARVENPICK_AUTH_LDAP_URL=ldap://<host>:389`
 - `DWARVENPICK_AUTH_LDAP_BIND_DN=<bind-dn>`
 - `DWARVENPICK_AUTH_LDAP_BIND_PASSWORD=<bind-password>`
 - `DWARVENPICK_AUTH_LDAP_USER_SEARCH_BASE=<base-dn>`
@@ -155,6 +156,17 @@ Configure LDAP only when directory authentication is required:
   - `DWARVENPICK_AUTH_LDAP_GROUP_SYNC_GROUP_SEARCH_BASE=<group-base-dn>`
   - Optional role mapping:
     - `DWARVENPICK_AUTH_LDAP_SYSTEM_ADMIN_GROUPS=<comma-separated-group-ids>` (grants `SYSTEM_ADMIN` when any mapped group matches)
+
+`PLAIN` and `START_TLS` require an `ldap://` URL; `LDAPS` requires `ldaps://`. `AUTO` is the backward-compatible default:
+it selects `PLAIN` for `ldap://` and `LDAPS` for `ldaps://`. Governed deployments should set the mode explicitly. LDAP URLs must contain only a host and
+optional port. User information, paths, queries, and fragments are rejected. StartTLS and LDAPS use the JVM default
+trust and hostname verification. Configure JVM trust material when the directory CA is not already trusted; do not use a
+permissive hostname verifier or socket factory. StartTLS also requires JNDI connection pooling to remain disabled.
+
+When upgrading from a release before 0.14.0, existing `ldaps://` URLs continue to work through `AUTO`. Set
+`DWARVENPICK_AUTH_LDAP_TRANSPORT=LDAPS` to make that transport explicit, or use `START_TLS` with an `ldap://` URL after
+verifying the exact configured hostname is present in the directory certificate SAN. Move any base DN previously encoded
+in the LDAP URL path to the dedicated user/group search-base properties before upgrading.
 
 Login UX only supports `Local` and `LDAP` methods. The enabled set is exposed by `GET /api/auth/methods`.
 

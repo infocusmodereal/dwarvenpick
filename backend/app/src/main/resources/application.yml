@@ -109,6 +109,7 @@ dwarvenpick:
     ldap:
       enabled: false
       url: ""
+      transport: ${DWARVENPICK_AUTH_LDAP_TRANSPORT:AUTO}
       bind-dn: ""
       bind-password: ""
       user-search-base: ""

@@ -1,10 +1,12 @@
 package com.dwarvenpick.app.auth
 
+import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.ldap.core.AttributesMapper
 import org.springframework.ldap.core.ContextMapper
 import org.springframework.ldap.core.DirContextOperations
 import org.springframework.ldap.core.LdapTemplate
+import org.springframework.ldap.core.support.DefaultTlsDirContextAuthenticationStrategy
 import org.springframework.ldap.core.support.LdapContextSource
 import org.springframework.ldap.support.LdapEncoder
 import org.springframework.stereotype.Service
@@ -27,6 +29,18 @@ class LdapAuthenticationService(
     private val authProperties: AuthProperties,
 ) {
     private val logger = LoggerFactory.getLogger(LdapAuthenticationService::class.java)
+
+    @PostConstruct
+    internal fun validateConfiguration() {
+        if (!authProperties.ldap.enabled || authProperties.ldap.mock.enabled) {
+            return
+        }
+
+        val validatedTransport = LdapTransportPolicy.validate(authProperties.ldap)
+        if (validatedTransport.transport == LdapTransport.PLAIN) {
+            logger.warn("LDAP authentication is enabled with cleartext PLAIN transport.")
+        }
+    }
 
     fun authenticate(
         username: String,
@@ -73,7 +87,14 @@ class LdapAuthenticationService(
                 roles = roles,
             )
         }.getOrElse { ex ->
-            logger.warn("LDAP authentication failed for user '{}': {}", trimmedUsername, ex.message)
+            val rootCause = generateSequence(ex) { it.cause }.last()
+            logger.warn(
+                "LDAP authentication failed for user '{}': failureType={} causeType={} message={}",
+                trimmedUsername,
+                ex.javaClass.simpleName,
+                rootCause.javaClass.simpleName,
+                ex.message,
+            )
             null
         }
     }
@@ -180,10 +201,18 @@ class LdapAuthenticationService(
         return roles
     }
 
-    private fun createLdapTemplate(): LdapTemplate {
+    private fun createLdapTemplate(): LdapTemplate = LdapTemplate(createContextSource())
+
+    internal fun createContextSource(): LdapContextSource {
+        val validatedTransport = LdapTransportPolicy.validate(authProperties.ldap)
         val contextSource =
             LdapContextSource().apply {
                 setUrl(authProperties.ldap.url)
+                if (validatedTransport.transport == LdapTransport.START_TLS) {
+                    // JNDI connection pooling is incompatible with per-connection StartTLS negotiation.
+                    setPooled(false)
+                    setAuthenticationStrategy(DefaultTlsDirContextAuthenticationStrategy())
+                }
                 if (authProperties.ldap.bindDn.isNotBlank()) {
                     userDn = authProperties.ldap.bindDn
                 }
@@ -192,7 +221,6 @@ class LdapAuthenticationService(
                 }
                 afterPropertiesSet()
             }
-
-        return LdapTemplate(contextSource)
+        return contextSource
     }
 }

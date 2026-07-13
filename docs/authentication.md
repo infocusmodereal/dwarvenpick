@@ -17,6 +17,9 @@ nav_order: 6
 
 - Directory-backed authentication.
 - User creation/reset is not supported in the UI when LDAP-only mode is enabled.
+- Secure transport is explicit: use `START_TLS` with an `ldap://` URL or `LDAPS` with an `ldaps://` URL.
+- `AUTO` preserves pre-0.14 compatibility by selecting `PLAIN` for `ldap://` and `LDAPS` for `ldaps://`; governed deployments should set the mode explicitly.
+- Certificate and hostname verification use the JVM trust configuration and cannot be disabled through Dwarvenpick.
 
 ## OIDC (Keycloak / JumpCloud)
 
@@ -89,6 +92,7 @@ In Helm deployments, auth methods are controlled via environment variables (or `
 
 - `DWARVENPICK_AUTH_LOCAL_ENABLED=true|false`
 - `DWARVENPICK_AUTH_LDAP_ENABLED=true|false`
+- `DWARVENPICK_AUTH_LDAP_TRANSPORT=AUTO|PLAIN|START_TLS|LDAPS`
 - `DWARVENPICK_AUTH_OIDC_ENABLED=true|false`
 
 See sample Helm values under `deploy/helm/examples`.
