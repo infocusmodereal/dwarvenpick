@@ -21,6 +21,8 @@ The application database stores:
 - uploaded custom JDBC driver metadata
 
 Use a shared PostgreSQL database for HA and production. The local embedded H2 database is intended for development.
+PostgreSQL is also the coordination boundary for atomic per-actor query concurrency admission across replicas; do not
+run multiple backend replicas against H2.
 
 Schema changes are managed by Flyway migrations. Existing deployments with pre-created state tables are baselined and
 migrated forward on startup.

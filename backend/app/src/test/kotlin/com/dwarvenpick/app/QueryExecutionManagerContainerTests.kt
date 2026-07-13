@@ -568,8 +568,7 @@ class QueryExecutionManagerContainerTests {
                 withExposedPorts(TRINO_PORT)
                 waitingFor(
                     Wait
-                        .forHttp("/v1/info")
-                        .forStatusCode(200)
+                        .forLogMessage(".*======== SERVER STARTED ========.*\\n", 1)
                         .withStartupTimeout(Duration.ofSeconds(120)),
                 )
             }
