@@ -307,20 +307,24 @@ class QueryExecutionManager(
         val admissionResult =
             queryAdmissionRepository.reserve(
                 record = record.toPersistedRuntimeRecord(emptyList(), emptyList()),
-                concurrencyLimit = concurrencyLimit,
+                limits =
+                    QueryAdmissionLimits(
+                        actor = concurrencyLimit,
+                        global = queryExecutionProperties.maxActiveExecutions,
+                        datasource = queryExecutionProperties.maxActivePerConnection,
+                    ),
             )
-        if (admissionResult == QueryAdmissionResult.LIMIT_REACHED) {
+        if (admissionResult != QueryAdmissionResult.ADMITTED) {
+            val (outcome, message) = admissionFailure(record, admissionResult)
             meterRegistry
                 .counter(
                     "dwarvenpick.query.execute.attempts",
                     "outcome",
-                    "blocked_concurrency",
+                    outcome,
                     "datasourceId",
                     record.datasourceId,
                 ).increment()
-            throw QueryConcurrencyLimitException(
-                "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
-            )
+            throw QueryConcurrencyLimitException(message)
         }
 
         executions[executionId] = record
@@ -899,20 +903,21 @@ class QueryExecutionManager(
             return
         }
 
-        markRunning(record)
-        auditExecution(
-            record = record,
-            type = "query.execute",
-            outcome = "running",
-            details =
-                mapOf(
-                    "executionId" to record.executionId,
-                    "datasourceId" to record.datasourceId,
-                ),
-        )
-
         try {
-            executeSql(record)
+            val connectionHandle = acquireExecutionCapacity(record)
+            throwIfCanceled(record)
+            markRunning(record)
+            auditExecution(
+                record = record,
+                type = "query.execute",
+                outcome = "running",
+                details =
+                    mapOf(
+                        "executionId" to record.executionId,
+                        "datasourceId" to record.datasourceId,
+                    ),
+            )
+            executeSql(record, connectionHandle)
             throwIfCanceled(record)
             markSucceeded(record)
             auditExecution(
@@ -1005,15 +1010,10 @@ class QueryExecutionManager(
         }
     }
 
-    private fun executeSql(record: QueryExecutionRecord) {
+    private fun acquireExecutionCapacity(record: QueryExecutionRecord): QueryConnectionHandle? {
         if (shouldUseSimulation(record.sql)) {
-            executeSqlInSimulation(record)
-            return
+            return null
         }
-        executeSqlAgainstDatasource(record)
-    }
-
-    private fun executeSqlAgainstDatasource(record: QueryExecutionRecord) {
         val handle =
             datasourcePoolManager.openConnection(
                 datasourceId = record.datasourceId,
@@ -1021,7 +1021,24 @@ class QueryExecutionManager(
             )
         record.activeConnectionHandle = handle
         record.activeConnection = handle.connection
+        return handle
+    }
 
+    private fun executeSql(
+        record: QueryExecutionRecord,
+        connectionHandle: QueryConnectionHandle?,
+    ) {
+        if (connectionHandle == null) {
+            executeSqlInSimulation(record)
+            return
+        }
+        executeSqlAgainstDatasource(record, connectionHandle)
+    }
+
+    private fun executeSqlAgainstDatasource(
+        record: QueryExecutionRecord,
+        handle: QueryConnectionHandle,
+    ) {
         val defaultSchemaScope =
             QueryDefaultSchema.apply(
                 connection = handle.connection,
@@ -1754,6 +1771,25 @@ class QueryExecutionManager(
             record.datasourceId,
         )
     }
+
+    private fun admissionFailure(
+        record: QueryExecutionRecord,
+        result: QueryAdmissionResult,
+    ): Pair<String, String> =
+        when (result) {
+            QueryAdmissionResult.LIMIT_REACHED ->
+                "blocked_concurrency" to
+                    "Concurrent query limit reached (${record.concurrencyLimit}). Cancel an active query before running another."
+            QueryAdmissionResult.GLOBAL_LIMIT_REACHED ->
+                "blocked_global_capacity" to
+                    "Global query capacity reached " +
+                    "(${queryExecutionProperties.maxActiveExecutions.coerceAtLeast(1)}). Try again after active work completes."
+            QueryAdmissionResult.DATASOURCE_LIMIT_REACHED ->
+                "blocked_connection_capacity" to
+                    "Connection query capacity reached " +
+                    "(${queryExecutionProperties.maxActivePerConnection.coerceAtLeast(1)}). Try again after active work completes."
+            QueryAdmissionResult.ADMITTED -> error("An admitted query does not have an admission failure.")
+        }
 
     private fun markSucceeded(record: QueryExecutionRecord) {
         if (record.status == QueryExecutionStatus.CANCELED) {

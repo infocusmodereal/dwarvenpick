@@ -146,7 +146,7 @@ class QueryRuntimeRepositoryTests {
                                         columns = emptyList(),
                                         rows = emptyList(),
                                     ),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, global = 10, datasource = 10),
                             )
                         }
                     }
@@ -173,6 +173,7 @@ class QueryRuntimeRepositoryTests {
             .isEqualTo(QueryAdmissionLockKey.forActor("admission-user"))
             .isNotEqualTo(QueryAdmissionLockKey.forActor("other-user"))
         assertThat(QueryAdmissionLockKey.NAMESPACE).isEqualTo(0x44575051)
+        assertThat(QueryAdmissionLockKey.GLOBAL).isEqualTo(0x474C4F42)
         assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("LOCAL")
     }
 

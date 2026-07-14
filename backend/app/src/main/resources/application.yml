@@ -50,6 +50,8 @@ dwarvenpick:
     max-export-rows: 5000
     jdbc-fetch-size: 500
     max-concurrency-per-user: 5
+    max-active-executions: ${DWARVENPICK_QUERY_MAX_ACTIVE_EXECUTIONS:25}
+    max-active-per-connection: ${DWARVENPICK_QUERY_MAX_ACTIVE_PER_CONNECTION:5}
     admission-timeout-seconds: ${DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS:10}
     result-session-ttl-seconds: 600
     execution-retention-seconds: 3600
