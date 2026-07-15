@@ -97,20 +97,41 @@ function prometheus(available = true) {
     };
 }
 
+function versionMetadata() {
+    return {
+        version: "0.19.0",
+        sourceRef: "v0.19.0",
+        sourceSha: "a".repeat(40),
+        imageTag: "deadbeef",
+        buildTag: "gitlab-1234",
+    };
+}
+
 async function runGenerator({
     summaryPayload = summary(),
     prometheusPayload = prometheus(),
+    versionPayload = versionMetadata(),
+    expectedSourceSha = "a".repeat(40),
 } = {}) {
     const directory = await mkdtemp(join(tmpdir(), "dwarvenpick-perf-report-"));
     const summaryPath = join(directory, "summary.json");
     const prometheusPath = join(directory, "prometheus.json");
     const jsonPath = join(directory, "report.json");
     const textPath = join(directory, "report.txt");
+    const versionPath = join(directory, "version.json");
     await writeFile(summaryPath, JSON.stringify(summaryPayload));
     await writeFile(prometheusPath, JSON.stringify(prometheusPayload));
+    await writeFile(versionPath, JSON.stringify(versionPayload));
     const result = spawnSync(
         process.execPath,
-        [generator.pathname, summaryPath, prometheusPath, jsonPath, textPath],
+        [
+            generator.pathname,
+            summaryPath,
+            prometheusPath,
+            jsonPath,
+            textPath,
+            versionPath,
+        ],
         {
             env: {
                 ...process.env,
@@ -118,6 +139,7 @@ async function runGenerator({
                 SQL: secretSql,
                 DWARVENPICK_PASSWORD: secretPassword,
                 EXPORT_CSV: "true",
+                EXPECTED_SOURCE_SHA: expectedSourceSha,
             },
             encoding: "utf8",
         },
@@ -141,6 +163,7 @@ test("reports k6 percentiles and derived Prometheus pressure", async () => {
     assert.equal(output.report.prometheus.sampleCount, 6);
     assert.equal(output.report.environmentScope, "shared");
     assert.equal(output.report.prometheus.scope, "namespace-wide");
+    assert.deepEqual(output.report.release, versionMetadata());
 });
 
 test("supports no-Prometheus local mode", async () => {
@@ -203,6 +226,25 @@ test("fails closed when a required metric is absent", async () => {
     assert.equal(output.report.status, "incomplete");
 });
 
+test("fails closed when release identity does not match the expected SHA", async () => {
+    const output = await runGenerator({
+        expectedSourceSha: "b".repeat(40),
+    });
+    assert.notEqual(output.result.status, 0);
+    assert.match(
+        output.report.reason,
+        /Release identity mismatch for sourceSha/,
+    );
+});
+
+test("fails closed when release identity is incomplete", async () => {
+    const versionPayload = versionMetadata();
+    delete versionPayload.buildTag;
+    const output = await runGenerator({ versionPayload });
+    assert.notEqual(output.result.status, 0);
+    assert.match(output.report.reason, /release identity is missing: buildTag/);
+});
+
 test("never writes SQL or password values", async () => {
     const summaryPayload = summary();
     summaryPayload.unexpectedSecret = secretPassword;
@@ -210,7 +252,14 @@ test("never writes SQL or password values", async () => {
     const prometheusPayload = prometheus();
     prometheusPayload.samples[0].unexpectedLabel = secretPassword;
     prometheusPayload.samples[0].metrics.unexpectedSeries = secretSql;
-    const output = await runGenerator({ summaryPayload, prometheusPayload });
+    const versionPayload = versionMetadata();
+    versionPayload.unexpectedSecret = secretPassword;
+    versionPayload.unexpectedRow = secretSql;
+    const output = await runGenerator({
+        summaryPayload,
+        prometheusPayload,
+        versionPayload,
+    });
     const serialized = `${JSON.stringify(output.report)}${output.text}`;
     assert.equal(serialized.includes(secretSql), false);
     assert.equal(serialized.includes(secretPassword), false);

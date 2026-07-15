@@ -2,6 +2,11 @@ name: Manual Query Performance Smoke
 
 on:
     workflow_dispatch:
+        inputs:
+            release_ref:
+                description: Release tag to test, for example v0.19.0
+                required: true
+                type: string
 
 permissions:
     contents: read
@@ -13,6 +18,23 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.release_ref }}
+
+            - name: Resolve release identity
+              shell: bash
+              env:
+                  RELEASE_REF: ${{ inputs.release_ref }}
+              run: |
+                  if [[ ! "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                      echo "release_ref must be a semantic release tag such as v0.19.0." >&2
+                      exit 1
+                  fi
+                  echo "DWARVENPICK_VERSION=${RELEASE_REF#v}" >> "$GITHUB_ENV"
+                  echo "DWARVENPICK_SOURCE_REF=$RELEASE_REF" >> "$GITHUB_ENV"
+                  echo "DWARVENPICK_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+                  echo "DWARVENPICK_IMAGE_TAG=perf-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+                  echo "DWARVENPICK_BUILD_TAG=github-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
             - name: Setup Node
               uses: actions/setup-node@v4
@@ -75,6 +97,10 @@ jobs:
                   PROMETHEUS_URL: http://127.0.0.1:9090
                   PROMETHEUS_NAMESPACE: dwarvenpick-local
                   REPORT_DIR: build/reports/perf
+                  EXPECTED_SOURCE_REF: ${{ inputs.release_ref }}
+                  EXPECTED_SOURCE_SHA: ${{ env.DWARVENPICK_SOURCE_SHA }}
+                  EXPECTED_IMAGE_TAG: ${{ env.DWARVENPICK_IMAGE_TAG }}
+                  EXPECTED_BUILD_TAG: ${{ env.DWARVENPICK_BUILD_TAG }}
               run: scripts/perf/run-query-smoke.sh
 
             - name: Capture compose logs on failure
