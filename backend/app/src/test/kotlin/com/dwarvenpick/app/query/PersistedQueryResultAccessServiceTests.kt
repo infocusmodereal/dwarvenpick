@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
@@ -13,16 +12,19 @@ import java.time.Instant
 
 class PersistedQueryResultAccessServiceTests {
     private lateinit var queryRuntimeRepository: QueryRuntimeRepository
+    private lateinit var resultLifecycleService: PersistedQueryResultLifecycleService
     private lateinit var pageTokenCodec: QueryResultPageTokenCodec
     private lateinit var service: PersistedQueryResultAccessService
 
     @BeforeEach
     fun setUp() {
         queryRuntimeRepository = mock(QueryRuntimeRepository::class.java)
+        resultLifecycleService = mock(PersistedQueryResultLifecycleService::class.java)
         pageTokenCodec = QueryResultPageTokenCodec()
         service =
             PersistedQueryResultAccessService(
                 queryRuntimeRepository = queryRuntimeRepository,
+                resultLifecycleService = resultLifecycleService,
                 queryExecutionProperties =
                     QueryExecutionProperties(
                         defaultPageSize = 2,
@@ -53,7 +55,7 @@ class PersistedQueryResultAccessServiceTests {
         assertThat(secondPage.pageSize).isEqualTo(3)
         assertThat(secondPage.rows).containsExactly(row("three"), row("four"), row("five"))
         assertThat(secondPage.nextPageToken).isNull()
-        assertLastAccessedWasUpdated(metadata.executionId)
+        verify(resultLifecycleService, org.mockito.Mockito.times(2)).touchResultSession(metadata.executionId)
     }
 
     @Test
@@ -117,17 +119,20 @@ class PersistedQueryResultAccessServiceTests {
         val metadata = metadata(rowCount = 2)
         val rows = listOf(row("one"), row("two"))
         `when`(queryRuntimeRepository.rowIterable(metadata.executionId)).thenReturn(rows)
+        `when`(resultLifecycleService.acquireExportLease(metadata.executionId)).thenReturn("lease-id")
+        `when`(resultLifecycleService.protectExportRows(metadata.executionId, "lease-id", rows)).thenReturn(rows)
 
         val payload = service.prepareCsvExport(metadata, includeHeaders = false, maxExportRows = 2)
 
         assertThat(payload.executionId).isEqualTo(metadata.executionId)
+        assertThat(payload.resultLeaseId).isEqualTo("lease-id")
         assertThat(payload.datasourceId).isEqualTo(metadata.datasourceId)
         assertThat(payload.includeHeaders).isFalse()
         assertThat(payload.rows).isSameAs(rows)
         assertThrows<QueryExportLimitExceededException> {
             service.prepareCsvExport(metadata.copy(rowCount = 3), includeHeaders = true, maxExportRows = 2)
         }
-        assertLastAccessedWasUpdated(metadata.executionId)
+        verify(resultLifecycleService).acquireExportLease(metadata.executionId)
     }
 
     @Test
@@ -187,13 +192,4 @@ class PersistedQueryResultAccessServiceTests {
     }
 
     private fun row(value: String): List<String?> = listOf(value)
-
-    private fun assertLastAccessedWasUpdated(executionId: String) {
-        val touchedExecutionIds =
-            mockingDetails(queryRuntimeRepository)
-                .invocations
-                .filter { invocation -> invocation.method.name == "updateLastAccessed" }
-                .map { invocation -> invocation.arguments[0] }
-        assertThat(touchedExecutionIds).contains(executionId)
-    }
 }

@@ -265,7 +265,12 @@ class QueryController(
                     maxExportRows = queryExecutionProperties.maxExportRows,
                 )
 
-            val exportLease = CsvExportLease(exportPayload.executionId, queryExecutionManager)
+            val exportLease =
+                CsvExportLease(
+                    executionId = exportPayload.executionId,
+                    resultLeaseId = exportPayload.resultLeaseId,
+                    queryExecutionManager = queryExecutionManager,
+                )
             try {
                 authAuditLogger.log(
                     AuthAuditEvent(
@@ -488,13 +493,14 @@ class QueryController(
 
 private class CsvExportLease(
     private val executionId: String,
+    private val resultLeaseId: String,
     private val queryExecutionManager: QueryExecutionManager,
 ) {
     private val released = AtomicBoolean(false)
 
     fun release() {
         if (released.compareAndSet(false, true)) {
-            queryExecutionManager.completeCsvExport(executionId)
+            queryExecutionManager.completeCsvExport(executionId, resultLeaseId)
         }
     }
 }

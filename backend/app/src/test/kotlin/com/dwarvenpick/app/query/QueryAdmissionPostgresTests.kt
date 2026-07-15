@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -49,6 +50,9 @@ class QueryAdmissionPostgresTests {
     private lateinit var queryRuntimeRepository: QueryRuntimeRepository
 
     @Autowired
+    private lateinit var persistedResultLifecycleRepository: PersistedResultLifecycleRepository
+
+    @Autowired
     private lateinit var queryExecutionManager: QueryExecutionManager
 
     @Autowired
@@ -68,6 +72,9 @@ class QueryAdmissionPostgresTests {
 
     @Autowired
     private lateinit var persistedQueryResultAccessService: PersistedQueryResultAccessService
+
+    @Autowired
+    private lateinit var persistedQueryResultLifecycleService: PersistedQueryResultLifecycleService
 
     @Autowired
     private lateinit var pageTokenCodec: QueryResultPageTokenCodec
@@ -152,6 +159,7 @@ class QueryAdmissionPostgresTests {
                 queryRuntimeRepository = queryRuntimeRepository,
                 queryAdmissionRepository = queryAdmissionRepository,
                 persistedQueryResultAccessService = persistedQueryResultAccessService,
+                persistedQueryResultLifecycleService = persistedQueryResultLifecycleService,
                 pageTokenCodec = pageTokenCodec,
                 applicationInstanceId = applicationInstanceId,
                 meterRegistry = meterRegistry,
@@ -189,6 +197,60 @@ class QueryAdmissionPostgresTests {
         assertThat(jdbcTemplate.dataSource).isSameAs(dataSource)
         assertThat(transactionManager).isInstanceOf(DataSourceTransactionManager::class.java)
         assertThat((transactionManager as DataSourceTransactionManager).dataSource).isSameAs(dataSource)
+    }
+
+    @Test
+    fun `postgres export lease protects pages and restarted owner cannot extend stale ttl`() {
+        val now = Instant.now()
+        val record =
+            runtimeRecord("postgres-persisted-expiry", actor = "result-user")
+                .copy(
+                    status = QueryExecutionStatus.SUCCEEDED,
+                    startedAt = now.minusSeconds(10),
+                    completedAt = now,
+                    lastAccessedAt = now,
+                    columns = listOf(QueryResultColumn(name = "value", jdbcType = "VARCHAR")),
+                    rows = listOf(listOf("one"), listOf("two")),
+                )
+        queryRuntimeRepository.save(record)
+        val leaseId = "postgres-export-lease"
+        assertThat(
+            persistedResultLifecycleRepository.acquireExportLease(
+                executionId = record.executionId,
+                leaseId = leaseId,
+                ttlCutoff = now.minusSeconds(600),
+                acquiredAt = now,
+                expiresAt = now.plusSeconds(900),
+            ),
+        ).isTrue()
+        queryRuntimeRepository.updateLastAccessed(record.executionId, now.minusSeconds(700))
+
+        val secondBackendRepository =
+            PersistedResultLifecycleRepository(NamedParameterJdbcTemplate(jdbcTemplate))
+        val protectedBatch = secondBackendRepository.expireIdleResults(now.minusSeconds(600), now, batchSize = 10)
+
+        assertThat(protectedBatch.expiredExecutionIds).isEmpty()
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isEqualTo(1)
+        assertThat(persistedResultLifecycleRepository.releaseExportLease(record.executionId, leaseId)).isTrue()
+
+        val persisted = requireNotNull(queryRuntimeRepository.findMetadata(record.executionId))
+        assertThatThrownBy {
+            persistedQueryResultAccessService.getResults(persisted, QueryResultsRequest())
+        }.isInstanceOf(QueryResultsExpiredException::class.java)
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.resultsExpired).isTrue()
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isZero()
+
+        val cleanupRecord =
+            record.copy(
+                executionId = "postgres-scheduled-expiry",
+                queryHash = "hash-postgres-scheduled-expiry",
+                lastAccessedAt = now.minusSeconds(700),
+            )
+        queryRuntimeRepository.save(cleanupRecord)
+        val cleanupBatch =
+            persistedResultLifecycleRepository.expireIdleResults(now.minusSeconds(600), now, batchSize = 10)
+        assertThat(cleanupBatch.expiredExecutionIds).containsExactly(cleanupRecord.executionId)
+        assertThat(queryRuntimeRepository.countResultPages(cleanupRecord.executionId)).isZero()
     }
 
     private fun heldActorLock(actor: String): Connection {

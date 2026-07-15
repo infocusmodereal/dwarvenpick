@@ -52,6 +52,9 @@ dwarvenpick:
     max-concurrency-per-user: 5
     admission-timeout-seconds: ${DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS:10}
     result-session-ttl-seconds: 600
+    persisted-result-expiry-delete-enabled: ${DWARVENPICK_QUERY_PERSISTED_RESULT_EXPIRY_DELETE_ENABLED:true}
+    persisted-result-expiry-batch-size: ${DWARVENPICK_QUERY_PERSISTED_RESULT_EXPIRY_BATCH_SIZE:100}
+    result-export-lease-seconds: ${DWARVENPICK_QUERY_RESULT_EXPORT_LEASE_SECONDS:900}
     execution-retention-seconds: 3600
     cancel-grace-period-ms: 500
     cleanup-interval-ms: 30000

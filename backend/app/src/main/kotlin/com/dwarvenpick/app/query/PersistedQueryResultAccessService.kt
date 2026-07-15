@@ -1,12 +1,12 @@
 package com.dwarvenpick.app.query
 
 import org.springframework.stereotype.Service
-import java.time.Instant
 
 /** Operates on metadata only after the caller has enforced execution access. */
 @Service
 class PersistedQueryResultAccessService(
     private val queryRuntimeRepository: QueryRuntimeRepository,
+    private val resultLifecycleService: PersistedQueryResultLifecycleService,
     private val queryExecutionProperties: QueryExecutionProperties,
     private val pageTokenCodec: QueryResultPageTokenCodec,
 ) {
@@ -36,6 +36,7 @@ class PersistedQueryResultAccessService(
         if (startOffset > metadata.rowCount) {
             throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
         }
+        resultLifecycleService.touchResultSession(metadata.executionId)
         val rows = queryRuntimeRepository.fetchRows(metadata.executionId, startOffset, resolvedPageSize)
         val endOffset = startOffset + rows.size
         val nextPageToken =
@@ -44,7 +45,6 @@ class PersistedQueryResultAccessService(
             } else {
                 null
             }
-        queryRuntimeRepository.updateLastAccessed(metadata.executionId, Instant.now())
         return QueryResultsResponse(
             executionId = metadata.executionId,
             status = metadata.status.name,
@@ -82,14 +82,20 @@ class PersistedQueryResultAccessService(
                 "Export row limit exceeded (${metadata.rowCount} rows > $resolvedMaxExportRows allowed).",
             )
         }
-        queryRuntimeRepository.updateLastAccessed(metadata.executionId, Instant.now())
+        val resultLeaseId = resultLifecycleService.acquireExportLease(metadata.executionId)
         return QueryCsvExportPayload(
             executionId = metadata.executionId,
+            resultLeaseId = resultLeaseId,
             datasourceId = metadata.datasourceId,
             includeHeaders = includeHeaders,
             rowCount = metadata.rowCount,
             columns = metadata.columns,
-            rows = queryRuntimeRepository.rowIterable(metadata.executionId),
+            rows =
+                resultLifecycleService.protectExportRows(
+                    executionId = metadata.executionId,
+                    leaseId = resultLeaseId,
+                    rows = queryRuntimeRepository.rowIterable(metadata.executionId),
+                ),
         )
     }
 }

@@ -41,6 +41,13 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_query_buffered_budget_bytes`
 - Exports:
   - `dwarvenpick_query_export_attempts_total{outcome=...}`
+- Persisted results (database-wide; use `max` across backend pods):
+  - `dwarvenpick_query_persisted_result_bytes`
+  - `dwarvenpick_query_persisted_result_pages`
+  - `dwarvenpick_query_persisted_result_expiry_candidates`
+  - `dwarvenpick_query_persisted_result_expiry_lag_seconds`
+  - `dwarvenpick_query_persisted_result_export_leases`
+  - `dwarvenpick_query_persisted_result_cleanup_failures_total`
 - Auth:
   - `dwarvenpick_auth_login_attempts_total{provider=...,outcome=...}`
 - Pools:
@@ -62,3 +69,9 @@ Keep `/actuator/prometheus` enabled for internal Prometheus scraping. Public exp
    - Trigger: `dwarvenpick_pool_active / dwarvenpick_pool_total > 0.9` for 5m
 5. Login failure surge:
    - Trigger: `increase(dwarvenpick_auth_login_attempts_total{outcome="failed"}[5m]) > 25`
+6. Persisted result cleanup failure:
+   - Trigger: `increase(dwarvenpick_query_persisted_result_cleanup_failures_total[10m]) > 0`
+7. Persisted result cleanup lag:
+   - Trigger: `max(dwarvenpick_query_persisted_result_expiry_lag_seconds) > 900` for 10m after deletion is enabled
+
+Alert separately on provider-reported metadata database free bytes using the reviewed storage envelope in [Persisted result lifecycle](persisted-result-lifecycle.md).

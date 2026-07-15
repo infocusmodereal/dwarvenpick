@@ -20,6 +20,9 @@ class QueryRuntimeRepositoryTests {
     private lateinit var queryRuntimeRepository: QueryRuntimeRepository
 
     @Autowired
+    private lateinit var persistedResultLifecycleRepository: PersistedResultLifecycleRepository
+
+    @Autowired
     private lateinit var namedParameterJdbcTemplate: NamedParameterJdbcTemplate
 
     @Autowired
@@ -125,6 +128,104 @@ class QueryRuntimeRepositoryTests {
         assertThat(metadata?.rowCount).isZero()
         assertThat(metadata?.columnCount).isZero()
         assertThat(metadata?.columns).isEmpty()
+    }
+
+    @Test
+    fun `database cleanup expires idle persisted results and reports storage`() {
+        val now = Instant.now()
+        val record =
+            runtimeRecord(executionId = "database-owned-expiry")
+                .copy(
+                    status = QueryExecutionStatus.SUCCEEDED,
+                    completedAt = now.minusSeconds(700),
+                    lastAccessedAt = now.minusSeconds(700),
+                    rows = (1..3).map { index -> listOf("value-$index") },
+                )
+        queryRuntimeRepository.save(record)
+
+        val before = persistedResultLifecycleRepository.storageSnapshot(now.minusSeconds(600), now)
+        val batch =
+            persistedResultLifecycleRepository.expireIdleResults(
+                ttlCutoff = now.minusSeconds(600),
+                now = now,
+                batchSize = 10,
+            )
+
+        assertThat(before.bytes).isPositive()
+        assertThat(before.pageCount).isEqualTo(2)
+        assertThat(before.expiryCandidateCount).isEqualTo(1)
+        assertThat(batch.expiredExecutionIds).containsExactly(record.executionId)
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isZero()
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.resultsExpired).isTrue()
+    }
+
+    @Test
+    fun `durable export lease protects pages until release`() {
+        val now = Instant.now()
+        val record =
+            runtimeRecord(executionId = "leased-export")
+                .copy(
+                    status = QueryExecutionStatus.SUCCEEDED,
+                    completedAt = now,
+                    lastAccessedAt = now,
+                    rows = (1..3).map { index -> listOf("value-$index") },
+                )
+        queryRuntimeRepository.save(record)
+        val leaseId = "export-lease"
+        assertThat(
+            persistedResultLifecycleRepository.acquireExportLease(
+                executionId = record.executionId,
+                leaseId = leaseId,
+                ttlCutoff = now.minusSeconds(600),
+                acquiredAt = now,
+                expiresAt = now.plusSeconds(900),
+            ),
+        ).isTrue()
+        queryRuntimeRepository.updateLastAccessed(record.executionId, now.minusSeconds(700))
+
+        val protectedBatch =
+            persistedResultLifecycleRepository.expireIdleResults(now.minusSeconds(600), now, batchSize = 10)
+
+        assertThat(protectedBatch.expiredExecutionIds).isEmpty()
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isEqualTo(2)
+        assertThat(
+            persistedResultLifecycleRepository.touchResultSession(
+                executionId = record.executionId,
+                ttlCutoff = now.minusSeconds(600),
+                accessedAt = now.plusSeconds(1),
+            ),
+        ).isTrue()
+        assertThat(persistedResultLifecycleRepository.releaseExportLease(record.executionId, leaseId)).isTrue()
+        queryRuntimeRepository.updateLastAccessed(record.executionId, now.minusSeconds(700))
+
+        val releasedBatch =
+            persistedResultLifecycleRepository.expireIdleResults(now.minusSeconds(600), now, batchSize = 10)
+        assertThat(releasedBatch.expiredExecutionIds).containsExactly(record.executionId)
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isZero()
+    }
+
+    @Test
+    fun `stale persisted read is rejected and expired atomically`() {
+        val now = Instant.now()
+        val record =
+            runtimeRecord(executionId = "stale-persisted-read")
+                .copy(
+                    status = QueryExecutionStatus.SUCCEEDED,
+                    completedAt = now.minusSeconds(700),
+                    lastAccessedAt = now.minusSeconds(700),
+                )
+        queryRuntimeRepository.save(record)
+
+        val touched =
+            persistedResultLifecycleRepository.touchResultSession(
+                executionId = record.executionId,
+                ttlCutoff = now.minusSeconds(600),
+                accessedAt = now,
+            )
+
+        assertThat(touched).isFalse()
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.resultsExpired).isTrue()
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isZero()
     }
 
     @Test

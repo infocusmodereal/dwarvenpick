@@ -10,12 +10,14 @@ import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import com.dwarvenpick.app.datasource.TlsMode
 import com.dwarvenpick.app.datasource.TlsSettings
 import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
+import com.dwarvenpick.app.query.PersistedQueryResultLifecycleService
 import com.dwarvenpick.app.query.QueryCsvWriter
 import com.dwarvenpick.app.query.QueryExecutionManager
 import com.dwarvenpick.app.query.QueryHistoryFilter
 import com.dwarvenpick.app.query.QueryHistoryRepository
 import com.dwarvenpick.app.query.QueryHistorySortOrder
 import com.dwarvenpick.app.query.QueryResultsExpiredException
+import com.dwarvenpick.app.query.QueryRuntimeRepository
 import com.dwarvenpick.app.rbac.CreateGroupRequest
 import com.dwarvenpick.app.rbac.QueryAccessDeniedException
 import com.dwarvenpick.app.rbac.RbacService
@@ -89,6 +91,12 @@ class DwarvenpickApplicationTests {
 
     @Autowired
     private lateinit var queryExecutionManager: QueryExecutionManager
+
+    @Autowired
+    private lateinit var queryRuntimeRepository: QueryRuntimeRepository
+
+    @Autowired
+    private lateinit var persistedQueryResultLifecycleService: PersistedQueryResultLifecycleService
 
     @BeforeEach
     fun resetState() {
@@ -672,11 +680,12 @@ class DwarvenpickApplicationTests {
                 includeHeaders = exportWithoutHeadersPayload.includeHeaders,
             )
         } finally {
-            queryExecutionManager.completeCsvExport(executionId)
+            queryExecutionManager.completeCsvExport(executionId, exportWithoutHeadersPayload.resultLeaseId)
         }
         assertThat(String(exportWithoutHeadersOutput.toByteArray(), Charsets.UTF_8)).isEqualTo("1\n2\n3\n")
 
         ageLiveExecution(executionId, Instant.now().minusSeconds(3_600))
+        persistedQueryResultLifecycleService.cleanupExpiredResults()
         queryExecutionManager.cleanupExpiredSessions()
         assertThrows(QueryResultsExpiredException::class.java) {
             queryExecutionManager.prepareCsvExport(
@@ -773,7 +782,7 @@ class DwarvenpickApplicationTests {
                 includeHeaders = payload.includeHeaders,
             )
         } finally {
-            queryExecutionManager.completeCsvExport(executionId)
+            queryExecutionManager.completeCsvExport(executionId, payload.resultLeaseId)
         }
         assertThat(String(outputStream.toByteArray(), Charsets.UTF_8)).isEqualTo("generate_series\n1\n2\n")
     }
@@ -1219,6 +1228,7 @@ class DwarvenpickApplicationTests {
                 isAccessible = true
             }
         lastAccessedField.set(record, lastAccessedAt)
+        queryRuntimeRepository.updateLastAccessed(executionId, lastAccessedAt)
     }
 
     private fun MvcResult.toSessionCookies(): Array<Cookie> {
