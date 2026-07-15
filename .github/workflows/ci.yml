@@ -105,6 +105,14 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Test browser smoke target validation
+        run: node --test ../scripts/browser/*.test.mjs
+
+      - name: Compile browser smoke suite
+        run: |
+          npm run browser:smoke:typecheck
+          npm run browser:smoke:list
+
       - name: Build
         run: npm run build
 

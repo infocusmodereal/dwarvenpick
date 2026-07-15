@@ -1,0 +1,65 @@
+services:
+  postgres:
+    container_name: !reset null
+    ports: !reset []
+
+  mysql:
+    container_name: !reset null
+    ports: !reset []
+
+  mariadb:
+    container_name: !reset null
+    ports: !reset []
+
+  vertica:
+    container_name: !reset null
+    ports: !reset []
+
+  starrocks:
+    container_name: !reset null
+    ports: !reset []
+    volumes: !override
+      - starrocks-fe-meta:/data/deploy/starrocks/fe/meta
+      - starrocks-be-storage:/data/deploy/starrocks/be/storage
+
+  starrocks-seed:
+    container_name: !reset null
+
+  trino:
+    container_name: !reset null
+    ports: !reset []
+
+  aerospike:
+    container_name: !reset null
+    ports: !reset []
+
+  aerospike-seed:
+    container_name: !reset null
+
+  keycloak:
+    container_name: !reset null
+    ports: !reset []
+
+  vertica-driver:
+    container_name: !reset null
+
+  backend:
+    container_name: !reset null
+    build:
+      args:
+        DWARVENPICK_VERSION: "${BROWSER_SMOKE_APP_VERSION:-local}"
+        DWARVENPICK_SOURCE_SHA: "${BROWSER_SMOKE_SOURCE_SHA:-unknown}"
+        DWARVENPICK_SOURCE_REF: "${BROWSER_SMOKE_SOURCE_REF:-unknown}"
+        DWARVENPICK_IMAGE_TAG: local-compose
+        DWARVENPICK_BUILD_TAG: "${BROWSER_SMOKE_BUILD_TAG:-browser-smoke}"
+    ports: !override
+      - "127.0.0.1:${BROWSER_SMOKE_BACKEND_PORT:-8080}:8080"
+
+  frontend:
+    container_name: !reset null
+    ports: !override
+      - "127.0.0.1:${BROWSER_SMOKE_FRONTEND_PORT:-3000}:80"
+
+volumes:
+  starrocks-fe-meta:
+  starrocks-be-storage:
