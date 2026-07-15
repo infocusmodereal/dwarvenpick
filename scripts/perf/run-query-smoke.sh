@@ -10,11 +10,15 @@ K6_SUMMARY_PATH="$REPORT_DIR/query-smoke-summary.json"
 PROMETHEUS_SNAPSHOT_PATH="$REPORT_DIR/prometheus-samples.json"
 JSON_REPORT_PATH="$REPORT_DIR/query-smoke-report.json"
 TEXT_REPORT_PATH="$REPORT_DIR/query-smoke-report.txt"
+VERSION_METADATA_PATH=""
 sampler_pid=""
 
 mkdir -p "$REPORT_DIR"
 export PERF_PROFILE K6_SUMMARY_PATH
 
+for tool in curl node; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "$tool is required for performance evidence." >&2; exit 127; }
+done
 node "$ROOT_DIR/scripts/perf/validate-target.mjs"
 if ! "$K6_BIN" version | grep -E "^k6 v${REQUIRED_K6_VERSION//./\\.}([[:space:]]|$)" >/dev/null; then
   echo "k6 v$REQUIRED_K6_VERSION is required for comparable evidence." >&2
@@ -29,15 +33,24 @@ stop_sampler() {
   sampler_pid=""
 }
 
+cleanup() {
+  stop_sampler
+  [[ -z "$VERSION_METADATA_PATH" ]] || rm -f "$VERSION_METADATA_PATH"
+}
+
 handle_signal() {
   local status="$1"
   stop_sampler
   exit "$status"
 }
 
-trap stop_sampler EXIT
+trap cleanup EXIT
 trap 'handle_signal 130' INT
 trap 'handle_signal 143' TERM
+
+VERSION_METADATA_PATH="$(mktemp)"
+curl -fsS --connect-timeout 10 --max-time 30 \
+  "${BASE_URL%/}/api/version" >"$VERSION_METADATA_PATH"
 
 unset K6_HTTP_DEBUG K6_CONSOLE_OUTPUT K6_LOG_OUTPUT
 
@@ -72,7 +85,8 @@ node "$ROOT_DIR/scripts/perf/generate-report.mjs" \
   "$K6_SUMMARY_PATH" \
   "$PROMETHEUS_SNAPSHOT_PATH" \
   "$JSON_REPORT_PATH" \
-  "$TEXT_REPORT_PATH"
+  "$TEXT_REPORT_PATH" \
+  "$VERSION_METADATA_PATH"
 report_status="$?"
 set -e
 

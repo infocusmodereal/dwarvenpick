@@ -3,11 +3,22 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-const [summaryPath, prometheusPath, jsonOutputPath, textOutputPath] =
-    process.argv.slice(2);
-if (!summaryPath || !prometheusPath || !jsonOutputPath || !textOutputPath) {
+const [
+    summaryPath,
+    prometheusPath,
+    jsonOutputPath,
+    textOutputPath,
+    versionMetadataPath,
+] = process.argv.slice(2);
+if (
+    !summaryPath ||
+    !prometheusPath ||
+    !jsonOutputPath ||
+    !textOutputPath ||
+    !versionMetadataPath
+) {
     throw new Error(
-        "summary, Prometheus, JSON report, and text report paths are required.",
+        "summary, Prometheus, JSON report, text report, and version metadata paths are required.",
     );
 }
 
@@ -87,6 +98,38 @@ function delta(samples, name) {
         `prometheus.${name}.last`,
     );
     return Math.max(0, last - first);
+}
+
+function requiredString(payload, name) {
+    const value = payload?.[name];
+    if (typeof value !== "string" || !value.trim()) {
+        throw new Error(`Required release identity is missing: ${name}.`);
+    }
+    return value.trim();
+}
+
+function releaseIdentity(payload) {
+    const identity = {
+        version: requiredString(payload, "version"),
+        sourceRef: requiredString(payload, "sourceRef"),
+        sourceSha: requiredString(payload, "sourceSha"),
+        imageTag: requiredString(payload, "imageTag"),
+        buildTag: requiredString(payload, "buildTag"),
+    };
+    const expectations = {
+        sourceRef: process.env.EXPECTED_SOURCE_REF,
+        sourceSha: process.env.EXPECTED_SOURCE_SHA,
+        imageTag: process.env.EXPECTED_IMAGE_TAG,
+        buildTag: process.env.EXPECTED_BUILD_TAG,
+    };
+    for (const [name, expected] of Object.entries(expectations)) {
+        if (expected && identity[name] !== expected) {
+            throw new Error(
+                `Release identity mismatch for ${name}: expected ${expected}, got ${identity[name]}.`,
+            );
+        }
+    }
+    return identity;
 }
 
 function analyzePrometheus(prometheus, requireCsvExport) {
@@ -173,6 +216,9 @@ async function writeIncomplete(message) {
 try {
     const summary = JSON.parse(await readFile(summaryPath, "utf8"));
     const prometheus = JSON.parse(await readFile(prometheusPath, "utf8"));
+    const versionMetadata = JSON.parse(
+        await readFile(versionMetadataPath, "utf8"),
+    );
     if (summary.schemaVersion !== 1 || prometheus.schemaVersion !== 1) {
         throw new Error("Unsupported performance artifact schema version.");
     }
@@ -200,6 +246,7 @@ try {
     const report = {
         schemaVersion: 1,
         status: thresholdsPassed(summary) ? "passed" : "failed",
+        release: releaseIdentity(versionMetadata),
         targetEnvironment: process.env.PERF_TARGET_ENV,
         environmentScope:
             process.env.PERF_TARGET_ENV === "dev" ? "shared" : "isolated",
@@ -239,6 +286,11 @@ try {
     const lines = [
         "Dwarvenpick query performance report",
         `status=${report.status}`,
+        `version=${report.release.version}`,
+        `source_ref=${report.release.sourceRef}`,
+        `source_sha=${report.release.sourceSha}`,
+        `image_tag=${report.release.imageTag}`,
+        `build_tag=${report.release.buildTag}`,
         `target_environment=${report.targetEnvironment}`,
         `environment_scope=${report.environmentScope}`,
         `profile=${report.profile}`,

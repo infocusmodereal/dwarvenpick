@@ -13,17 +13,18 @@ This repository includes a repeatable load harness for concurrent query executio
 - Script: `scripts/perf/query-load.k6.js`
 - Artifact wrapper: `scripts/perf/run-query-smoke.sh`
 - Target behavior:
-  - login
-  - submit query
-  - poll status
-  - fetch paginated result pages
-  - trigger CSV export
-  - capture backend query, queue, pool, export, and result-buffer metrics when `/actuator/prometheus` is reachable
+    - login
+    - submit query
+    - poll status
+    - fetch paginated result pages
+    - trigger CSV export
+    - capture backend query, queue, pool, export, and result-buffer metrics when `/actuator/prometheus` is reachable
 
 ## CI-safe smoke
 
-The manual `Manual Query Performance Smoke` GitHub Actions workflow builds a minimal PostgreSQL and backend stack. It
-uses only seeded local credentials and uploads a sanitized report artifact. It never targets dev or prod.
+The manual `Manual Query Performance Smoke` GitHub Actions workflow requires a semantic release tag, builds a minimal
+PostgreSQL and backend stack from that tag, and uploads a sanitized report artifact. It uses only seeded local
+credentials and never targets dev or prod.
 
 Run the same profile locally with Docker Compose:
 
@@ -45,6 +46,9 @@ scripts/perf/run-query-smoke.sh
 docker compose -f deploy/perf/docker-compose.yml down -v
 ```
 
+Set `PERF_BACKEND_PORT` and `PERF_PROMETHEUS_PORT` before both Compose and smoke
+commands when `8080` or `9090` is already in use.
+
 The smoke profile defaults to 2 VUs for 30 seconds. The workflow uses 1 VU for 15 seconds to keep the manual CI check
 small. Both write:
 
@@ -53,7 +57,11 @@ small. Both write:
 - `build/reports/perf/query-smoke-report.json`
 - `build/reports/perf/query-smoke-report.txt`
 
-These artifacts contain only aggregate timings, counters, ratios, threshold results, and the validated namespace name.
+The generated reports contain only aggregate timings, counters, ratios, threshold results, the validated namespace,
+and an allowlisted release identity (`version`, `sourceRef`, `sourceSha`, `imageTag`, and `buildTag`). The wrapper reads
+the public `/api/version` response through a temporary file that is deleted after report generation. Set
+`EXPECTED_SOURCE_REF`, `EXPECTED_SOURCE_SHA`, `EXPECTED_IMAGE_TAG`, or `EXPECTED_BUILD_TAG` to make identity drift fail
+the run.
 They exclude credentials, cookies, query text, result rows, PromQL, and source-series labels such as pod or instance.
 The wrapper disables k6 HTTP debug output and external log sinks, and the Prometheus sampler does not inherit query or
 application credential environment variables.
@@ -138,14 +146,14 @@ scripts/perf/run-query-smoke.sh
 - `dwarvenpick_k6_result_pages_fetched`
 - `dwarvenpick_k6_csv_exports_attempted`
 - backend metrics from `/actuator/prometheus` during the run:
-  - `dwarvenpick_query_active`
-  - `dwarvenpick_query_execution_total`
-  - `dwarvenpick_query_duration_seconds`
-  - `dwarvenpick_query_export_attempts_total`
-  - `dwarvenpick_query_buffered_bytes`
-  - `dwarvenpick_query_buffered_budget_bytes`
-  - `dwarvenpick_pool_active`
-  - `dwarvenpick_pool_total`, with `dwarvenpick_pool` as the compatibility fallback
+    - `dwarvenpick_query_active`
+    - `dwarvenpick_query_execution_total`
+    - `dwarvenpick_query_duration_seconds`
+    - `dwarvenpick_query_export_attempts_total`
+    - `dwarvenpick_query_buffered_bytes`
+    - `dwarvenpick_query_buffered_budget_bytes`
+    - `dwarvenpick_pool_active`
+    - `dwarvenpick_pool_total`, with `dwarvenpick_pool` as the compatibility fallback
 
 ## Manual gate expectations
 
