@@ -14,14 +14,24 @@ import javax.sql.DataSource
 
 enum class QueryAdmissionResult {
     ADMITTED,
-    LIMIT_REACHED,
+    ACTOR_LIMIT_REACHED,
+    AGGREGATE_LIMIT_REACHED,
+    DATASOURCE_LIMIT_REACHED,
 }
+
+data class QueryAdmissionLimits(
+    val actor: Int,
+    val aggregate: Int,
+    val datasource: Int,
+)
 
 internal object QueryAdmissionLockKey {
     const val NAMESPACE = 0x44575051
 
-    fun forActor(actor: String): Int {
-        val digest = MessageDigest.getInstance("SHA-256").digest(actor.toByteArray(StandardCharsets.UTF_8))
+    fun forActor(actor: String): Int = forScope("actor:$actor")
+
+    fun forScope(scope: String): Int {
+        val digest = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(StandardCharsets.UTF_8))
         return ByteBuffer.wrap(digest, 0, Int.SIZE_BYTES).int
     }
 }
@@ -44,13 +54,13 @@ class QueryAdmissionRepository(
 
     fun reserve(
         record: PersistedQueryRuntimeRecord,
-        concurrencyLimit: Int,
+        limits: QueryAdmissionLimits,
     ): QueryAdmissionResult =
         if (dialect == QueryAdmissionDialect.POSTGRESQL) {
-            executeTransaction(record, concurrencyLimit, acquireDatabaseLock = true)
+            executeTransaction(record, limits, acquireDatabaseLock = true)
         } else {
             synchronized(h2AdmissionMonitor) {
-                executeTransaction(record, concurrencyLimit, acquireDatabaseLock = false)
+                executeTransaction(record, limits, acquireDatabaseLock = false)
             }
         }
 
@@ -58,7 +68,7 @@ class QueryAdmissionRepository(
 
     private fun executeTransaction(
         record: PersistedQueryRuntimeRecord,
-        concurrencyLimit: Int,
+        limits: QueryAdmissionLimits,
         acquireDatabaseLock: Boolean,
     ): QueryAdmissionResult =
         requireNotNull(
@@ -67,48 +77,67 @@ class QueryAdmissionRepository(
                     "Query admission requires an active metadata database transaction."
                 }
                 if (acquireDatabaseLock) {
-                    acquirePostgresActorLock(record.actor)
+                    acquirePostgresLock("aggregate")
+                    acquirePostgresLock("datasource:${record.datasourceId}")
+                    acquirePostgresLock("actor:${record.actor}")
                 }
-                reserveWithinTransaction(record, concurrencyLimit)
+                reserveWithinTransaction(record, limits)
             },
         )
 
-    private fun acquirePostgresActorLock(actor: String) {
+    private fun acquirePostgresLock(scope: String) {
         namedParameterJdbcTemplate.query(
             "SELECT pg_advisory_xact_lock(:namespaceKey, :actorKey)",
             mapOf(
                 "namespaceKey" to QueryAdmissionLockKey.NAMESPACE,
-                "actorKey" to QueryAdmissionLockKey.forActor(actor),
+                "actorKey" to QueryAdmissionLockKey.forScope(scope),
             ),
         ) { _, _ -> Unit }
     }
 
     private fun reserveWithinTransaction(
         record: PersistedQueryRuntimeRecord,
-        concurrencyLimit: Int,
+        limits: QueryAdmissionLimits,
     ): QueryAdmissionResult {
-        val activeExecutions =
-            namedParameterJdbcTemplate.queryForObject(
-                """
-                SELECT COUNT(*)
-                FROM query_runtime_executions
-                WHERE actor = :actor
-                  AND status IN (:activeStatuses)
-                """.trimIndent(),
-                mapOf(
-                    "actor" to record.actor,
-                    "activeStatuses" to listOf(QueryExecutionStatus.QUEUED.name, QueryExecutionStatus.RUNNING.name),
-                ),
-                Int::class.java,
-            ) ?: 0
+        val parameters =
+            mapOf(
+                "actor" to record.actor,
+                "datasourceId" to record.datasourceId,
+                "activeStatuses" to listOf(QueryExecutionStatus.QUEUED.name, QueryExecutionStatus.RUNNING.name),
+            )
+        val aggregateExecutions = countActiveExecutions("", parameters)
+        if (aggregateExecutions >= limits.aggregate.coerceAtLeast(1)) {
+            return QueryAdmissionResult.AGGREGATE_LIMIT_REACHED
+        }
 
-        if (activeExecutions >= concurrencyLimit) {
-            return QueryAdmissionResult.LIMIT_REACHED
+        val datasourceExecutions = countActiveExecutions("AND datasource_id = :datasourceId", parameters)
+        if (datasourceExecutions >= limits.datasource.coerceAtLeast(1)) {
+            return QueryAdmissionResult.DATASOURCE_LIMIT_REACHED
+        }
+
+        val actorExecutions = countActiveExecutions("AND actor = :actor", parameters)
+        if (actorExecutions >= limits.actor.coerceAtLeast(1)) {
+            return QueryAdmissionResult.ACTOR_LIMIT_REACHED
         }
 
         queryRuntimeRepository.insertInitial(record)
         return QueryAdmissionResult.ADMITTED
     }
+
+    private fun countActiveExecutions(
+        predicate: String,
+        parameters: Map<String, Any>,
+    ): Int =
+        namedParameterJdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM query_runtime_executions
+            WHERE status IN (:activeStatuses)
+            $predicate
+            """.trimIndent(),
+            parameters,
+            Int::class.java,
+        ) ?: 0
 
     private enum class QueryAdmissionDialect {
         POSTGRESQL,

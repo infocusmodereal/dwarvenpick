@@ -57,10 +57,28 @@ state, configure a shared PostgreSQL metadata DB:
 - `SPRING_DATASOURCE_USERNAME=<user>`
 - `SPRING_DATASOURCE_PASSWORD=<password>`
 
-The shared PostgreSQL metadata database also coordinates per-actor query admission across backend replicas. Admission
-uses a transaction-scoped advisory lock, then counts active `QUEUED`/`RUNNING` executions and inserts the new `QUEUED`
-record in the same transaction. `DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS` bounds lock waits and defaults to 10
-seconds. Embedded H2 uses an in-process transaction gate and remains suitable only for a single local backend process.
+The shared PostgreSQL metadata database coordinates query admission across backend replicas. Admission takes
+transaction-scoped aggregate, connection, and actor advisory locks in that order, then counts active `QUEUED`/`RUNNING`
+executions and inserts the new `QUEUED` record in the same transaction. A rejected reservation returns HTTP 429 and does
+not create a runtime row. Embedded H2 uses an in-process transaction gate and remains suitable only for one local backend.
+
+Configure fixed admission and dispatch bounds for the deployment's replica and JDBC-pool envelope:
+
+- `DWARVENPICK_QUERY_MAX_ACTIVE_EXECUTIONS` (default `100`): aggregate running plus queued work across replicas.
+- `DWARVENPICK_QUERY_MAX_ACTIVE_PER_DATASOURCE` (default `20`): running plus queued work for one connection across replicas.
+- `DWARVENPICK_QUERY_MAX_RUNNING_PER_INSTANCE` (default `20`): local execution slots across connections.
+- `DWARVENPICK_QUERY_MAX_RUNNING_PER_DATASOURCE` (default `5`): local slots for one connection, additionally capped by that connection's configured pool maximum.
+- `DWARVENPICK_QUERY_QUEUE_TIMEOUT_SECONDS` (default `30`): maximum wait for a local execution slot.
+- `DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS` (default `10`): maximum metadata admission transaction wait.
+
+`QUEUED` means admitted work waiting for dispatch capacity. `RUNNING` is set only after the local execution slot and JDBC
+connection have been acquired. Size active-per-connection as the fixed running envelope plus a small bounded queue; keep
+aggregate admission within the metadata DB, result-buffer, and namespace resource budgets.
+
+Readiness includes the metadata datasource health contributor, while liveness includes only application liveness state.
+Metadata connection acquisition and validation default to 2 seconds and 1 second respectively; override them with
+`DWARVENPICK_METADATA_CONNECTION_TIMEOUT_MS` and `DWARVENPICK_METADATA_VALIDATION_TIMEOUT_MS` only after measuring the
+database service objective. Governed external SQL connections and LDAP are intentionally excluded from both probe groups.
 
 Schema changes are managed by Flyway migrations. Existing deployments with pre-created state tables are baselined and
 migrated forward on startup.
@@ -285,7 +303,7 @@ Notes:
 
 Start with:
 
-- 2 replicas (backend), HPA min 2 / max 6
+- 2 fixed backend replicas, changed manually through reviewed GitOps values
 - CPU request `250m`, memory request `512Mi`
 - CPU limit `1000m`, memory limit `1Gi`
 - Postgres managed separately with provisioned IOPS
@@ -297,6 +315,9 @@ Tune based on:
 - query timeout/cancel rates
 - pool saturation (`dwarvenpick_pool_active / dwarvenpick_pool_total`)
 - p95 query latency under representative load (`docs/perf-testing.md`)
+
+Do not add an HPA or unrestricted autoscaling. Recalculate fixed admission limits whenever the reviewed replica count or
+connection-pool sizes change, and validate namespace quota headroom for replacement overlap before rollout.
 
 Use `dwarvenpick.query.max-buffered-bytes-per-instance` to cap the total query result payload retained in one backend process. The default is `256MiB`, which leaves headroom for the chart's default `1Gi` pod memory limit and the JVM's default container-aware heap sizing. Raise it only when the pod memory limit and JVM heap are sized with room for request handling, CSV export, JDBC driver buffers, and application overhead.
 

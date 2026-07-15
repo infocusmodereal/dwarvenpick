@@ -109,14 +109,14 @@ class QueryAdmissionPostgresTests {
                             start.await()
                             queryAdmissionRepository.reserve(
                                 runtimeRecord(executionId, actor = "postgres-admission-user"),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, aggregate = 10, datasource = 10),
                             )
                         }
                     }
             start.countDown()
 
             assertThat(results.map { it.get() })
-                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.ACTOR_LIMIT_REACHED)
             assertThat(activeExecutions("postgres-admission-user")).hasSize(1)
             assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("POSTGRESQL")
         } finally {
@@ -125,12 +125,41 @@ class QueryAdmissionPostgresTests {
     }
 
     @Test
+    fun `postgres aggregate admission is atomic across distinct actors and datasources`() {
+        val results =
+            reserveConcurrently(
+                runtimeRecord("postgres-aggregate-1", actor = "aggregate-user-1").copy(datasourceId = "source-1"),
+                runtimeRecord("postgres-aggregate-2", actor = "aggregate-user-2").copy(datasourceId = "source-2"),
+                limits = QueryAdmissionLimits(actor = 5, aggregate = 1, datasource = 5),
+            )
+
+        assertThat(results)
+            .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.AGGREGATE_LIMIT_REACHED)
+    }
+
+    @Test
+    fun `postgres datasource admission is atomic across distinct actors`() {
+        val results =
+            reserveConcurrently(
+                runtimeRecord("postgres-datasource-1", actor = "datasource-user-1"),
+                runtimeRecord("postgres-datasource-2", actor = "datasource-user-2"),
+                limits = QueryAdmissionLimits(actor = 5, aggregate = 5, datasource = 1),
+            )
+
+        assertThat(results)
+            .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.DATASOURCE_LIMIT_REACHED)
+    }
+
+    @Test
     fun `advisory lock timeout fails as infrastructure error without reservation`() {
         val actor = "postgres-lock-timeout-user"
         heldActorLock(actor).use {
             val startedAt = System.nanoTime()
             assertThatThrownBy {
-                queryAdmissionRepository.reserve(runtimeRecord("postgres-timeout", actor), concurrencyLimit = 1)
+                queryAdmissionRepository.reserve(
+                    runtimeRecord("postgres-timeout", actor),
+                    limits = QueryAdmissionLimits(actor = 1, aggregate = 10, datasource = 10),
+                )
             }.isInstanceOf(DataAccessException::class.java)
                 .isNotInstanceOf(QueryConcurrencyLimitException::class.java)
             assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(Duration.ofSeconds(5))
@@ -202,6 +231,28 @@ class QueryAdmissionPostgresTests {
                 statement.executeQuery().use { result -> result.next() }
             }
         return connection
+    }
+
+    private fun reserveConcurrently(
+        first: PersistedQueryRuntimeRecord,
+        second: PersistedQueryRuntimeRecord,
+        limits: QueryAdmissionLimits,
+    ): List<QueryAdmissionResult> {
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        return try {
+            val reservations =
+                listOf(first, second).map { record ->
+                    executor.submit<QueryAdmissionResult> {
+                        start.await()
+                        queryAdmissionRepository.reserve(record, limits)
+                    }
+                }
+            start.countDown()
+            reservations.map { reservation -> reservation.get() }
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     private fun activeExecutions(actor: String): List<PersistedQueryRuntimeMetadataRecord> =

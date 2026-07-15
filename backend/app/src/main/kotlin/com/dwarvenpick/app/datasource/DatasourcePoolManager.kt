@@ -130,6 +130,15 @@ class DatasourcePoolManager(
         ).also { handle -> handle.pool = pool }
     }
 
+    fun maximumPoolSize(
+        datasourceId: String,
+        credentialProfile: String,
+    ): Int =
+        datasourceRegistryService
+            .resolveConnectionSpec(datasourceId, credentialProfile, tlsOverride = null)
+            .pool
+            .maximumPoolSize
+
     private fun getOrCreatePool(spec: ConnectionSpec): HikariDataSource {
         val key = poolKey(spec.datasourceId, spec.credentialProfile)
         return pools.computeIfAbsent(key) {
