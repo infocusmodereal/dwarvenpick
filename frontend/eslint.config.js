@@ -21,5 +21,20 @@ export default tseslint.config(
             ...reactHooks.configs.recommended.rules,
             'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
         }
+    },
+    {
+        files: ['e2e/**/*.ts', 'playwright.config.ts'],
+        languageOptions: {
+            globals: globals.node
+        }
+    },
+    {
+        files: ['scripts/**/*.mjs'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: globals.node
+        },
+        rules: js.configs.recommended.rules
     }
 );
