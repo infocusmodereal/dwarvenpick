@@ -32,7 +32,6 @@ import type {
     AdminSubsection,
     AdminUserResponse,
     ApiErrorResponse,
-    AuditEventResponse,
     AuthMethodsResponse,
     AutocompleteDiagnostics,
     CatalogDatasourceResponse,
@@ -93,8 +92,7 @@ import {
     formatExecutionTimestamp,
     isTerminalExecutionStatus,
     isValidEmailAddress,
-    normalizeAdminIdentifier,
-    toIsoTimestamp
+    normalizeAdminIdentifier
 } from '../workbench/utils';
 import {
     buildJdbcUrlPreview,
@@ -104,7 +102,7 @@ import {
 import { prepareTabForQueryExecution } from '../workbench/queryExecutionState';
 import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
-import { useHistoryAuditFilters } from '../workbench/useHistoryAuditFilters';
+import { useAuditEvents } from '../workbench/useAuditEvents';
 import { useQueryHistory } from '../workbench/useQueryHistory';
 import { useQueryResultsWorkflow } from '../workbench/useQueryResultsWorkflow';
 import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
@@ -552,27 +550,6 @@ export default function WorkspacePage() {
         minWidth: number;
         maxWidth: number;
     } | null>(null);
-
-    const {
-        auditActionOptions,
-        auditActorFilter,
-        auditFromFilter,
-        auditOutcomeFilter,
-        auditOutcomeOptions,
-        auditSortOrder,
-        auditToFilter,
-        auditTypeFilter,
-        loadingAuditEvents,
-        setAuditActorFilter,
-        setAuditEvents,
-        setAuditFromFilter,
-        setAuditOutcomeFilter,
-        setAuditSortOrder,
-        setAuditToFilter,
-        setAuditTypeFilter,
-        setLoadingAuditEvents,
-        sortedAuditEvents
-    } = useHistoryAuditFilters();
 
     const [systemHealthDatasourceId, setSystemHealthDatasourceId] = useState('');
     const [systemHealthCredentialProfile, setSystemHealthCredentialProfile] = useState('');
@@ -2341,6 +2318,31 @@ export default function WorkspacePage() {
         [navigate]
     );
 
+    const {
+        auditActionOptions,
+        auditActorFilter,
+        auditFromFilter,
+        auditOutcomeFilter,
+        auditOutcomeOptions,
+        auditSortOrder,
+        auditToFilter,
+        auditTypeFilter,
+        clearAuditFilters,
+        loadAuditEvents,
+        loadingAuditEvents,
+        setAuditActorFilter,
+        setAuditFromFilter,
+        setAuditOutcomeFilter,
+        setAuditSortOrder,
+        setAuditToFilter,
+        setAuditTypeFilter,
+        sortedAuditEvents
+    } = useAuditEvents({
+        enabled: isSystemAdmin,
+        readFriendlyError,
+        onError: setAdminError
+    });
+
     const { fetchQueryResultsPage, view: queryResultsView } = useQueryResultsWorkflow({
         activeTab,
         activeTabId,
@@ -2642,62 +2644,6 @@ export default function WorkspacePage() {
         },
         [currentUser, readFriendlyError]
     );
-
-    const loadAuditEvents = useCallback(async () => {
-        if (!isSystemAdmin) {
-            return;
-        }
-
-        setLoadingAuditEvents(true);
-        try {
-            const queryParams = new URLSearchParams();
-            if (auditTypeFilter.trim()) {
-                queryParams.set('type', auditTypeFilter.trim());
-            }
-            if (auditActorFilter.trim()) {
-                queryParams.set('actor', auditActorFilter.trim());
-            }
-            if (auditOutcomeFilter.trim()) {
-                queryParams.set('outcome', auditOutcomeFilter.trim());
-            }
-
-            const fromIso = toIsoTimestamp(auditFromFilter);
-            if (fromIso) {
-                queryParams.set('from', fromIso);
-            }
-            const toIso = toIsoTimestamp(auditToFilter);
-            if (toIso) {
-                queryParams.set('to', toIso);
-            }
-            queryParams.set('limit', '200');
-
-            const response = await fetch(`/api/admin/audit-events?${queryParams.toString()}`, {
-                method: 'GET',
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                throw new Error(await readFriendlyError(response));
-            }
-
-            const payload = (await response.json()) as AuditEventResponse[];
-            setAuditEvents(Array.isArray(payload) ? payload : []);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to load audit events.';
-            setAdminError(message);
-        } finally {
-            setLoadingAuditEvents(false);
-        }
-    }, [
-        auditActorFilter,
-        auditFromFilter,
-        auditOutcomeFilter,
-        auditToFilter,
-        auditTypeFilter,
-        isSystemAdmin,
-        readFriendlyError,
-        setAuditEvents,
-        setLoadingAuditEvents
-    ]);
 
     const loadSystemHealth = useCallback(async () => {
         if (!isSystemAdmin) {
@@ -3073,14 +3019,6 @@ export default function WorkspacePage() {
         anchor.click();
         anchor.remove();
     }, [controlPlaneActorFilter, systemHealthDatasourceId]);
-
-    useEffect(() => {
-        if (!isSystemAdmin) {
-            return;
-        }
-
-        void loadAuditEvents();
-    }, [isSystemAdmin, loadAuditEvents]);
 
     useEffect(() => {
         if (!isSystemAdmin || activeSection !== 'health') {
@@ -8477,16 +8415,7 @@ export default function WorkspacePage() {
                                         current === 'newest' ? 'oldest' : 'newest'
                                     )
                                 }
-                                onClearFilters={() => {
-                                    setAuditTypeFilter('');
-                                    setAuditActorFilter('');
-                                    setAuditOutcomeFilter('');
-                                    setAuditFromFilter('');
-                                    setAuditToFilter('');
-                                    window.setTimeout(() => {
-                                        void loadAuditEvents();
-                                    }, 0);
-                                }}
+                                onClearFilters={clearAuditFilters}
                                 events={sortedAuditEvents}
                             />
 
