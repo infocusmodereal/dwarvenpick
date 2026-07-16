@@ -283,9 +283,9 @@ Notes:
 
 ## Sizing guidance
 
-Start with:
+Start with reviewed fixed capacity:
 
-- 2 replicas (backend), HPA min 2 / max 6
+- 2 fixed replicas (backend); do not add HPA or unrestricted autoscaling
 - CPU request `250m`, memory request `512Mi`
 - CPU limit `1000m`, memory limit `1Gi`
 - Postgres managed separately with provisioned IOPS
@@ -301,3 +301,5 @@ Tune based on:
 Use `dwarvenpick.query.max-buffered-bytes-per-instance` to cap the total query result payload retained in one backend process. The default is `256MiB`, which leaves headroom for the chart's default `1Gi` pod memory limit and the JVM's default container-aware heap sizing. Raise it only when the pod memory limit and JVM heap are sized with room for request handling, CSV export, JDBC driver buffers, and application overhead.
 
 Persisted runtime results are stored in page-sized rows under `query_runtime_result_pages`; `query_runtime_executions.rows_json` is retained only as an upgrade/backfill compatibility column. Result pagination and CSV export fetch bounded row pages so another backend replica can serve completed results without deserializing the entire result payload for every page.
+
+Size and monitor the shared metadata database using the fixed storage envelope and database-owned expiry procedure in [Persisted result lifecycle](persisted-result-lifecycle.md).

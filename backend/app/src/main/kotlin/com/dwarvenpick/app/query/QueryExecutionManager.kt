@@ -181,6 +181,7 @@ class QueryExecutionManager(
     private val queryRuntimeRepository: QueryRuntimeRepository,
     private val queryAdmissionRepository: QueryAdmissionRepository,
     private val persistedQueryResultAccessService: PersistedQueryResultAccessService,
+    private val persistedQueryResultLifecycleService: PersistedQueryResultLifecycleService,
     private val pageTokenCodec: QueryResultPageTokenCodec,
     private val applicationInstanceId: ApplicationInstanceId,
     private val meterRegistry: MeterRegistry,
@@ -598,6 +599,13 @@ class QueryExecutionManager(
         if (record.status == QueryExecutionStatus.CANCELED) {
             throw QueryResultsNotReadyException("Query was canceled before a complete result set was available.")
         }
+        val accessedAt =
+            try {
+                persistedQueryResultLifecycleService.touchResultSession(record.executionId)
+            } catch (ex: QueryResultsExpiredException) {
+                markLocalResultsExpired(record)
+                throw ex
+            }
 
         val resolvedPageSize =
             request.pageSize?.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
@@ -630,8 +638,7 @@ class QueryExecutionManager(
                 null
             }
 
-        record.lastAccessedAt = Instant.now()
-        queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
+        record.lastAccessedAt = accessedAt
         return QueryResultsResponse(
             executionId = executionId,
             status = record.status.name,
@@ -688,20 +695,36 @@ class QueryExecutionManager(
                 )
             }
 
+        val resultLeaseId =
+            try {
+                persistedQueryResultLifecycleService.acquireExportLease(record.executionId)
+            } catch (ex: QueryResultsExpiredException) {
+                markLocalResultsExpired(record)
+                throw ex
+            }
         record.lastAccessedAt = Instant.now()
-        queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
         record.activeExportCount.incrementAndGet()
         return QueryCsvExportPayload(
             executionId = record.executionId,
+            resultLeaseId = resultLeaseId,
             datasourceId = record.datasourceId,
             includeHeaders = includeHeaders,
             rowCount = exportData.rowCount,
             columns = exportData.columns,
-            rows = exportData.rows,
+            rows =
+                persistedQueryResultLifecycleService.protectExportRows(
+                    executionId = record.executionId,
+                    leaseId = resultLeaseId,
+                    rows = exportData.rows,
+                ),
         )
     }
 
-    fun completeCsvExport(executionId: String) {
+    fun completeCsvExport(
+        executionId: String,
+        resultLeaseId: String,
+    ) {
+        persistedQueryResultLifecycleService.releaseExportLease(executionId, resultLeaseId)
         executions[executionId]
             ?.activeExportCount
             ?.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
@@ -780,7 +803,6 @@ class QueryExecutionManager(
     @Scheduled(fixedDelayString = "\${dwarvenpick.query.cleanup-interval-ms:30000}")
     fun cleanupExpiredSessions() {
         val now = Instant.now()
-        val resultTtlSeconds = queryExecutionProperties.resultSessionTtlSeconds.coerceAtLeast(60)
         val retentionSeconds = queryExecutionProperties.executionRetentionSeconds.coerceAtLeast(120)
         val staleCutoff = now.minusSeconds(queryExecutionProperties.activeExecutionStaleSeconds.coerceAtLeast(60))
 
@@ -813,21 +835,9 @@ class QueryExecutionManager(
                 return@forEach
             }
 
-            if (record.activeExportCount.get() > 0) {
-                record.lastAccessedAt = now
-                queryRuntimeRepository.updateLastAccessed(record.executionId, now)
-                return@forEach
-            }
-
-            if (!record.resultsExpired) {
-                val idleForSeconds = Duration.between(record.lastAccessedAt, now).seconds
-                if (idleForSeconds > resultTtlSeconds) {
-                    clearBufferedResults(record)
-                    record.resultsExpired = true
-                    record.message = "Result session expired. Re-run the query."
-                    syncHistoryFromExecution(record)
-                    queryRuntimeRepository.expireResults(record.executionId, record.message)
-                }
+            val persistedResultsExpired = queryRuntimeRepository.findMetadata(executionId)?.resultsExpired == true
+            if (persistedResultsExpired && !record.resultsExpired) {
+                markLocalResultsExpired(record)
             }
 
             val completedAt = record.completedAt ?: record.submittedAt
@@ -844,6 +854,12 @@ class QueryExecutionManager(
             "Query state was lost after its backend stopped heartbeating.",
         )
         queryRuntimeRepository.pruneOlderThan(now.minusSeconds(retentionSeconds))
+    }
+
+    private fun markLocalResultsExpired(record: QueryExecutionRecord) {
+        clearBufferedResults(record)
+        record.resultsExpired = true
+        record.message = "Result session expired. Re-run the query."
     }
 
     @PreDestroy

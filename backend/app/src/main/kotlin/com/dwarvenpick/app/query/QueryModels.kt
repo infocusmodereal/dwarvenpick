@@ -149,6 +149,7 @@ data class QueryStatusEventResponse(
 
 data class QueryCsvExportPayload(
     val executionId: String,
+    val resultLeaseId: String,
     val datasourceId: String,
     val includeHeaders: Boolean,
     val rowCount: Int,
