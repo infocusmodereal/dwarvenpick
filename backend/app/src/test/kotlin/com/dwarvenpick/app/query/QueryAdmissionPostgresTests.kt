@@ -109,7 +109,7 @@ class QueryAdmissionPostgresTests {
                             start.await()
                             queryAdmissionRepository.reserve(
                                 runtimeRecord(executionId, actor = "postgres-admission-user"),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, global = 10, datasource = 10),
                             )
                         }
                     }
@@ -130,7 +130,10 @@ class QueryAdmissionPostgresTests {
         heldActorLock(actor).use {
             val startedAt = System.nanoTime()
             assertThatThrownBy {
-                queryAdmissionRepository.reserve(runtimeRecord("postgres-timeout", actor), concurrencyLimit = 1)
+                queryAdmissionRepository.reserve(
+                    runtimeRecord("postgres-timeout", actor),
+                    limits = QueryAdmissionLimits(actor = 1, global = 10, datasource = 10),
+                )
             }.isInstanceOf(DataAccessException::class.java)
                 .isNotInstanceOf(QueryConcurrencyLimitException::class.java)
             assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(Duration.ofSeconds(5))
@@ -182,6 +185,33 @@ class QueryAdmissionPostgresTests {
         } finally {
             secondManager.shutdownGracefully()
         }
+    }
+
+    @Test
+    fun `postgres metadata admission enforces global limit across actors`() {
+        val limits = QueryAdmissionLimits(actor = 5, global = 1, datasource = 5)
+
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("global-1", "actor-1"), limits))
+            .isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("global-2", "actor-2"), limits))
+            .isEqualTo(QueryAdmissionResult.GLOBAL_LIMIT_REACHED)
+        assertThat(queryRuntimeRepository.countActive(QueryExecutionStatus.QUEUED)).isEqualTo(1)
+    }
+
+    @Test
+    fun `postgres metadata admission enforces per connection limit across actors`() {
+        val limits = QueryAdmissionLimits(actor = 5, global = 10, datasource = 1)
+
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("connection-1", "actor-1"), limits))
+            .isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("connection-2", "actor-2"), limits))
+            .isEqualTo(QueryAdmissionResult.DATASOURCE_LIMIT_REACHED)
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("connection-3", "actor-3").copy(datasourceId = "other-connection"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.ADMITTED)
     }
 
     @Test

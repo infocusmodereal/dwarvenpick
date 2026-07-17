@@ -99,6 +99,10 @@ spec:
               value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_REDIRECT_URI_TEMPLATE | quote }}
             - name: DWARVENPICK_AUTH_OIDC_SYSTEM_ADMIN_GROUPS
               value: {{ .Values.env.DWARVENPICK_AUTH_OIDC_SYSTEM_ADMIN_GROUPS | quote }}
+            - name: DWARVENPICK_QUERY_MAX_ACTIVE_EXECUTIONS
+              value: {{ .Values.env.DWARVENPICK_QUERY_MAX_ACTIVE_EXECUTIONS | quote }}
+            - name: DWARVENPICK_QUERY_MAX_ACTIVE_PER_CONNECTION
+              value: {{ .Values.env.DWARVENPICK_QUERY_MAX_ACTIVE_PER_CONNECTION | quote }}
             - name: DWARVENPICK_METRICS_PROMETHEUS_ENABLED
               value: {{ .Values.metrics.prometheus.enabled | quote }}
             {{- range $key, $value := .Values.extraEnv }}

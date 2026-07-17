@@ -889,6 +889,11 @@ class DatasourceRegistryService(
                 credentialProfiles.values
                     .sortedBy { profile -> profile.profileId }
                     .map { profile -> profile.toResponse() },
+            poolCapacity =
+                DatasourcePoolCapacity.calculate(
+                    maximumPoolSizePerProfile = pool.maximumPoolSize,
+                    credentialProfileCount = credentialProfiles.size,
+                ),
         )
 
     private fun CredentialProfileRecord.toResponse(): CredentialProfileResponse =

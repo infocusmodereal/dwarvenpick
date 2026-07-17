@@ -75,7 +75,31 @@ data class ManagedDatasourceResponse(
     val tlsCertificates: TlsCertificateStatus = TlsCertificateStatus(),
     val options: Map<String, String>,
     val credentialProfiles: List<CredentialProfileResponse>,
+    val poolCapacity: DatasourcePoolCapacity = DatasourcePoolCapacity.empty(),
 )
+
+data class DatasourcePoolCapacity(
+    val credentialProfileCount: Int,
+    val maximumPoolSizePerProfile: Int,
+    val maximumConnectionsPerInstance: Long,
+) {
+    fun maximumConnections(backendReplicas: Int): Long = maximumConnectionsPerInstance * backendReplicas.coerceAtLeast(0).toLong()
+
+    companion object {
+        fun calculate(
+            maximumPoolSizePerProfile: Int,
+            credentialProfileCount: Int,
+        ): DatasourcePoolCapacity =
+            DatasourcePoolCapacity(
+                credentialProfileCount = credentialProfileCount.coerceAtLeast(0),
+                maximumPoolSizePerProfile = maximumPoolSizePerProfile.coerceAtLeast(0),
+                maximumConnectionsPerInstance =
+                    credentialProfileCount.coerceAtLeast(0).toLong() * maximumPoolSizePerProfile.coerceAtLeast(0).toLong(),
+            )
+
+        fun empty(): DatasourcePoolCapacity = calculate(maximumPoolSizePerProfile = 0, credentialProfileCount = 0)
+    }
+}
 
 data class CredentialProfileResponse(
     val profileId: String,
