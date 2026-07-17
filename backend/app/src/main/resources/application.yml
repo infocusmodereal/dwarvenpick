@@ -12,6 +12,10 @@ spring:
     enabled: ${DWARVENPICK_FLYWAY_ENABLED:true}
     baseline-on-migrate: true
     baseline-version: 0
+  datasource:
+    hikari:
+      connection-timeout: ${DWARVENPICK_METADATA_CONNECTION_TIMEOUT_MS:2000}
+      validation-timeout: ${DWARVENPICK_METADATA_VALIDATION_TIMEOUT_MS:1000}
 
 management:
   endpoints:
@@ -22,6 +26,11 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
     prometheus:
       enabled: ${DWARVENPICK_METRICS_PROMETHEUS_ENABLED:true}
   health:
@@ -50,6 +59,11 @@ dwarvenpick:
     max-export-rows: 5000
     jdbc-fetch-size: 500
     max-concurrency-per-user: 5
+    max-active-executions: ${DWARVENPICK_QUERY_MAX_ACTIVE_EXECUTIONS:100}
+    max-active-per-datasource: ${DWARVENPICK_QUERY_MAX_ACTIVE_PER_DATASOURCE:20}
+    max-running-per-instance: ${DWARVENPICK_QUERY_MAX_RUNNING_PER_INSTANCE:20}
+    max-running-per-datasource: ${DWARVENPICK_QUERY_MAX_RUNNING_PER_DATASOURCE:5}
+    queue-timeout-seconds: ${DWARVENPICK_QUERY_QUEUE_TIMEOUT_SECONDS:30}
     admission-timeout-seconds: ${DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS:10}
     result-session-ttl-seconds: 600
     execution-retention-seconds: 3600

@@ -57,9 +57,17 @@ class QueryInvalidPageTokenException(
     override val message: String,
 ) : RuntimeException(message)
 
-class QueryConcurrencyLimitException(
+open class QueryAdmissionRejectedException(
     override val message: String,
 ) : RuntimeException(message)
+
+class QueryConcurrencyLimitException(
+    override val message: String,
+) : QueryAdmissionRejectedException(message)
+
+class QueryCapacityLimitException(
+    override val message: String,
+) : QueryAdmissionRejectedException(message)
 
 class QueryExportLimitExceededException(
     override val message: String,
@@ -190,6 +198,7 @@ class QueryExecutionManager(
     private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>()
     private val eventCounter = AtomicLong(0)
     private val instanceBufferedResultBytes = AtomicLong(0)
+    private val dispatchLimiter = QueryDispatchLimiter(queryExecutionProperties.maxRunningPerInstance)
     private val logger = LoggerFactory.getLogger(QueryExecutionManager::class.java)
 
     @PostConstruct
@@ -307,20 +316,29 @@ class QueryExecutionManager(
         val admissionResult =
             queryAdmissionRepository.reserve(
                 record = record.toPersistedRuntimeRecord(emptyList(), emptyList()),
-                concurrencyLimit = concurrencyLimit,
+                limits =
+                    QueryAdmissionLimits(
+                        actor = concurrencyLimit,
+                        aggregate = queryExecutionProperties.maxActiveExecutions,
+                        datasource = queryExecutionProperties.maxActivePerDatasource,
+                    ),
             )
-        if (admissionResult == QueryAdmissionResult.LIMIT_REACHED) {
-            meterRegistry
-                .counter(
-                    "dwarvenpick.query.execute.attempts",
-                    "outcome",
-                    "blocked_concurrency",
-                    "datasourceId",
-                    record.datasourceId,
-                ).increment()
-            throw QueryConcurrencyLimitException(
-                "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
-            )
+        when (admissionResult) {
+            QueryAdmissionResult.ADMITTED -> Unit
+            QueryAdmissionResult.ACTOR_LIMIT_REACHED -> {
+                recordAdmissionRejection(record.datasourceId, "blocked_concurrency")
+                throw QueryConcurrencyLimitException(
+                    "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
+                )
+            }
+            QueryAdmissionResult.AGGREGATE_LIMIT_REACHED -> {
+                recordAdmissionRejection(record.datasourceId, "blocked_aggregate_capacity")
+                throw QueryCapacityLimitException("Query service capacity is full. Retry later.")
+            }
+            QueryAdmissionResult.DATASOURCE_LIMIT_REACHED -> {
+                recordAdmissionRejection(record.datasourceId, "blocked_datasource_capacity")
+                throw QueryCapacityLimitException("Query queue for this connection is full. Retry later.")
+            }
         }
 
         executions[executionId] = record
@@ -899,20 +917,73 @@ class QueryExecutionManager(
             return
         }
 
-        markRunning(record)
-        auditExecution(
-            record = record,
-            type = "query.execute",
-            outcome = "running",
-            details =
-                mapOf(
-                    "executionId" to record.executionId,
-                    "datasourceId" to record.datasourceId,
-                ),
-        )
-
+        var dispatchLease: QueryDispatchLease? = null
         try {
-            executeSql(record)
+            val simulation = shouldUseSimulation(record.sql)
+            val datasourceLimit =
+                if (simulation) {
+                    queryExecutionProperties.maxRunningPerDatasource.coerceAtLeast(1)
+                } else {
+                    minOf(
+                        queryExecutionProperties.maxRunningPerDatasource.coerceAtLeast(1),
+                        datasourcePoolManager.maximumPoolSize(record.datasourceId, record.credentialProfile).coerceAtLeast(1),
+                    )
+                }
+            dispatchLease =
+                dispatchLimiter.acquire(
+                    datasourceKey =
+                        if (simulation) {
+                            "simulation::${record.datasourceId}::${record.credentialProfile}"
+                        } else {
+                            "${record.datasourceId}::${record.credentialProfile}"
+                        },
+                    maxRunningForDatasource = datasourceLimit,
+                    timeout = Duration.ofSeconds(queryExecutionProperties.queueTimeoutSeconds.coerceAtLeast(1)),
+                )
+            if (dispatchLease == null) {
+                if (record.cancelRequested) {
+                    markCanceled(record, "Query canceled before execution started.")
+                    return
+                }
+                meterRegistry
+                    .counter("dwarvenpick.query.dispatch.rejected", "reason", "queue_timeout", "datasourceId", record.datasourceId)
+                    .increment()
+                markFailed(record, "Query queue wait timed out. Retry later.")
+                auditExecution(
+                    record = record,
+                    type = "query.execute",
+                    outcome = "failed",
+                    details = mapOf("executionId" to record.executionId, "reason" to "queue_timeout"),
+                )
+                return
+            }
+
+            val connectionHandle =
+                if (simulation) {
+                    null
+                } else {
+                    datasourcePoolManager
+                        .openConnection(
+                            datasourceId = record.datasourceId,
+                            credentialProfile = record.credentialProfile,
+                        ).also { handle ->
+                            record.activeConnectionHandle = handle
+                            record.activeConnection = handle.connection
+                        }
+                }
+            markRunning(record)
+            auditExecution(
+                record = record,
+                type = "query.execute",
+                outcome = "running",
+                details =
+                    mapOf(
+                        "executionId" to record.executionId,
+                        "datasourceId" to record.datasourceId,
+                    ),
+            )
+
+            executeSql(record, connectionHandle)
             throwIfCanceled(record)
             markSucceeded(record)
             auditExecution(
@@ -989,39 +1060,42 @@ class QueryExecutionManager(
                     ),
             )
         } catch (ex: Throwable) {
-            markFailed(record, sanitizeErrorMessage(ex.message ?: "Query execution failed."))
-            auditExecution(
-                record = record,
-                type = "query.execute",
-                outcome = "failed",
-                details =
-                    mapOf(
-                        "executionId" to record.executionId,
-                        "reason" to "execution_error",
-                    ),
-            )
+            if (record.cancelRequested) {
+                markCanceled(record, "Query canceled.")
+            } else {
+                markFailed(record, sanitizeErrorMessage(ex.message ?: "Query execution failed."))
+                auditExecution(
+                    record = record,
+                    type = "query.execute",
+                    outcome = "failed",
+                    details =
+                        mapOf(
+                            "executionId" to record.executionId,
+                            "reason" to "execution_error",
+                        ),
+                )
+            }
         } finally {
             closeRuntimeResources(record)
+            dispatchLease?.close()
         }
     }
 
-    private fun executeSql(record: QueryExecutionRecord) {
-        if (shouldUseSimulation(record.sql)) {
+    private fun executeSql(
+        record: QueryExecutionRecord,
+        connectionHandle: QueryConnectionHandle?,
+    ) {
+        if (connectionHandle == null) {
             executeSqlInSimulation(record)
             return
         }
-        executeSqlAgainstDatasource(record)
+        executeSqlAgainstDatasource(record, connectionHandle)
     }
 
-    private fun executeSqlAgainstDatasource(record: QueryExecutionRecord) {
-        val handle =
-            datasourcePoolManager.openConnection(
-                datasourceId = record.datasourceId,
-                credentialProfile = record.credentialProfile,
-            )
-        record.activeConnectionHandle = handle
-        record.activeConnection = handle.connection
-
+    private fun executeSqlAgainstDatasource(
+        record: QueryExecutionRecord,
+        handle: QueryConnectionHandle,
+    ) {
         val defaultSchemaScope =
             QueryDefaultSchema.apply(
                 connection = handle.connection,
@@ -1753,6 +1827,20 @@ class QueryExecutionManager(
             record.actor,
             record.datasourceId,
         )
+    }
+
+    private fun recordAdmissionRejection(
+        datasourceId: String,
+        outcome: String,
+    ) {
+        meterRegistry
+            .counter(
+                "dwarvenpick.query.execute.attempts",
+                "outcome",
+                outcome,
+                "datasourceId",
+                datasourceId,
+            ).increment()
     }
 
     private fun markSucceeded(record: QueryExecutionRecord) {

@@ -18,6 +18,10 @@ nav_order: 30
 - `DWARVENPICK_METRICS_PROMETHEUS_ENABLED` (default: `true`) enables the Prometheus endpoint.
 - Helm chart value: `metrics.prometheus.enabled`
 
+Readiness checks the metadata database and returns non-success when it is unavailable; liveness deliberately does not
+check metadata Postgres, governed SQL connections, or LDAP. This removes unusable replicas from service without creating
+restart loops during a shared dependency incident.
+
 ## Kubernetes scraping
 
 The Helm chart exposes the backend on `.Values.service.port` (default `8080`). Configure your Prometheus instance to scrape:
@@ -37,6 +41,7 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_query_duration_seconds{outcome=...}`
   - `dwarvenpick_query_cancel_total`
   - `dwarvenpick_query_timeout_total`
+  - `dwarvenpick_query_dispatch_rejected_total{reason="queue_timeout"}`
   - `dwarvenpick_query_buffered_bytes`
   - `dwarvenpick_query_buffered_budget_bytes`
 - Exports:

@@ -146,14 +146,14 @@ class QueryRuntimeRepositoryTests {
                                         columns = emptyList(),
                                         rows = emptyList(),
                                     ),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, aggregate = 10, datasource = 10),
                             )
                         }
                     }
             start.countDown()
 
             assertThat(results.map { it.get() })
-                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.ACTOR_LIMIT_REACHED)
             assertThat(
                 queryRuntimeRepository.listActiveMetadata(
                     actor = "local-admission-user",
@@ -174,6 +174,59 @@ class QueryRuntimeRepositoryTests {
             .isNotEqualTo(QueryAdmissionLockKey.forActor("other-user"))
         assertThat(QueryAdmissionLockKey.NAMESPACE).isEqualTo(0x44575051)
         assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("LOCAL")
+    }
+
+    @Test
+    fun `aggregate admission bounds active work across actors and datasources`() {
+        val limits = QueryAdmissionLimits(actor = 5, aggregate = 1, datasource = 5)
+
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("aggregate-first").copy(actor = "actor-one", datasourceId = "source-one"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("aggregate-second").copy(actor = "actor-two", datasourceId = "source-two"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.AGGREGATE_LIMIT_REACHED)
+    }
+
+    @Test
+    fun `datasource admission bounds distinct actors sharing one connection`() {
+        val limits = QueryAdmissionLimits(actor = 5, aggregate = 10, datasource = 1)
+
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("datasource-first").copy(actor = "actor-one"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("datasource-second").copy(actor = "actor-two"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.DATASOURCE_LIMIT_REACHED)
+    }
+
+    @Test
+    fun `stale execution cleanup releases aggregate admission capacity`() {
+        val limits = QueryAdmissionLimits(actor = 5, aggregate = 1, datasource = 5)
+        val stale =
+            runtimeRecord("stale-active")
+                .copy(actor = "stale-actor", heartbeatAt = Instant.now().minusSeconds(300))
+
+        assertThat(queryAdmissionRepository.reserve(stale, limits)).isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(queryRuntimeRepository.markStaleActiveExecutions(Instant.now(), "stale")).isEqualTo(1)
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("after-stale").copy(actor = "next-actor", datasourceId = "next-source"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.ADMITTED)
     }
 
     private fun runtimeRecord(executionId: String): PersistedQueryRuntimeRecord {
