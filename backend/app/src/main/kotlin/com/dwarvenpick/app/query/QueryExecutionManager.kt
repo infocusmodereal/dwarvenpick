@@ -128,9 +128,7 @@ private data class QueryExecutionRecord(
     @Volatile var completedAt: Instant?,
     @Volatile var rowLimitReached: Boolean,
     @Volatile var resultLimitMessage: String?,
-    @Volatile var bufferedResultBytes: Long,
-    val columns: MutableList<QueryResultColumn>,
-    val rows: MutableList<List<String?>>,
+    val resultBuffer: QueryResultPageBuffer,
     @Volatile var lastAccessedAt: Instant,
     @Volatile var resultsExpired: Boolean,
     @Volatile var cancelRequested: Boolean,
@@ -139,38 +137,9 @@ private data class QueryExecutionRecord(
     @Volatile var activeConnectionRequiresEviction: Boolean,
     @Volatile var activeConnection: Connection?,
     @Volatile var executionFuture: Future<*>?,
+    val lifecycleLock: Any = Any(),
     val activeExportCount: AtomicInteger = AtomicInteger(0),
 )
-
-private data class QueryCsvExportData(
-    val rowCount: Int,
-    val columns: List<QueryResultColumn>,
-    val rows: Iterable<List<String?>>,
-)
-
-private class LiveQueryExportRows(
-    private val record: QueryExecutionRecord,
-    private val expectedRowCount: Int,
-) : Iterable<List<String?>> {
-    override fun iterator(): Iterator<List<String?>> =
-        object : Iterator<List<String?>> {
-            private var index = 0
-
-            override fun hasNext(): Boolean = index < expectedRowCount
-
-            override fun next(): List<String?> {
-                if (!hasNext()) {
-                    throw NoSuchElementException()
-                }
-                return synchronized(record.rows) {
-                    if (record.resultsExpired || index >= record.rows.size) {
-                        throw QueryResultsExpiredException("Result session expired. Re-run the query.")
-                    }
-                    record.rows[index++]
-                }
-            }
-        }
-}
 
 @Service
 class QueryExecutionManager(
@@ -181,7 +150,6 @@ class QueryExecutionManager(
     private val queryRuntimeRepository: QueryRuntimeRepository,
     private val queryAdmissionRepository: QueryAdmissionRepository,
     private val persistedQueryResultAccessService: PersistedQueryResultAccessService,
-    private val pageTokenCodec: QueryResultPageTokenCodec,
     private val applicationInstanceId: ApplicationInstanceId,
     private val meterRegistry: MeterRegistry,
 ) {
@@ -292,9 +260,7 @@ class QueryExecutionManager(
                 completedAt = null,
                 rowLimitReached = false,
                 resultLimitMessage = null,
-                bufferedResultBytes = 0,
-                columns = mutableListOf(),
-                rows = mutableListOf(),
+                resultBuffer = QueryResultPageBuffer(queryExecutionProperties.resultChunkRows),
                 lastAccessedAt = Instant.now(),
                 resultsExpired = false,
                 cancelRequested = false,
@@ -306,7 +272,7 @@ class QueryExecutionManager(
             )
         val admissionResult =
             queryAdmissionRepository.reserve(
-                record = record.toPersistedRuntimeRecord(emptyList(), emptyList()),
+                record = record.toPersistedRuntimeRecord(),
                 concurrencyLimit = concurrencyLimit,
             )
         if (admissionResult == QueryAdmissionResult.LIMIT_REACHED) {
@@ -586,61 +552,10 @@ class QueryExecutionManager(
             return persistedQueryResultAccessService.getResults(persisted, request)
         }
         enforceExecutionAccess(actor, isSystemAdmin, record)
-        if (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) {
-            throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${record.status.name}.")
-        }
-        if (record.resultsExpired) {
-            throw QueryResultsExpiredException("Result session expired. Re-run the query.")
-        }
-        if (record.status == QueryExecutionStatus.FAILED) {
-            throw QueryResultsNotReadyException("Query failed and no result set is available.")
-        }
-        if (record.status == QueryExecutionStatus.CANCELED) {
-            throw QueryResultsNotReadyException("Query was canceled before a complete result set was available.")
-        }
-
-        val resolvedPageSize =
-            request.pageSize?.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
-                ?: queryExecutionProperties.defaultPageSize.coerceAtLeast(1)
-
-        val startOffset =
-            request.pageToken?.let { token ->
-                pageTokenCodec.parse(executionId, token)
-            } ?: 0
-
-        val (columnsSnapshot, rowCount, pageRows) =
-            synchronized(record.rows) {
-                val rowCount = record.rows.size
-                if (startOffset > rowCount) {
-                    throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
-                }
-                val endOffset = (startOffset + resolvedPageSize).coerceAtMost(rowCount)
-                Triple(
-                    record.columns.toList(),
-                    rowCount,
-                    record.rows.subList(startOffset, endOffset).map { row -> row.toList() },
-                )
-            }
-
-        val endOffset = startOffset + pageRows.size
-        val nextPageToken =
-            if (endOffset < rowCount) {
-                pageTokenCodec.build(executionId, endOffset)
-            } else {
-                null
-            }
-
-        record.lastAccessedAt = Instant.now()
-        queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
-        return QueryResultsResponse(
-            executionId = executionId,
-            status = record.status.name,
-            columns = columnsSnapshot,
-            rows = pageRows,
-            pageSize = resolvedPageSize,
-            nextPageToken = nextPageToken,
-            rowLimitReached = record.rowLimitReached,
-        )
+        val persisted =
+            queryRuntimeRepository.findMetadata(executionId)
+                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+        return persistedQueryResultAccessService.getResults(persisted, request)
     }
 
     fun prepareCsvExport(
@@ -659,46 +574,12 @@ class QueryExecutionManager(
             return persistedQueryResultAccessService.prepareCsvExport(persisted, includeHeaders, maxExportRows)
         }
         enforceExecutionAccess(actor, isSystemAdmin, record)
-        if (record.status == QueryExecutionStatus.QUEUED || record.status == QueryExecutionStatus.RUNNING) {
-            throw QueryResultsNotReadyException("Query results are not ready yet. Current status: ${record.status.name}.")
+        val persisted =
+            queryRuntimeRepository.findMetadata(executionId)
+                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+        return persistedQueryResultAccessService.prepareCsvExport(persisted, includeHeaders, maxExportRows).also {
+            record.activeExportCount.incrementAndGet()
         }
-        if (record.resultsExpired) {
-            throw QueryResultsExpiredException("Result session expired. Re-run the query.")
-        }
-        if (record.status == QueryExecutionStatus.FAILED) {
-            throw QueryResultsNotReadyException("Query failed and cannot be exported.")
-        }
-        if (record.status == QueryExecutionStatus.CANCELED) {
-            throw QueryResultsNotReadyException("Query was canceled and cannot be exported.")
-        }
-
-        val resolvedMaxExportRows = maxExportRows.coerceAtLeast(1)
-        val exportData =
-            synchronized(record.rows) {
-                val rowCount = record.rows.size
-                if (rowCount > resolvedMaxExportRows) {
-                    throw QueryExportLimitExceededException(
-                        "Export row limit exceeded ($rowCount rows > $resolvedMaxExportRows allowed).",
-                    )
-                }
-                QueryCsvExportData(
-                    rowCount = rowCount,
-                    columns = record.columns.toList(),
-                    rows = LiveQueryExportRows(record, rowCount),
-                )
-            }
-
-        record.lastAccessedAt = Instant.now()
-        queryRuntimeRepository.updateLastAccessed(record.executionId, record.lastAccessedAt)
-        record.activeExportCount.incrementAndGet()
-        return QueryCsvExportPayload(
-            executionId = record.executionId,
-            datasourceId = record.datasourceId,
-            includeHeaders = includeHeaders,
-            rowCount = exportData.rowCount,
-            columns = exportData.columns,
-            rows = exportData.rows,
-        )
     }
 
     fun completeCsvExport(executionId: String) {
@@ -815,18 +696,22 @@ class QueryExecutionManager(
 
             if (record.activeExportCount.get() > 0) {
                 record.lastAccessedAt = now
-                queryRuntimeRepository.updateLastAccessed(record.executionId, now)
+                queryRuntimeRepository.touchResultAccess(record.executionId, now)
                 return@forEach
             }
 
             if (!record.resultsExpired) {
-                val idleForSeconds = Duration.between(record.lastAccessedAt, now).seconds
-                if (idleForSeconds > resultTtlSeconds) {
+                val expired =
+                    queryRuntimeRepository.expireResultsIfIdle(
+                        executionId = record.executionId,
+                        cutoff = now.minusSeconds(resultTtlSeconds),
+                        message = "Result session expired. Re-run the query.",
+                    )
+                if (expired) {
                     clearBufferedResults(record)
                     record.resultsExpired = true
                     record.message = "Result session expired. Re-run the query."
-                    syncHistoryFromExecution(record)
-                    queryRuntimeRepository.expireResults(record.executionId, record.message)
+                    syncHistoryOnly(record)
                 }
             }
 
@@ -922,7 +807,7 @@ class QueryExecutionManager(
                 details =
                     mapOf(
                         "executionId" to record.executionId,
-                        "rows" to record.rows.size,
+                        "rows" to record.resultBuffer.totalRowCount(),
                         "rowLimitReached" to record.rowLimitReached,
                     ),
             )
@@ -1300,31 +1185,31 @@ class QueryExecutionManager(
         val rowSeparatorBytes = (cells.size - 1).coerceAtLeast(0).toLong()
         val rowBytes = cells.sumOf { cell -> cell.byteSize } + rowSeparatorBytes
 
-        synchronized(record.rows) {
-            if (record.rows.size >= record.maxRowsPerQuery) {
-                markResultLimit(record, "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows.")
-                return false
-            }
+        if (record.resultBuffer.totalRowCount() >= record.maxRowsPerQuery) {
+            markResultLimit(record, "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows.")
+            return false
+        }
 
-            if (record.bufferedResultBytes + rowBytes > record.maxBufferedBytes) {
-                markResultLimit(record, resultBufferLimitMessage(record.maxBufferedBytes))
-                return false
-            }
+        if (record.resultBuffer.totalLogicalByteCount() + rowBytes > record.maxBufferedBytes) {
+            markResultLimit(record, resultBufferLimitMessage(record.maxBufferedBytes))
+            return false
+        }
 
-            val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
-            if (!tryReserveInstanceBufferedBytes(rowBytes, instanceBudgetBytes)) {
-                markResultLimit(record, instanceBufferLimitMessage(instanceBudgetBytes))
-                meterRegistry
-                    .counter(
-                        "dwarvenpick.query.result_buffer.rejections",
-                        "reason",
-                        "instance_budget",
-                    ).increment()
-                return false
-            }
+        val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
+        if (!tryReserveInstanceBufferedBytes(rowBytes, instanceBudgetBytes)) {
+            markResultLimit(record, instanceBufferLimitMessage(instanceBudgetBytes))
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.result_buffer.rejections",
+                    "reason",
+                    "instance_budget",
+                ).increment()
+            return false
+        }
 
-            record.rows.add(cells.map { cell -> cell.value })
-            record.bufferedResultBytes += rowBytes
+        val page = record.resultBuffer.append(cells.map { cell -> cell.value }, rowBytes)
+        if (page != null) {
+            persistIntermediatePage(record, page)
         }
 
         if (cells.any { cell -> cell.truncated }) {
@@ -1517,15 +1402,25 @@ class QueryExecutionManager(
             .toInt()
 
     private fun clearBufferedResults(record: QueryExecutionRecord) {
-        val releasedBytes =
-            synchronized(record.rows) {
-                val currentBytes = record.bufferedResultBytes
-                record.rows.clear()
-                record.bufferedResultBytes = 0
-                record.columns.clear()
-                currentBytes
-            }
-        releaseInstanceBufferedBytes(releasedBytes)
+        releaseInstanceBufferedBytes(record.resultBuffer.reset().pendingByteCount)
+    }
+
+    private fun persistIntermediatePage(
+        record: QueryExecutionRecord,
+        page: QueryResultPageSnapshot,
+    ) {
+        try {
+            queryRuntimeRepository.appendResultPage(
+                executionId = record.executionId,
+                ownerInstanceId = applicationInstanceId.value,
+                page = page,
+            )
+        } catch (_: QueryRuntimeWriteRejectedException) {
+            record.cancelRequested = true
+            clearBufferedResults(record)
+            throw QueryCanceledException("Query execution ownership was canceled.")
+        }
+        releaseInstanceBufferedBytes(record.resultBuffer.acknowledge(page))
     }
 
     private fun removeExecution(executionId: String) {
@@ -1538,10 +1433,7 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         columns: List<QueryResultColumn>,
     ) {
-        synchronized(record.rows) {
-            record.columns.clear()
-            record.columns.addAll(columns)
-        }
+        record.resultBuffer.replaceColumns(columns)
     }
 
     private fun instanceBufferedResultBudgetBytes(): Long = queryExecutionProperties.maxBufferedBytesPerInstance.coerceAtLeast(0)
@@ -1565,16 +1457,14 @@ class QueryExecutionManager(
     ): RemainingBufferCapacity {
         val queryRemaining: Long
         val instanceRemaining: Long
-        synchronized(record.rows) {
-            queryRemaining = record.maxBufferedBytes - record.bufferedResultBytes - pendingRowBytes
-            val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
-            instanceRemaining =
-                if (instanceBudgetBytes > 0) {
-                    instanceBudgetBytes - instanceBufferedResultBytes.get() - pendingRowBytes
-                } else {
-                    Long.MAX_VALUE
-                }
-        }
+        queryRemaining = record.maxBufferedBytes - record.resultBuffer.totalLogicalByteCount() - pendingRowBytes
+        val instanceBudgetBytes = instanceBufferedResultBudgetBytes()
+        instanceRemaining =
+            if (instanceBudgetBytes > 0) {
+                instanceBudgetBytes - instanceBufferedResultBytes.get() - pendingRowBytes
+            } else {
+                Long.MAX_VALUE
+            }
 
         return if (queryRemaining <= instanceRemaining) {
             RemainingBufferCapacity(
@@ -1742,10 +1632,13 @@ class QueryExecutionManager(
     }
 
     private fun markRunning(record: QueryExecutionRecord) {
-        record.status = QueryExecutionStatus.RUNNING
-        record.startedAt = Instant.now()
-        record.message = "Query is running."
-        syncHistoryFromExecution(record)
+        synchronized(record.lifecycleLock) {
+            record.status = QueryExecutionStatus.RUNNING
+            record.startedAt = Instant.now()
+            record.message = "Query is running."
+            queryRuntimeRepository.updateExecution(record.toRuntimeUpdate())
+            syncHistoryOnly(record)
+        }
         publishEvent(record, record.message)
         logger.info(
             "query_execution running executionId={} actor={} datasourceId={}",
@@ -1756,21 +1649,44 @@ class QueryExecutionManager(
     }
 
     private fun markSucceeded(record: QueryExecutionRecord) {
-        if (record.status == QueryExecutionStatus.CANCELED) {
-            return
-        }
+        synchronized(record.lifecycleLock) {
+            if (record.status == QueryExecutionStatus.CANCELED || record.cancelRequested) {
+                throw QueryCanceledException("Query canceled before result finalization.")
+            }
 
-        record.status = QueryExecutionStatus.SUCCEEDED
-        record.completedAt = Instant.now()
-        record.lastAccessedAt = Instant.now()
-        record.message =
-            record.resultLimitMessage
-                ?: if (record.rowLimitReached) {
-                    "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows."
-                } else {
-                    "Query succeeded."
-                }
-        syncHistoryFromExecution(record)
+            val completedAt = Instant.now()
+            val message =
+                record.resultLimitMessage
+                    ?: if (record.rowLimitReached) {
+                        "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows."
+                    } else {
+                        "Query succeeded."
+                    }
+            val finalPage = record.resultBuffer.snapshotPending()
+            try {
+                queryRuntimeRepository.finalizeSucceededExecution(
+                    update =
+                        record.toRuntimeUpdate(
+                            status = QueryExecutionStatus.SUCCEEDED,
+                            message = message,
+                            completedAt = completedAt,
+                        ),
+                    finalPage = finalPage,
+                )
+            } catch (_: QueryRuntimeWriteRejectedException) {
+                record.cancelRequested = true
+                clearBufferedResults(record)
+                throw QueryCanceledException("Query execution ownership was canceled before result finalization.")
+            }
+            if (finalPage != null) {
+                releaseInstanceBufferedBytes(record.resultBuffer.acknowledge(finalPage))
+            }
+            record.status = QueryExecutionStatus.SUCCEEDED
+            record.completedAt = completedAt
+            record.lastAccessedAt = completedAt
+            record.message = message
+            syncHistoryOnly(record)
+        }
         publishEvent(record, record.message)
         recordExecutionOutcomeMetric(record, "succeeded")
         logger.info(
@@ -1778,7 +1694,7 @@ class QueryExecutionManager(
             record.executionId,
             record.actor,
             record.datasourceId,
-            synchronized(record.rows) { record.rows.size },
+            record.resultBuffer.totalRowCount(),
             record.rowLimitReached,
         )
     }
@@ -1787,16 +1703,19 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         message: String,
     ) {
-        if (record.status == QueryExecutionStatus.CANCELED) {
-            return
-        }
+        synchronized(record.lifecycleLock) {
+            if (record.status == QueryExecutionStatus.CANCELED) {
+                return
+            }
 
-        record.status = QueryExecutionStatus.FAILED
-        record.errorSummary = message
-        record.message = "Query failed."
-        record.completedAt = Instant.now()
-        clearBufferedResults(record)
-        syncHistoryFromExecution(record)
+            record.status = QueryExecutionStatus.FAILED
+            record.errorSummary = message
+            record.message = "Query failed."
+            record.completedAt = Instant.now()
+            clearBufferedResults(record)
+            queryRuntimeRepository.finalizeWithoutResults(record.toRuntimeUpdate())
+            syncHistoryOnly(record)
+        }
         publishEvent(record, message)
         recordExecutionOutcomeMetric(record, "failed")
         logger.warn(
@@ -1812,15 +1731,19 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         message: String,
     ) {
-        if (record.status == QueryExecutionStatus.CANCELED) {
-            return
+        synchronized(record.lifecycleLock) {
+            if (record.status == QueryExecutionStatus.CANCELED) {
+                return
+            }
+            record.status = QueryExecutionStatus.CANCELED
+            record.cancelRequested = true
+            record.errorSummary = null
+            record.message = message
+            record.completedAt = Instant.now()
+            clearBufferedResults(record)
+            queryRuntimeRepository.finalizeWithoutResults(record.toRuntimeUpdate())
+            syncHistoryOnly(record)
         }
-        record.status = QueryExecutionStatus.CANCELED
-        record.errorSummary = null
-        record.message = message
-        record.completedAt = Instant.now()
-        clearBufferedResults(record)
-        syncHistoryFromExecution(record)
         publishEvent(record, message)
         recordExecutionOutcomeMetric(record, "canceled")
         logger.info(
@@ -2123,28 +2046,12 @@ class QueryExecutionManager(
         )
     }
 
-    private fun syncHistoryFromExecution(record: QueryExecutionRecord) {
-        val (columnsSnapshot, rowsSnapshot) =
-            synchronized(record.rows) {
-                record.columns.toList() to record.rows.toList()
-            }
-        saveHistory(record, columnsSnapshot, rowsSnapshot)
-        queryRuntimeRepository.save(record.toPersistedRuntimeRecord(columnsSnapshot, rowsSnapshot))
-    }
-
     private fun syncHistoryOnly(record: QueryExecutionRecord) {
-        val (columnsSnapshot, rowsSnapshot) =
-            synchronized(record.rows) {
-                record.columns.toList() to record.rows.toList()
-            }
-        saveHistory(record, columnsSnapshot, rowsSnapshot)
+        saveHistory(record)
     }
 
-    private fun saveHistory(
-        record: QueryExecutionRecord,
-        columnsSnapshot: List<QueryResultColumn>,
-        rowsSnapshot: List<List<String?>>,
-    ) {
+    private fun saveHistory(record: QueryExecutionRecord) {
+        val terminal = record.status in terminalStatuses()
         queryHistoryRepository.save(
             QueryHistoryRecord(
                 executionId = record.executionId,
@@ -2159,8 +2066,8 @@ class QueryExecutionManager(
                 status = record.status,
                 message = record.message,
                 errorSummary = record.errorSummary,
-                rowCount = rowsSnapshot.size,
-                columnCount = columnsSnapshot.size,
+                rowCount = if (terminal) record.resultBuffer.totalRowCount() else 0,
+                columnCount = if (terminal) record.resultBuffer.columns().size else 0,
                 rowLimitReached = record.rowLimitReached,
                 maxRowsPerQuery = record.maxRowsPerQuery,
                 maxRuntimeSeconds = record.maxRuntimeSeconds,
@@ -2171,10 +2078,7 @@ class QueryExecutionManager(
         )
     }
 
-    private fun QueryExecutionRecord.toPersistedRuntimeRecord(
-        columnsSnapshot: List<QueryResultColumn>,
-        rowsSnapshot: List<List<String?>>,
-    ): PersistedQueryRuntimeRecord =
+    private fun QueryExecutionRecord.toPersistedRuntimeRecord(): PersistedQueryRuntimeRecord =
         PersistedQueryRuntimeRecord(
             executionId = executionId,
             actor = actor,
@@ -2200,14 +2104,39 @@ class QueryExecutionManager(
             startedAt = startedAt,
             completedAt = completedAt,
             rowLimitReached = rowLimitReached,
-            columns = columnsSnapshot,
-            rows = rowsSnapshot,
+            columns = emptyList(),
+            rows = emptyList(),
             lastAccessedAt = lastAccessedAt,
             resultsExpired = resultsExpired,
             cancelRequested = cancelRequested,
             ownerInstanceId = applicationInstanceId.value,
             heartbeatAt = Instant.now(),
         )
+
+    private fun QueryExecutionRecord.toRuntimeUpdate(
+        status: QueryExecutionStatus = this.status,
+        message: String = this.message,
+        completedAt: Instant? = this.completedAt,
+    ): QueryRuntimeExecutionUpdate {
+        val terminal = status in terminalStatuses()
+        return QueryRuntimeExecutionUpdate(
+            executionId = executionId,
+            ownerInstanceId = applicationInstanceId.value,
+            status = status,
+            message = message,
+            errorSummary = errorSummary,
+            startedAt = startedAt,
+            completedAt = completedAt,
+            rowCount = if (terminal && status == QueryExecutionStatus.SUCCEEDED) resultBuffer.totalRowCount() else 0,
+            columnCount = if (terminal && status == QueryExecutionStatus.SUCCEEDED) resultBuffer.columns().size else 0,
+            rowLimitReached = rowLimitReached,
+            columns = if (terminal && status == QueryExecutionStatus.SUCCEEDED) resultBuffer.columns() else emptyList(),
+            scriptStatements = scriptStatements.toList(),
+            lastAccessedAt = if (status == QueryExecutionStatus.SUCCEEDED) completedAt ?: lastAccessedAt else lastAccessedAt,
+            cancelRequested = cancelRequested,
+            heartbeatAt = Instant.now(),
+        )
+    }
 
     private fun sha256Hex(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -2293,8 +2222,8 @@ class QueryExecutionManager(
             completedAt = completedAt?.toString(),
             queryHash = queryHash,
             errorSummary = errorSummary,
-            rowCount = rows.size,
-            columnCount = columns.size,
+            rowCount = if (status in terminalStatuses()) resultBuffer.totalRowCount() else 0,
+            columnCount = if (status in terminalStatuses()) resultBuffer.columns().size else 0,
             rowLimitReached = rowLimitReached,
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = maxRuntimeSeconds,

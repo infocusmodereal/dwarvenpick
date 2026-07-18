@@ -31,7 +31,7 @@ class QueryExecutionManagerInstanceBufferBudgetTests {
     }
 
     @Test
-    fun `query results are truncated when instance buffer budget is exhausted`() {
+    fun `completed results release instance buffer budget for later queries`() {
         val firstActor = "instance-budget-user-one"
         val first =
             queryExecutionManager.submitQuery(
@@ -65,10 +65,11 @@ class QueryExecutionManagerInstanceBufferBudgetTests {
         val secondResults = waitForQueryResults(secondActor, second.executionId)
 
         assertThat(secondTerminal.status).isEqualTo(QueryExecutionStatus.SUCCEEDED.name)
-        assertThat(secondTerminal.message).contains("shared result buffer budget")
-        assertThat(secondTerminal.rowLimitReached).isTrue()
-        assertThat(secondResults.rowLimitReached).isTrue()
-        assertThat(secondResults.rows).isEmpty()
+        assertThat(secondTerminal.message).isEqualTo("Query succeeded.")
+        assertThat(secondTerminal.rowLimitReached).isFalse()
+        assertThat(secondResults.rowLimitReached).isFalse()
+        assertThat(secondResults.rows).containsExactly(listOf("yyyyyyyy"))
+        assertThat(reflectInstanceBufferedResultBytes(queryExecutionManager).get()).isZero()
     }
 
     private fun testPolicy(maxRowsPerQuery: Int): QueryAccessPolicy =

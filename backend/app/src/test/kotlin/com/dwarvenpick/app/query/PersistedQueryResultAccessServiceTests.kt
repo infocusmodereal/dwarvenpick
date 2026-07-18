@@ -19,6 +19,7 @@ class PersistedQueryResultAccessServiceTests {
     @BeforeEach
     fun setUp() {
         queryRuntimeRepository = mock(QueryRuntimeRepository::class.java)
+        `when`(queryRuntimeRepository.beginResultAccess(org.mockito.ArgumentMatchers.anyString())).thenReturn(true)
         pageTokenCodec = QueryResultPageTokenCodec()
         service =
             PersistedQueryResultAccessService(

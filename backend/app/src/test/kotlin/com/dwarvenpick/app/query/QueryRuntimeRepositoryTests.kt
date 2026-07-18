@@ -3,6 +3,7 @@ package com.dwarvenpick.app.query
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -128,6 +129,143 @@ class QueryRuntimeRepositoryTests {
     }
 
     @Test
+    fun `incremental pages finalize without rewriting the complete result`() {
+        val record = runtimeRecord("incremental-exec").copy(rows = emptyList(), columns = emptyList())
+        queryRuntimeRepository.save(record)
+        val firstPage = resultPage(pageIndex = 0, startRow = 0, "one", "two")
+        val finalPage = resultPage(pageIndex = 1, startRow = 2, "three")
+
+        queryRuntimeRepository.appendResultPage(record.executionId, record.ownerInstanceId, firstPage)
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.status).isEqualTo(QueryExecutionStatus.RUNNING)
+        assertThat(queryRuntimeRepository.fetchRows(record.executionId, 0, 10))
+            .containsExactly(listOf("one"), listOf("two"))
+
+        queryRuntimeRepository.finalizeSucceededExecution(
+            update = runtimeUpdate(record, QueryExecutionStatus.SUCCEEDED, rowCount = 3),
+            finalPage = finalPage,
+        )
+
+        val metadata = requireNotNull(queryRuntimeRepository.findMetadata(record.executionId))
+        assertThat(metadata.status).isEqualTo(QueryExecutionStatus.SUCCEEDED)
+        assertThat(metadata.rowCount).isEqualTo(3)
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isEqualTo(2)
+        assertThat(queryRuntimeRepository.fetchRows(record.executionId, 0, 10))
+            .containsExactly(listOf("one"), listOf("two"), listOf("three"))
+        assertThat(
+            namedParameterJdbcTemplate.queryForObject(
+                "SELECT rows_json FROM query_runtime_executions WHERE execution_id = :executionId",
+                mapOf("executionId" to record.executionId),
+                String::class.java,
+            ),
+        ).isEqualTo("[]")
+    }
+
+    @Test
+    fun `incremental page sequence rejects duplicates and gaps`() {
+        val record = runtimeRecord("sequence-exec").copy(rows = emptyList(), columns = emptyList())
+        queryRuntimeRepository.save(record)
+        val firstPage = resultPage(pageIndex = 0, startRow = 0, "one", "two")
+        queryRuntimeRepository.appendResultPage(record.executionId, record.ownerInstanceId, firstPage)
+
+        assertThrows<QueryRuntimeWriteRejectedException> {
+            queryRuntimeRepository.appendResultPage(record.executionId, record.ownerInstanceId, firstPage)
+        }
+        assertThrows<QueryRuntimeWriteRejectedException> {
+            queryRuntimeRepository.appendResultPage(
+                record.executionId,
+                record.ownerInstanceId,
+                resultPage(pageIndex = 2, startRow = 2, "three"),
+            )
+        }
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isEqualTo(1)
+    }
+
+    @Test
+    fun `finalization rejects persisted row count divergence as integrity failure`() {
+        val record = runtimeRecord("integrity-exec").copy(rows = emptyList(), columns = emptyList())
+        queryRuntimeRepository.save(record)
+        queryRuntimeRepository.appendResultPage(
+            record.executionId,
+            record.ownerInstanceId,
+            resultPage(0, 0, "one", "two"),
+        )
+
+        assertThrows<QueryResultIntegrityException> {
+            queryRuntimeRepository.finalizeSucceededExecution(
+                runtimeUpdate(record, QueryExecutionStatus.SUCCEEDED, rowCount = 4),
+                resultPage(1, 2, "three"),
+            )
+        }
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)?.status).isEqualTo(QueryExecutionStatus.RUNNING)
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isEqualTo(1)
+    }
+
+    @Test
+    fun `cancel and stale recovery delete partial pages and fence later appends`() {
+        val canceled = runtimeRecord("cancel-partial-exec").copy(rows = emptyList(), columns = emptyList())
+        queryRuntimeRepository.save(canceled)
+        queryRuntimeRepository.appendResultPage(
+            canceled.executionId,
+            canceled.ownerInstanceId,
+            resultPage(0, 0, "one", "two"),
+        )
+        queryRuntimeRepository.finalizeWithoutResults(runtimeUpdate(canceled, QueryExecutionStatus.CANCELED, rowCount = 0))
+        assertThat(queryRuntimeRepository.countResultPages(canceled.executionId)).isZero()
+        assertThrows<QueryRuntimeWriteRejectedException> {
+            queryRuntimeRepository.appendResultPage(
+                canceled.executionId,
+                canceled.ownerInstanceId,
+                resultPage(0, 0, "late"),
+            )
+        }
+
+        val stale =
+            runtimeRecord("stale-partial-exec")
+                .copy(rows = emptyList(), columns = emptyList(), heartbeatAt = Instant.now().minusSeconds(600))
+        queryRuntimeRepository.save(stale)
+        queryRuntimeRepository.appendResultPage(
+            stale.executionId,
+            stale.ownerInstanceId,
+            resultPage(0, 0, "one"),
+        )
+        assertThat(queryRuntimeRepository.markStaleActiveExecutions(Instant.now().minusSeconds(60), "stale")).isEqualTo(1)
+        assertThat(queryRuntimeRepository.countResultPages(stale.executionId)).isZero()
+        assertThat(queryRuntimeRepository.findMetadata(stale.executionId)?.status).isEqualTo(QueryExecutionStatus.CANCELED)
+    }
+
+    @Test
+    fun `durable result access wins against idle expiration and later expires cleanly`() {
+        val record = runtimeRecord("result-access-exec").copy(rows = emptyList(), columns = emptyList())
+        queryRuntimeRepository.save(record)
+        queryRuntimeRepository.finalizeSucceededExecution(
+            runtimeUpdate(record, QueryExecutionStatus.SUCCEEDED, rowCount = 1),
+            resultPage(0, 0, "one"),
+        )
+        queryRuntimeRepository.updateLastAccessed(record.executionId, Instant.now().minusSeconds(600))
+
+        assertThat(queryRuntimeRepository.beginResultAccess(record.executionId)).isTrue()
+        assertThat(
+            queryRuntimeRepository.expireResultsIfIdle(
+                record.executionId,
+                Instant.now().minusSeconds(60),
+                "expired",
+            ),
+        ).isFalse()
+        assertThat(queryRuntimeRepository.fetchRows(record.executionId, 0, 10)).containsExactly(listOf("one"))
+
+        queryRuntimeRepository.updateLastAccessed(record.executionId, Instant.now().minusSeconds(600))
+        assertThat(
+            queryRuntimeRepository.expireResultsIfIdle(
+                record.executionId,
+                Instant.now().minusSeconds(60),
+                "expired",
+            ),
+        ).isTrue()
+        assertThat(queryRuntimeRepository.countResultPages(record.executionId)).isZero()
+        assertThat(queryRuntimeRepository.beginResultAccess(record.executionId)).isFalse()
+    }
+
+    @Test
     fun `local admission serializes count insert and commit`() {
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
@@ -212,4 +350,39 @@ class QueryRuntimeRepositoryTests {
             heartbeatAt = submittedAt,
         )
     }
+
+    private fun resultPage(
+        pageIndex: Int,
+        startRow: Int,
+        vararg values: String,
+    ): QueryResultPageSnapshot =
+        QueryResultPageSnapshot(
+            pageIndex = pageIndex,
+            startRow = startRow,
+            rows = values.map { value -> listOf(value) },
+            logicalByteCount = values.sumOf { value -> value.length }.toLong(),
+        )
+
+    private fun runtimeUpdate(
+        record: PersistedQueryRuntimeRecord,
+        status: QueryExecutionStatus,
+        rowCount: Int,
+    ): QueryRuntimeExecutionUpdate =
+        QueryRuntimeExecutionUpdate(
+            executionId = record.executionId,
+            ownerInstanceId = record.ownerInstanceId,
+            status = status,
+            message = status.name,
+            errorSummary = null,
+            startedAt = record.startedAt,
+            completedAt = Instant.now(),
+            rowCount = rowCount,
+            columnCount = if (rowCount > 0) 1 else 0,
+            rowLimitReached = false,
+            columns = if (rowCount > 0) listOf(QueryResultColumn("result", "VARCHAR")) else emptyList(),
+            scriptStatements = emptyList(),
+            lastAccessedAt = Instant.now(),
+            cancelRequested = status == QueryExecutionStatus.CANCELED,
+            heartbeatAt = Instant.now(),
+        )
 }
