@@ -100,6 +100,7 @@ class QueryRuntimeRepository(
     jdbcTemplate: JdbcTemplate,
     private val objectMapper: ObjectMapper,
     private val queryExecutionProperties: QueryExecutionProperties,
+    private val queryResultPersistenceRepository: QueryResultPersistenceRepository,
 ) {
     private val namedParameterJdbcTemplate = NamedParameterJdbcTemplate(jdbcTemplate)
     private val rowMapper = RowMapper { resultSet, _ -> resultSet.toRecord() }
@@ -136,6 +137,26 @@ class QueryRuntimeRepository(
     @Transactional(propagation = Propagation.MANDATORY)
     fun insertInitial(record: PersistedQueryRuntimeRecord) {
         namedParameterJdbcTemplate.update(insertSql, record.toParameters())
+    }
+
+    fun updateExecution(update: QueryRuntimeExecutionUpdate) = queryResultPersistenceRepository.updateExecution(update)
+
+    @Transactional
+    fun appendResultPage(
+        executionId: String,
+        ownerInstanceId: String,
+        page: QueryResultPageSnapshot,
+    ) = queryResultPersistenceRepository.appendResultPage(executionId, ownerInstanceId, page)
+
+    @Transactional
+    fun finalizeSucceededExecution(
+        update: QueryRuntimeExecutionUpdate,
+        finalPage: QueryResultPageSnapshot?,
+    ) = queryResultPersistenceRepository.finalizeSucceededExecution(update, finalPage)
+
+    @Transactional
+    fun finalizeWithoutResults(update: QueryRuntimeExecutionUpdate) {
+        queryResultPersistenceRepository.finalizeWithoutResults(update)
     }
 
     fun find(executionId: String): PersistedQueryRuntimeRecord? =
@@ -215,6 +236,9 @@ class QueryRuntimeRepository(
 
                 override fun hasNext(): Boolean {
                     while (!exhausted && currentRowIndex >= currentRows.size) {
+                        if (!touchResultAccess(executionId, Instant.now())) {
+                            throw QueryResultsExpiredException("Result session expired during export. Re-run the query.")
+                        }
                         val nextPage = findResultPage(executionId, nextPageIndex)
                         nextPageIndex += 1
                         if (nextPage == null) {
@@ -330,6 +354,13 @@ class QueryRuntimeRepository(
         )
     }
 
+    fun beginResultAccess(executionId: String): Boolean = queryResultPersistenceRepository.beginResultAccess(executionId)
+
+    fun touchResultAccess(
+        executionId: String,
+        accessedAt: Instant,
+    ): Boolean = queryResultPersistenceRepository.touchResultAccess(executionId, accessedAt)
+
     fun updateHeartbeat(
         executionId: String,
         ownerInstanceId: String,
@@ -396,6 +427,12 @@ class QueryRuntimeRepository(
         )
     }
 
+    fun expireResultsIfIdle(
+        executionId: String,
+        cutoff: Instant,
+        message: String,
+    ): Boolean = queryResultPersistenceRepository.expireResultsIfIdle(executionId, cutoff, message)
+
     fun pruneOlderThan(cutoff: Instant): Int =
         namedParameterJdbcTemplate.update(
             "DELETE FROM query_runtime_executions WHERE COALESCE(completed_at, submitted_at) < :cutoff",
@@ -417,23 +454,7 @@ class QueryRuntimeRepository(
     fun markStaleActiveExecutions(
         cutoff: Instant,
         message: String,
-    ): Int =
-        namedParameterJdbcTemplate.update(
-            """
-            UPDATE query_runtime_executions
-            SET status = 'CANCELED',
-                completed_at = :completedAt,
-                cancel_requested = TRUE,
-                message = :message
-            WHERE status IN ('QUEUED', 'RUNNING')
-              AND heartbeat_at < :cutoff
-            """.trimIndent(),
-            mapOf(
-                "completedAt" to Instant.now().toTimestamp(),
-                "cutoff" to cutoff.toTimestamp(),
-                "message" to message,
-            ),
-        )
+    ): Int = queryResultPersistenceRepository.markStaleActiveExecutions(cutoff, message)
 
     fun clear() {
         namedParameterJdbcTemplate.update("DELETE FROM query_runtime_result_pages", emptyMap<String, Any>())

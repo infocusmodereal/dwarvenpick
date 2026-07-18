@@ -16,6 +16,7 @@ import com.dwarvenpick.app.query.QueryHistoryFilter
 import com.dwarvenpick.app.query.QueryHistoryRepository
 import com.dwarvenpick.app.query.QueryHistorySortOrder
 import com.dwarvenpick.app.query.QueryResultsExpiredException
+import com.dwarvenpick.app.query.QueryRuntimeRepository
 import com.dwarvenpick.app.rbac.CreateGroupRequest
 import com.dwarvenpick.app.rbac.QueryAccessDeniedException
 import com.dwarvenpick.app.rbac.RbacService
@@ -89,6 +90,9 @@ class DwarvenpickApplicationTests {
 
     @Autowired
     private lateinit var queryExecutionManager: QueryExecutionManager
+
+    @Autowired
+    private lateinit var queryRuntimeRepository: QueryRuntimeRepository
 
     @BeforeEach
     fun resetState() {
@@ -1219,6 +1223,7 @@ class DwarvenpickApplicationTests {
                 isAccessible = true
             }
         lastAccessedField.set(record, lastAccessedAt)
+        queryRuntimeRepository.updateLastAccessed(executionId, lastAccessedAt)
     }
 
     private fun MvcResult.toSessionCookies(): Array<Cookie> {

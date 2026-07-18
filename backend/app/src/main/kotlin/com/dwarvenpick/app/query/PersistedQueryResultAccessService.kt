@@ -28,7 +28,6 @@ class PersistedQueryResultAccessService(
         if (metadata.status == QueryExecutionStatus.CANCELED) {
             throw QueryResultsNotReadyException("Query was canceled before a complete result set was available.")
         }
-
         val resolvedPageSize =
             request.pageSize?.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
                 ?: queryExecutionProperties.defaultPageSize.coerceAtLeast(1)
@@ -36,6 +35,7 @@ class PersistedQueryResultAccessService(
         if (startOffset > metadata.rowCount) {
             throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
         }
+        beginResultAccess(metadata.executionId)
         val rows = queryRuntimeRepository.fetchRows(metadata.executionId, startOffset, resolvedPageSize)
         val endOffset = startOffset + rows.size
         val nextPageToken =
@@ -75,13 +75,13 @@ class PersistedQueryResultAccessService(
         if (metadata.status == QueryExecutionStatus.CANCELED) {
             throw QueryResultsNotReadyException("Query was canceled and cannot be exported.")
         }
-
         val resolvedMaxExportRows = maxExportRows.coerceAtLeast(1)
         if (metadata.rowCount > resolvedMaxExportRows) {
             throw QueryExportLimitExceededException(
                 "Export row limit exceeded (${metadata.rowCount} rows > $resolvedMaxExportRows allowed).",
             )
         }
+        beginResultAccess(metadata.executionId)
         queryRuntimeRepository.updateLastAccessed(metadata.executionId, Instant.now())
         return QueryCsvExportPayload(
             executionId = metadata.executionId,
@@ -91,5 +91,11 @@ class PersistedQueryResultAccessService(
             columns = metadata.columns,
             rows = queryRuntimeRepository.rowIterable(metadata.executionId),
         )
+    }
+
+    private fun beginResultAccess(executionId: String) {
+        if (!queryRuntimeRepository.beginResultAccess(executionId)) {
+            throw QueryResultsExpiredException("Result session expired. Re-run the query.")
+        }
     }
 }

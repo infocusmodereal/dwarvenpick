@@ -152,7 +152,6 @@ class QueryAdmissionPostgresTests {
                 queryRuntimeRepository = queryRuntimeRepository,
                 queryAdmissionRepository = queryAdmissionRepository,
                 persistedQueryResultAccessService = persistedQueryResultAccessService,
-                pageTokenCodec = pageTokenCodec,
                 applicationInstanceId = applicationInstanceId,
                 meterRegistry = meterRegistry,
             )
