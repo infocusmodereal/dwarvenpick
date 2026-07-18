@@ -17,7 +17,7 @@
 - Validate SQL with engine-aware `EXPLAIN` (inline editor markers when available).
 - Safe scripting: run semicolon-delimited multi-statement scripts with stop-on-error and transaction options.
 - Explain and analyze query plans (engine-aware).
-- Results grid with pagination, sorting, and CSV export.
+- Results grid with pagination, current-page sorting, and full-result CSV export in original query order.
 - CLI package for authenticated terminal query execution via Local or LDAP auth.
 - Connection catalog and connection management UI.
 - Governance:
