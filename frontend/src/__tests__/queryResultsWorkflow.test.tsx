@@ -277,9 +277,12 @@ describe('useQueryResultsWorkflow', () => {
         expect(result.current.view.exportingCsv).toBe(false);
     });
 
-    it('downloads CSV with selected headers and closes the export menu on success', async () => {
+    it('exports the full original-order result while the current page remains sorted', async () => {
         const onFeedback = vi.fn();
-        const activeTab = tab('tab-a', 'exec-a');
+        const activeTab = {
+            ...tab('tab-a', 'exec-a'),
+            resultRows: [['2'], ['1']]
+        };
         const createObjectURL = vi.fn<(blob: Blob) => string>(() => 'blob:query-export');
         const revokeObjectURL = vi.fn();
         Object.defineProperty(window.URL, 'createObjectURL', {
@@ -313,13 +316,17 @@ describe('useQueryResultsWorkflow', () => {
             result.current.view.onToggleResultSort(0);
         });
 
+        expect(result.current.view.visibleResultRows.rows).toEqual([['1'], ['2']]);
+
         await act(async () => result.current.view.onExportCsv());
 
         expect(result.current.view.resultSortState).toEqual({ columnIndex: 0, direction: 'asc' });
-        expect(fetchMock).toHaveBeenCalledWith('/api/queries/exec-a/export.csv?headers=false', {
-            method: 'GET',
-            credentials: 'include'
-        });
+        expect(fetchMock).toHaveBeenCalledOnce();
+        const [exportUrl, exportOptions] = fetchMock.mock.calls[0];
+        expect(exportUrl).toBe('/api/queries/exec-a/export.csv?headers=false');
+        expect(exportUrl).not.toContain('sort=');
+        expect(exportUrl).not.toContain('pageToken=');
+        expect(exportOptions).toEqual({ method: 'GET', credentials: 'include' });
         expect(createObjectURL).toHaveBeenCalledOnce();
         expect(createObjectURL.mock.calls[0][0]).toMatchObject({ size: 8 });
         expect(click).toHaveBeenCalledOnce();
