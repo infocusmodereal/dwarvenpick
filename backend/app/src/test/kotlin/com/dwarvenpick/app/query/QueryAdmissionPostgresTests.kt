@@ -109,14 +109,14 @@ class QueryAdmissionPostgresTests {
                             start.await()
                             queryAdmissionRepository.reserve(
                                 runtimeRecord(executionId, actor = "postgres-admission-user"),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, connection = 10, global = 10),
                             )
                         }
                     }
             start.countDown()
 
             assertThat(results.map { it.get() })
-                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.ACTOR_LIMIT_REACHED)
             assertThat(activeExecutions("postgres-admission-user")).hasSize(1)
             assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("POSTGRESQL")
         } finally {
@@ -125,12 +125,39 @@ class QueryAdmissionPostgresTests {
     }
 
     @Test
+    fun `postgres metadata admission enforces connection budget across actors`() {
+        val limits = QueryAdmissionLimits(actor = 10, connection = 1, global = 10)
+
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("connection-1", "actor-1"), limits))
+            .isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("connection-2", "actor-2"), limits))
+            .isEqualTo(QueryAdmissionResult.CONNECTION_LIMIT_REACHED)
+    }
+
+    @Test
+    fun `postgres metadata admission enforces global budget across connections`() {
+        val limits = QueryAdmissionLimits(actor = 10, connection = 10, global = 1)
+
+        assertThat(queryAdmissionRepository.reserve(runtimeRecord("global-1", "actor-1"), limits))
+            .isEqualTo(QueryAdmissionResult.ADMITTED)
+        assertThat(
+            queryAdmissionRepository.reserve(
+                runtimeRecord("global-2", "actor-2").copy(datasourceId = "other-connection"),
+                limits,
+            ),
+        ).isEqualTo(QueryAdmissionResult.GLOBAL_LIMIT_REACHED)
+    }
+
+    @Test
     fun `advisory lock timeout fails as infrastructure error without reservation`() {
         val actor = "postgres-lock-timeout-user"
         heldActorLock(actor).use {
             val startedAt = System.nanoTime()
             assertThatThrownBy {
-                queryAdmissionRepository.reserve(runtimeRecord("postgres-timeout", actor), concurrencyLimit = 1)
+                queryAdmissionRepository.reserve(
+                    runtimeRecord("postgres-timeout", actor),
+                    limits = QueryAdmissionLimits(actor = 1, connection = 1, global = 1),
+                )
             }.isInstanceOf(DataAccessException::class.java)
                 .isNotInstanceOf(QueryConcurrencyLimitException::class.java)
             assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(Duration.ofSeconds(5))

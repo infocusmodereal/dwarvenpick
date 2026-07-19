@@ -59,6 +59,8 @@ class QueryInvalidPageTokenException(
 
 class QueryConcurrencyLimitException(
     override val message: String,
+    val reason: String = "actor",
+    val retryAfterSeconds: Long = 1,
 ) : RuntimeException(message)
 
 class QueryExportLimitExceededException(
@@ -273,9 +275,15 @@ class QueryExecutionManager(
         val admissionResult =
             queryAdmissionRepository.reserve(
                 record = record.toPersistedRuntimeRecord(),
-                concurrencyLimit = concurrencyLimit,
+                limits =
+                    QueryAdmissionLimits(
+                        actor = concurrencyLimit,
+                        connection = queryExecutionProperties.maxConcurrencyPerConnection.coerceAtLeast(1),
+                        global = queryExecutionProperties.maxConcurrencyGlobal.coerceAtLeast(1),
+                    ),
             )
-        if (admissionResult == QueryAdmissionResult.LIMIT_REACHED) {
+        if (admissionResult != QueryAdmissionResult.ADMITTED) {
+            val (reason, message) = admissionRejectionDetails(admissionResult, concurrencyLimit)
             meterRegistry
                 .counter(
                     "dwarvenpick.query.execute.attempts",
@@ -284,8 +292,17 @@ class QueryExecutionManager(
                     "datasourceId",
                     record.datasourceId,
                 ).increment()
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.admission.rejections",
+                    "reason",
+                    reason,
+                    "datasourceId",
+                    record.datasourceId,
+                ).increment()
             throw QueryConcurrencyLimitException(
-                "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
+                message = message,
+                reason = reason,
             )
         }
 
@@ -784,18 +801,6 @@ class QueryExecutionManager(
             return
         }
 
-        markRunning(record)
-        auditExecution(
-            record = record,
-            type = "query.execute",
-            outcome = "running",
-            details =
-                mapOf(
-                    "executionId" to record.executionId,
-                    "datasourceId" to record.datasourceId,
-                ),
-        )
-
         try {
             executeSql(record)
             throwIfCanceled(record)
@@ -892,6 +897,7 @@ class QueryExecutionManager(
 
     private fun executeSql(record: QueryExecutionRecord) {
         if (shouldUseSimulation(record.sql)) {
+            startRunning(record)
             executeSqlInSimulation(record)
             return
         }
@@ -906,6 +912,8 @@ class QueryExecutionManager(
             )
         record.activeConnectionHandle = handle
         record.activeConnection = handle.connection
+        throwIfCanceled(record)
+        startRunning(record)
 
         val defaultSchemaScope =
             QueryDefaultSchema.apply(
@@ -1647,6 +1655,43 @@ class QueryExecutionManager(
             record.datasourceId,
         )
     }
+
+    private fun startRunning(record: QueryExecutionRecord) {
+        val queueWait = Duration.between(record.submittedAt, Instant.now())
+        if (!queueWait.isNegative) {
+            meterRegistry
+                .timer(
+                    "dwarvenpick.query.queue.wait",
+                    "datasourceId",
+                    record.datasourceId,
+                ).record(queueWait)
+        }
+        markRunning(record)
+        auditExecution(
+            record = record,
+            type = "query.execute",
+            outcome = "running",
+            details =
+                mapOf(
+                    "executionId" to record.executionId,
+                    "datasourceId" to record.datasourceId,
+                ),
+        )
+    }
+
+    private fun admissionRejectionDetails(
+        result: QueryAdmissionResult,
+        actorLimit: Int,
+    ): Pair<String, String> =
+        when (result) {
+            QueryAdmissionResult.ACTOR_LIMIT_REACHED ->
+                "actor" to "Concurrent query limit reached ($actorLimit). Cancel an active query before running another."
+            QueryAdmissionResult.CONNECTION_LIMIT_REACHED ->
+                "connection" to "Connection query capacity is currently full. Retry later."
+            QueryAdmissionResult.GLOBAL_LIMIT_REACHED ->
+                "global" to "Query service capacity is currently full. Retry later."
+            QueryAdmissionResult.ADMITTED -> error("An admitted query does not have rejection details.")
+        }
 
     private fun markSucceeded(record: QueryExecutionRecord) {
         synchronized(record.lifecycleLock) {

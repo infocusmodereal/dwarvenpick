@@ -230,6 +230,9 @@ class DatasourcePoolManager(
         meterRegistry.gauge("dwarvenpick.pool.total", tags, dataSource) { source ->
             source.hikariPoolMXBean?.totalConnections?.toDouble() ?: 0.0
         }
+        meterRegistry.gauge("dwarvenpick.pool.threads.awaiting", tags, dataSource) { source ->
+            source.hikariPoolMXBean?.threadsAwaitingConnection?.toDouble() ?: 0.0
+        }
     }
 
     private fun sanitizeExceptionMessage(message: String): String =

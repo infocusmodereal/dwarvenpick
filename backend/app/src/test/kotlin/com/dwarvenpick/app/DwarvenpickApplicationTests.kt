@@ -940,6 +940,7 @@ class DwarvenpickApplicationTests {
                         """.trimIndent(),
                     ),
             ).andExpect(status().isTooManyRequests)
+            .andExpect(header().string("Retry-After", "1"))
             .andExpect(jsonPath("$.error", containsString("Concurrent query limit reached")))
 
         mockMvc

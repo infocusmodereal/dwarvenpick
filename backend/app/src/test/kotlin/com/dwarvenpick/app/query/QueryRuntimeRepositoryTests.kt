@@ -284,14 +284,14 @@ class QueryRuntimeRepositoryTests {
                                         columns = emptyList(),
                                         rows = emptyList(),
                                     ),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, connection = 10, global = 10),
                             )
                         }
                     }
             start.countDown()
 
             assertThat(results.map { it.get() })
-                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.ACTOR_LIMIT_REACHED)
             assertThat(
                 queryRuntimeRepository.listActiveMetadata(
                     actor = "local-admission-user",
@@ -306,11 +306,12 @@ class QueryRuntimeRepositoryTests {
     }
 
     @Test
-    fun `admission lock key is stable and actor specific`() {
+    fun `admission lock keys are stable`() {
         assertThat(QueryAdmissionLockKey.forActor("admission-user"))
             .isEqualTo(QueryAdmissionLockKey.forActor("admission-user"))
             .isNotEqualTo(QueryAdmissionLockKey.forActor("other-user"))
         assertThat(QueryAdmissionLockKey.NAMESPACE).isEqualTo(0x44575051)
+        assertThat(QueryAdmissionLockKey.GLOBAL).isEqualTo(0x474C4F42)
         assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("LOCAL")
     }
 

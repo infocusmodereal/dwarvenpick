@@ -33,6 +33,8 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - The constant value is `1`; use the Prometheus sample timestamp for freshness checks.
 - Query lifecycle:
   - `dwarvenpick_query_active{status="queued|running"}`
+  - `dwarvenpick_query_queue_wait_seconds{datasourceId=...}`
+  - `dwarvenpick_query_admission_rejections_total{reason="actor|connection|global",datasourceId=...}`
   - `dwarvenpick_query_execution_total{outcome=...}`
   - `dwarvenpick_query_duration_seconds{outcome=...}`
   - `dwarvenpick_query_cancel_total`
@@ -47,6 +49,7 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_pool_active`
   - `dwarvenpick_pool_idle`
   - `dwarvenpick_pool_total`
+  - `dwarvenpick_pool_threads_awaiting`
 
 Keep `/actuator/prometheus` enabled for internal Prometheus scraping. Public exposure must be restricted at the ingress or network boundary; disabling the endpoint also removes `dwarvenpick_build_info` and all operational metrics.
 
@@ -62,3 +65,7 @@ Keep `/actuator/prometheus` enabled for internal Prometheus scraping. Public exp
    - Trigger: `dwarvenpick_pool_active / dwarvenpick_pool_total > 0.9` for 5m
 5. Login failure surge:
    - Trigger: `increase(dwarvenpick_auth_login_attempts_total{outcome="failed"}[5m]) > 25`
+6. Admission rejection burst:
+   - Trigger: `sum by (reason) (increase(dwarvenpick_query_admission_rejections_total[5m])) > 10`
+7. Sustained Connection waiters:
+   - Trigger: `max by (datasourceId) (dwarvenpick_pool_threads_awaiting) > 0` for 5m
