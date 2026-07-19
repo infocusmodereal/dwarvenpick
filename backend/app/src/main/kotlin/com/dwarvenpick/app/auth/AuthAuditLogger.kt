@@ -1,5 +1,7 @@
 package com.dwarvenpick.app.auth
 
+import com.dwarvenpick.app.monitoring.MaintenanceMetrics
+import com.dwarvenpick.app.monitoring.MaintenanceOutcome
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.time.Instant
@@ -20,8 +22,17 @@ interface AuthAuditLogger {
 @Component
 class AuthAuditEventStore(
     private val authAuditEventRepository: AuthAuditEventRepository,
+    private val maintenanceMetrics: MaintenanceMetrics,
 ) {
-    fun append(event: AuthAuditEvent) = authAuditEventRepository.append(event)
+    fun append(event: AuthAuditEvent) {
+        try {
+            authAuditEventRepository.append(event)
+            maintenanceMetrics.recordAuditAppend(MaintenanceOutcome.SUCCESS)
+        } catch (exception: RuntimeException) {
+            maintenanceMetrics.recordAuditAppend(MaintenanceOutcome.FAILURE)
+            throw exception
+        }
+    }
 
     fun snapshot(): List<AuthAuditEvent> = authAuditEventRepository.snapshot()
 
