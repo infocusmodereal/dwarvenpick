@@ -425,6 +425,13 @@ class DwarvenpickApplicationTests {
             .perform(get("/api/datasources").cookie(*analystSession))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].id").value("trino-warehouse"))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].credentialProfile").value("analyst-ro"))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].readOnly").value(true))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].canExport").value(false))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].maxRowsPerQuery").value(2000))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].maxRuntimeSeconds").value(180))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].concurrencyLimit").value(2))
+            .andExpect(jsonPath("$[0].credentialProfilePolicies[0].justificationMode").value("NONE"))
 
         mockMvc
             .perform(

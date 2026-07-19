@@ -72,6 +72,11 @@ Output formats:
 - `json`
 - `csv`
 
+Table and CSV output contain one row per effective credential profile available to the signed-in user. Each row shows
+read-only/write capability, exact export permission, effective row/runtime/concurrency limits, justification mode, and
+the independent elevated System Health flag. JSON keeps the same information as structured
+`credentialProfilePolicies` data. Policies are user-specific RBAC results and must not be reused between accounts.
+
 ## Run queries
 
 ```bash

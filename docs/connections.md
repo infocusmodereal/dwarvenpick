@@ -97,3 +97,12 @@ Each connection can have one or more **credential profiles** (username/password 
 System admins can mark a credential profile as **sysadmin**. Only sysadmin profiles are available in **System Health**,
 so operators can restrict health checks to high-privilege read-only users without granting those credentials to every
 group.
+
+The Workbench shows the effective policy for the signed-in user and selected profile. Read-only/write capability,
+export permission, row/runtime/concurrency limits, and justification requirements are resolved from that user's RBAC
+grants. They are not global properties of the stored credential profile. A sysadmin profile is an independent System
+Health capability and does not imply write access.
+
+When write justification governance is enabled, every query through an effective write-capable profile requires a
+justification, including `SELECT`. Read-only profiles do not accept write statements; adding a justification does not
+override read-only enforcement.

@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.rbac
 
+import com.dwarvenpick.app.query.QueryJustificationMode
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.PositiveOrZero
@@ -36,6 +37,18 @@ data class DatasourceResponse(
     val engine: String,
     val credentialProfiles: Set<String>,
     val sysadminCredentialProfiles: Set<String>,
+    val credentialProfilePolicies: List<EffectiveCredentialProfilePolicyResponse> = emptyList(),
+)
+
+data class EffectiveCredentialProfilePolicyResponse(
+    val credentialProfile: String,
+    val readOnly: Boolean,
+    val canExport: Boolean,
+    val maxRowsPerQuery: Int,
+    val maxRuntimeSeconds: Int,
+    val concurrencyLimit: Int,
+    val sysadmin: Boolean,
+    val justificationMode: QueryJustificationMode,
 )
 
 data class DatasourceAccessResponse(

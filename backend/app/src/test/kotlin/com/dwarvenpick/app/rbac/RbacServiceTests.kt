@@ -9,6 +9,7 @@ import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import com.dwarvenpick.app.datasource.TlsMode
 import com.dwarvenpick.app.datasource.TlsSettings
 import com.dwarvenpick.app.datasource.UpsertCredentialProfileRequest
+import com.dwarvenpick.app.query.QueryJustificationMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -18,6 +19,8 @@ import org.springframework.boot.test.context.SpringBootTest
 @SpringBootTest(
     properties = [
         "dwarvenpick.auth.password-policy.min-length=8",
+        "dwarvenpick.query.require-write-justification=true",
+        "dwarvenpick.query.max-concurrency-per-user=3",
     ],
 )
 class RbacServiceTests {
@@ -26,6 +29,9 @@ class RbacServiceTests {
 
     @Autowired
     private lateinit var rbacService: RbacService
+
+    @Autowired
+    private lateinit var effectiveDatasourcePolicyService: EffectiveDatasourcePolicyService
 
     @Autowired
     private lateinit var userAccountService: UserAccountService
@@ -64,9 +70,9 @@ class RbacServiceTests {
                     canQuery = true,
                     canExport = true,
                     readOnly = false,
-                    maxRowsPerQuery = 5000,
+                    maxRowsPerQuery = 0,
                     maxRuntimeSeconds = 300,
-                    concurrencyLimit = 5,
+                    concurrencyLimit = 0,
                 ),
         )
 
@@ -116,6 +122,75 @@ class RbacServiceTests {
 
         assertThat(policy.credentialProfile).isEqualTo("read-write")
         assertThat(policy.readOnly).isFalse()
+    }
+
+    @Test
+    fun `catalog policies are principal scoped ordered and match enforced profile access`() {
+        val datasourceId = createDatasourceWithProfiles()
+        rbacService.createGroup(CreateGroupRequest(name = "alpha-readers"))
+        rbacService.createGroup(CreateGroupRequest(name = "omega-writers"))
+        rbacService.upsertDatasourceAccess(
+            groupId = "alpha-readers",
+            datasourceId = datasourceId,
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "read-only",
+                    canQuery = true,
+                    canExport = false,
+                    readOnly = true,
+                    maxRowsPerQuery = 100,
+                    maxRuntimeSeconds = 30,
+                    concurrencyLimit = 1,
+                ),
+        )
+        rbacService.upsertDatasourceAccess(
+            groupId = "omega-writers",
+            datasourceId = datasourceId,
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "read-write",
+                    canQuery = true,
+                    canExport = true,
+                    readOnly = false,
+                    maxRowsPerQuery = 5000,
+                    maxRuntimeSeconds = 300,
+                    concurrencyLimit = 5,
+                ),
+        )
+
+        val overlapPolicies =
+            effectiveDatasourcePolicyService
+                .listPermittedDatasources(overlappingPrincipal())
+                .single { datasource -> datasource.id == datasourceId }
+                .credentialProfilePolicies
+        assertThat(overlapPolicies.map { policy -> policy.credentialProfile })
+            .containsExactly("read-only", "read-write")
+        val readOnlyPolicy = overlapPolicies.first()
+        assertThat(readOnlyPolicy.readOnly).isTrue()
+        assertThat(readOnlyPolicy.canExport).isFalse()
+        assertThat(readOnlyPolicy.maxRowsPerQuery).isEqualTo(100)
+        assertThat(readOnlyPolicy.maxRuntimeSeconds).isEqualTo(30)
+        assertThat(readOnlyPolicy.concurrencyLimit).isEqualTo(1)
+        assertThat(readOnlyPolicy.justificationMode).isEqualTo(QueryJustificationMode.NONE)
+
+        val writePolicy = overlapPolicies.last()
+        assertThat(writePolicy.readOnly).isFalse()
+        assertThat(writePolicy.canExport).isTrue()
+        assertThat(writePolicy.maxRowsPerQuery).isEqualTo(5000)
+        assertThat(writePolicy.concurrencyLimit).isEqualTo(3)
+        assertThat(writePolicy.justificationMode).isEqualTo(QueryJustificationMode.PROFILE_REQUIRED)
+
+        val readerOnly =
+            overlappingPrincipal().copy(
+                username = "reader.only",
+                groups = setOf("alpha-readers"),
+            )
+        val readerPolicies =
+            effectiveDatasourcePolicyService
+                .listPermittedDatasources(readerOnly)
+                .single { datasource -> datasource.id == datasourceId }
+                .credentialProfilePolicies
+        assertThat(readerPolicies.map { policy -> policy.credentialProfile }).containsExactly("read-only")
     }
 
     @Test

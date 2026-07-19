@@ -2157,6 +2157,59 @@ button:disabled {
     width: 100%;
 }
 
+.credential-profile-policy {
+    display: grid;
+    gap: 0.38rem;
+    min-width: 0;
+    padding: 0.48rem 0.54rem;
+    border-left: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.66rem;
+    line-height: 1.4;
+}
+
+.credential-profile-policy-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.24rem 0.46rem;
+    align-items: baseline;
+}
+
+.credential-profile-policy-flags strong {
+    color: var(--text);
+}
+
+.credential-profile-policy-flags span {
+    color: var(--muted);
+}
+
+.credential-profile-policy dl {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.3rem;
+    margin: 0;
+}
+
+.credential-profile-policy dl div {
+    min-width: 0;
+}
+
+.credential-profile-policy dt {
+    color: var(--muted);
+}
+
+.credential-profile-policy dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--text);
+}
+
+.credential-profile-policy p {
+    margin: 0;
+    color: var(--muted);
+}
+
 .explorer-search-wrap {
     position: relative;
     display: grid;

@@ -73,6 +73,10 @@ dwarvenpick connections --format json
 dwarvenpick connections --format csv
 ```
 
+Table and CSV list one row per effective credential profile, including read-only/write capability, export permission,
+effective row/runtime/concurrency limits, justification requirements, and elevated System Health access. JSON returns
+the same information in `credentialProfilePolicies`. These policies are resolved for the authenticated user.
+
 ### Run a query
 
 ```bash
