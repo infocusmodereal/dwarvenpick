@@ -657,6 +657,7 @@ class DwarvenpickApplicationTests {
                 .perform(get("/api/queries/$executionId/export.csv").cookie(*adminSession))
                 .andExpect(request().asyncStarted())
                 .andReturn()
+        exportRequest.getAsyncResult(5_000)
         val exportResult =
             mockMvc
                 .perform(asyncDispatch(exportRequest))
@@ -730,6 +731,7 @@ class DwarvenpickApplicationTests {
                 .perform(get("/api/queries/$executionId/export.csv").cookie(*analystSession))
                 .andExpect(request().asyncStarted())
                 .andReturn()
+        exportRequest.getAsyncResult(5_000)
         val exportResult =
             mockMvc
                 .perform(asyncDispatch(exportRequest))
@@ -774,6 +776,7 @@ class DwarvenpickApplicationTests {
                 .perform(get("/api/queries/$deniedExecutionId/export.csv").cookie(*analystSession))
                 .andExpect(request().asyncStarted())
                 .andReturn()
+        deniedExportRequest.getAsyncResult(5_000)
         val deniedExportResult =
             mockMvc
                 .perform(asyncDispatch(deniedExportRequest))
@@ -789,6 +792,7 @@ class DwarvenpickApplicationTests {
                 .perform(get("/api/queries/$allowedExecutionId/export.csv").cookie(*analystSession))
                 .andExpect(request().asyncStarted())
                 .andReturn()
+        allowedExportRequest.getAsyncResult(5_000)
         val allowedExportResult =
             mockMvc
                 .perform(asyncDispatch(allowedExportRequest))
