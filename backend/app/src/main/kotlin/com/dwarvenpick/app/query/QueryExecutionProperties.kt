@@ -14,6 +14,8 @@ data class QueryExecutionProperties(
     val maxExportRows: Int = 5000,
     val jdbcFetchSize: Int = 500,
     val maxConcurrencyPerUser: Int = 3,
+    val maxConcurrencyPerConnection: Int = 10,
+    val maxConcurrencyGlobal: Int = 50,
     val resultSessionTtlSeconds: Long = 600,
     val executionRetentionSeconds: Long = 3600,
     val cancelGracePeriodMs: Long = 500,

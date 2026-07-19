@@ -118,6 +118,8 @@ For Kubernetes (Helm), enable the external drivers volume and back it with a PVC
 
 - Logs: backend logs are emitted to stdout as JSON. Configure levels with `LOGGING_LEVEL_ROOT` and `LOGGING_LEVEL_COM_DWARVENPICK`.
 - Metrics: `GET /actuator/prometheus` (toggle with `DWARVENPICK_METRICS_PROMETHEUS_ENABLED`).
+- Query admission: fixed actor, Connection, and cluster-wide budgets provide bounded backpressure across replicas; see
+  [Query admission](docs/ops/query-admission.md).
 
 ## Development
 

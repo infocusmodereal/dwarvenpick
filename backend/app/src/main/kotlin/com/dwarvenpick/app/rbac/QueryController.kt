@@ -100,9 +100,12 @@ class QueryController(
                 actor = principal.username,
                 datasourceId = datasourceId,
                 ipAddress = httpServletRequest.remoteAddr,
-                message = ex.message,
+                reason = ex.reason,
             )
-            ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ErrorResponse(ex.message))
+            ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", ex.retryAfterSeconds.toString())
+                .body(ErrorResponse(ex.message))
         } catch (ex: DriverNotAvailableException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
         } catch (ex: QueryReadOnlyViolationException) {
@@ -423,7 +426,7 @@ class QueryController(
         actor: String,
         datasourceId: String,
         ipAddress: String?,
-        message: String?,
+        reason: String,
     ) {
         authAuditLogger.log(
             AuthAuditEvent(
@@ -434,7 +437,7 @@ class QueryController(
                 details =
                     mapOf(
                         "datasourceId" to datasourceId,
-                        "reason" to (message ?: "concurrency_limit"),
+                        "reason" to reason,
                     ),
             ),
         )
