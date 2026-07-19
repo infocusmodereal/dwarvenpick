@@ -285,9 +285,15 @@ class RbacService(
     fun canUserExport(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
+        credentialProfile: String,
     ): Boolean {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+        }
+
+        val normalizedCredentialProfile = credentialProfile.trim()
+        if (normalizedCredentialProfile.isBlank()) {
+            return false
         }
 
         if (principal.roles.contains("SYSTEM_ADMIN")) {
@@ -297,6 +303,7 @@ class RbacService(
         return rbacRepository.listDatasourceAccess().any { access ->
             access.datasourceId == datasourceId &&
                 access.groupId in principal.groups &&
+                access.credentialProfile == normalizedCredentialProfile &&
                 access.canExport
         }
     }
