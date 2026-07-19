@@ -33,6 +33,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -256,10 +257,10 @@ class QueryController(
                             ),
                     ),
                 )
-                return ResponseEntity
-                    .status(HttpStatus.FORBIDDEN)
-                    .contentType(MediaType.parseMediaType("text/csv"))
-                    .body(csvErrorBody("Datasource export access denied for this query."))
+                throw QueryCsvExportResponseException(
+                    status = HttpStatus.FORBIDDEN,
+                    responseMessage = "Datasource export access denied for this query.",
+                )
             }
 
             val exportPayload =
@@ -315,25 +316,29 @@ class QueryController(
                 throw ex
             }
         } catch (ex: QueryExecutionNotFoundException) {
-            csvErrorResponse(HttpStatus.NOT_FOUND, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.NOT_FOUND, ex.message)
         } catch (ex: QueryExecutionForbiddenException) {
-            csvErrorResponse(HttpStatus.FORBIDDEN, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.FORBIDDEN, ex.message)
         } catch (ex: QueryResultsNotReadyException) {
-            csvErrorResponse(HttpStatus.CONFLICT, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.CONFLICT, ex.message)
         } catch (ex: QueryResultsExpiredException) {
-            csvErrorResponse(HttpStatus.GONE, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.GONE, ex.message)
         } catch (ex: QueryInvalidPageTokenException) {
-            csvErrorResponse(HttpStatus.BAD_REQUEST, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.BAD_REQUEST, ex.message)
         } catch (ex: QueryExportLimitExceededException) {
-            csvErrorResponse(HttpStatus.BAD_REQUEST, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.BAD_REQUEST, ex.message)
         } catch (ex: QueryAccessDeniedException) {
-            csvErrorResponse(HttpStatus.FORBIDDEN, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.FORBIDDEN, ex.message)
         } catch (ex: QueryReadOnlyViolationException) {
-            csvErrorResponse(HttpStatus.FORBIDDEN, ex.message)
+            throw QueryCsvExportResponseException(HttpStatus.FORBIDDEN, ex.message)
         } catch (ex: IllegalArgumentException) {
-            csvErrorResponse(HttpStatus.BAD_REQUEST, ex.message ?: "Bad request.")
+            throw QueryCsvExportResponseException(HttpStatus.BAD_REQUEST, ex.message ?: "Bad request.")
         }
     }
+
+    @ExceptionHandler(QueryCsvExportResponseException::class)
+    private fun handleCsvExportResponseException(exception: QueryCsvExportResponseException): ResponseEntity<ByteArray> =
+        csvErrorResponse(exception.status, exception.responseMessage)
 
     @GetMapping("/history")
     fun queryHistory(
@@ -481,17 +486,17 @@ class QueryController(
     private fun csvErrorResponse(
         status: HttpStatus,
         message: String?,
-    ): ResponseEntity<StreamingResponseBody> =
+    ): ResponseEntity<ByteArray> =
         ResponseEntity
             .status(status)
             .contentType(MediaType.parseMediaType("text/csv"))
-            .body(csvErrorBody(message))
-
-    private fun csvErrorBody(message: String?): StreamingResponseBody =
-        StreamingResponseBody { outputStream ->
-            outputStream.write(toCsvError(message))
-        }
+            .body(toCsvError(message))
 }
+
+private class QueryCsvExportResponseException(
+    val status: HttpStatus,
+    val responseMessage: String?,
+) : RuntimeException(responseMessage)
 
 private class CsvExportLease(
     private val executionId: String,
