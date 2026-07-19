@@ -13,9 +13,12 @@ Governance controls which users can see and query which connections.
 - **Groups**: collections of users.
 - **Access rules**: grants between a group and a connection, including controls:
   - can query
-  - can export
+  - can export, scoped to the exact credential profile used by the query execution
   - read-only
   - limits (max rows, max runtime, concurrency)
+
+An export grant for one credential profile does not authorize exporting results produced with another profile on the
+same connection. Operators should provision export access explicitly for every profile that requires it.
 
 ## Local users
 

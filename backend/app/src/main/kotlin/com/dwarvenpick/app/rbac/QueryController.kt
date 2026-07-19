@@ -234,7 +234,12 @@ class QueryController(
                     executionId = executionId,
                 )
 
-            val allowedToExport = rbacService.canUserExport(principal, status.datasourceId)
+            val allowedToExport =
+                rbacService.canUserExport(
+                    principal = principal,
+                    datasourceId = status.datasourceId,
+                    credentialProfile = status.credentialProfile,
+                )
             if (!allowedToExport) {
                 recordExportMetric(outcome = "denied", datasourceId = status.datasourceId)
                 authAuditLogger.log(
@@ -247,6 +252,7 @@ class QueryController(
                             mapOf(
                                 "executionId" to executionId,
                                 "datasourceId" to status.datasourceId,
+                                "credentialProfile" to status.credentialProfile,
                             ),
                     ),
                 )
@@ -277,6 +283,7 @@ class QueryController(
                             mapOf(
                                 "executionId" to executionId,
                                 "datasourceId" to exportPayload.datasourceId,
+                                "credentialProfile" to status.credentialProfile,
                                 "rowCount" to exportPayload.rowCount,
                                 "headers" to headers,
                             ),

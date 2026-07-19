@@ -733,6 +733,76 @@ class DwarvenpickApplicationTests {
     }
 
     @Test
+    fun `query csv export follows the credential profile used by the execution`() {
+        datasourceRegistryService.upsertCredentialProfile(
+            datasourceId = "trino-warehouse",
+            profileId = "export-ro",
+            request =
+                UpsertCredentialProfileRequest(
+                    username = "trino",
+                    password = "",
+                    description = "Export-enabled test profile.",
+                ),
+        )
+        rbacService.createGroup(CreateGroupRequest(name = "analytics-exporters"))
+        rbacService.addMember("analytics-exporters", "analyst")
+        rbacService.upsertDatasourceAccess(
+            groupId = "analytics-exporters",
+            datasourceId = "trino-warehouse",
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "export-ro",
+                    canQuery = true,
+                    canExport = true,
+                    readOnly = true,
+                ),
+        )
+
+        val analystSession = loginLocalUser("analyst", "Analyst123!")
+        val deniedExecutionId = submitProfileQuery(analystSession, "analyst-ro")
+        assertThat(waitForExecutionTerminalStatus(analystSession, deniedExecutionId)).isEqualTo("SUCCEEDED")
+
+        val deniedExportRequest =
+            mockMvc
+                .perform(get("/api/queries/$deniedExecutionId/export.csv").cookie(*analystSession))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+        val deniedExportResult =
+            mockMvc
+                .perform(asyncDispatch(deniedExportRequest))
+                .andExpect(status().isForbidden)
+                .andReturn()
+        assertThat(deniedExportResult.response.contentAsString).contains("Datasource export access denied")
+
+        val allowedExecutionId = submitProfileQuery(analystSession, "export-ro")
+        assertThat(waitForExecutionTerminalStatus(analystSession, allowedExecutionId)).isEqualTo("SUCCEEDED")
+
+        val allowedExportRequest =
+            mockMvc
+                .perform(get("/api/queries/$allowedExecutionId/export.csv").cookie(*analystSession))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+        val allowedExportResult =
+            mockMvc
+                .perform(asyncDispatch(allowedExportRequest))
+                .andExpect(status().isOk)
+                .andReturn()
+        assertThat(allowedExportResult.response.contentAsString).isEqualTo("generate_series\n1\n2\n")
+
+        val exportEvents = authAuditEventStore.snapshot().filter { event -> event.type == "query.export" }
+        assertThat(exportEvents)
+            .anyMatch { event ->
+                event.outcome == "denied" &&
+                    event.details["executionId"] == deniedExecutionId &&
+                    event.details["credentialProfile"] == "analyst-ro"
+            }.anyMatch { event ->
+                event.outcome == "success" &&
+                    event.details["executionId"] == allowedExecutionId &&
+                    event.details["credentialProfile"] == "export-ro"
+            }
+    }
+
+    @Test
     fun `active csv export keeps live rows through cleanup`() {
         val adminSession = loginLocalUser("admin", "Admin1234!")
         val submitResult =
@@ -1178,6 +1248,32 @@ class DwarvenpickApplicationTests {
             ).andExpect(status().isOk)
             .andReturn()
             .toSessionCookies()
+
+    private fun submitProfileQuery(
+        sessionCookie: Array<Cookie>,
+        credentialProfile: String,
+    ): String {
+        val result =
+            mockMvc
+                .perform(
+                    post("/api/queries")
+                        .with(csrf())
+                        .cookie(*sessionCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "datasourceId": "trino-warehouse",
+                              "credentialProfile": "$credentialProfile",
+                              "sql": "select generate_series(1,2)"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isOk)
+                .andReturn()
+
+        return jsonPathValue(result, "$.executionId")
+    }
 
     private fun waitForExecutionTerminalStatus(
         sessionCookie: Array<Cookie>,

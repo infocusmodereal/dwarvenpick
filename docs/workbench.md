@@ -76,7 +76,8 @@ Read-only access rules apply to **every** statement in a script.
 - Results are shown as a table with paging controls.
 - Column sorting applies only to rows on the currently displayed server page. It does not reorder rows across other
   pages.
-- You can export the full result set to CSV (if your access rules allow export). CSV export preserves the original
+- You can export the full result set to CSV when the access rule for the query's exact credential profile allows
+  export. An export grant on another profile for the same connection does not apply. CSV export preserves the original
   query result order and is not affected by current-page sorting.
 - Drag the horizontal handle above Results to resize the results panel.
 - Script runs include a per-statement summary (succeeded/failed) to make it clear where a script stopped or failed.

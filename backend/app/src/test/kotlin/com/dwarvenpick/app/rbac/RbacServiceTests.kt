@@ -118,6 +118,58 @@ class RbacServiceTests {
         assertThat(policy.readOnly).isFalse()
     }
 
+    @Test
+    fun `export authorization follows the exact executed credential profile for overlapping groups`() {
+        val datasourceId = createDatasourceWithProfiles()
+        rbacService.createGroup(CreateGroupRequest(name = "alpha-readers"))
+        rbacService.createGroup(CreateGroupRequest(name = "omega-writers"))
+        rbacService.upsertDatasourceAccess(
+            groupId = "alpha-readers",
+            datasourceId = datasourceId,
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "read-only",
+                    canQuery = true,
+                    canExport = false,
+                    readOnly = true,
+                ),
+        )
+        rbacService.upsertDatasourceAccess(
+            groupId = "omega-writers",
+            datasourceId = datasourceId,
+            request =
+                UpsertDatasourceAccessRequest(
+                    credentialProfile = "read-write",
+                    canQuery = true,
+                    canExport = true,
+                    readOnly = false,
+                ),
+        )
+
+        val principal = overlappingPrincipal()
+
+        assertThat(rbacService.canUserExport(principal, datasourceId, "read-only")).isFalse()
+        assertThat(rbacService.canUserExport(principal, datasourceId, "read-write")).isTrue()
+        assertThat(rbacService.canUserExport(principal, datasourceId, "  ")).isFalse()
+    }
+
+    @Test
+    fun `system admin export bypass requires a concrete execution profile`() {
+        val datasourceId = createDatasourceWithProfiles()
+        val principal =
+            AuthenticatedUserPrincipal(
+                username = "admin",
+                displayName = "Administrator",
+                email = null,
+                provider = AuthProvider.LOCAL,
+                roles = setOf("SYSTEM_ADMIN", "USER"),
+                groups = emptySet(),
+            )
+
+        assertThat(rbacService.canUserExport(principal, datasourceId, "read-write")).isTrue()
+        assertThat(rbacService.canUserExport(principal, datasourceId, " ")).isFalse()
+    }
+
     private fun createDatasourceWithProfiles(): String {
         val datasourceId =
             datasourceRegistryService
