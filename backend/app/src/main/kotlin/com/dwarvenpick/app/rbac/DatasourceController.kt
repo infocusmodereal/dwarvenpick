@@ -17,13 +17,14 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/datasources")
 class DatasourceController(
     private val rbacService: RbacService,
+    private val effectiveDatasourcePolicyService: EffectiveDatasourcePolicyService,
     private val schemaBrowserService: SchemaBrowserService,
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
 ) {
     @GetMapping
     fun listPermittedDatasources(authentication: Authentication): List<DatasourceResponse> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
-        return rbacService.listPermittedDatasources(principal)
+        return effectiveDatasourcePolicyService.listPermittedDatasources(principal)
     }
 
     @GetMapping("/{datasourceId}/schema-browser")

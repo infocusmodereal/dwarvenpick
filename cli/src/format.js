@@ -1,20 +1,57 @@
 const maxCellWidth = 48;
 
 export function formatConnections(connections, format = 'table') {
-  const rows = connections.map((connection) => [
+  if (format === 'json') {
+    return `${JSON.stringify(connections, null, 2)}\n`;
+  }
+  const rows = connections.flatMap(connectionPolicyRows);
+  const columns = [
+    'id',
+    'name',
+    'engine',
+    'credentialProfiles',
+    'policyProfile',
+    'access',
+    'export',
+    'maxRows',
+    'maxRuntimeSeconds',
+    'concurrency',
+    'justification',
+    'elevatedHealth',
+  ];
+  if (format === 'csv') {
+    return formatCsv(columns, rows, { headers: true });
+  }
+  return formatTable(columns, rows);
+}
+
+function connectionPolicyRows(connection) {
+  const base = [
     connection.id,
     connection.name,
     connection.engine,
     [...(connection.credentialProfiles || [])].join(', '),
-  ]);
+  ];
+  const policies = connection.credentialProfilePolicies || [];
+  if (policies.length === 0) {
+    return [[...base, '', '', '', '', '', '', '', '']];
+  }
 
-  if (format === 'json') {
-    return `${JSON.stringify(connections, null, 2)}\n`;
-  }
-  if (format === 'csv') {
-    return formatCsv(['id', 'name', 'engine', 'credentialProfiles'], rows, { headers: true });
-  }
-  return formatTable(['id', 'name', 'engine', 'credentialProfiles'], rows);
+  return policies.map((policy) => [
+    ...base,
+    policy.credentialProfile,
+    policy.readOnly ? 'read-only (writes blocked)' : 'write-capable',
+    policy.canExport ? 'allowed' : 'blocked',
+    formatPolicyLimit(policy.maxRowsPerQuery),
+    formatPolicyLimit(policy.maxRuntimeSeconds),
+    formatPolicyLimit(policy.concurrencyLimit),
+    policy.justificationMode === 'PROFILE_REQUIRED' ? 'required for every run' : 'not required',
+    policy.sysadmin ? 'yes' : 'no',
+  ]);
+}
+
+function formatPolicyLimit(value) {
+  return value === 2147483647 ? 'unlimited' : value;
 }
 
 export function formatCsv(columns, rows, { headers = true } = {}) {

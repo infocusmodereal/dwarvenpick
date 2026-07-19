@@ -146,6 +146,8 @@ class QueryExecutionManager(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val authAuditLogger: AuthAuditLogger,
     private val queryExecutionProperties: QueryExecutionProperties,
+    private val queryJustificationPolicy: QueryJustificationPolicy,
+    private val queryExecutionLimitPolicy: QueryExecutionLimitPolicy,
     private val queryHistoryRepository: QueryHistoryRepository,
     private val queryRuntimeRepository: QueryRuntimeRepository,
     private val queryAdmissionRepository: QueryAdmissionRepository,
@@ -225,12 +227,12 @@ class QueryExecutionManager(
         val queryHash = sha256Hex(normalizedSql)
         val executionId = UUID.randomUUID().toString()
 
-        val maxRows = policy.maxRowsPerQuery.coerceAtLeast(1).coerceAtMost(queryExecutionProperties.maxBufferedRows)
+        val effectiveLimits = queryExecutionLimitPolicy.resolve(policy)
+        val maxRows = effectiveLimits.maxRowsPerQuery
         val maxBufferedBytes = queryExecutionProperties.maxBufferedBytes.coerceAtLeast(1L)
         val maxCellBytes = queryExecutionProperties.maxCellBytes.coerceAtLeast(1)
-        val maxRuntimeSeconds = policy.maxRuntimeSeconds.coerceAtLeast(1)
-        val concurrencyLimit =
-            policy.concurrencyLimit.coerceAtLeast(1).coerceAtMost(queryExecutionProperties.maxConcurrencyPerUser.coerceAtLeast(1))
+        val maxRuntimeSeconds = effectiveLimits.maxRuntimeSeconds
+        val concurrencyLimit = effectiveLimits.concurrencyLimit
 
         val record =
             QueryExecutionRecord(
@@ -2174,11 +2176,7 @@ class QueryExecutionManager(
         hasWriteIntent: Boolean,
         justification: String?,
     ) {
-        if (!queryExecutionProperties.requireWriteJustification) {
-            return
-        }
-        val requiresJustification = !policy.readOnly || hasWriteIntent
-        if (!requiresJustification || justification != null) {
+        if (!queryJustificationPolicy.requiresJustification(policy.readOnly) || justification != null) {
             return
         }
 

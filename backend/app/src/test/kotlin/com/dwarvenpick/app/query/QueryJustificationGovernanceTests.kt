@@ -70,13 +70,18 @@ class QueryJustificationGovernanceTests {
         }.isInstanceOf(QueryJustificationRequiredException::class.java)
             .hasMessageContaining("justification is required")
 
-        assertThat(authAuditEventStore.snapshot())
-            .anyMatch { event ->
-                event.type == "query.execute" &&
-                    event.outcome == "denied" &&
-                    event.details["reason"] == "missing_write_justification" &&
-                    event.details["credentialProfile"] == "read-write"
-            }
+        val denial =
+            authAuditEventStore
+                .snapshot()
+                .single { event ->
+                    event.type == "query.execute" &&
+                        event.outcome == "denied" &&
+                        event.details["reason"] == "missing_write_justification"
+                }
+        assertThat(denial.details)
+            .containsEntry("credentialProfile", "read-write")
+            .containsEntry("readOnly", false)
+            .containsEntry("writeLikeSql", false)
     }
 
     @Test
@@ -193,6 +198,9 @@ class QueryJustificationGovernanceTests {
                 policy = queryPolicy(readOnly = true),
             )
         }.isInstanceOf(QueryReadOnlyViolationException::class.java)
+            .hasMessage(
+                "Read-only mode is enabled for this datasource access mapping. Only SELECT-like statements are allowed.",
+            )
     }
 
     private fun queryPolicy(readOnly: Boolean): QueryAccessPolicy =

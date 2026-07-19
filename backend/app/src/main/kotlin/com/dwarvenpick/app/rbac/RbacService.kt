@@ -242,26 +242,7 @@ class RbacService(
         datasourceId: String,
     ): Boolean = rbacRepository.deleteDatasourceAccess(groupId, datasourceId)
 
-    fun listPermittedDatasources(principal: AuthenticatedUserPrincipal): List<DatasourceResponse> {
-        if (principal.roles.contains("SYSTEM_ADMIN")) {
-            return listDatasourceCatalog()
-        }
-
-        val allowedIds =
-            rbacRepository
-                .listDatasourceAccess()
-                .asSequence()
-                .filter { access -> access.groupId in principal.groups && access.canQuery }
-                .map { access -> access.datasourceId }
-                .toSet()
-
-        return datasourceRegistryService
-            .listCatalogEntries()
-            .asSequence()
-            .filter { datasource -> datasource.id in allowedIds }
-            .map { datasource -> datasource.toResponse() }
-            .toList()
-    }
+    internal fun datasourceAccessSnapshot(): List<DatasourceAccessRecord> = rbacRepository.listDatasourceAccess()
 
     fun canUserQuery(
         principal: AuthenticatedUserPrincipal,
@@ -286,6 +267,19 @@ class RbacService(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
         credentialProfile: String,
+    ): Boolean =
+        canUserExport(
+            principal = principal,
+            datasourceId = datasourceId,
+            credentialProfile = credentialProfile,
+            allAccessRules = rbacRepository.listDatasourceAccess(),
+        )
+
+    internal fun canUserExport(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+        credentialProfile: String,
+        allAccessRules: List<DatasourceAccessRecord>,
     ): Boolean {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
@@ -300,7 +294,7 @@ class RbacService(
             return true
         }
 
-        return rbacRepository.listDatasourceAccess().any { access ->
+        return allAccessRules.any { access ->
             access.datasourceId == datasourceId &&
                 access.groupId in principal.groups &&
                 access.credentialProfile == normalizedCredentialProfile &&
@@ -312,30 +306,54 @@ class RbacService(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
         requestedCredentialProfile: String?,
+    ): QueryAccessPolicy =
+        resolveQueryAccessPolicy(
+            principal = principal,
+            datasourceId = datasourceId,
+            requestedCredentialProfile = requestedCredentialProfile,
+            allAccessRules = rbacRepository.listDatasourceAccess(),
+        )
+
+    internal fun resolveQueryAccessPolicy(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+        requestedCredentialProfile: String?,
+        allAccessRules: List<DatasourceAccessRecord>,
     ): QueryAccessPolicy {
         val requested = requestedCredentialProfile?.trim()?.ifBlank { null }
         if (requested == null) {
-            return resolveQueryAccessPolicy(principal, datasourceId)
+            return resolveQueryAccessPolicy(principal, datasourceId, allAccessRules)
         }
 
         return resolveQueryAccessPolicyForProfile(
             principal = principal,
             datasourceId = datasourceId,
             credentialProfile = requested,
+            allAccessRules = allAccessRules,
         )
     }
 
     fun resolveQueryAccessPolicy(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
+    ): QueryAccessPolicy =
+        resolveQueryAccessPolicy(
+            principal = principal,
+            datasourceId = datasourceId,
+            allAccessRules = rbacRepository.listDatasourceAccess(),
+        )
+
+    internal fun resolveQueryAccessPolicy(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+        allAccessRules: List<DatasourceAccessRecord>,
     ): QueryAccessPolicy {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         }
 
         val matchingAccessRules =
-            rbacRepository
-                .listDatasourceAccess()
+            allAccessRules
                 .asSequence()
                 .filter { access ->
                     access.datasourceId == datasourceId &&
@@ -397,10 +415,11 @@ class RbacService(
         )
     }
 
-    private fun resolveQueryAccessPolicyForProfile(
+    internal fun resolveQueryAccessPolicyForProfile(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,
         credentialProfile: String,
+        allAccessRules: List<DatasourceAccessRecord>,
     ): QueryAccessPolicy {
         if (!datasourceRegistryService.hasDatasource(datasourceId)) {
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
@@ -415,8 +434,7 @@ class RbacService(
 
         val isSystemAdmin = principal.roles.contains("SYSTEM_ADMIN")
         val matchingAccessRules =
-            rbacRepository
-                .listDatasourceAccess()
+            allAccessRules
                 .asSequence()
                 .filter { access ->
                     access.datasourceId == datasourceId &&

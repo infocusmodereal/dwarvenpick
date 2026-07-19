@@ -22,6 +22,11 @@ import AppShell from '../components/AppShell';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import ObjectInspectorSectionContent from '../workbench/components/ObjectInspectorSectionContent';
 import QueryTabsBar from '../workbench/components/QueryTabsBar';
+import CredentialProfilePolicyControl from '../workbench/components/CredentialProfilePolicyControl';
+import {
+    isMissingRequiredQueryJustification,
+    selectEffectiveCredentialProfilePolicy
+} from '../workbench/credentialProfilePolicy';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
 import { buildHistoryWorkspaceTab } from '../workbench/queryHistoryContext';
@@ -3854,6 +3859,25 @@ export default function WorkspacePage() {
                 return;
             }
 
+            const effectiveProfilePolicy = selectEffectiveCredentialProfilePolicy(
+                visibleDatasources.find((datasource) => datasource.id === datasourceId),
+                tab.requestedCredentialProfile
+            );
+            if (
+                isMissingRequiredQueryJustification(effectiveProfilePolicy, tab.queryJustification)
+            ) {
+                updateWorkspaceTab(tabId, (currentTab) => ({
+                    ...currentTab,
+                    errorMessage:
+                        'Justification is required for every run through this write-capable profile.',
+                    statusMessage: ''
+                }));
+                requestAnimationFrame(() => {
+                    document.getElementById('tab-query-justification')?.focus();
+                });
+                return;
+            }
+
             clearValidationMarkers();
             updateWorkspaceTab(tabId, (currentTab) =>
                 prepareTabForQueryExecution(currentTab, modeLabel, runKind)
@@ -6978,58 +7002,28 @@ export default function WorkspacePage() {
                                                 </div>
                                             </div>
                                         </div>
-                                        {isSystemAdmin && activeTab ? (
-                                            <>
-                                                <div className="explorer-toolbar-label-row">
-                                                    <span className="tile-heading-icon" aria-hidden>
-                                                        <ExplorerIcon glyph="role" />
-                                                    </span>
-                                                    <label
-                                                        htmlFor="tab-credential-profile"
-                                                        className="explorer-toolbar-label-text"
-                                                    >
-                                                        Credential Profile
-                                                    </label>
-                                                </div>
-                                                <div className="explorer-toolbar-control-row">
-                                                    <div className="select-wrap">
-                                                        <select
-                                                            id="tab-credential-profile"
-                                                            aria-label="Credential profile override"
-                                                            value={
-                                                                activeTab.requestedCredentialProfile
-                                                            }
-                                                            onChange={(event) => {
-                                                                updateWorkspaceTab(
-                                                                    activeTab.id,
-                                                                    (currentTab) => ({
-                                                                        ...currentTab,
-                                                                        requestedCredentialProfile:
-                                                                            event.target.value
-                                                                    })
-                                                                );
-                                                            }}
-                                                            disabled={activeTab.isExecuting}
-                                                        >
-                                                            <option value="">Auto (RBAC)</option>
-                                                            {(
-                                                                visibleDatasources.find(
-                                                                    (datasource) =>
-                                                                        datasource.id ===
-                                                                        activeTab.datasourceId
-                                                                )?.credentialProfiles ?? []
-                                                            ).map((profile) => (
-                                                                <option
-                                                                    key={`credential-profile-${profile}`}
-                                                                    value={profile}
-                                                                >
-                                                                    {profile}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </>
+                                        {activeTab ? (
+                                            <CredentialProfilePolicyControl
+                                                datasource={visibleDatasources.find(
+                                                    (datasource) =>
+                                                        datasource.id === activeTab.datasourceId
+                                                )}
+                                                requestedCredentialProfile={
+                                                    activeTab.requestedCredentialProfile
+                                                }
+                                                canOverride={isSystemAdmin}
+                                                disabled={activeTab.isExecuting}
+                                                onProfileChange={(credentialProfile) => {
+                                                    updateWorkspaceTab(
+                                                        activeTab.id,
+                                                        (currentTab) => ({
+                                                            ...currentTab,
+                                                            requestedCredentialProfile:
+                                                                credentialProfile
+                                                        })
+                                                    );
+                                                }}
+                                            />
                                         ) : null}
                                         {activeTab ? (
                                             <>
@@ -7060,6 +7054,17 @@ export default function WorkspacePage() {
                                                             );
                                                         }}
                                                         placeholder="Change ticket or reason"
+                                                        required={
+                                                            selectEffectiveCredentialProfilePolicy(
+                                                                visibleDatasources.find(
+                                                                    (datasource) =>
+                                                                        datasource.id ===
+                                                                        activeTab.datasourceId
+                                                                ),
+                                                                activeTab.requestedCredentialProfile
+                                                            )?.justificationMode ===
+                                                            'PROFILE_REQUIRED'
+                                                        }
                                                         disabled={activeTab.isExecuting}
                                                     />
                                                 </div>

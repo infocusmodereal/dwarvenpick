@@ -29,6 +29,18 @@ export type CatalogDatasourceResponse = {
     engine: string;
     credentialProfiles: string[];
     sysadminCredentialProfiles?: string[];
+    credentialProfilePolicies?: EffectiveCredentialProfilePolicyResponse[];
+};
+
+export type EffectiveCredentialProfilePolicyResponse = {
+    credentialProfile: string;
+    readOnly: boolean;
+    canExport: boolean;
+    maxRowsPerQuery: number;
+    maxRuntimeSeconds: number;
+    concurrencyLimit: number;
+    sysadmin: boolean;
+    justificationMode: 'NONE' | 'PROFILE_REQUIRED';
 };
 
 export type DatasourceEngine =

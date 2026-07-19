@@ -64,6 +64,12 @@ class QueryAdmissionPostgresTests {
     private lateinit var queryExecutionProperties: QueryExecutionProperties
 
     @Autowired
+    private lateinit var queryJustificationPolicy: QueryJustificationPolicy
+
+    @Autowired
+    private lateinit var queryExecutionLimitPolicy: QueryExecutionLimitPolicy
+
+    @Autowired
     private lateinit var queryHistoryRepository: QueryHistoryRepository
 
     @Autowired
@@ -148,6 +154,8 @@ class QueryAdmissionPostgresTests {
                 datasourcePoolManager = datasourcePoolManager,
                 authAuditLogger = authAuditLogger,
                 queryExecutionProperties = queryExecutionProperties,
+                queryJustificationPolicy = queryJustificationPolicy,
+                queryExecutionLimitPolicy = queryExecutionLimitPolicy,
                 queryHistoryRepository = queryHistoryRepository,
                 queryRuntimeRepository = queryRuntimeRepository,
                 queryAdmissionRepository = queryAdmissionRepository,
