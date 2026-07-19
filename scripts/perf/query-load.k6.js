@@ -22,6 +22,13 @@ const backendMetricNames = [
   'dwarvenpick_query_active',
   'dwarvenpick_query_buffered_bytes',
   'dwarvenpick_query_buffered_budget_bytes',
+  'dwarvenpick_query_result_storage_used_bytes',
+  'dwarvenpick_query_result_storage_budget_bytes',
+  'dwarvenpick_query_result_storage_headroom_bytes',
+  'dwarvenpick_query_result_storage_table_bytes',
+  'dwarvenpick_query_result_storage_rejections_total',
+  'dwarvenpick_query_result_storage_persistence_seconds_count',
+  'dwarvenpick_query_result_storage_cleanup_seconds_count',
   'dwarvenpick_query_execution_total',
   'dwarvenpick_query_duration_seconds',
   'dwarvenpick_query_export_attempts_total',
@@ -104,6 +111,8 @@ function fetchAppMetrics(label) {
     'dwarvenpick_query_active',
     'dwarvenpick_query_buffered_bytes',
     'dwarvenpick_query_buffered_budget_bytes',
+    'dwarvenpick_query_result_storage_used_bytes',
+    'dwarvenpick_query_result_storage_budget_bytes',
   ];
   check(presentMetrics, {
     [`app metrics ${label} include expected signals`]: (names) => {

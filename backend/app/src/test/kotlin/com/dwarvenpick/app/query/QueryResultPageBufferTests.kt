@@ -60,4 +60,20 @@ class QueryResultPageBufferTests {
         assertThat(buffer.totalRowCount()).isEqualTo(1_000)
         assertThat(buffer.totalLogicalByteCount()).isEqualTo(8_000)
     }
+
+    @Test
+    fun `discarding a rejected page preserves committed row accounting`() {
+        val buffer = QueryResultPageBuffer(pageSize = 2)
+        buffer.append(listOf("one"), 3)
+        val committed = requireNotNull(buffer.append(listOf("two"), 3))
+        buffer.acknowledge(committed)
+        buffer.append(listOf("pending"), 7)
+        assertThat(buffer.snapshotPending()).isNotNull()
+
+        assertThat(buffer.discardPending()).isEqualTo(7)
+        assertThat(buffer.totalRowCount()).isEqualTo(2)
+        assertThat(buffer.totalLogicalByteCount()).isEqualTo(6)
+        assertThat(buffer.pendingRowCount()).isZero()
+        assertThat(buffer.snapshotPending()).isNull()
+    }
 }

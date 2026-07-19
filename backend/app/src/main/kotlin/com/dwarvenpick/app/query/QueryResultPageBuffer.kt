@@ -87,6 +87,15 @@ class QueryResultPageBuffer(
     }
 
     @Synchronized
+    fun discardPending(): Long {
+        val releasedBytes = pendingByteCount
+        pendingRows.clear()
+        pendingByteCount = 0
+        inFlightSnapshot = null
+        return releasedBytes
+    }
+
+    @Synchronized
     fun reset(): QueryResultBufferReset {
         val releasedBytes = pendingByteCount
         resultColumns = emptyList()

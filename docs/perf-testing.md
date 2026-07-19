@@ -152,6 +152,13 @@ scripts/perf/run-query-smoke.sh
     - `dwarvenpick_query_export_attempts_total`
     - `dwarvenpick_query_buffered_bytes`
     - `dwarvenpick_query_buffered_budget_bytes`
+    - `dwarvenpick_query_result_storage_used_bytes`
+    - `dwarvenpick_query_result_storage_budget_bytes`
+    - `dwarvenpick_query_result_storage_headroom_bytes`
+    - `dwarvenpick_query_result_storage_table_bytes`
+    - `dwarvenpick_query_result_storage_rejections_total`
+    - `dwarvenpick_query_result_storage_persistence_seconds`
+    - `dwarvenpick_query_result_storage_cleanup_seconds`
     - `dwarvenpick_pool_active`
     - `dwarvenpick_pool_total`, with `dwarvenpick_pool` as the compatibility fallback
 
@@ -162,6 +169,8 @@ scripts/perf/run-query-smoke.sh
 - Result paging and CSV export checks pass or CSV export returns 403 for profiles without export access.
 - Result-buffer pressure remains below alert thresholds:
   `dwarvenpick_query_buffered_bytes / dwarvenpick_query_buffered_budget_bytes`.
+- Persisted result storage stays below 80% of its fixed budget, and any budget rejection is accompanied by a successful
+  query with an explicitly truncated result while history and status endpoints remain responsive.
 - Pool saturation remains below alert thresholds:
   `dwarvenpick_pool_active / dwarvenpick_pool_total`.
 - A run without Prometheus access remains valid for local functional timings, but the report marks backend metrics as

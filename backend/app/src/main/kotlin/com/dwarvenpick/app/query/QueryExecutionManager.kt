@@ -1208,8 +1208,8 @@ class QueryExecutionManager(
         }
 
         val page = record.resultBuffer.append(cells.map { cell -> cell.value }, rowBytes)
-        if (page != null) {
-            persistIntermediatePage(record, page)
+        if (page != null && !persistIntermediatePage(record, page)) {
+            return false
         }
 
         if (cells.any { cell -> cell.truncated }) {
@@ -1408,19 +1408,24 @@ class QueryExecutionManager(
     private fun persistIntermediatePage(
         record: QueryExecutionRecord,
         page: QueryResultPageSnapshot,
-    ) {
+    ): Boolean {
         try {
             queryRuntimeRepository.appendResultPage(
                 executionId = record.executionId,
                 ownerInstanceId = applicationInstanceId.value,
                 page = page,
             )
+        } catch (exception: QueryResultStorageBudgetExceededException) {
+            markResultLimit(record, resultStorageBudgetLimitMessage(exception.budgetBytes))
+            releaseInstanceBufferedBytes(record.resultBuffer.discardPending())
+            return false
         } catch (_: QueryRuntimeWriteRejectedException) {
             record.cancelRequested = true
             clearBufferedResults(record)
             throw QueryCanceledException("Query execution ownership was canceled.")
         }
         releaseInstanceBufferedBytes(record.resultBuffer.acknowledge(page))
+        return true
     }
 
     private fun removeExecution(executionId: String) {
@@ -1549,6 +1554,10 @@ class QueryExecutionManager(
         "Query succeeded. Result truncated because this backend reached the " +
             "${formatBytes(maxBufferedBytesPerInstance)} shared result buffer budget."
 
+    private fun resultStorageBudgetLimitMessage(maxPersistedResultBytes: Long): String =
+        "Query succeeded. Result truncated because the shared persisted result storage budget of " +
+            "${formatBytes(maxPersistedResultBytes)} was reached."
+
     private fun formatBytes(bytes: Long): String =
         when {
             bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)}MiB"
@@ -1655,14 +1664,14 @@ class QueryExecutionManager(
             }
 
             val completedAt = Instant.now()
-            val message =
+            var message =
                 record.resultLimitMessage
                     ?: if (record.rowLimitReached) {
                         "Query succeeded. Result truncated at ${record.maxRowsPerQuery} rows."
                     } else {
                         "Query succeeded."
                     }
-            val finalPage = record.resultBuffer.snapshotPending()
+            var finalPage = record.resultBuffer.snapshotPending()
             try {
                 queryRuntimeRepository.finalizeSucceededExecution(
                     update =
@@ -1672,6 +1681,20 @@ class QueryExecutionManager(
                             completedAt = completedAt,
                         ),
                     finalPage = finalPage,
+                )
+            } catch (exception: QueryResultStorageBudgetExceededException) {
+                releaseInstanceBufferedBytes(record.resultBuffer.discardPending())
+                finalPage = null
+                markResultLimit(record, resultStorageBudgetLimitMessage(exception.budgetBytes))
+                message = requireNotNull(record.resultLimitMessage)
+                queryRuntimeRepository.finalizeSucceededExecution(
+                    update =
+                        record.toRuntimeUpdate(
+                            status = QueryExecutionStatus.SUCCEEDED,
+                            message = message,
+                            completedAt = completedAt,
+                        ),
+                    finalPage = null,
                 )
             } catch (_: QueryRuntimeWriteRejectedException) {
                 record.cancelRequested = true

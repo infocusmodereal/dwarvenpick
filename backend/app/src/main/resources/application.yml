@@ -46,6 +46,8 @@ dwarvenpick:
     max-buffered-rows: 5000
     max-buffered-bytes: 67108864
     max-buffered-bytes-per-instance: 268435456
+    max-persisted-result-bytes: ${DWARVENPICK_QUERY_MAX_PERSISTED_RESULT_BYTES:2147483648}
+    result-storage-metrics-interval-ms: ${DWARVENPICK_QUERY_RESULT_STORAGE_METRICS_INTERVAL_MS:30000}
     max-cell-bytes: 1048576
     max-export-rows: 5000
     jdbc-fetch-size: 500
