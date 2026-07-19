@@ -39,6 +39,16 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_query_timeout_total`
   - `dwarvenpick_query_buffered_bytes`
   - `dwarvenpick_query_buffered_budget_bytes`
+- Persisted result storage:
+  - `dwarvenpick_query_result_storage_used_bytes`
+  - `dwarvenpick_query_result_storage_budget_bytes`
+  - `dwarvenpick_query_result_storage_headroom_bytes`
+  - `dwarvenpick_query_result_storage_table_bytes`
+  - `dwarvenpick_query_result_storage_bytes_written_total`
+  - `dwarvenpick_query_result_storage_bytes_reclaimed_total`
+  - `dwarvenpick_query_result_storage_rejections_total{reason="budget"}`
+  - `dwarvenpick_query_result_storage_persistence_seconds`
+  - `dwarvenpick_query_result_storage_cleanup_seconds`
 - Exports:
   - `dwarvenpick_query_export_attempts_total{outcome=...}`
 - Auth:
@@ -62,3 +72,7 @@ Keep `/actuator/prometheus` enabled for internal Prometheus scraping. Public exp
    - Trigger: `dwarvenpick_pool_active / dwarvenpick_pool_total > 0.9` for 5m
 5. Login failure surge:
    - Trigger: `increase(dwarvenpick_auth_login_attempts_total{outcome="failed"}[5m]) > 25`
+6. Persisted result budget pressure:
+   - Trigger: `dwarvenpick_query_result_storage_used_bytes / dwarvenpick_query_result_storage_budget_bytes > 0.8` for 15m
+7. Persisted result rejection:
+   - Trigger: `increase(dwarvenpick_query_result_storage_rejections_total{reason="budget"}[5m]) > 0`

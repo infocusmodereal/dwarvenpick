@@ -1,12 +1,15 @@
 package com.dwarvenpick.app.query
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.sql.Timestamp
 import java.time.Instant
+import javax.sql.DataSource
 
 data class QueryRuntimeExecutionUpdate(
     val executionId: String,
@@ -34,6 +37,17 @@ class QueryResultIntegrityException(
     message: String,
 ) : RuntimeException(message)
 
+class QueryResultStorageBudgetExceededException(
+    val budgetBytes: Long,
+    val usedBytes: Long,
+    val requestedBytes: Long,
+) : RuntimeException("Persisted query result storage budget exceeded.")
+
+data class QueryResultStorageSnapshot(
+    val usedBytes: Long,
+    val tableBytes: Long,
+)
+
 private data class LockedExecutionState(
     val status: QueryExecutionStatus,
     val cancelRequested: Boolean,
@@ -49,8 +63,15 @@ private data class LastResultPagePosition(
 class QueryResultPersistenceRepository(
     jdbcTemplate: JdbcTemplate,
     private val objectMapper: ObjectMapper,
+    private val queryExecutionProperties: QueryExecutionProperties,
+    private val meterRegistry: MeterRegistry,
+    dataSource: DataSource,
 ) {
     private val jdbc = NamedParameterJdbcTemplate(jdbcTemplate)
+    private val postgres =
+        dataSource.connection.use { connection ->
+            connection.metaData.databaseProductName.equals("PostgreSQL", ignoreCase = true)
+        }
 
     @Transactional
     fun updateExecution(update: QueryRuntimeExecutionUpdate) {
@@ -215,6 +236,21 @@ class QueryResultPersistenceRepository(
         return executionIds.size
     }
 
+    fun storageSnapshot(): QueryResultStorageSnapshot {
+        val usedBytes = currentStoredBytes()
+        val tableBytes =
+            if (postgres) {
+                jdbc.queryForObject(
+                    "SELECT pg_total_relation_size('query_runtime_result_pages')",
+                    emptyMap<String, Any>(),
+                    Long::class.java,
+                ) ?: usedBytes
+            } else {
+                usedBytes
+            }
+        return QueryResultStorageSnapshot(usedBytes = usedBytes, tableBytes = tableBytes)
+    }
+
     private fun lockWritableExecution(
         executionId: String,
         ownerInstanceId: String,
@@ -290,26 +326,59 @@ class QueryResultPersistenceRepository(
         executionId: String,
         page: QueryResultPageSnapshot,
     ) {
+        val timer = Timer.start(meterRegistry)
         val rowsJson = objectMapper.writeValueAsString(page.rows)
-        jdbc.update(
-            """
-            INSERT INTO query_runtime_result_pages (
-              execution_id, page_index, start_row, row_count, rows_json, byte_count, created_at
-            ) VALUES (
-              :executionId, :pageIndex, :startRow, :rowCount, :rowsJson, :byteCount, :createdAt
+        val byteCount = rowsJson.toByteArray(Charsets.UTF_8).size.toLong()
+        try {
+            lockStorageBudget()
+            val usedBytes = currentStoredBytes()
+            val budgetBytes = queryExecutionProperties.maxPersistedResultBytes
+            if (byteCount > budgetBytes || usedBytes > budgetBytes - byteCount) {
+                meterRegistry.counter("dwarvenpick.query.result_storage.rejections", "reason", "budget").increment()
+                throw QueryResultStorageBudgetExceededException(
+                    budgetBytes = budgetBytes,
+                    usedBytes = usedBytes,
+                    requestedBytes = byteCount,
+                )
+            }
+            jdbc.update(
+                """
+                INSERT INTO query_runtime_result_pages (
+                  execution_id, page_index, start_row, row_count, rows_json, byte_count, created_at
+                ) VALUES (
+                  :executionId, :pageIndex, :startRow, :rowCount, :rowsJson, :byteCount, :createdAt
+                )
+                """.trimIndent(),
+                mapOf(
+                    "executionId" to executionId,
+                    "pageIndex" to page.pageIndex,
+                    "startRow" to page.startRow,
+                    "rowCount" to page.rowCount,
+                    "rowsJson" to rowsJson,
+                    "byteCount" to byteCount,
+                    "createdAt" to Instant.now().toTimestamp(),
+                ),
             )
-            """.trimIndent(),
-            mapOf(
-                "executionId" to executionId,
-                "pageIndex" to page.pageIndex,
-                "startRow" to page.startRow,
-                "rowCount" to page.rowCount,
-                "rowsJson" to rowsJson,
-                "byteCount" to rowsJson.toByteArray(Charsets.UTF_8).size.toLong(),
-                "createdAt" to Instant.now().toTimestamp(),
-            ),
-        )
+            meterRegistry.counter("dwarvenpick.query.result_storage.bytes_written").increment(byteCount.toDouble())
+        } finally {
+            timer.stop(meterRegistry.timer("dwarvenpick.query.result_storage.persistence"))
+        }
     }
+
+    private fun lockStorageBudget() {
+        jdbc.queryForObject(
+            "SELECT lock_id FROM query_result_storage_lock WHERE lock_id = 1 FOR UPDATE",
+            emptyMap<String, Any>(),
+            Int::class.java,
+        ) ?: error("Query result storage lock row is missing.")
+    }
+
+    private fun currentStoredBytes(): Long =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(byte_count), 0) FROM query_runtime_result_pages",
+            emptyMap<String, Any>(),
+            Long::class.java,
+        ) ?: 0L
 
     private fun resultPageRowCount(executionId: String): Int =
         jdbc.queryForObject(
@@ -319,10 +388,24 @@ class QueryResultPersistenceRepository(
         ) ?: 0
 
     private fun deleteResultPages(executionId: String) {
-        jdbc.update(
-            "DELETE FROM query_runtime_result_pages WHERE execution_id = :executionId",
-            mapOf("executionId" to executionId),
-        )
+        val timer = Timer.start(meterRegistry)
+        try {
+            val reclaimedBytes =
+                jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(byte_count), 0) FROM query_runtime_result_pages WHERE execution_id = :executionId",
+                    mapOf("executionId" to executionId),
+                    Long::class.java,
+                ) ?: 0L
+            jdbc.update(
+                "DELETE FROM query_runtime_result_pages WHERE execution_id = :executionId",
+                mapOf("executionId" to executionId),
+            )
+            if (reclaimedBytes > 0) {
+                meterRegistry.counter("dwarvenpick.query.result_storage.bytes_reclaimed").increment(reclaimedBytes.toDouble())
+            }
+        } finally {
+            timer.stop(meterRegistry.timer("dwarvenpick.query.result_storage.cleanup"))
+        }
     }
 
     private fun updateExecutionMetadata(update: QueryRuntimeExecutionUpdate) {

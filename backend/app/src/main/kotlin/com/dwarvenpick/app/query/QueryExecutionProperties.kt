@@ -10,6 +10,8 @@ data class QueryExecutionProperties(
     val maxBufferedRows: Int = 5000,
     val maxBufferedBytes: Long = 64L * 1024L * 1024L,
     val maxBufferedBytesPerInstance: Long = 256L * 1024L * 1024L,
+    val maxPersistedResultBytes: Long = 2L * 1024L * 1024L * 1024L,
+    val resultStorageMetricsIntervalMs: Long = 30_000,
     val maxCellBytes: Int = 1024 * 1024,
     val maxExportRows: Int = 5000,
     val jdbcFetchSize: Int = 500,
@@ -27,4 +29,8 @@ data class QueryExecutionProperties(
     val poolMetricsStaleSeconds: Long = 120,
     val requireWriteJustification: Boolean = false,
     val maxJustificationLength: Int = 1000,
-)
+) {
+    init {
+        require(maxPersistedResultBytes > 0) { "dwarvenpick.query.max-persisted-result-bytes must be positive." }
+    }
+}

@@ -29,6 +29,10 @@ migrated forward on startup.
 
 Legacy Resource Manager data in `scripts.json` is imported into the database on startup if the resource tables are empty.
 
+Persisted result pages are bounded by a database-coordinated aggregate byte budget shared by every backend replica.
+See [Query result storage](query-result-storage.md) for the quota, backpressure behavior, retention objective, and the
+threshold for moving payloads out of PostgreSQL.
+
 Script/resource versions are retained according to:
 
 - `dwarvenpick.resources.version-retention-days`

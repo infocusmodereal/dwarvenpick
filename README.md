@@ -95,6 +95,11 @@ The application database stores runtime state that must survive restarts and mul
 Schema changes are managed by Flyway migrations. Existing deployments with pre-created tables are baselined and then
 migrated forward on startup.
 
+Persisted query result pages have a shared, fixed byte quota across all backend replicas. Configure it with
+`DWARVENPICK_QUERY_MAX_PERSISTED_RESULT_BYTES` (default: 2 GiB). Queries that reach the quota succeed with explicitly
+truncated results while their runtime metadata, history, RBAC enforcement, and audit events remain intact. See
+`docs/ops/query-result-storage.md` for retention, monitoring, and capacity guidance.
+
 Use a shared PostgreSQL metadata DB for production and HA deployments. The default local H2 database is intended for
 development only.
 

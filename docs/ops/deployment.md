@@ -301,3 +301,8 @@ Tune based on:
 Use `dwarvenpick.query.max-buffered-bytes-per-instance` to cap the total query result payload retained in one backend process. The default is `256MiB`, which leaves headroom for the chart's default `1Gi` pod memory limit and the JVM's default container-aware heap sizing. Raise it only when the pod memory limit and JVM heap are sized with room for request handling, CSV export, JDBC driver buffers, and application overhead.
 
 Persisted runtime results are stored in page-sized rows under `query_runtime_result_pages`; `query_runtime_executions.rows_json` is retained only as an upgrade/backfill compatibility column. Result pagination and CSV export fetch bounded row pages so another backend replica can serve completed results without deserializing the entire result payload for every page.
+
+Set `DWARVENPICK_QUERY_MAX_PERSISTED_RESULT_BYTES` to a positive, fixed budget for the aggregate result payload across
+all replicas. The application default is `2GiB`; production values must reserve database headroom for metadata,
+history, audit, sessions, WAL, and maintenance. Keep the same value on every replica during a rollout. Review
+`docs/ops/query-result-storage.md` before raising it. This quota does not add HPA or unrestricted autoscaling.
