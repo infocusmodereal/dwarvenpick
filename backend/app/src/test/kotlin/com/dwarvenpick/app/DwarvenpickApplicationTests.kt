@@ -109,9 +109,9 @@ class DwarvenpickApplicationTests {
     }
 
     @Test
-    fun `actuator health endpoint returns up`() {
+    fun `actuator readiness endpoint returns up`() {
         mockMvc
-            .perform(get("/actuator/health"))
+            .perform(get("/actuator/health/readiness"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("UP"))
     }
