@@ -131,7 +131,10 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(connection).toHaveValue(config.datasource);
 
             if (config.credentialProfile) {
-                const profile = page.getByLabel('Credential profile override');
+                const profile = page.getByRole('combobox', {
+                    name: 'Credential Profile',
+                    exact: true
+                });
                 await expect(profile).toBeVisible();
                 await profile.selectOption(config.credentialProfile);
                 await expect(profile).toHaveValue(config.credentialProfile);

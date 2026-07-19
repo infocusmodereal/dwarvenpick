@@ -657,6 +657,7 @@ class DwarvenpickApplicationTests {
                 .perform(get("/api/queries/$executionId/export.csv").cookie(*adminSession))
                 .andExpect(request().asyncStarted())
                 .andReturn()
+        exportRequest.getAsyncResult(5_000)
         val exportResult =
             mockMvc
                 .perform(asyncDispatch(exportRequest))
@@ -725,14 +726,9 @@ class DwarvenpickApplicationTests {
         val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
         assertThat(finalStatus).isEqualTo("SUCCEEDED")
 
-        val exportRequest =
-            mockMvc
-                .perform(get("/api/queries/$executionId/export.csv").cookie(*analystSession))
-                .andExpect(request().asyncStarted())
-                .andReturn()
         val exportResult =
             mockMvc
-                .perform(asyncDispatch(exportRequest))
+                .perform(get("/api/queries/$executionId/export.csv").cookie(*analystSession))
                 .andExpect(status().isForbidden)
                 .andReturn()
         assertThat(exportResult.response.contentType).isEqualTo("text/csv")
@@ -769,14 +765,9 @@ class DwarvenpickApplicationTests {
         val deniedExecutionId = submitProfileQuery(analystSession, "analyst-ro")
         assertThat(waitForExecutionTerminalStatus(analystSession, deniedExecutionId)).isEqualTo("SUCCEEDED")
 
-        val deniedExportRequest =
-            mockMvc
-                .perform(get("/api/queries/$deniedExecutionId/export.csv").cookie(*analystSession))
-                .andExpect(request().asyncStarted())
-                .andReturn()
         val deniedExportResult =
             mockMvc
-                .perform(asyncDispatch(deniedExportRequest))
+                .perform(get("/api/queries/$deniedExecutionId/export.csv").cookie(*analystSession))
                 .andExpect(status().isForbidden)
                 .andReturn()
         assertThat(deniedExportResult.response.contentAsString).contains("Datasource export access denied")
@@ -789,6 +780,7 @@ class DwarvenpickApplicationTests {
                 .perform(get("/api/queries/$allowedExecutionId/export.csv").cookie(*analystSession))
                 .andExpect(request().asyncStarted())
                 .andReturn()
+        allowedExportRequest.getAsyncResult(5_000)
         val allowedExportResult =
             mockMvc
                 .perform(asyncDispatch(allowedExportRequest))
