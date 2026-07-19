@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditEventStore
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import org.assertj.core.api.Assertions.assertThat
@@ -114,12 +115,11 @@ class QueryJustificationGovernanceTests {
         assertThat(status.justification).isEqualTo("Emergency window TOPS-123")
         assertThat(history).hasSize(1)
         assertThat(history.single().justification).isEqualTo("Emergency window TOPS-123")
-        assertThat(authAuditEventStore.snapshot())
-            .anyMatch { event ->
-                event.type == "query.execute" &&
-                    event.outcome == "succeeded" &&
-                    event.details["justification"] == "Emergency window TOPS-123"
-            }
+        waitForAuditEvent { event ->
+            event.type == "query.execute" &&
+                event.outcome == "succeeded" &&
+                event.details["justification"] == "Emergency window TOPS-123"
+        }
     }
 
     @Test
@@ -203,6 +203,27 @@ class QueryJustificationGovernanceTests {
             maxRuntimeSeconds = 30,
             concurrencyLimit = 2,
         )
+
+    private fun waitForAuditEvent(
+        timeoutMs: Long = 5_000,
+        predicate: (AuthAuditEvent) -> Boolean,
+    ) {
+        val startedAt = System.currentTimeMillis()
+        var snapshot = emptyList<AuthAuditEvent>()
+        while (System.currentTimeMillis() - startedAt < timeoutMs) {
+            snapshot = authAuditEventStore.snapshot()
+            if (snapshot.any(predicate)) {
+                return
+            }
+            Thread.sleep(25)
+        }
+
+        val observed =
+            snapshot.joinToString { event ->
+                "${event.type}:${event.outcome}:${event.details["justification"]}"
+            }
+        throw AssertionError("Timed out waiting for audit event. Observed: [$observed]")
+    }
 
     private fun waitForTerminalStatus(executionId: String): QueryExecutionStatusResponse {
         val startedAt = System.currentTimeMillis()
