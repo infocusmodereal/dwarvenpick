@@ -7,7 +7,7 @@ type UseQueryHistoryOptions = {
     enabled: boolean;
     fetchImpl?: typeof fetch;
     readFriendlyError: (response: Response) => Promise<string>;
-    onError: (message: string) => void;
+    onError?: (message: string) => void;
 };
 
 export const useQueryHistory = ({
@@ -18,6 +18,7 @@ export const useQueryHistory = ({
 }: UseQueryHistoryOptions) => {
     const [queryHistoryEntries, setQueryHistoryEntries] = useState<QueryHistoryEntryResponse[]>([]);
     const [loadingQueryHistory, setLoadingQueryHistory] = useState(false);
+    const [queryHistoryError, setQueryHistoryError] = useState('');
     const [historyDatasourceFilter, setHistoryDatasourceFilter] = useState('');
     const [historyStatusFilter, setHistoryStatusFilter] = useState('');
     const [historyFromFilter, setHistoryFromFilter] = useState('');
@@ -40,6 +41,7 @@ export const useQueryHistory = ({
         requestSequenceRef.current = requestSequence;
         activeRequestRef.current = controller;
         setLoadingQueryHistory(true);
+        setQueryHistoryError('');
 
         try {
             const queryParams = new URLSearchParams();
@@ -84,7 +86,10 @@ export const useQueryHistory = ({
                 return;
             }
 
-            onError(error instanceof Error ? error.message : 'Failed to load query history.');
+            const message =
+                error instanceof Error ? error.message : 'Failed to load query history.';
+            setQueryHistoryError(message);
+            onError?.(message);
         } finally {
             if (requestSequence === requestSequenceRef.current) {
                 activeRequestRef.current = null;
@@ -127,12 +132,51 @@ export const useQueryHistory = ({
         [historySortOrder, queryHistoryEntries]
     );
 
+    const changeHistoryDatasourceFilter = useCallback((value: string) => {
+        setHistoryPageIndex(0);
+        setHistoryDatasourceFilter(value);
+    }, []);
+    const changeHistoryStatusFilter = useCallback((value: string) => {
+        setHistoryPageIndex(0);
+        setHistoryStatusFilter(value);
+    }, []);
+    const changeHistoryFromFilter = useCallback((value: string) => {
+        setHistoryPageIndex(0);
+        setHistoryFromFilter(value);
+    }, []);
+    const changeHistoryToFilter = useCallback((value: string) => {
+        setHistoryPageIndex(0);
+        setHistoryToFilter(value);
+    }, []);
+    const changeHistoryPageSize = useCallback((value: number) => {
+        setHistoryPageIndex(0);
+        setHistoryPageSize(value);
+    }, []);
+    const toggleHistorySortOrder = useCallback(() => {
+        setHistoryPageIndex(0);
+        setHistorySortOrder((current) => (current === 'newest' ? 'oldest' : 'newest'));
+    }, []);
+    const clearHistoryFilters = useCallback(() => {
+        setHistoryPageIndex(0);
+        setHistoryDatasourceFilter('');
+        setHistoryStatusFilter('');
+        setHistoryFromFilter('');
+        setHistoryToFilter('');
+    }, []);
+
     return {
+        changeHistoryDatasourceFilter,
+        changeHistoryFromFilter,
+        changeHistoryPageSize,
+        changeHistoryStatusFilter,
+        changeHistoryToFilter,
+        clearHistoryFilters,
         historyDatasourceFilter,
         historyFromFilter,
         historyHasNextPage,
         historyPageIndex,
         historyPageSize,
+        queryHistoryError,
         historySortOrder,
         historyStatusFilter,
         historyToFilter,
@@ -145,6 +189,7 @@ export const useQueryHistory = ({
         setHistorySortOrder,
         setHistoryStatusFilter,
         setHistoryToFilter,
-        sortedQueryHistoryEntries
+        sortedQueryHistoryEntries,
+        toggleHistorySortOrder
     };
 };

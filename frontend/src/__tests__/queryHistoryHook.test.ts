@@ -121,6 +121,7 @@ describe('useQueryHistory', () => {
         );
         expect(readFriendlyError).toHaveBeenCalledTimes(1);
         expect(result.current.loadingQueryHistory).toBe(false);
+        expect(result.current.queryHistoryError).toBe('History is temporarily unavailable.');
     });
 
     it('ignores an aborted stale response when filters change', async () => {
@@ -156,5 +157,40 @@ describe('useQueryHistory', () => {
         await waitFor(() => expect(result.current.loadingQueryHistory).toBe(false));
         expect(result.current.sortedQueryHistoryEntries[0]?.executionId).toBe('exec-latest');
         expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('resets server pagination for every filter, sort, and page-size action', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+        const readFriendlyError = vi.fn();
+        const onError = vi.fn();
+        const { result } = renderHook(() =>
+            useQueryHistory({
+                enabled: true,
+                fetchImpl: fetchMock,
+                readFriendlyError,
+                onError
+            })
+        );
+        await waitFor(() => expect(result.current.loadingQueryHistory).toBe(false));
+
+        const assertReset = async (action: () => void) => {
+            act(() => {
+                result.current.setHistoryPageIndex(3);
+            });
+            expect(result.current.historyPageIndex).toBe(3);
+            act(action);
+            expect(result.current.historyPageIndex).toBe(0);
+            await waitFor(() => expect(result.current.loadingQueryHistory).toBe(false));
+        };
+
+        await assertReset(() =>
+            result.current.changeHistoryDatasourceFilter('starrocks-prod-adhoc')
+        );
+        await assertReset(() => result.current.changeHistoryStatusFilter('FAILED'));
+        await assertReset(() => result.current.changeHistoryFromFilter('2026-07-01T00:00'));
+        await assertReset(() => result.current.changeHistoryToFilter('2026-07-02T00:00'));
+        await assertReset(() => result.current.changeHistoryPageSize(10));
+        await assertReset(() => result.current.toggleHistorySortOrder());
+        await assertReset(() => result.current.clearHistoryFilters());
     });
 });

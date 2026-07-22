@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import { afterEach, vi } from 'vitest';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import type { QueryHistoryEntryResponse } from '../workbench/types';
 
@@ -28,8 +29,11 @@ const historyEntry: QueryHistoryEntryResponse = {
     completedAt: '2026-06-18T10:00:01Z',
     durationMs: 1000
 };
+const originalExecCommand = document.execCommand;
 
-const renderQueryHistorySection = () =>
+const renderQueryHistorySection = (
+    overrides: Partial<ComponentProps<typeof QueryHistorySection>> = {}
+) =>
     render(
         <QueryHistorySection
             hidden={false}
@@ -43,6 +47,7 @@ const renderQueryHistorySection = () =>
             toFilter=""
             onToFilterChange={vi.fn()}
             loadingQueryHistory={false}
+            errorMessage=""
             onRefresh={vi.fn()}
             sortOrder="newest"
             onToggleSortOrder={vi.fn()}
@@ -54,8 +59,18 @@ const renderQueryHistorySection = () =>
             onPageIndexChange={vi.fn()}
             onPageSizeChange={vi.fn()}
             onOpenEntry={vi.fn()}
+            {...overrides}
         />
     );
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Object.defineProperty(document, 'execCommand', {
+        configurable: true,
+        value: originalExecCommand
+    });
+});
 
 describe('QueryHistorySection', () => {
     it('renders governed query justification in history rows', () => {
@@ -81,5 +96,152 @@ describe('QueryHistorySection', () => {
 
         fireEvent.scroll(wrapper!);
         expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('dispatches open and rerun while keeping redacted SQL unavailable', () => {
+        const onOpenEntry = vi.fn();
+        const { rerender } = renderQueryHistorySection({ onOpenEntry });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Rerun' }));
+        expect(onOpenEntry).toHaveBeenNthCalledWith(1, historyEntry, false);
+        expect(onOpenEntry).toHaveBeenNthCalledWith(2, historyEntry, true);
+
+        rerender(
+            <QueryHistorySection
+                hidden={false}
+                visibleDatasources={[]}
+                datasourceFilter=""
+                onDatasourceFilterChange={vi.fn()}
+                statusFilter=""
+                onStatusFilterChange={vi.fn()}
+                fromFilter=""
+                onFromFilterChange={vi.fn()}
+                toFilter=""
+                onToFilterChange={vi.fn()}
+                loadingQueryHistory={false}
+                errorMessage=""
+                onRefresh={vi.fn()}
+                sortOrder="newest"
+                onToggleSortOrder={vi.fn()}
+                onClearFilters={vi.fn()}
+                entries={[{ ...historyEntry, queryTextRedacted: true }]}
+                pageIndex={0}
+                pageSize={100}
+                hasNextPage={false}
+                onPageIndexChange={vi.fn()}
+                onPageSizeChange={vi.fn()}
+                onOpenEntry={onOpenEntry}
+            />
+        );
+
+        expect(screen.getByText('[REDACTED]')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Rerun' })).toBeDisabled();
+        fireEvent.mouseEnter(screen.getByText('[REDACTED]'));
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('renders distinct loading, empty, and error states', () => {
+        const { rerender } = renderQueryHistorySection({
+            entries: [],
+            loadingQueryHistory: true
+        });
+        expect(screen.getByText('Loading query history...')).toBeInTheDocument();
+
+        rerender(
+            <QueryHistorySection
+                hidden={false}
+                visibleDatasources={[]}
+                datasourceFilter=""
+                onDatasourceFilterChange={vi.fn()}
+                statusFilter=""
+                onStatusFilterChange={vi.fn()}
+                fromFilter=""
+                onFromFilterChange={vi.fn()}
+                toFilter=""
+                onToFilterChange={vi.fn()}
+                loadingQueryHistory={false}
+                errorMessage="History is temporarily unavailable."
+                onRefresh={vi.fn()}
+                sortOrder="newest"
+                onToggleSortOrder={vi.fn()}
+                onClearFilters={vi.fn()}
+                entries={[]}
+                pageIndex={0}
+                pageSize={100}
+                hasNextPage={false}
+                onPageIndexChange={vi.fn()}
+                onPageSizeChange={vi.fn()}
+                onOpenEntry={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole('alert')).toHaveTextContent('History is temporarily unavailable.');
+        expect(
+            screen.getByText('No history entries found for current filters.')
+        ).toBeInTheDocument();
+    });
+
+    it('reports successful and failed query copy attempts', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+        const { container, unmount } = renderQueryHistorySection();
+
+        fireEvent.mouseEnter(container.querySelector('.history-query-preview')!);
+        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+        await waitFor(() =>
+            expect(screen.getByRole('status')).toHaveTextContent('Query text copied to clipboard.')
+        );
+        expect(writeText).toHaveBeenCalledWith(longQuery);
+        unmount();
+
+        const rejectedWrite = vi.fn().mockRejectedValue(new Error('denied'));
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: rejectedWrite } });
+        const failed = renderQueryHistorySection();
+        fireEvent.mouseEnter(failed.container.querySelector('.history-query-preview')!);
+        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+        await waitFor(() =>
+            expect(screen.getByRole('alert')).toHaveTextContent('Unable to copy query text.')
+        );
+    });
+
+    it('reports a rejected legacy clipboard fallback', async () => {
+        vi.stubGlobal('navigator', { ...navigator, clipboard: undefined });
+        Object.defineProperty(document, 'execCommand', {
+            configurable: true,
+            value: vi.fn().mockReturnValue(false)
+        });
+        const { container } = renderQueryHistorySection();
+
+        fireEvent.mouseEnter(container.querySelector('.history-query-preview')!);
+        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+        await waitFor(() =>
+            expect(screen.getByRole('alert')).toHaveTextContent('Unable to copy query text.')
+        );
+        expect(document.querySelector('textarea[readonly]')).not.toBeInTheDocument();
+    });
+
+    it('passes pagination and filter actions through the focused section contract', () => {
+        const onStatusFilterChange = vi.fn();
+        const onPageIndexChange = vi.fn();
+        const onPageSizeChange = vi.fn();
+        renderQueryHistorySection({
+            hasNextPage: true,
+            onStatusFilterChange,
+            onPageIndexChange,
+            onPageSizeChange
+        });
+
+        fireEvent.change(screen.getByLabelText('Status'), {
+            target: { value: 'FAILED' }
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
+        fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '10' } });
+
+        expect(onStatusFilterChange).toHaveBeenCalledWith('FAILED');
+        expect(onPageIndexChange).toHaveBeenCalledWith(1);
+        expect(onPageSizeChange).toHaveBeenCalledWith(10);
     });
 });

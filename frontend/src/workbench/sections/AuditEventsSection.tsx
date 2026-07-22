@@ -18,6 +18,7 @@ type AuditEventsSectionProps = {
     auditToFilter: string;
     onAuditToFilterChange: (value: string) => void;
     loadingAuditEvents: boolean;
+    errorMessage: string;
     onRefresh: () => void;
     auditSortOrder: 'newest' | 'oldest';
     onToggleSortOrder: () => void;
@@ -74,6 +75,7 @@ export default function AuditEventsSection({
     auditToFilter,
     onAuditToFilterChange,
     loadingAuditEvents,
+    errorMessage,
     onRefresh,
     auditSortOrder,
     onToggleSortOrder,
@@ -247,6 +249,12 @@ export default function AuditEventsSection({
                 </div>
             </div>
 
+            {errorMessage ? (
+                <p className="form-error" role="alert">
+                    {errorMessage}
+                </p>
+            ) : null}
+
             <div className="history-table-wrap">
                 <table className="result-table history-table">
                     <thead>
@@ -259,7 +267,11 @@ export default function AuditEventsSection({
                         </tr>
                     </thead>
                     <tbody>
-                        {events.length === 0 ? (
+                        {loadingAuditEvents && events.length === 0 ? (
+                            <tr>
+                                <td colSpan={5}>Loading audit events...</td>
+                            </tr>
+                        ) : events.length === 0 ? (
                             <tr>
                                 <td colSpan={5}>No audit events found for current filters.</td>
                             </tr>

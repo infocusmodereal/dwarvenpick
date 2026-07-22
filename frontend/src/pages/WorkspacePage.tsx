@@ -29,7 +29,6 @@ import {
 } from '../workbench/credentialProfilePolicy';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { statementAtCursor } from '../sql/statementSplitter';
-import { buildHistoryWorkspaceTab } from '../workbench/queryHistoryContext';
 import { useTheme } from '../theme/ThemeContext';
 import { createPortal } from 'react-dom';
 import type {
@@ -62,7 +61,6 @@ import type {
     ObjectInspectorResponse,
     QueryExecutionResponse,
     QueryExecutionStatusResponse,
-    QueryHistoryEntryResponse,
     QueryRunMode,
     QueryValidationResponse,
     ResourceFormState,
@@ -109,6 +107,7 @@ import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../work
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useAuditEvents } from '../workbench/useAuditEvents';
 import { useQueryHistory } from '../workbench/useQueryHistory';
+import { useHistoryEntryActions } from '../workbench/useHistoryEntryActions';
 import { useQueryResultsWorkflow } from '../workbench/useQueryResultsWorkflow';
 import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
 import {
@@ -2326,6 +2325,7 @@ export default function WorkspacePage() {
     const {
         auditActionOptions,
         auditActorFilter,
+        auditEventsError,
         auditFromFilter,
         auditOutcomeFilter,
         auditOutcomeOptions,
@@ -2338,14 +2338,13 @@ export default function WorkspacePage() {
         setAuditActorFilter,
         setAuditFromFilter,
         setAuditOutcomeFilter,
-        setAuditSortOrder,
         setAuditToFilter,
         setAuditTypeFilter,
-        sortedAuditEvents
+        sortedAuditEvents,
+        toggleAuditSortOrder
     } = useAuditEvents({
         enabled: isSystemAdmin,
-        readFriendlyError,
-        onError: setAdminError
+        readFriendlyError
     });
 
     const { fetchQueryResultsPage, view: queryResultsView } = useQueryResultsWorkflow({
@@ -2357,6 +2356,12 @@ export default function WorkspacePage() {
     });
 
     const {
+        changeHistoryDatasourceFilter,
+        changeHistoryFromFilter,
+        changeHistoryPageSize,
+        changeHistoryStatusFilter,
+        changeHistoryToFilter,
+        clearHistoryFilters,
         historyDatasourceFilter,
         historyFromFilter,
         historyHasNextPage,
@@ -2367,18 +2372,13 @@ export default function WorkspacePage() {
         historyToFilter,
         loadQueryHistory,
         loadingQueryHistory,
-        setHistoryDatasourceFilter,
-        setHistoryFromFilter,
+        queryHistoryError,
         setHistoryPageIndex,
-        setHistoryPageSize,
-        setHistorySortOrder,
-        setHistoryStatusFilter,
-        setHistoryToFilter,
-        sortedQueryHistoryEntries
+        sortedQueryHistoryEntries,
+        toggleHistorySortOrder
     } = useQueryHistory({
         enabled: Boolean(currentUser),
-        readFriendlyError,
-        onError: setWorkspaceError
+        readFriendlyError
     });
 
     const fetchCsrfToken = useCallback(async (): Promise<CsrfTokenResponse> => {
@@ -4118,47 +4118,16 @@ export default function WorkspacePage() {
         };
     }, [copyFeedback]);
 
-    const handleOpenHistoryEntry = useCallback(
-        (entry: QueryHistoryEntryResponse, runImmediately: boolean) => {
-            const sqlText = entry.queryText?.trim();
-            if (!sqlText) {
-                setWorkspaceError('This history entry has no reusable SQL text.');
-                return;
-            }
-
-            const resolvedDatasource =
-                visibleDatasources.find((datasource) => datasource.id === entry.datasourceId) ??
-                visibleDatasources[0];
-            if (!resolvedDatasource) {
-                setWorkspaceError('No permitted connection is available for rerun.');
-                return;
-            }
-
-            const { tab: createdTab, datasourceFallback } = buildHistoryWorkspaceTab(
-                entry,
-                resolvedDatasource.id,
-                resolvedDatasource.credentialProfiles,
-                `History ${workspaceTabsRef.current.length + 1}`,
-                sqlText
-            );
-            setWorkspaceTabs((currentTabs) => [...currentTabs, createdTab]);
-            setActiveTabId(createdTab.id);
-            setActiveSection('workbench');
-
-            if (datasourceFallback) {
-                setCopyFeedback(
-                    'The historical connection is no longer available. We opened the query with your current connection and cleared its schema and credential profile.'
-                );
-            }
-
-            if (runImmediately && !datasourceFallback) {
-                window.setTimeout(() => {
-                    void executeSqlForTab(createdTab.id, sqlText, 'all');
-                }, 0);
-            }
-        },
-        [executeSqlForTab, setActiveTabId, setWorkspaceTabs, visibleDatasources, workspaceTabsRef]
-    );
+    const { openHistoryEntry } = useHistoryEntryActions({
+        executeSqlForTab,
+        onError: setWorkspaceError,
+        onFeedback: setCopyFeedback,
+        setActiveSection,
+        setActiveTabId,
+        setWorkspaceTabs,
+        visibleDatasources,
+        workspaceTabsRef
+    });
 
     const handleInsertTextIntoActiveQuery = useCallback(
         (text: string) => {
@@ -8208,51 +8177,26 @@ export default function WorkspacePage() {
                         hidden={activeSection !== 'history'}
                         visibleDatasources={visibleDatasources}
                         datasourceFilter={historyDatasourceFilter}
-                        onDatasourceFilterChange={(value) => {
-                            setHistoryPageIndex(0);
-                            setHistoryDatasourceFilter(value);
-                        }}
+                        onDatasourceFilterChange={changeHistoryDatasourceFilter}
                         statusFilter={historyStatusFilter}
-                        onStatusFilterChange={(value) => {
-                            setHistoryPageIndex(0);
-                            setHistoryStatusFilter(value);
-                        }}
+                        onStatusFilterChange={changeHistoryStatusFilter}
                         fromFilter={historyFromFilter}
-                        onFromFilterChange={(value) => {
-                            setHistoryPageIndex(0);
-                            setHistoryFromFilter(value);
-                        }}
+                        onFromFilterChange={changeHistoryFromFilter}
                         toFilter={historyToFilter}
-                        onToFilterChange={(value) => {
-                            setHistoryPageIndex(0);
-                            setHistoryToFilter(value);
-                        }}
+                        onToFilterChange={changeHistoryToFilter}
                         loadingQueryHistory={loadingQueryHistory}
+                        errorMessage={queryHistoryError}
                         onRefresh={() => void loadQueryHistory()}
                         sortOrder={historySortOrder}
-                        onToggleSortOrder={() => {
-                            setHistoryPageIndex(0);
-                            setHistorySortOrder((current) =>
-                                current === 'newest' ? 'oldest' : 'newest'
-                            );
-                        }}
-                        onClearFilters={() => {
-                            setHistoryPageIndex(0);
-                            setHistoryDatasourceFilter('');
-                            setHistoryStatusFilter('');
-                            setHistoryFromFilter('');
-                            setHistoryToFilter('');
-                        }}
+                        onToggleSortOrder={toggleHistorySortOrder}
+                        onClearFilters={clearHistoryFilters}
                         entries={sortedQueryHistoryEntries}
                         pageIndex={historyPageIndex}
                         pageSize={historyPageSize}
                         hasNextPage={historyHasNextPage}
                         onPageIndexChange={(value) => setHistoryPageIndex(value)}
-                        onPageSizeChange={(value) => {
-                            setHistoryPageIndex(0);
-                            setHistoryPageSize(value);
-                        }}
-                        onOpenEntry={handleOpenHistoryEntry}
+                        onPageSizeChange={changeHistoryPageSize}
+                        onOpenEntry={openHistoryEntry}
                     />
 
                     <ResourceManagerSection
@@ -8380,13 +8324,10 @@ export default function WorkspacePage() {
                                 auditToFilter={auditToFilter}
                                 onAuditToFilterChange={(value) => setAuditToFilter(value)}
                                 loadingAuditEvents={loadingAuditEvents}
+                                errorMessage={auditEventsError}
                                 onRefresh={() => void loadAuditEvents()}
                                 auditSortOrder={auditSortOrder}
-                                onToggleSortOrder={() =>
-                                    setAuditSortOrder((current) =>
-                                        current === 'newest' ? 'oldest' : 'newest'
-                                    )
-                                }
+                                onToggleSortOrder={toggleAuditSortOrder}
                                 onClearFilters={clearAuditFilters}
                                 events={sortedAuditEvents}
                             />
