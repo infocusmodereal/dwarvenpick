@@ -26,7 +26,7 @@ dependencies {
     implementation("org.springframework.ldap:spring-ldap-core")
     implementation("com.aerospike:aerospike-client-jdk8:9.0.5")
 
-    runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("org.postgresql:postgresql:42.7.12")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("com.mysql:mysql-connector-j")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
