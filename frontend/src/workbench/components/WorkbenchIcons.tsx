@@ -13,6 +13,7 @@ import {
     explorerIconSvgByGlyph,
     explorerInsertIcon,
     fileTextIcon,
+    keyRoundIcon,
     pencilIcon,
     playIcon,
     plusIcon,
@@ -127,6 +128,18 @@ export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
                 aria-hidden
                 dangerouslySetInnerHTML={{
                     __html: fileTextIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'key-round') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: keyRoundIcon
                 }}
             />
         );

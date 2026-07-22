@@ -46,6 +46,7 @@ describe('query history execution context', () => {
         expect(
             buildQueryExecutionPayload(tab, tab.datasourceId, tab.queryText, {
                 includeCredentialProfile: true,
+                includeJustification: true,
                 modeLabel: 'all',
                 scriptStopOnError: true,
                 scriptTransactionMode: 'AUTOCOMMIT'

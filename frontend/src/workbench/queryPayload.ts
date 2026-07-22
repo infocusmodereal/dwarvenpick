@@ -2,6 +2,7 @@ import type { QueryRunMode, ScriptTransactionMode, WorkspaceTab } from './types'
 
 type QueryPayloadOptions = {
     includeCredentialProfile: boolean;
+    includeJustification: boolean;
     modeLabel: QueryRunMode;
     scriptStopOnError: boolean;
     scriptTransactionMode: ScriptTransactionMode;
@@ -24,7 +25,7 @@ export const buildQueryExecutionPayload = (
     }
 
     const queryJustification = tab.queryJustification.trim();
-    if (queryJustification) {
+    if (options.includeJustification && queryJustification) {
         requestPayload.justification = queryJustification;
     }
 

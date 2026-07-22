@@ -576,6 +576,7 @@ export type IconGlyph =
     | 'align-start-horizontal'
     | 'activity'
     | 'file-text'
+    | 'key-round'
     | 'shield-check'
     | 'settings'
     | 'save';
