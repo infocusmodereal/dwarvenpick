@@ -121,27 +121,14 @@ class MysqlLikeObjectInspectorProvider : ObjectInspectorProvider {
                 id = "indexes",
                 title = "Indexes",
             ) {
-                val table =
-                    runTableQuery(
-                        connection,
-                        """
-                        SELECT index_name AS name,
-                               non_unique AS non_unique,
-                               seq_in_index AS seq_in_index,
-                               column_name AS column_name,
-                               index_type AS index_type,
-                               nullable AS nullable,
-                               cardinality AS cardinality,
-                               comment AS comment
-                        FROM information_schema.statistics
-                        WHERE table_schema = ? AND table_name = ?
-                        ORDER BY index_name, seq_in_index
-                        """.trimIndent(),
-                        bind = { stmt ->
-                            stmt.setString(1, schema)
-                            stmt.setString(2, name)
-                        },
+                val plan =
+                    buildIndexInspectionPlan(
+                        engine = spec.engine,
+                        objectType = objectRef.type,
+                        schema = schema,
+                        name = name,
                     )
+                val table = loadIndexTable(connection, plan, schema, name)
                 ObjectInspectorSection(
                     id = "indexes",
                     title = "Indexes",
