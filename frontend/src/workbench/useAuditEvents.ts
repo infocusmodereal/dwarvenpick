@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuditEventResponse } from './types';
 import { useHistoryAuditFilters } from './useHistoryAuditFilters';
 import { toIsoTimestamp } from './utils';
@@ -7,7 +7,7 @@ type UseAuditEventsOptions = {
     enabled: boolean;
     fetchImpl?: typeof fetch;
     readFriendlyError: (response: Response) => Promise<string>;
-    onError: (message: string) => void;
+    onError?: (message: string) => void;
 };
 
 type AuditFilters = {
@@ -35,12 +35,14 @@ export const useAuditEvents = ({
         setAuditEvents,
         setAuditFromFilter,
         setAuditOutcomeFilter,
+        setAuditSortOrder,
         setAuditToFilter,
         setAuditTypeFilter,
         setLoadingAuditEvents
     } = filters;
     const activeRequestRef = useRef<AbortController | null>(null);
     const requestSequenceRef = useRef(0);
+    const [auditEventsError, setAuditEventsError] = useState('');
     const onErrorRef = useRef(onError);
     const readFriendlyErrorRef = useRef(readFriendlyError);
     const filtersRef = useRef<AuditFilters>({
@@ -73,6 +75,7 @@ export const useAuditEvents = ({
         requestSequenceRef.current = requestSequence;
         activeRequestRef.current = controller;
         setLoadingAuditEvents(true);
+        setAuditEventsError('');
 
         try {
             const currentFilters = filtersRef.current;
@@ -115,9 +118,9 @@ export const useAuditEvents = ({
             if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) {
                 return;
             }
-            onErrorRef.current(
-                error instanceof Error ? error.message : 'Failed to load audit events.'
-            );
+            const message = error instanceof Error ? error.message : 'Failed to load audit events.';
+            setAuditEventsError(message);
+            onErrorRef.current?.(message);
         } finally {
             if (requestSequence === requestSequenceRef.current) {
                 activeRequestRef.current = null;
@@ -179,9 +182,15 @@ export const useAuditEvents = ({
         setAuditTypeFilter
     ]);
 
+    const toggleAuditSortOrder = useCallback(() => {
+        setAuditSortOrder((current) => (current === 'newest' ? 'oldest' : 'newest'));
+    }, [setAuditSortOrder]);
+
     return {
         ...filters,
+        auditEventsError,
         clearAuditFilters,
-        loadAuditEvents
+        loadAuditEvents,
+        toggleAuditSortOrder
     };
 };

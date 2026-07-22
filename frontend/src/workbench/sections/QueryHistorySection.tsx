@@ -1,6 +1,8 @@
 import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
 import { toStatusToneClass } from '../utils';
 import { IconButton } from '../components/WorkbenchIcons';
+import HistoryQueryHoverCard from '../components/HistoryQueryHoverCard';
+import { copyQueryText, getQueryHoverCard, type QueryHoverCard } from '../historyQueryPreview';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from 'react';
 
@@ -16,6 +18,7 @@ type QueryHistorySectionProps = {
     toFilter: string;
     onToFilterChange: (value: string) => void;
     loadingQueryHistory: boolean;
+    errorMessage: string;
     onRefresh: () => void;
     sortOrder: 'newest' | 'oldest';
     onToggleSortOrder: () => void;
@@ -63,71 +66,6 @@ const downloadCsv = (fileName: string, csv: string) => {
     window.URL.revokeObjectURL(objectUrl);
 };
 
-const copyToClipboard = async (value: string) => {
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        return;
-    }
-
-    const textArea = document.createElement('textarea');
-    textArea.value = value;
-    textArea.setAttribute('readonly', 'true');
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-9999px';
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand('copy');
-    textArea.remove();
-};
-
-type QueryHoverCard = {
-    executionId: string;
-    queryText: string;
-    top: number;
-    left: number;
-    width: number;
-};
-
-const HOVER_CARD_MAX_WIDTH = 672;
-const HOVER_CARD_MIN_WIDTH = 320;
-const HOVER_CARD_MAX_HEIGHT = 224;
-const HOVER_CARD_MARGIN = 16;
-
-const clamp = (value: number, min: number, max: number) => {
-    return Math.min(Math.max(value, min), max);
-};
-
-const getQueryHoverCard = (
-    trigger: HTMLElement,
-    executionId: string,
-    queryText: string
-): QueryHoverCard => {
-    const rect = trigger.getBoundingClientRect();
-    const availableWidth = Math.max(
-        HOVER_CARD_MIN_WIDTH,
-        window.innerWidth - HOVER_CARD_MARGIN * 2
-    );
-    const width = Math.min(HOVER_CARD_MAX_WIDTH, availableWidth);
-    const left = clamp(
-        rect.right - width,
-        HOVER_CARD_MARGIN,
-        Math.max(HOVER_CARD_MARGIN, window.innerWidth - width - HOVER_CARD_MARGIN)
-    );
-    const preferredTop = rect.bottom + 6;
-    const top =
-        preferredTop + HOVER_CARD_MAX_HEIGHT > window.innerHeight
-            ? Math.max(HOVER_CARD_MARGIN, rect.top - HOVER_CARD_MAX_HEIGHT - 6)
-            : preferredTop;
-
-    return {
-        executionId,
-        queryText,
-        top,
-        left,
-        width
-    };
-};
-
 export default function QueryHistorySection({
     hidden,
     visibleDatasources,
@@ -140,6 +78,7 @@ export default function QueryHistorySection({
     toFilter,
     onToFilterChange,
     loadingQueryHistory,
+    errorMessage,
     onRefresh,
     sortOrder,
     onToggleSortOrder,
@@ -153,6 +92,7 @@ export default function QueryHistorySection({
     onOpenEntry
 }: QueryHistorySectionProps) {
     const [copiedExecutionId, setCopiedExecutionId] = useState('');
+    const [copyError, setCopyError] = useState('');
     const [hoveredQuery, setHoveredQuery] = useState<QueryHoverCard | null>(null);
     const hoverHideTimeoutRef = useRef<number | null>(null);
 
@@ -182,8 +122,14 @@ export default function QueryHistorySection({
     }, [clearHoverHideTimeout]);
 
     const handleCopyQuery = useCallback(async (executionId: string, queryText: string) => {
-        await copyToClipboard(queryText);
-        setCopiedExecutionId(executionId);
+        try {
+            await copyQueryText(queryText);
+            setCopyError('');
+            setCopiedExecutionId(executionId);
+        } catch {
+            setCopiedExecutionId('');
+            setCopyError('Unable to copy query text.');
+        }
     }, []);
 
     useEffect(() => {
@@ -194,6 +140,15 @@ export default function QueryHistorySection({
         const timeout = window.setTimeout(() => setCopiedExecutionId(''), 1800);
         return () => window.clearTimeout(timeout);
     }, [copiedExecutionId]);
+
+    useEffect(() => {
+        if (!copyError) {
+            return undefined;
+        }
+
+        const timeout = window.setTimeout(() => setCopyError(''), 3000);
+        return () => window.clearTimeout(timeout);
+    }, [copyError]);
 
     useEffect(() => {
         return () => clearHoverHideTimeout();
@@ -349,6 +304,22 @@ export default function QueryHistorySection({
                 </div>
             </div>
 
+            {errorMessage ? (
+                <p className="form-error" role="alert">
+                    {errorMessage}
+                </p>
+            ) : null}
+            {copyError ? (
+                <p className="form-error" role="alert">
+                    {copyError}
+                </p>
+            ) : null}
+            {copiedExecutionId ? (
+                <p className="form-success" role="status" aria-live="polite">
+                    Query text copied to clipboard.
+                </p>
+            ) : null}
+
             <div className="history-table-wrap" onScroll={() => setHoveredQuery(null)}>
                 <table className="result-table history-table query-history-table">
                     <thead>
@@ -364,7 +335,11 @@ export default function QueryHistorySection({
                         </tr>
                     </thead>
                     <tbody>
-                        {entries.length === 0 ? (
+                        {loadingQueryHistory && entries.length === 0 ? (
+                            <tr>
+                                <td colSpan={8}>Loading query history...</td>
+                            </tr>
+                        ) : entries.length === 0 ? (
                             <tr>
                                 <td colSpan={8}>No history entries found for current filters.</td>
                             </tr>
@@ -465,33 +440,13 @@ export default function QueryHistorySection({
                     </tbody>
                 </table>
             </div>
-            {hoveredQuery ? (
-                <div
-                    id={`history-query-hover-${hoveredQuery.executionId}`}
-                    className="history-query-hover-card"
-                    role="tooltip"
-                    style={{
-                        top: hoveredQuery.top,
-                        left: hoveredQuery.left,
-                        width: hoveredQuery.width
-                    }}
-                    onMouseEnter={clearHoverHideTimeout}
-                    onMouseLeave={scheduleQueryHoverCardHide}
-                >
-                    <code className="history-query-full">{hoveredQuery.queryText}</code>
-                    <button
-                        type="button"
-                        className="history-query-copy"
-                        onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            void handleCopyQuery(hoveredQuery.executionId, hoveredQuery.queryText);
-                        }}
-                    >
-                        {copiedExecutionId === hoveredQuery.executionId ? 'Copied' : 'Copy'}
-                    </button>
-                </div>
-            ) : null}
+            <HistoryQueryHoverCard
+                copiedExecutionId={copiedExecutionId}
+                hoveredQuery={hoveredQuery}
+                onCopy={handleCopyQuery}
+                onMouseEnter={clearHoverHideTimeout}
+                onMouseLeave={scheduleQueryHoverCardHide}
+            />
         </section>
     );
 }
