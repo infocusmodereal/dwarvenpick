@@ -22,6 +22,7 @@ describe('query payload builders', () => {
             'select * from adUnits limit 50',
             {
                 includeCredentialProfile: true,
+                includeJustification: true,
                 modeLabel: 'all',
                 scriptStopOnError: true,
                 scriptTransactionMode: 'AUTOCOMMIT'
@@ -63,6 +64,7 @@ describe('query payload builders', () => {
             'select 1; select 2;',
             {
                 includeCredentialProfile: false,
+                includeJustification: false,
                 modeLabel: 'script',
                 scriptStopOnError: false,
                 scriptTransactionMode: 'TRANSACTION'
@@ -76,5 +78,42 @@ describe('query payload builders', () => {
             stopOnError: false,
             transactionMode: 'TRANSACTION'
         });
+    });
+
+    it('omits stale justification when the effective policy does not require it', () => {
+        const payload = buildQueryExecutionPayload(
+            tabWithOverrides({ queryJustification: 'stale write reason' }),
+            'starrocks-prod-adhoc',
+            'select 1',
+            {
+                includeCredentialProfile: false,
+                includeJustification: false,
+                modeLabel: 'all',
+                scriptStopOnError: true,
+                scriptTransactionMode: 'AUTOCOMMIT'
+            }
+        );
+
+        expect(payload).toEqual({
+            datasourceId: 'starrocks-prod-adhoc',
+            sql: 'select 1'
+        });
+    });
+
+    it('trims and includes justification for a profile-required policy', () => {
+        const payload = buildQueryExecutionPayload(
+            tabWithOverrides({ queryJustification: ' TOPS-456 approved ' }),
+            'starrocks-prod-adhoc',
+            'delete from staging_table',
+            {
+                includeCredentialProfile: false,
+                includeJustification: true,
+                modeLabel: 'all',
+                scriptStopOnError: true,
+                scriptTransactionMode: 'AUTOCOMMIT'
+            }
+        );
+
+        expect(payload.justification).toBe('TOPS-456 approved');
     });
 });

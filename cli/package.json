@@ -1,6 +1,6 @@
 {
   "name": "@dwarvenpick/cli",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "description": "Command line client for running dwarvenpick queries.",
   "type": "module",
   "bin": {

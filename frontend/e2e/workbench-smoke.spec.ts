@@ -142,7 +142,13 @@ test('governed workbench browser smoke', async ({ page }) => {
         });
 
         await check('safe query execution', async () => {
-            await page.getByLabel('Justification').fill('Automated browser smoke validation');
+            const justification = page.getByLabel('Justification', { exact: true });
+            if ((await justification.count()) > 0) {
+                await expect(justification).toBeVisible();
+                await justification.fill('Automated browser smoke validation');
+            } else {
+                await expect(justification).toHaveCount(0);
+            }
             const editorInput = page.locator('.monaco-editor textarea.inputarea').first();
             await expect(editorInput).toBeVisible();
             await editorInput.focus();

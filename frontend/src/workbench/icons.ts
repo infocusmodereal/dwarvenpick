@@ -32,6 +32,7 @@ import playIcon from '../assets/lucide/play.svg?raw';
 import circlePlayIcon from '../assets/lucide/circle-play.svg?raw';
 import alignStartHorizontalIcon from '../assets/lucide/align-start-horizontal.svg?raw';
 import saveIcon from '../assets/lucide/save.svg?raw';
+import keyRoundIcon from '../assets/lucide/key-round.svg?raw';
 
 import type { DatasourceEngine, ExplorerGlyph, RailGlyph } from './types';
 
@@ -89,6 +90,7 @@ export {
     explorerInsertIcon,
     explorerInspectIcon,
     fileTextIcon,
+    keyRoundIcon,
     pencilIcon,
     playIcon,
     plusIcon,

@@ -3891,6 +3891,8 @@ export default function WorkspacePage() {
                     normalizedSql,
                     {
                         includeCredentialProfile: isSystemAdmin,
+                        includeJustification:
+                            effectiveProfilePolicy?.justificationMode === 'PROFILE_REQUIRED',
                         modeLabel,
                         scriptStopOnError,
                         scriptTransactionMode
@@ -7011,6 +7013,7 @@ export default function WorkspacePage() {
                                                 requestedCredentialProfile={
                                                     activeTab.requestedCredentialProfile
                                                 }
+                                                queryJustification={activeTab.queryJustification}
                                                 canOverride={isSystemAdmin}
                                                 disabled={activeTab.isExecuting}
                                                 onProfileChange={(credentialProfile) => {
@@ -7023,52 +7026,16 @@ export default function WorkspacePage() {
                                                         })
                                                     );
                                                 }}
+                                                onJustificationChange={(justification) => {
+                                                    updateWorkspaceTab(
+                                                        activeTab.id,
+                                                        (currentTab) => ({
+                                                            ...currentTab,
+                                                            queryJustification: justification
+                                                        })
+                                                    );
+                                                }}
                                             />
-                                        ) : null}
-                                        {activeTab ? (
-                                            <>
-                                                <div className="explorer-toolbar-label-row">
-                                                    <span className="tile-heading-icon" aria-hidden>
-                                                        <ExplorerIcon glyph="role" />
-                                                    </span>
-                                                    <label
-                                                        htmlFor="tab-query-justification"
-                                                        className="explorer-toolbar-label-text"
-                                                    >
-                                                        Justification
-                                                    </label>
-                                                </div>
-                                                <div className="explorer-toolbar-control-row">
-                                                    <input
-                                                        id="tab-query-justification"
-                                                        type="text"
-                                                        value={activeTab.queryJustification}
-                                                        onChange={(event) => {
-                                                            updateWorkspaceTab(
-                                                                activeTab.id,
-                                                                (currentTab) => ({
-                                                                    ...currentTab,
-                                                                    queryJustification:
-                                                                        event.target.value
-                                                                })
-                                                            );
-                                                        }}
-                                                        placeholder="Change ticket or reason"
-                                                        required={
-                                                            selectEffectiveCredentialProfilePolicy(
-                                                                visibleDatasources.find(
-                                                                    (datasource) =>
-                                                                        datasource.id ===
-                                                                        activeTab.datasourceId
-                                                                ),
-                                                                activeTab.requestedCredentialProfile
-                                                            )?.justificationMode ===
-                                                            'PROFILE_REQUIRED'
-                                                        }
-                                                        disabled={activeTab.isExecuting}
-                                                    />
-                                                </div>
-                                            </>
                                         ) : null}
                                         <div className="explorer-toolbar-label-row">
                                             <span className="tile-heading-icon" aria-hidden>

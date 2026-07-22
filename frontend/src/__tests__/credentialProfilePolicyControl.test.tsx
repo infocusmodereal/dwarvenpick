@@ -18,7 +18,7 @@ const datasource: CatalogDatasourceResponse = {
             maxRowsPerQuery: 1000,
             maxRuntimeSeconds: 60,
             concurrencyLimit: 2,
-            sysadmin: false,
+            sysadmin: true,
             justificationMode: 'NONE'
         },
         {
@@ -34,42 +34,84 @@ const datasource: CatalogDatasourceResponse = {
     ]
 };
 
-const ProfileControlHarness = () => {
+const ProfileControlHarness = ({ disabled = false }: { disabled?: boolean }) => {
     const [profile, setProfile] = useState('');
+    const [justification, setJustification] = useState('');
     return (
         <CredentialProfilePolicyControl
             datasource={datasource}
             requestedCredentialProfile={profile}
+            queryJustification={justification}
             canOverride
-            disabled={false}
+            disabled={disabled}
             onProfileChange={setProfile}
+            onJustificationChange={setJustification}
         />
     );
 };
 
 describe('CredentialProfilePolicyControl', () => {
-    it('shows the Auto policy and updates governance when an admin switches profiles', async () => {
+    it('collapses policy details by default and expands with the keyboard', async () => {
         const user = userEvent.setup();
         render(<ProfileControlHarness />);
 
+        const disclosure = screen.getByRole('button', { name: 'Show effective policy' });
+        expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+        expect(
+            screen.queryByLabelText('Effective credential profile policy')
+        ).not.toBeInTheDocument();
+        expect(screen.queryByRole('textbox', { name: 'Justification' })).not.toBeInTheDocument();
+
+        disclosure.focus();
+        await user.keyboard('{Enter}');
+
+        expect(screen.getByRole('button', { name: 'Hide effective policy' })).toHaveAttribute(
+            'aria-expanded',
+            'true'
+        );
         const policy = screen.getByLabelText('Effective credential profile policy');
         expect(within(policy).getByText('read-only')).toBeInTheDocument();
-        expect(within(policy).getByText('Write statements are blocked.')).toBeInTheDocument();
+        expect(within(policy).getByText('Read-only')).toBeInTheDocument();
         expect(within(policy).getByText('Export blocked')).toBeInTheDocument();
+        expect(within(policy).getByText('Elevated health access')).toBeInTheDocument();
+        expect(within(policy).getByText('Write statements are blocked.')).toBeInTheDocument();
+        expect(within(policy).getByText('Rows').nextElementSibling?.textContent).toBe('1,000');
+        expect(within(policy).getByText('Runtime').nextElementSibling?.textContent).toBe('60s');
+        expect(within(policy).getByText('Concurrency').nextElementSibling?.textContent).toBe('2');
+    });
+
+    it('shows required justification only for the governed write-capable profile', async () => {
+        const user = userEvent.setup();
+        render(<ProfileControlHarness />);
 
         await user.selectOptions(
             screen.getByRole('combobox', { name: 'Credential Profile' }),
             'read-write'
         );
 
+        const justification = screen.getByRole('textbox', { name: 'Justification' });
+        expect(justification).toBeRequired();
+        expect(justification).toHaveAttribute('id', 'tab-query-justification');
+        await user.type(justification, 'TOPS-123 approved change');
+        expect(justification).toHaveValue('TOPS-123 approved change');
+
+        await user.click(screen.getByRole('button', { name: 'Show effective policy' }));
+        const policy = screen.getByLabelText('Effective credential profile policy');
         expect(within(policy).getByText('Write-capable')).toBeInTheDocument();
         expect(
-            screen.getByText('Justification required for every run, including SELECT.')
+            within(policy).getByText('Justification required for every run, including SELECT.')
         ).toBeInTheDocument();
         expect(within(policy).getByText('Rows').nextElementSibling?.textContent).toBe('500');
+
+        await user.selectOptions(
+            screen.getByRole('combobox', { name: 'Credential Profile' }),
+            'read-only'
+        );
+        expect(screen.queryByRole('textbox', { name: 'Justification' })).not.toBeInTheDocument();
     });
 
-    it('formats unlimited sentinels without exposing raw integer values', () => {
+    it('formats unlimited sentinels without exposing raw integer values', async () => {
+        const user = userEvent.setup();
         const unlimitedDatasource: CatalogDatasourceResponse = {
             ...datasource,
             credentialProfilePolicies: [
@@ -85,14 +127,23 @@ describe('CredentialProfilePolicyControl', () => {
             <CredentialProfilePolicyControl
                 datasource={unlimitedDatasource}
                 requestedCredentialProfile=""
+                queryJustification=""
                 canOverride={false}
                 disabled={false}
                 onProfileChange={() => undefined}
+                onJustificationChange={() => undefined}
             />
         );
 
+        await user.click(screen.getByRole('button', { name: 'Show effective policy' }));
         expect(screen.getAllByText('Unlimited')).toHaveLength(3);
         expect(screen.queryByText('2147483647')).not.toBeInTheDocument();
+    });
+
+    it('disables governed controls while a query is executing', async () => {
+        render(<ProfileControlHarness disabled />);
+
+        expect(screen.getByRole('combobox', { name: 'Credential Profile' })).toBeDisabled();
     });
 
     it('detects a blank justification only for a governed write-capable policy', () => {
@@ -104,22 +155,22 @@ describe('CredentialProfilePolicyControl', () => {
         expect(isMissingRequiredQueryJustification(writePolicy, 'TOPS-123')).toBe(false);
     });
 
-    it('shows the principal default policy without enabling non-admin profile switching', () => {
+    it('shows policy disclosure without enabling non-admin profile switching', () => {
         render(
             <CredentialProfilePolicyControl
                 datasource={datasource}
                 requestedCredentialProfile=""
+                queryJustification=""
                 canOverride={false}
                 disabled={false}
                 onProfileChange={() => undefined}
+                onJustificationChange={() => undefined}
             />
         );
 
         expect(
             screen.queryByRole('combobox', { name: 'Credential Profile' })
         ).not.toBeInTheDocument();
-        const policy = screen.getByLabelText('Effective credential profile policy');
-        expect(within(policy).getByText('read-only')).toBeInTheDocument();
-        expect(within(policy).getByText('Write statements are blocked.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Show effective policy' })).toBeInTheDocument();
     });
 });
