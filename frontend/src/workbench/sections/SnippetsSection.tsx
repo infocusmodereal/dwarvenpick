@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { SnippetResponse, SnippetSummaryResponse } from '../types';
+import InlineNotice from '../components/InlineNotice';
 import { IconButton } from '../components/WorkbenchIcons';
 
 const snippetListLimit = 1000;
@@ -122,16 +123,10 @@ export default function SnippetsSection({
                 />
             </div>
 
-            {snippetError ? (
-                <p className="form-error" role="alert">
-                    {snippetError}
-                </p>
-            ) : null}
+            {snippetError ? <InlineNotice tone="error">{snippetError}</InlineNotice> : null}
 
             {snippetDetailError ? (
-                <p className="form-error" role="alert">
-                    {snippetDetailError}
-                </p>
+                <InlineNotice tone="error">{snippetDetailError}</InlineNotice>
             ) : null}
 
             {snippetListMayBeCapped ? (

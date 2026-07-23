@@ -37,7 +37,7 @@ const useHarness = (
     visibleDatasources: CatalogDatasourceResponse[],
     executeSqlForTab: (tabId: string, sqlText: string, mode: 'all') => Promise<void>,
     onError: (message: string) => void,
-    onFeedback: (message: string) => void
+    onFeedback: (message: string, tone?: 'info' | 'success' | 'warning' | 'error') => void
 ) => {
     const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
     const [activeTabId, setActiveTabId] = useState('');
@@ -116,7 +116,10 @@ describe('useHistoryEntryActions', () => {
             requestedCredentialProfile: ''
         });
         expect(executeSqlForTab).not.toHaveBeenCalled();
-        expect(onFeedback).toHaveBeenCalledWith(expect.stringContaining('no longer available'));
+        expect(onFeedback).toHaveBeenCalledWith(
+            expect.stringContaining('no longer available'),
+            'warning'
+        );
     });
 
     it('rejects missing SQL and an empty permitted datasource set', () => {

@@ -2,6 +2,7 @@ import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../ty
 import { toStatusToneClass } from '../utils';
 import { IconButton } from '../components/WorkbenchIcons';
 import HistoryQueryHoverCard from '../components/HistoryQueryHoverCard';
+import InlineNotice from '../components/InlineNotice';
 import { copyQueryText, getQueryHoverCard, type QueryHoverCard } from '../historyQueryPreview';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from 'react';
@@ -304,20 +305,10 @@ export default function QueryHistorySection({
                 </div>
             </div>
 
-            {errorMessage ? (
-                <p className="form-error" role="alert">
-                    {errorMessage}
-                </p>
-            ) : null}
-            {copyError ? (
-                <p className="form-error" role="alert">
-                    {copyError}
-                </p>
-            ) : null}
+            {errorMessage ? <InlineNotice tone="error">{errorMessage}</InlineNotice> : null}
+            {copyError ? <InlineNotice tone="error">{copyError}</InlineNotice> : null}
             {copiedExecutionId ? (
-                <p className="form-success" role="status" aria-live="polite">
-                    Query text copied to clipboard.
-                </p>
+                <InlineNotice tone="success">Query text copied to clipboard.</InlineNotice>
             ) : null}
 
             <div className="history-table-wrap" onScroll={() => setHoveredQuery(null)}>

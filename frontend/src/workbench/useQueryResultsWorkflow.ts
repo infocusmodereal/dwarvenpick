@@ -44,7 +44,7 @@ export type QueryResultsView = {
 type UseQueryResultsWorkflowOptions = {
     activeTab: WorkspaceTab | null;
     activeTabId: string;
-    onFeedback: (message: string) => void;
+    onFeedback: (message: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
     readFriendlyError: (response: Response) => Promise<string>;
     updateWorkspaceTab: UpdateWorkspaceTab;
 };
@@ -242,7 +242,7 @@ export const useQueryResultsWorkflow = ({
 
     const handleExportCsv = useCallback(async () => {
         if (!activeTab?.executionId) {
-            onFeedback('Run a query first to export CSV.');
+            onFeedback('Run a query first to export CSV.', 'warning');
             return;
         }
 
@@ -273,10 +273,10 @@ export const useQueryResultsWorkflow = ({
             anchor.click();
             anchor.remove();
             window.URL.revokeObjectURL(objectUrl);
-            onFeedback(`CSV export downloaded: ${fileName}`);
+            onFeedback(`CSV export downloaded: ${fileName}`, 'success');
             setShowExportMenu(false);
         } catch (error) {
-            onFeedback(error instanceof Error ? error.message : 'CSV export failed.');
+            onFeedback(error instanceof Error ? error.message : 'CSV export failed.', 'error');
         } finally {
             setExportingCsv(false);
         }

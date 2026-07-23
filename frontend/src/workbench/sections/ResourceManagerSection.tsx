@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import InlineNotice from '../components/InlineNotice';
 import { IconButton, InfoHint } from '../components/WorkbenchIcons';
 import type {
     ResourceFormState,
@@ -651,7 +652,9 @@ export default function ResourceManagerSection({
                                 />
                             </div>
                             {tagEditorError ? (
-                                <p className="form-error resource-tag-error">{tagEditorError}</p>
+                                <InlineNotice tone="error" className="resource-tag-error">
+                                    {tagEditorError}
+                                </InlineNotice>
                             ) : null}
                         </div>
                     </div>
@@ -788,11 +791,7 @@ export default function ResourceManagerSection({
                 </div>
             ) : null}
 
-            {resourceError ? (
-                <p className="form-error" role="alert">
-                    {resourceError}
-                </p>
-            ) : null}
+            {resourceError ? <InlineNotice tone="error">{resourceError}</InlineNotice> : null}
 
             {resourceListMayBeCapped ? (
                 <p className="resource-list-cap-note">

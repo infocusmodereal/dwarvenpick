@@ -55,8 +55,11 @@ describe('CredentialProfilePolicyControl', () => {
         const user = userEvent.setup();
         render(<ProfileControlHarness />);
 
-        const disclosure = screen.getByRole('button', { name: 'Show effective policy' });
+        const disclosure = screen.getByRole('button', { name: 'Show access and policy' });
         expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+        expect(
+            screen.queryByRole('combobox', { name: 'Credential Profile' })
+        ).not.toBeInTheDocument();
         expect(
             screen.queryByLabelText('Effective credential profile policy')
         ).not.toBeInTheDocument();
@@ -65,7 +68,7 @@ describe('CredentialProfilePolicyControl', () => {
         disclosure.focus();
         await user.keyboard('{Enter}');
 
-        expect(screen.getByRole('button', { name: 'Hide effective policy' })).toHaveAttribute(
+        expect(screen.getByRole('button', { name: 'Hide access and policy' })).toHaveAttribute(
             'aria-expanded',
             'true'
         );
@@ -84,6 +87,7 @@ describe('CredentialProfilePolicyControl', () => {
         const user = userEvent.setup();
         render(<ProfileControlHarness />);
 
+        await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
         await user.selectOptions(
             screen.getByRole('combobox', { name: 'Credential Profile' }),
             'read-write'
@@ -92,10 +96,10 @@ describe('CredentialProfilePolicyControl', () => {
         const justification = screen.getByRole('textbox', { name: 'Justification' });
         expect(justification).toBeRequired();
         expect(justification).toHaveAttribute('id', 'tab-query-justification');
+        expect(justification).toHaveFocus();
         await user.type(justification, 'TOPS-123 approved change');
         expect(justification).toHaveValue('TOPS-123 approved change');
 
-        await user.click(screen.getByRole('button', { name: 'Show effective policy' }));
         const policy = screen.getByLabelText('Effective credential profile policy');
         expect(within(policy).getByText('Write-capable')).toBeInTheDocument();
         expect(
@@ -103,6 +107,13 @@ describe('CredentialProfilePolicyControl', () => {
         ).toBeInTheDocument();
         expect(within(policy).getByText('Rows').nextElementSibling?.textContent).toBe('500');
 
+        await user.click(screen.getByRole('button', { name: 'Hide access and policy' }));
+        expect(
+            screen.queryByLabelText('Effective credential profile policy')
+        ).not.toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: 'Justification' })).toBeVisible();
+
+        await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
         await user.selectOptions(
             screen.getByRole('combobox', { name: 'Credential Profile' }),
             'read-only'
@@ -135,14 +146,16 @@ describe('CredentialProfilePolicyControl', () => {
             />
         );
 
-        await user.click(screen.getByRole('button', { name: 'Show effective policy' }));
+        await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
         expect(screen.getAllByText('Unlimited')).toHaveLength(3);
         expect(screen.queryByText('2147483647')).not.toBeInTheDocument();
     });
 
     it('disables governed controls while a query is executing', async () => {
+        const user = userEvent.setup();
         render(<ProfileControlHarness disabled />);
 
+        await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
         expect(screen.getByRole('combobox', { name: 'Credential Profile' })).toBeDisabled();
     });
 
@@ -171,6 +184,6 @@ describe('CredentialProfilePolicyControl', () => {
         expect(
             screen.queryByRole('combobox', { name: 'Credential Profile' })
         ).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Show effective policy' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Show access and policy' })).toBeInTheDocument();
     });
 });

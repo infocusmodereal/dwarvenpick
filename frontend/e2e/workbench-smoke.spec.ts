@@ -131,6 +131,9 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(connection).toHaveValue(config.datasource);
 
             if (config.credentialProfile) {
+                await page
+                    .getByRole('button', { name: 'Show access and policy', exact: true })
+                    .click();
                 const profile = page.getByRole('combobox', {
                     name: 'Credential Profile',
                     exact: true
@@ -139,6 +142,20 @@ test('governed workbench browser smoke', async ({ page }) => {
                 await profile.selectOption(config.credentialProfile);
                 await expect(profile).toHaveValue(config.credentialProfile);
             }
+        });
+
+        await check('script options controls', async () => {
+            await page.getByRole('button', { name: 'Options', exact: true }).click();
+            const dialog = page.getByRole('dialog', { name: 'Script options' });
+            await expect(dialog).toBeVisible();
+            await expect(dialog.getByText('Script Options', { exact: true })).toBeVisible();
+            await expect(dialog.getByText('Stop on error', { exact: true })).toBeVisible();
+            const transactionMode = dialog.getByLabel('Transaction mode', { exact: true });
+            await expect(transactionMode).toHaveValue('AUTOCOMMIT');
+            await transactionMode.selectOption('TRANSACTION');
+            await expect(transactionMode).toHaveValue('TRANSACTION');
+            await page.getByRole('button', { name: 'Options', exact: true }).click();
+            await expect(dialog).toBeHidden();
         });
 
         await check('safe query execution', async () => {
@@ -158,9 +175,14 @@ test('governed workbench browser smoke', async ({ page }) => {
             const queryMarker = config.mode === 'local' ? 'order_item_id' : 'browser_smoke';
             await expect(page.locator('.monaco-editor .view-lines')).toContainText(queryMarker);
 
-            const runSelection = page.getByRole('button', { name: 'Run Selection' });
-            await expect(runSelection).toBeEnabled();
-            await runSelection.click();
+            const runQuery = page.getByRole('button', { name: 'Run', exact: true });
+            await expect(runQuery).toBeEnabled();
+            await expect(
+                page.getByRole('button', { name: 'Format SQL', exact: true })
+            ).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+            await expect(page.getByText('Query Tools', { exact: true })).toBeVisible();
+            await runQuery.click();
             await expect(page.locator('.result-stats-grid')).toContainText('SUCCEEDED');
             observedRows = await readResultRowCount(page);
             expect(observedRows).toBe(config.expectedRows);
@@ -212,7 +234,7 @@ test('governed workbench browser smoke', async ({ page }) => {
                 await expect(exportButton).toBeEnabled();
                 await exportButton.click();
                 await page.getByRole('button', { name: 'Download CSV' }).click();
-                await expect(page.locator('.form-success')).toBeVisible();
+                await expect(page.getByRole('alert')).toBeVisible();
                 expect(await unexpectedDownload).toBe(false);
                 return;
             }

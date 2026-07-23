@@ -272,7 +272,7 @@ describe('useQueryResultsWorkflow', () => {
 
         await act(async () => result.current.view.onExportCsv());
 
-        expect(onFeedback).toHaveBeenCalledWith('Run a query first to export CSV.');
+        expect(onFeedback).toHaveBeenCalledWith('Run a query first to export CSV.', 'warning');
         expect(fetchMock).not.toHaveBeenCalled();
         expect(result.current.view.exportingCsv).toBe(false);
     });
@@ -331,7 +331,7 @@ describe('useQueryResultsWorkflow', () => {
         expect(createObjectURL.mock.calls[0][0]).toMatchObject({ size: 8 });
         expect(click).toHaveBeenCalledOnce();
         expect(revokeObjectURL).toHaveBeenCalledWith('blob:query-export');
-        expect(onFeedback).toHaveBeenCalledWith('CSV export downloaded: result.csv');
+        expect(onFeedback).toHaveBeenCalledWith('CSV export downloaded: result.csv', 'success');
         expect(result.current.view.showExportMenu).toBe(false);
         expect(result.current.view.exportingCsv).toBe(false);
     });
@@ -372,7 +372,7 @@ describe('useQueryResultsWorkflow', () => {
 
         expect(readFriendlyError).toHaveBeenCalledWith(expect.objectContaining({ status: 401 }));
         expect(navigate).toHaveBeenCalledWith('/login');
-        expect(onFeedback).toHaveBeenCalledWith('Session expired. Please sign in again.');
+        expect(onFeedback).toHaveBeenCalledWith('Session expired. Please sign in again.', 'error');
         expect(result.current.view.showExportMenu).toBe(true);
         expect(result.current.view.exportingCsv).toBe(false);
         expect(createObjectURL).not.toHaveBeenCalled();

@@ -7,6 +7,7 @@ import type {
 import {
     activityIcon,
     alignStartHorizontalIcon,
+    chevronDownIcon,
     circlePlayIcon,
     downloadIcon,
     explorerInspectIcon,
@@ -20,6 +21,7 @@ import {
     railIconSvgByGlyph,
     refreshCwIcon,
     saveIcon,
+    searchIcon,
     settingsIcon,
     shieldCheckIcon,
     tabCloseIcon,
@@ -226,6 +228,30 @@ export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
         );
     }
 
+    if (icon === 'search') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: searchIcon
+                }}
+            />
+        );
+    }
+
+    if (icon === 'chevron-down') {
+        return (
+            <span
+                className="icon-raw-glyph"
+                aria-hidden
+                dangerouslySetInnerHTML={{
+                    __html: chevronDownIcon
+                }}
+            />
+        );
+    }
+
     if (icon === 'close') {
         return (
             <span
@@ -264,6 +290,30 @@ export const IconButton = ({
         <span aria-hidden className="icon-button-glyph">
             <IconGlyph icon={icon} />
         </span>
+    </button>
+);
+
+export const LabeledActionButton = ({
+    icon,
+    label,
+    title,
+    onClick,
+    disabled = false,
+    variant = 'default'
+}: IconButtonProps & { label: string }) => (
+    <button
+        type="button"
+        className={`labeled-action-button${variant === 'primary' ? ' primary' : ''}${
+            variant === 'danger' ? ' danger-button' : ''
+        }`}
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+    >
+        <span aria-hidden className="labeled-action-icon">
+            <IconGlyph icon={icon} />
+        </span>
+        <span>{label}</span>
     </button>
 );
 

@@ -1,5 +1,6 @@
 import type { AuditEventResponse } from '../types';
 import { IconButton } from '../components/WorkbenchIcons';
+import InlineNotice from '../components/InlineNotice';
 import { toStatusToneClass } from '../utils';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -249,11 +250,7 @@ export default function AuditEventsSection({
                 </div>
             </div>
 
-            {errorMessage ? (
-                <p className="form-error" role="alert">
-                    {errorMessage}
-                </p>
-            ) : null}
+            {errorMessage ? <InlineNotice tone="error">{errorMessage}</InlineNotice> : null}
 
             <div className="history-table-wrap">
                 <table className="result-table history-table">
