@@ -137,6 +137,7 @@ private data class QueryExecutionRecord(
     @Volatile var activeConnectionRequiresEviction: Boolean,
     @Volatile var activeConnection: Connection?,
     @Volatile var executionFuture: Future<*>?,
+    val legacyCancelCheckGate: LegacyCancelCheckGate,
     val lifecycleLock: Any = Any(),
     val activeExportCount: AtomicInteger = AtomicInteger(0),
 )
@@ -153,6 +154,7 @@ class QueryExecutionManager(
     private val queryAdmissionRepository: QueryAdmissionRepository,
     private val persistedQueryResultAccessService: PersistedQueryResultAccessService,
     private val applicationInstanceId: ApplicationInstanceId,
+    private val queryLifecycleMetrics: QueryLifecycleMetrics,
     private val meterRegistry: MeterRegistry,
 ) {
     private val virtualExecutor = Executors.newVirtualThreadPerTaskExecutor()
@@ -271,6 +273,8 @@ class QueryExecutionManager(
                 activeConnectionRequiresEviction = false,
                 activeConnection = null,
                 executionFuture = null,
+                legacyCancelCheckGate =
+                    LegacyCancelCheckGate(queryExecutionProperties.remoteControlPollIntervalMs),
             )
         val admissionResult =
             queryAdmissionRepository.reserve(
@@ -660,6 +664,27 @@ class QueryExecutionManager(
         }
     }
 
+    @Scheduled(
+        fixedDelayString = "\${dwarvenpick.query.remote-control-poll-interval-ms:1000}",
+        scheduler = "queryLifecycleTaskScheduler",
+    )
+    fun pollRemoteControlRequests() {
+        runCatching {
+            queryRuntimeRepository
+                .listPendingRemoteControlExecutionIds(applicationInstanceId.value)
+                .forEach { executionId ->
+                    val record = executions[executionId] ?: return@forEach
+                    if (record.status in terminalStatuses()) {
+                        return@forEach
+                    }
+                    val request = claimRemoteControlRequest(record) ?: return@forEach
+                    virtualExecutor.submit { applyRemoteControl(record, request) }
+                }
+        }.onFailure { exception ->
+            logger.warn("query_remote_control poll failed; pending requests remain durable", exception)
+        }
+    }
+
     @Scheduled(fixedDelayString = "\${dwarvenpick.query.cleanup-interval-ms:30000}")
     fun cleanupExpiredSessions() {
         val now = Instant.now()
@@ -800,6 +825,7 @@ class QueryExecutionManager(
 
         try {
             executeSql(record)
+            runCatching { claimRemoteControlRequest(record) }
             throwIfCanceled(record)
             markSucceeded(record)
             auditExecution(
@@ -1817,7 +1843,9 @@ class QueryExecutionManager(
                 canceledAt = Instant.now().toString(),
             )
         }
-        queryRuntimeRepository.markCancelRequested(executionId)
+        if (queryRuntimeRepository.markRemoteControlRequested(executionId, RemoteQueryControlAction.CANCEL)) {
+            runCatching { queryLifecycleMetrics.recordRemoteRequest(RemoteQueryControlAction.CANCEL) }
+        }
         return QueryCancelResponse(
             executionId = persisted.executionId,
             status = persisted.status.name,
@@ -1841,7 +1869,9 @@ class QueryExecutionManager(
                 killedAt = Instant.now().toString(),
             )
         }
-        queryRuntimeRepository.markCancelRequested(executionId)
+        if (queryRuntimeRepository.markRemoteControlRequested(executionId, RemoteQueryControlAction.KILL)) {
+            runCatching { queryLifecycleMetrics.recordRemoteRequest(RemoteQueryControlAction.KILL) }
+        }
         return QueryKillResponse(
             executionId = persisted.executionId,
             status = persisted.status.name,
@@ -1867,13 +1897,48 @@ class QueryExecutionManager(
     }
 
     private fun throwIfCanceled(record: QueryExecutionRecord) {
+        val legacyCancelRequested =
+            !record.cancelRequested &&
+                record.legacyCancelCheckGate.shouldCheck() &&
+                runCatching { queryRuntimeRepository.isLegacyCancelRequested(record.executionId) }.getOrDefault(false)
         if (
             record.cancelRequested ||
-            runCatching { queryRuntimeRepository.isCancelRequested(record.executionId) }.getOrDefault(false) ||
+            legacyCancelRequested ||
             Thread.currentThread().isInterrupted
         ) {
             record.cancelRequested = true
             throw QueryCanceledException("Query canceled.")
+        }
+    }
+
+    private fun claimRemoteControlRequest(record: QueryExecutionRecord): RemoteQueryControlRequest? =
+        queryRuntimeRepository
+            .claimRemoteControlRequest(
+                executionId = record.executionId,
+                ownerInstanceId = applicationInstanceId.value,
+            )?.also { request ->
+                record.cancelRequested = true
+                runCatching { queryLifecycleMetrics.recordRemoteObservation(request) }
+            }
+
+    private fun applyRemoteControl(
+        record: QueryExecutionRecord,
+        request: RemoteQueryControlRequest,
+    ) {
+        if (record.status in terminalStatuses()) {
+            return
+        }
+        record.cancelRequested = true
+        runCatching { record.activeStatement?.cancel() }
+        closeActiveConnection(record)
+        record.executionFuture?.cancel(true)
+        if (record.status !in terminalStatuses()) {
+            val message =
+                when (request.action) {
+                    RemoteQueryControlAction.CANCEL -> "Query canceled by a remote backend request."
+                    RemoteQueryControlAction.KILL -> "Query killed by a remote admin request."
+                }
+            markCanceled(record, message)
         }
     }
 

@@ -14,6 +14,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.dao.DataAccessException
@@ -80,6 +82,9 @@ class QueryAdmissionPostgresTests {
 
     @Autowired
     private lateinit var applicationInstanceId: ApplicationInstanceId
+
+    @Autowired
+    private lateinit var queryLifecycleMetrics: QueryLifecycleMetrics
 
     @Autowired
     private lateinit var meterRegistry: MeterRegistry
@@ -161,6 +166,7 @@ class QueryAdmissionPostgresTests {
                 queryAdmissionRepository = queryAdmissionRepository,
                 persistedQueryResultAccessService = persistedQueryResultAccessService,
                 applicationInstanceId = applicationInstanceId,
+                queryLifecycleMetrics = queryLifecycleMetrics,
                 meterRegistry = meterRegistry,
             )
         try {
@@ -192,6 +198,68 @@ class QueryAdmissionPostgresTests {
     }
 
     @Test
+    fun `remote cancel is observed once by the owning manager`() {
+        val datasourceId = registerPostgresDatasource()
+        val actor = "remote-cancel-user"
+        val requester = newManager("remote-cancel-requester")
+        val initialObservations = observationCount(RemoteQueryControlAction.CANCEL)
+        try {
+            val submitted =
+                queryExecutionManager.submitQuery(
+                    actor = actor,
+                    ipAddress = "127.0.0.1",
+                    request = QueryExecutionRequest(datasourceId = datasourceId, sql = "select pg_sleep(10)"),
+                    policy = defaultPolicy(),
+                )
+            waitForStatus(queryExecutionManager, actor, submitted.executionId, QueryExecutionStatus.RUNNING)
+
+            val response = requester.cancelQuery(actor, isSystemAdmin = false, submitted.executionId)
+            assertThat(response.message).contains("Cancellation requested on backend instance")
+            queryExecutionManager.pollRemoteControlRequests()
+            waitForTerminalStatus(queryExecutionManager, actor, submitted.executionId)
+
+            assertThat(
+                queryExecutionManager.getExecutionStatus(actor, isSystemAdmin = false, submitted.executionId).status,
+            ).isEqualTo(QueryExecutionStatus.CANCELED.name)
+            assertThat(observationCount(RemoteQueryControlAction.CANCEL)).isEqualTo(initialObservations + 1)
+            queryExecutionManager.pollRemoteControlRequests()
+            assertThat(observationCount(RemoteQueryControlAction.CANCEL)).isEqualTo(initialObservations + 1)
+        } finally {
+            requester.shutdownGracefully()
+        }
+    }
+
+    @Test
+    fun `remote kill preserves kill intent and terminates on the owning manager`() {
+        val datasourceId = registerPostgresDatasource()
+        val actor = "remote-kill-user"
+        val requester = newManager("remote-kill-requester")
+        val initialObservations = observationCount(RemoteQueryControlAction.KILL)
+        try {
+            val submitted =
+                queryExecutionManager.submitQuery(
+                    actor = actor,
+                    ipAddress = "127.0.0.1",
+                    request = QueryExecutionRequest(datasourceId = datasourceId, sql = "select pg_sleep(10)"),
+                    policy = defaultPolicy(),
+                )
+            waitForStatus(queryExecutionManager, actor, submitted.executionId, QueryExecutionStatus.RUNNING)
+
+            val response = requester.killQuery("remote-admin", isSystemAdmin = true, submitted.executionId)
+            assertThat(response.message).contains("Kill requested on backend instance")
+            queryExecutionManager.pollRemoteControlRequests()
+            waitForTerminalStatus(queryExecutionManager, actor, submitted.executionId)
+
+            assertThat(
+                queryExecutionManager.getExecutionStatus(actor, isSystemAdmin = false, submitted.executionId).status,
+            ).isEqualTo(QueryExecutionStatus.CANCELED.name)
+            assertThat(observationCount(RemoteQueryControlAction.KILL)).isEqualTo(initialObservations + 1)
+        } finally {
+            requester.shutdownGracefully()
+        }
+    }
+
+    @Test
     fun `metadata jdbc and transaction manager share the same datasource`() {
         assertThat(jdbcTemplate.dataSource).isSameAs(dataSource)
         assertThat(transactionManager).isInstanceOf(DataSourceTransactionManager::class.java)
@@ -218,6 +286,32 @@ class QueryAdmissionPostgresTests {
             datasourceId = null,
             actorFilter = null,
         )
+
+    private fun newManager(instanceValue: String): QueryExecutionManager {
+        val requesterInstanceId = mock(ApplicationInstanceId::class.java)
+        `when`(requesterInstanceId.value).thenReturn(instanceValue)
+        return QueryExecutionManager(
+            datasourcePoolManager = datasourcePoolManager,
+            authAuditLogger = authAuditLogger,
+            queryExecutionProperties = queryExecutionProperties,
+            queryJustificationPolicy = queryJustificationPolicy,
+            queryExecutionLimitPolicy = queryExecutionLimitPolicy,
+            queryHistoryRepository = queryHistoryRepository,
+            queryRuntimeRepository = queryRuntimeRepository,
+            queryAdmissionRepository = queryAdmissionRepository,
+            persistedQueryResultAccessService = persistedQueryResultAccessService,
+            applicationInstanceId = requesterInstanceId,
+            queryLifecycleMetrics = queryLifecycleMetrics,
+            meterRegistry = meterRegistry,
+        )
+    }
+
+    private fun observationCount(action: RemoteQueryControlAction): Long =
+        meterRegistry
+            .get("dwarvenpick.query.remote.control.latency")
+            .tag("action", action.tagValue)
+            .timer()
+            .count()
 
     private fun registerPostgresDatasource(): String {
         val created =

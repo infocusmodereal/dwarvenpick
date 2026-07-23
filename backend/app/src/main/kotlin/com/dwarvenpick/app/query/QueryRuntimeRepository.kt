@@ -87,6 +87,9 @@ private data class ExistingQueryRuntimeState(
     val sql: String?,
     val sqlRedacted: Boolean,
     val cancelRequested: Boolean,
+    val controlAction: String?,
+    val controlRequestedAt: Instant?,
+    val controlObservedAt: Instant?,
 )
 
 private data class PersistedQueryResultPage(
@@ -131,6 +134,7 @@ class QueryRuntimeRepository(
             mapOf("executionId" to record.executionId),
         )
         namedParameterJdbcTemplate.update(insertSql, recordToPersist.toParameters())
+        restoreControlState(record.executionId, existing)
         insertResultPages(recordToPersist)
     }
 
@@ -382,23 +386,164 @@ class QueryRuntimeRepository(
         )
     }
 
-    fun markCancelRequested(executionId: String): Boolean =
+    fun markRemoteControlRequested(
+        executionId: String,
+        action: RemoteQueryControlAction,
+    ): Boolean =
         namedParameterJdbcTemplate.update(
             """
             UPDATE query_runtime_executions
             SET cancel_requested = TRUE,
+                control_requested_at = CASE
+                  WHEN control_action IS NULL THEN CURRENT_TIMESTAMP
+                  WHEN control_action = 'CANCEL' AND :action = 'KILL' THEN CURRENT_TIMESTAMP
+                  ELSE control_requested_at
+                END,
+                control_observed_at = CASE
+                  WHEN control_action IS NULL THEN NULL
+                  WHEN control_action = 'CANCEL' AND :action = 'KILL' THEN NULL
+                  ELSE control_observed_at
+                END,
+                control_action = CASE
+                  WHEN control_action = 'KILL' OR :action = 'KILL' THEN 'KILL'
+                  ELSE 'CANCEL'
+                END,
                 message = CASE
-                  WHEN status IN ('QUEUED', 'RUNNING') THEN 'Cancellation requested.'
-                  ELSE message
+                  WHEN :action = 'KILL' THEN 'Kill requested.'
+                  ELSE 'Cancellation requested.'
                 END
             WHERE execution_id = :executionId
+              AND status IN ('QUEUED', 'RUNNING')
             """.trimIndent(),
-            mapOf("executionId" to executionId),
+            mapOf("executionId" to executionId, "action" to action.name),
         ) > 0
 
-    fun isCancelRequested(executionId: String): Boolean =
+    fun listPendingRemoteControlExecutionIds(ownerInstanceId: String): List<String> =
+        namedParameterJdbcTemplate.queryForList(
+            """
+            SELECT execution_id
+            FROM query_runtime_executions
+            WHERE owner_instance_id = :ownerInstanceId
+              AND status IN ('QUEUED', 'RUNNING')
+              AND control_requested_at IS NOT NULL
+              AND control_observed_at IS NULL
+            ORDER BY control_requested_at ASC, execution_id ASC
+            """.trimIndent(),
+            mapOf("ownerInstanceId" to ownerInstanceId),
+            String::class.java,
+        )
+
+    @Transactional
+    fun claimRemoteControlRequest(
+        executionId: String,
+        ownerInstanceId: String,
+    ): RemoteQueryControlRequest? {
+        val updated =
+            namedParameterJdbcTemplate.update(
+                """
+                UPDATE query_runtime_executions
+                SET control_observed_at = CURRENT_TIMESTAMP
+                WHERE execution_id = :executionId
+                  AND owner_instance_id = :ownerInstanceId
+                  AND status IN ('QUEUED', 'RUNNING')
+                  AND control_requested_at IS NOT NULL
+                  AND control_observed_at IS NULL
+                """.trimIndent(),
+                mapOf(
+                    "executionId" to executionId,
+                    "ownerInstanceId" to ownerInstanceId,
+                ),
+            )
+        if (updated == 0) {
+            return null
+        }
+
+        return namedParameterJdbcTemplate.queryForObject(
+            """
+            SELECT execution_id, control_action, control_requested_at, control_observed_at
+            FROM query_runtime_executions
+            WHERE execution_id = :executionId
+              AND owner_instance_id = :ownerInstanceId
+            """.trimIndent(),
+            mapOf(
+                "executionId" to executionId,
+                "ownerInstanceId" to ownerInstanceId,
+            ),
+        ) { resultSet, _ ->
+            RemoteQueryControlRequest(
+                executionId = resultSet.getString("execution_id"),
+                action = RemoteQueryControlAction.valueOf(resultSet.getString("control_action")),
+                requestedAt = resultSet.getRequiredInstant("control_requested_at"),
+                observedAt = resultSet.getRequiredInstant("control_observed_at"),
+            )
+        }
+    }
+
+    fun loadLifecycleAggregate(
+        ownerInstanceId: String,
+        staleCutoff: Instant,
+    ): QueryLifecycleAggregate =
+        requireNotNull(
+            namedParameterJdbcTemplate.queryForObject(
+                """
+                SELECT CURRENT_TIMESTAMP AS observed_at,
+                       COUNT(*) AS active_count,
+                       SUM(CASE WHEN owner_instance_id = :ownerInstanceId THEN 1 ELSE 0 END) AS local_owned_count,
+                       MIN(heartbeat_at) AS oldest_heartbeat_at,
+                       SUM(CASE WHEN heartbeat_at < :staleCutoff THEN 1 ELSE 0 END) AS stale_count,
+                       SUM(CASE
+                             WHEN control_action = 'CANCEL'
+                              AND control_requested_at IS NOT NULL
+                              AND control_observed_at IS NULL THEN 1
+                             ELSE 0
+                           END) AS pending_cancel_count,
+                       MIN(CASE
+                             WHEN control_action = 'CANCEL'
+                              AND control_requested_at IS NOT NULL
+                              AND control_observed_at IS NULL THEN control_requested_at
+                             ELSE NULL
+                           END) AS oldest_pending_cancel_at,
+                       SUM(CASE
+                             WHEN control_action = 'KILL'
+                              AND control_requested_at IS NOT NULL
+                              AND control_observed_at IS NULL THEN 1
+                             ELSE 0
+                           END) AS pending_kill_count,
+                       MIN(CASE
+                             WHEN control_action = 'KILL'
+                              AND control_requested_at IS NOT NULL
+                              AND control_observed_at IS NULL THEN control_requested_at
+                             ELSE NULL
+                           END) AS oldest_pending_kill_at
+                FROM query_runtime_executions
+                WHERE status IN ('QUEUED', 'RUNNING')
+                """.trimIndent(),
+                mapOf(
+                    "ownerInstanceId" to ownerInstanceId,
+                    "staleCutoff" to staleCutoff.toTimestamp(),
+                ),
+            ) { resultSet, _ ->
+                QueryLifecycleAggregate(
+                    observedAt = resultSet.getRequiredInstant("observed_at"),
+                    activeCount = resultSet.getLong("active_count"),
+                    localOwnedCount = resultSet.getLong("local_owned_count"),
+                    oldestHeartbeatAt = resultSet.getNullableInstant("oldest_heartbeat_at"),
+                    staleCount = resultSet.getLong("stale_count"),
+                    pendingCancelCount = resultSet.getLong("pending_cancel_count"),
+                    oldestPendingCancelAt = resultSet.getNullableInstant("oldest_pending_cancel_at"),
+                    pendingKillCount = resultSet.getLong("pending_kill_count"),
+                    oldestPendingKillAt = resultSet.getNullableInstant("oldest_pending_kill_at"),
+                )
+            },
+        )
+
+    fun isLegacyCancelRequested(executionId: String): Boolean =
         namedParameterJdbcTemplate.queryForObject(
-            "SELECT cancel_requested FROM query_runtime_executions WHERE execution_id = :executionId",
+            """
+            SELECT cancel_requested AND control_action IS NULL
+            FROM query_runtime_executions
+            WHERE execution_id = :executionId
+            """.trimIndent(),
             mapOf("executionId" to executionId),
             Boolean::class.java,
         ) ?: false
@@ -668,7 +813,8 @@ class QueryRuntimeRepository(
         try {
             namedParameterJdbcTemplate.queryForObject(
                 """
-                SELECT sql_text, sql_text_redacted, cancel_requested
+                SELECT sql_text, sql_text_redacted, cancel_requested,
+                       control_action, control_requested_at, control_observed_at
                 FROM query_runtime_executions
                 WHERE execution_id = :executionId
                 """.trimIndent(),
@@ -678,11 +824,38 @@ class QueryRuntimeRepository(
                     sql = resultSet.getString("sql_text"),
                     sqlRedacted = resultSet.getBoolean("sql_text_redacted"),
                     cancelRequested = resultSet.getBoolean("cancel_requested"),
+                    controlAction = resultSet.getString("control_action"),
+                    controlRequestedAt = resultSet.getNullableInstant("control_requested_at"),
+                    controlObservedAt = resultSet.getNullableInstant("control_observed_at"),
                 )
             }
         } catch (_: EmptyResultDataAccessException) {
             null
         }
+
+    private fun restoreControlState(
+        executionId: String,
+        existing: ExistingQueryRuntimeState?,
+    ) {
+        if (existing?.controlAction == null) {
+            return
+        }
+        namedParameterJdbcTemplate.update(
+            """
+            UPDATE query_runtime_executions
+            SET control_action = :controlAction,
+                control_requested_at = :controlRequestedAt,
+                control_observed_at = :controlObservedAt
+            WHERE execution_id = :executionId
+            """.trimIndent(),
+            mapOf(
+                "executionId" to executionId,
+                "controlAction" to existing.controlAction,
+                "controlRequestedAt" to existing.controlRequestedAt?.toTimestamp(),
+                "controlObservedAt" to existing.controlObservedAt?.toTimestamp(),
+            ),
+        )
+    }
 
     private fun ResultSet.getRequiredInstant(columnName: String): Instant =
         requireNotNull(getNullableInstant(columnName)) { "$columnName cannot be null." }

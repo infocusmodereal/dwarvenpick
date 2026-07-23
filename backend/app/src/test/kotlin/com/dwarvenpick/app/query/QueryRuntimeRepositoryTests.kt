@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
@@ -234,6 +235,160 @@ class QueryRuntimeRepositoryTests {
     }
 
     @Test
+    fun `remote control requests preserve duplicates and allow kill upgrades`() {
+        val record = runtimeRecord("remote-control-exec")
+        queryRuntimeRepository.save(record)
+
+        assertThat(
+            queryRuntimeRepository.markRemoteControlRequested(
+                record.executionId,
+                RemoteQueryControlAction.CANCEL,
+            ),
+        ).isTrue()
+        val firstCancel = remoteControlState(record.executionId)
+        assertThat(firstCancel["CONTROL_ACTION"]).isEqualTo("CANCEL")
+        assertThat(firstCancel["CONTROL_REQUESTED_AT"]).isNotNull()
+        assertThat(firstCancel["CONTROL_OBSERVED_AT"]).isNull()
+
+        assertThat(
+            queryRuntimeRepository.markRemoteControlRequested(
+                record.executionId,
+                RemoteQueryControlAction.CANCEL,
+            ),
+        ).isTrue()
+        assertThat(remoteControlState(record.executionId)["CONTROL_REQUESTED_AT"])
+            .isEqualTo(firstCancel["CONTROL_REQUESTED_AT"])
+
+        val cancelClaim =
+            queryRuntimeRepository.claimRemoteControlRequest(
+                executionId = record.executionId,
+                ownerInstanceId = record.ownerInstanceId,
+            )
+        assertThat(cancelClaim?.action).isEqualTo(RemoteQueryControlAction.CANCEL)
+        assertThat(cancelClaim?.observedAt).isAfterOrEqualTo(cancelClaim?.requestedAt)
+
+        queryRuntimeRepository.save(record.copy(message = "Still running.", cancelRequested = false))
+        val restored = remoteControlState(record.executionId)
+        assertThat(restored["CONTROL_ACTION"]).isEqualTo("CANCEL")
+        assertThat(asInstant(restored["CONTROL_OBSERVED_AT"])).isEqualTo(cancelClaim?.observedAt)
+
+        assertThat(
+            queryRuntimeRepository.markRemoteControlRequested(
+                record.executionId,
+                RemoteQueryControlAction.KILL,
+            ),
+        ).isTrue()
+        val upgraded = remoteControlState(record.executionId)
+        assertThat(upgraded["CONTROL_ACTION"]).isEqualTo("KILL")
+        assertThat(upgraded["CONTROL_OBSERVED_AT"]).isNull()
+
+        val killClaim =
+            queryRuntimeRepository.claimRemoteControlRequest(
+                executionId = record.executionId,
+                ownerInstanceId = record.ownerInstanceId,
+            )
+        assertThat(killClaim?.action).isEqualTo(RemoteQueryControlAction.KILL)
+
+        queryRuntimeRepository.markRemoteControlRequested(record.executionId, RemoteQueryControlAction.CANCEL)
+        val noDowngrade = remoteControlState(record.executionId)
+        assertThat(noDowngrade["CONTROL_ACTION"]).isEqualTo("KILL")
+        assertThat(asInstant(noDowngrade["CONTROL_OBSERVED_AT"])).isEqualTo(killClaim?.observedAt)
+    }
+
+    @Test
+    fun `terminal executions reject remote control request and claim races`() {
+        val record =
+            runtimeRecord("terminal-control-exec")
+                .copy(
+                    status = QueryExecutionStatus.SUCCEEDED,
+                    completedAt = Instant.now(),
+                )
+        queryRuntimeRepository.save(record)
+
+        assertThat(
+            queryRuntimeRepository.markRemoteControlRequested(
+                record.executionId,
+                RemoteQueryControlAction.CANCEL,
+            ),
+        ).isFalse()
+        assertThat(
+            queryRuntimeRepository.claimRemoteControlRequest(
+                executionId = record.executionId,
+                ownerInstanceId = record.ownerInstanceId,
+            ),
+        ).isNull()
+    }
+
+    @Test
+    fun `legacy cancel fallback applies only before a versioned control action exists`() {
+        val record = runtimeRecord("legacy-cancel-exec")
+        queryRuntimeRepository.save(record)
+        namedParameterJdbcTemplate.update(
+            """
+            UPDATE query_runtime_executions
+            SET cancel_requested = TRUE
+            WHERE execution_id = :executionId
+            """.trimIndent(),
+            mapOf("executionId" to record.executionId),
+        )
+
+        assertThat(queryRuntimeRepository.isLegacyCancelRequested(record.executionId)).isTrue()
+
+        queryRuntimeRepository.markRemoteControlRequested(record.executionId, RemoteQueryControlAction.CANCEL)
+
+        assertThat(queryRuntimeRepository.isLegacyCancelRequested(record.executionId)).isFalse()
+    }
+
+    private fun asInstant(value: Any?): Instant? =
+        when (value) {
+            null -> null
+            is Instant -> value
+            is java.sql.Timestamp -> value.toInstant()
+            is OffsetDateTime -> value.toInstant()
+            else -> error("Unsupported timestamp type: ${value::class.qualifiedName}")
+        }
+
+    @Test
+    fun `lifecycle aggregate reports exact ownership heartbeat and pending actions`() {
+        val now = Instant.now()
+        val local =
+            runtimeRecord("aggregate-local")
+                .copy(
+                    submittedAt = now.minusSeconds(200),
+                    startedAt = now.minusSeconds(190),
+                    heartbeatAt = now.minusSeconds(150),
+                )
+        val remote =
+            runtimeRecord("aggregate-remote")
+                .copy(
+                    ownerInstanceId = "other-instance",
+                    submittedAt = now.minusSeconds(60),
+                    startedAt = now.minusSeconds(50),
+                    heartbeatAt = now.minusSeconds(10),
+                )
+        queryRuntimeRepository.save(local)
+        queryRuntimeRepository.save(remote)
+        queryRuntimeRepository.markRemoteControlRequested(local.executionId, RemoteQueryControlAction.CANCEL)
+        queryRuntimeRepository.markRemoteControlRequested(remote.executionId, RemoteQueryControlAction.KILL)
+
+        val aggregate =
+            queryRuntimeRepository.loadLifecycleAggregate(
+                ownerInstanceId = local.ownerInstanceId,
+                staleCutoff = now.minusSeconds(120),
+            )
+
+        assertThat(aggregate.activeCount).isEqualTo(2)
+        assertThat(aggregate.localOwnedCount).isEqualTo(1)
+        assertThat(aggregate.oldestHeartbeatAt).isEqualTo(local.heartbeatAt)
+        assertThat(aggregate.staleCount).isEqualTo(1)
+        assertThat(aggregate.pendingCancelCount).isEqualTo(1)
+        assertThat(aggregate.pendingKillCount).isEqualTo(1)
+        assertThat(aggregate.oldestPendingCancelAt).isNotNull()
+        assertThat(aggregate.oldestPendingKillAt).isNotNull()
+        assertThat(aggregate.observedAt).isAfterOrEqualTo(now.minusSeconds(1))
+    }
+
+    @Test
     fun `durable result access wins against idle expiration and later expires cleanly`() {
         val record = runtimeRecord("result-access-exec").copy(rows = emptyList(), columns = emptyList())
         queryRuntimeRepository.save(record)
@@ -350,6 +505,16 @@ class QueryRuntimeRepositoryTests {
             heartbeatAt = submittedAt,
         )
     }
+
+    private fun remoteControlState(executionId: String): Map<String, Any?> =
+        namedParameterJdbcTemplate.queryForMap(
+            """
+            SELECT control_action, control_requested_at, control_observed_at
+            FROM query_runtime_executions
+            WHERE execution_id = :executionId
+            """.trimIndent(),
+            mapOf("executionId" to executionId),
+        )
 
     private fun resultPage(
         pageIndex: Int,

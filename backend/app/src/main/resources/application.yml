@@ -54,13 +54,15 @@ dwarvenpick:
     result-session-ttl-seconds: 600
     execution-retention-seconds: 3600
     cancel-grace-period-ms: 500
-    cleanup-interval-ms: 30000
+    cleanup-interval-ms: ${DWARVENPICK_QUERY_CLEANUP_INTERVAL_MS:30000}
+    remote-control-poll-interval-ms: ${DWARVENPICK_QUERY_REMOTE_CONTROL_POLL_INTERVAL_MS:1000}
+    lifecycle-metrics-refresh-interval-ms: ${DWARVENPICK_QUERY_LIFECYCLE_METRICS_REFRESH_INTERVAL_MS:10000}
     shutdown-grace-period-seconds: 15
     history-retention-days: 30
     audit-retention-days: 90
     query-text-redaction-days: 7
     retention-cleanup-interval-ms: 3600000
-    active-execution-stale-seconds: 120
+    active-execution-stale-seconds: ${DWARVENPICK_QUERY_ACTIVE_EXECUTION_STALE_SECONDS:120}
     pool-metrics-stale-seconds: 120
     require-write-justification: ${DWARVENPICK_QUERY_REQUIRE_WRITE_JUSTIFICATION:false}
     max-justification-length: ${DWARVENPICK_QUERY_MAX_JUSTIFICATION_LENGTH:1000}
