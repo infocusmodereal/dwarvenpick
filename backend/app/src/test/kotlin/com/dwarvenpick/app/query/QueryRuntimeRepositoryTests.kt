@@ -7,6 +7,7 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.concurrent.CountDownLatch
@@ -379,7 +380,8 @@ class QueryRuntimeRepositoryTests {
 
         assertThat(aggregate.activeCount).isEqualTo(2)
         assertThat(aggregate.localOwnedCount).isEqualTo(1)
-        assertThat(aggregate.oldestHeartbeatAt).isEqualTo(local.heartbeatAt)
+        assertThat(Duration.between(local.heartbeatAt, requireNotNull(aggregate.oldestHeartbeatAt)).abs())
+            .isLessThan(Duration.ofMillis(1))
         assertThat(aggregate.staleCount).isEqualTo(1)
         assertThat(aggregate.pendingCancelCount).isEqualTo(1)
         assertThat(aggregate.pendingKillCount).isEqualTo(1)

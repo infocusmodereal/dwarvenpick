@@ -902,17 +902,27 @@ class QueryExecutionManager(
                     ),
             )
         } catch (ex: Throwable) {
-            markFailed(record, sanitizeErrorMessage(ex.message ?: "Query execution failed."))
-            auditExecution(
-                record = record,
-                type = "query.execute",
-                outcome = "failed",
-                details =
-                    mapOf(
-                        "executionId" to record.executionId,
-                        "reason" to "execution_error",
-                    ),
-            )
+            if (record.cancelRequested || Thread.currentThread().isInterrupted) {
+                markCanceled(record, "Query canceled.")
+                auditExecution(
+                    record = record,
+                    type = "query.execute",
+                    outcome = "canceled",
+                    details = mapOf("executionId" to record.executionId),
+                )
+            } else {
+                markFailed(record, sanitizeErrorMessage(ex.message ?: "Query execution failed."))
+                auditExecution(
+                    record = record,
+                    type = "query.execute",
+                    outcome = "failed",
+                    details =
+                        mapOf(
+                            "executionId" to record.executionId,
+                            "reason" to "execution_error",
+                        ),
+                )
+            }
         } finally {
             closeRuntimeResources(record)
         }
