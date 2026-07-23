@@ -6,6 +6,7 @@ plugins {
 }
 
 extra["testcontainers.version"] = "1.21.0"
+extra["netty.version"] = "4.1.136.Final"
 
 fun releaseMetadataValue(name: String): String = System.getenv(name)?.trim()?.takeIf { it.isNotBlank() } ?: "unknown"
 
