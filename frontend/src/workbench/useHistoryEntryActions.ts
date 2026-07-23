@@ -11,7 +11,7 @@ import type {
 type UseHistoryEntryActionsOptions = {
     executeSqlForTab: (tabId: string, sqlText: string, modeLabel: 'all') => Promise<void>;
     onError: (message: string) => void;
-    onFeedback: (message: string) => void;
+    onFeedback: (message: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
     setActiveSection: Dispatch<SetStateAction<WorkspaceSection>>;
     setActiveTabId: Dispatch<SetStateAction<string>>;
     setWorkspaceTabs: Dispatch<SetStateAction<WorkspaceTab[]>>;
@@ -58,7 +58,8 @@ export const useHistoryEntryActions = ({
 
             if (datasourceFallback) {
                 onFeedback(
-                    'The historical connection is no longer available. We opened the query with your current connection and cleared its schema and credential profile.'
+                    'The historical connection is no longer available. We opened the query with your current connection and cleared its schema and credential profile.',
+                    'warning'
                 );
             }
 

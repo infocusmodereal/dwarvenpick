@@ -1,4 +1,5 @@
 import type { ObjectInspectorSectionResponse } from '../types';
+import InlineNotice from './InlineNotice';
 
 type ObjectInspectorSectionContentProps = {
     section: ObjectInspectorSectionResponse;
@@ -17,17 +18,17 @@ export default function ObjectInspectorSectionContent({
 
     if (section.status === 'INSUFFICIENT_PRIVILEGES') {
         return (
-            <p className="form-error" role="alert">
+            <InlineNotice tone="error">
                 {section.message ?? 'The selected credential profile cannot inspect this section.'}
-            </p>
+            </InlineNotice>
         );
     }
 
     if (section.status === 'ERROR') {
         return (
-            <p className="form-error" role="alert">
+            <InlineNotice tone="error">
                 {section.message ?? 'Object inspection failed.'}
-            </p>
+            </InlineNotice>
         );
     }
 

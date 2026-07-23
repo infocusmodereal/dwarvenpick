@@ -5,6 +5,7 @@ import type {
     SystemHealthResponse
 } from '../types';
 import { IconButton } from '../components/WorkbenchIcons';
+import InlineNotice from '../components/InlineNotice';
 import SystemHealthEngineView from '../systemHealth/SystemHealthEngineView';
 
 type ControlPlanePanelProps = {
@@ -85,10 +86,10 @@ export default function SystemHealthSection({
     return (
         <section className="panel system-health-panel" hidden={hidden}>
             {!hasSysadminConnections ? (
-                <p className="form-error" role="alert">
+                <InlineNotice tone="warning">
                     No connections have a sysadmin credential profile. Mark a credential profile as
                     sysadmin in the Connections admin page to enable health checks.
-                </p>
+                </InlineNotice>
             ) : null}
 
             <div className="history-filters">
@@ -159,11 +160,7 @@ export default function SystemHealthSection({
                 />
             </div>
 
-            {error ? (
-                <p className="form-error" role="alert">
-                    {error}
-                </p>
-            ) : null}
+            {error ? <InlineNotice tone="error">{error}</InlineNotice> : null}
 
             {!datasourceId ? (
                 <p className="muted-id">Select a connection to view system health.</p>
@@ -201,13 +198,13 @@ export default function SystemHealthSection({
                     </div>
 
                     {response.status === 'INSUFFICIENT_PRIVILEGES' ? (
-                        <p className="form-error" role="alert">
+                        <InlineNotice tone="warning">
                             {response.message ?? 'Insufficient privileges for health checks.'}
-                        </p>
+                        </InlineNotice>
                     ) : response.status === 'ERROR' ? (
-                        <p className="form-error" role="alert">
+                        <InlineNotice tone="error">
                             {response.message ?? 'System health check failed.'}
-                        </p>
+                        </InlineNotice>
                     ) : response.status === 'UNSUPPORTED' ? (
                         <p className="muted-id">
                             {response.message ?? 'Health checks unsupported.'}
@@ -326,9 +323,7 @@ export default function SystemHealthSection({
                     </div>
 
                     {controlPlane.error ? (
-                        <p className="form-error" role="alert">
-                            {controlPlane.error}
-                        </p>
+                        <InlineNotice tone="error">{controlPlane.error}</InlineNotice>
                     ) : null}
 
                     {controlPlane.response ? (

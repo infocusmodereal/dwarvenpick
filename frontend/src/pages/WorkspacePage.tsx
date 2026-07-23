@@ -20,9 +20,10 @@ import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
+import ExplorerControls from '../workbench/components/ExplorerControls';
+import InlineNotice, { type InlineNoticeTone } from '../workbench/components/InlineNotice';
 import ObjectInspectorSectionContent from '../workbench/components/ObjectInspectorSectionContent';
 import QueryTabsBar from '../workbench/components/QueryTabsBar';
-import CredentialProfilePolicyControl from '../workbench/components/CredentialProfilePolicyControl';
 import {
     isMissingRequiredQueryJustification,
     selectEffectiveCredentialProfilePolicy
@@ -118,6 +119,7 @@ import {
     IconButton,
     IconGlyph,
     InfoHint,
+    LabeledActionButton,
     RailIcon
 } from '../workbench/components/WorkbenchIcons';
 import AuditEventsSection from '../workbench/sections/AuditEventsSection';
@@ -132,6 +134,11 @@ loader.config({ monaco: MonacoModule });
 const workbenchResultsSizeStorageKey = 'dwarvenpick.workbench.resultsSizePx';
 const workbenchExplorerSizeStorageKey = 'dwarvenpick.workbench.explorerSizePx';
 const resourceSqlPreviewLength = 240;
+
+type WorkbenchNotice = {
+    message: string;
+    tone: InlineNoticeTone;
+};
 
 const toResourceSummary = (resource: ResourceScriptResponse): ResourceScriptSummaryResponse => ({
     resourceId: resource.resourceId,
@@ -502,7 +509,13 @@ export default function WorkspacePage() {
     const [scriptTransactionMode, setScriptTransactionMode] =
         useState<ScriptTransactionMode>('AUTOCOMMIT');
     const [showScriptOptions, setShowScriptOptions] = useState(false);
-    const [copyFeedback, setCopyFeedback] = useState('');
+    const [workbenchNotice, setWorkbenchNotice] = useState<WorkbenchNotice | null>(null);
+    const showWorkbenchNotice = useCallback(
+        (message: string, tone: InlineNoticeTone = 'success') => {
+            setWorkbenchNotice(message ? { message, tone } : null);
+        },
+        []
+    );
     const [validatingSql, setValidatingSql] = useState(false);
     const [workbenchResultsSizePx, setWorkbenchResultsSizePx] = useState<number | null>(() => {
         try {
@@ -535,6 +548,7 @@ export default function WorkspacePage() {
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
+    const queryJustificationInputRef = useRef<HTMLInputElement | null>(null);
     const monacoHostRef = useRef<HTMLDivElement | null>(null);
     const resultsSectionRef = useRef<HTMLElement | null>(null);
     const resultsResizeStateRef = useRef<{
@@ -2350,7 +2364,7 @@ export default function WorkspacePage() {
     const { fetchQueryResultsPage, view: queryResultsView } = useQueryResultsWorkflow({
         activeTab,
         activeTabId,
-        onFeedback: setCopyFeedback,
+        onFeedback: showWorkbenchNotice,
         readFriendlyError,
         updateWorkspaceTab
     });
@@ -3872,9 +3886,7 @@ export default function WorkspacePage() {
                         'Justification is required for every run through this write-capable profile.',
                     statusMessage: ''
                 }));
-                requestAnimationFrame(() => {
-                    document.getElementById('tab-query-justification')?.focus();
-                });
+                requestAnimationFrame(() => queryJustificationInputRef.current?.focus());
                 return;
             }
 
@@ -4005,7 +4017,7 @@ export default function WorkspacePage() {
         const resolvedSql = resolveRunnableSqlForTab(activeTab);
         const sqlToExplain = resolvedSql.sql.trim();
         if (!sqlToExplain) {
-            setCopyFeedback('Select SQL text first, or use Run All.');
+            showWorkbenchNotice('Select SQL text first, or use Run All.', 'warning');
             return;
         }
 
@@ -4013,7 +4025,7 @@ export default function WorkspacePage() {
             ? sqlToExplain
             : `EXPLAIN ${sqlToExplain}`;
         void executeSqlForTab(activeTab.id, explainSql, 'explain', 'explain');
-    }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab]);
+    }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, showWorkbenchNotice]);
 
     const handleAnalyze = useCallback(() => {
         if (!activeTab) {
@@ -4023,7 +4035,7 @@ export default function WorkspacePage() {
         const resolvedSql = resolveRunnableSqlForTab(activeTab);
         const sqlToAnalyze = resolvedSql.sql.trim();
         if (!sqlToAnalyze) {
-            setCopyFeedback('Select SQL text first, or use Run Selection.');
+            showWorkbenchNotice('Select SQL text first, or use Run Selection.', 'warning');
             return;
         }
 
@@ -4041,7 +4053,13 @@ export default function WorkspacePage() {
                       : `EXPLAIN ${normalizedSql}`;
 
         void executeSqlForTab(activeTab.id, analyzeSql, 'analyze', 'analyze');
-    }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, selectedDatasource?.engine]);
+    }, [
+        activeTab,
+        executeSqlForTab,
+        resolveRunnableSqlForTab,
+        selectedDatasource?.engine,
+        showWorkbenchNotice
+    ]);
 
     const writeTextToClipboard = useCallback(async (value: string) => {
         if (navigator.clipboard?.writeText) {
@@ -4064,24 +4082,24 @@ export default function WorkspacePage() {
         async (value: string | null) => {
             try {
                 await writeTextToClipboard(value ?? '');
-                setCopyFeedback('Copied cell value to clipboard.');
+                showWorkbenchNotice('Copied cell value to clipboard.');
             } catch {
-                setCopyFeedback('Unable to copy cell value.');
+                showWorkbenchNotice('Unable to copy cell value.', 'error');
             }
         },
-        [writeTextToClipboard]
+        [showWorkbenchNotice, writeTextToClipboard]
     );
 
     const handleCopyExplorerName = useCallback(
         async (value: string) => {
             try {
                 await writeTextToClipboard(value);
-                setCopyFeedback('Copied explorer name to clipboard.');
+                showWorkbenchNotice('Copied explorer name to clipboard.');
             } catch {
-                setCopyFeedback('Unable to copy explorer name.');
+                showWorkbenchNotice('Unable to copy explorer name.', 'error');
             }
         },
-        [writeTextToClipboard]
+        [showWorkbenchNotice, writeTextToClipboard]
     );
 
     const renderExplorerNameHoverCard = useCallback(
@@ -4105,23 +4123,23 @@ export default function WorkspacePage() {
     );
 
     useEffect(() => {
-        if (!copyFeedback) {
+        if (!workbenchNotice) {
             return;
         }
 
         const timeout = window.setTimeout(() => {
-            setCopyFeedback('');
+            setWorkbenchNotice(null);
         }, 3000);
 
         return () => {
             window.clearTimeout(timeout);
         };
-    }, [copyFeedback]);
+    }, [workbenchNotice]);
 
     const { openHistoryEntry } = useHistoryEntryActions({
         executeSqlForTab,
         onError: setWorkspaceError,
-        onFeedback: setCopyFeedback,
+        onFeedback: showWorkbenchNotice,
         setActiveSection,
         setActiveTabId,
         setWorkspaceTabs,
@@ -4191,7 +4209,7 @@ export default function WorkspacePage() {
 
         const sourceSql = activeTab.queryText;
         if (!sourceSql.trim()) {
-            setCopyFeedback('Nothing to format.');
+            showWorkbenchNotice('Nothing to format.', 'info');
             return;
         }
 
@@ -4221,12 +4239,12 @@ export default function WorkspacePage() {
                 }));
             }
 
-            setCopyFeedback('SQL formatted successfully.');
+            showWorkbenchNotice('SQL formatted successfully.');
         } catch (error) {
             const message = error instanceof Error ? error.message : 'SQL formatting failed.';
-            setCopyFeedback(message);
+            showWorkbenchNotice(message, 'error');
         }
-    }, [activeTab, updateWorkspaceTab]);
+    }, [activeTab, showWorkbenchNotice, updateWorkspaceTab]);
 
     const applyValidationMarkers = useCallback((payload: QueryValidationResponse) => {
         const monaco = monacoRef.current;
@@ -4268,14 +4286,14 @@ export default function WorkspacePage() {
 
         const datasourceId = activeTab.datasourceId.trim();
         if (!datasourceId) {
-            setCopyFeedback('Select a connection before validating SQL.');
+            showWorkbenchNotice('Select a connection before validating SQL.', 'warning');
             return;
         }
 
         const resolvedSql = resolveRunnableSqlForTab(activeTab);
         const sql = resolvedSql.sql.trim();
         if (!sql) {
-            setCopyFeedback('Select SQL text first, or use Run Script.');
+            showWorkbenchNotice('Select SQL text first, or use Run Script.', 'warning');
             return;
         }
 
@@ -4305,10 +4323,13 @@ export default function WorkspacePage() {
 
             const payload = (await response.json()) as QueryValidationResponse;
             applyValidationMarkers(payload);
-            setCopyFeedback(payload.valid ? 'Validation succeeded.' : payload.message);
+            showWorkbenchNotice(
+                payload.valid ? 'Validation succeeded.' : payload.message,
+                payload.valid ? 'success' : 'error'
+            );
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Validation failed.';
-            setCopyFeedback(message);
+            showWorkbenchNotice(message, 'error');
         } finally {
             setValidatingSql(false);
         }
@@ -4318,7 +4339,8 @@ export default function WorkspacePage() {
         fetchCsrfToken,
         isSystemAdmin,
         readFriendlyError,
-        resolveRunnableSqlForTab
+        resolveRunnableSqlForTab,
+        showWorkbenchNotice
     ]);
 
     const persistResourceTabContent = useCallback(
@@ -4370,7 +4392,7 @@ export default function WorkspacePage() {
                 replaceVisibleResource(resource);
                 syncResourceToTabs(resource, { targetTabId: tabId });
                 if (options?.announce) {
-                    setCopyFeedback('Script saved.');
+                    showWorkbenchNotice('Script saved.');
                 }
                 return true;
             } catch (error) {
@@ -4386,6 +4408,7 @@ export default function WorkspacePage() {
             fetchCsrfToken,
             readFriendlyError,
             replaceVisibleResource,
+            showWorkbenchNotice,
             syncResourceToTabs,
             workspaceTabsRef
         ]
@@ -4435,8 +4458,11 @@ export default function WorkspacePage() {
         }
 
         handleSeedResourceFromActiveTab();
-        setCopyFeedback('Script draft loaded. Review the details in Scripts and create it there.');
-    }, [activeTab, handleSeedResourceFromActiveTab]);
+        showWorkbenchNotice(
+            'Script draft loaded. Review the details in Scripts and create it there.',
+            'info'
+        );
+    }, [activeTab, handleSeedResourceFromActiveTab, showWorkbenchNotice]);
 
     const handleEditResource = useCallback(
         async (resource: ResourceScriptSummaryResponse) => {
@@ -4577,7 +4603,7 @@ export default function WorkspacePage() {
 
             resetResourceEditor();
             await loadResources();
-            setCopyFeedback(
+            showWorkbenchNotice(
                 resourceEditorMode === 'create' ? 'Script created.' : 'Script updated.'
             );
         } catch (error) {
@@ -4598,6 +4624,7 @@ export default function WorkspacePage() {
         resourceFormSourceTabId,
         resourceFormState,
         setActiveTabId,
+        showWorkbenchNotice,
         syncResourceToTabs,
         updateWorkspaceTab,
         workspaceTabsRef
@@ -4662,8 +4689,9 @@ export default function WorkspacePage() {
             setActiveSection('workbench');
 
             if (resource.datasourceId && resource.datasourceId !== preferredDatasourceId) {
-                setCopyFeedback(
-                    'The linked connection is no longer available. We opened the script with your current connection.'
+                showWorkbenchNotice(
+                    'The linked connection is no longer available. We opened the script with your current connection.',
+                    'warning'
                 );
             }
 
@@ -4680,6 +4708,7 @@ export default function WorkspacePage() {
             loadResourceDetail,
             setActiveTabId,
             setWorkspaceTabs,
+            showWorkbenchNotice,
             syncResourceToTabs,
             visibleDatasources,
             workspaceTabsRef
@@ -4709,14 +4738,14 @@ export default function WorkspacePage() {
                 }
 
                 await loadResources();
-                setCopyFeedback(`Duplicated script "${fullResource.title}".`);
+                showWorkbenchNotice(`Duplicated script "${fullResource.title}".`);
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to duplicate script.';
                 setResourceError(message);
             }
         },
-        [fetchCsrfToken, loadResourceDetail, loadResources, readFriendlyError]
+        [fetchCsrfToken, loadResourceDetail, loadResources, readFriendlyError, showWorkbenchNotice]
     );
 
     const handleDeleteResource = useCallback(
@@ -4745,7 +4774,7 @@ export default function WorkspacePage() {
                     resetResourceEditor();
                 }
                 await loadResources();
-                setCopyFeedback('Script deleted.');
+                showWorkbenchNotice('Script deleted.');
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to delete script.';
                 setResourceError(message);
@@ -4758,6 +4787,7 @@ export default function WorkspacePage() {
             readFriendlyError,
             resetResourceEditor,
             resources,
+            showWorkbenchNotice,
             unlinkResourceFromTabs
         ]
     );
@@ -4835,7 +4865,7 @@ export default function WorkspacePage() {
                 replaceVisibleResource(resource);
                 await loadResources();
                 await loadResourceVersions(editingResourceId);
-                setCopyFeedback('Script restored from version history.');
+                showWorkbenchNotice('Script restored from version history.');
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to restore script revision.';
@@ -4852,6 +4882,7 @@ export default function WorkspacePage() {
             loadResources,
             readFriendlyError,
             replaceVisibleResource,
+            showWorkbenchNotice,
             updateWorkspaceTab,
             workspaceTabsRef
         ]
@@ -6426,7 +6457,7 @@ export default function WorkspacePage() {
         >
             {workspaceError ? (
                 <section className="panel">
-                    <p className="form-error">{workspaceError}</p>
+                    <InlineNotice tone="error">{workspaceError}</InlineNotice>
                 </section>
             ) : null}
 
@@ -6920,182 +6951,60 @@ export default function WorkspacePage() {
                                     }
                                     aria-hidden={!showSchemaBrowser}
                                 >
-                                    <div className="explorer-toolbar-fields">
-                                        <div className="explorer-toolbar-label-row">
-                                            <span className="tile-heading-icon" aria-hidden>
-                                                <RailIcon glyph="connections" />
-                                            </span>
-                                            <span className="explorer-toolbar-label-text">
-                                                Connection
-                                            </span>
-                                        </div>
-                                        <div className="explorer-toolbar-control-row">
-                                            <div className="editor-connection-picker">
-                                                <span
-                                                    className={`editor-connection-health tone-${selectedDatasourceHealth}`}
-                                                    title={`Connection status: ${selectedDatasourceHealthLabel}`}
-                                                    aria-label={`Connection status ${selectedDatasourceHealthLabel}`}
-                                                />
-                                                <span
-                                                    className="editor-connection-icon"
-                                                    aria-hidden
-                                                >
-                                                    <img
-                                                        src={selectedDatasourceIcon}
-                                                        alt=""
-                                                        width={16}
-                                                        height={16}
-                                                    />
-                                                </span>
-                                                <div className="select-wrap">
-                                                    <select
-                                                        id="tab-datasource"
-                                                        aria-label="Active tab connection"
-                                                        value={activeTab?.datasourceId ?? ''}
-                                                        onChange={(event) =>
-                                                            handleDatasourceChangeForActiveTab(
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                        disabled={
-                                                            !activeTab || activeTab.isExecuting
-                                                        }
-                                                    >
-                                                        {visibleDatasources.map((datasource) => (
-                                                            <option
-                                                                key={`tab-ds-${datasource.id}`}
-                                                                value={datasource.id}
-                                                            >
-                                                                {datasource.name}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {activeTab ? (
-                                            <CredentialProfilePolicyControl
-                                                datasource={visibleDatasources.find(
-                                                    (datasource) =>
-                                                        datasource.id === activeTab.datasourceId
-                                                )}
-                                                requestedCredentialProfile={
-                                                    activeTab.requestedCredentialProfile
-                                                }
-                                                queryJustification={activeTab.queryJustification}
-                                                canOverride={isSystemAdmin}
-                                                disabled={activeTab.isExecuting}
-                                                onProfileChange={(credentialProfile) => {
-                                                    updateWorkspaceTab(
-                                                        activeTab.id,
-                                                        (currentTab) => ({
-                                                            ...currentTab,
-                                                            requestedCredentialProfile:
-                                                                credentialProfile
-                                                        })
-                                                    );
-                                                }}
-                                                onJustificationChange={(justification) => {
-                                                    updateWorkspaceTab(
-                                                        activeTab.id,
-                                                        (currentTab) => ({
-                                                            ...currentTab,
-                                                            queryJustification: justification
-                                                        })
-                                                    );
-                                                }}
-                                            />
-                                        ) : null}
-                                        <div className="explorer-toolbar-label-row">
-                                            <span className="tile-heading-icon" aria-hidden>
-                                                <ExplorerIcon glyph="schema" />
-                                            </span>
-                                            <label
-                                                htmlFor="tab-schema"
-                                                className="explorer-toolbar-label-text"
-                                            >
-                                                Default Schema
-                                            </label>
-                                        </div>
-                                        <div className="explorer-toolbar-control-row">
-                                            <div className="select-wrap">
-                                                <select
-                                                    id="tab-schema"
-                                                    aria-label="Default schema"
-                                                    value={activeTab?.schema ?? ''}
-                                                    onChange={(event) => {
-                                                        if (!activeTab) {
-                                                            return;
-                                                        }
-
-                                                        updateWorkspaceTab(
-                                                            activeTab.id,
-                                                            (currentTab) => ({
-                                                                ...currentTab,
-                                                                schema: event.target.value
-                                                            })
-                                                        );
-                                                    }}
-                                                    disabled={!activeTab}
-                                                >
-                                                    <option value="">None</option>
-                                                    {availableSchemaNames.map((schemaName) => (
-                                                        <option
-                                                            key={`schema-option-${schemaName}`}
-                                                            value={schemaName}
-                                                        >
-                                                            {schemaName}
-                                                        </option>
-                                                    ))}
-                                                    {activeTab?.schema &&
-                                                    !availableSchemaNames.includes(
-                                                        activeTab.schema
-                                                    ) ? (
-                                                        <option value={activeTab.schema}>
-                                                            {activeTab.schema}
-                                                        </option>
-                                                    ) : null}
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div className="explorer-toolbar-label-row">
-                                            <span className="tile-heading-icon" aria-hidden>
-                                                <ExplorerIcon glyph="table" />
-                                            </span>
-                                            <label
-                                                htmlFor="explorer-search"
-                                                className="explorer-toolbar-label-text"
-                                            >
-                                                Search
-                                            </label>
-                                        </div>
-                                        <div className="explorer-toolbar-control-row">
-                                            <div className="explorer-search-wrap">
-                                                <input
-                                                    id="explorer-search"
-                                                    aria-label="Search explorer objects"
-                                                    placeholder="Filter schemas, tables, columns"
-                                                    value={explorerSearchQuery}
-                                                    onChange={(event) =>
-                                                        setExplorerSearchQuery(event.target.value)
-                                                    }
-                                                />
-                                                {explorerSearchQuery.trim() ? (
-                                                    <button
-                                                        type="button"
-                                                        className="explorer-search-clear"
-                                                        aria-label="Clear explorer search"
-                                                        title="Clear search"
-                                                        onClick={() => setExplorerSearchQuery('')}
-                                                    >
-                                                        <IconGlyph icon="close" />
-                                                    </button>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <ExplorerControls
+                                        activeDatasourceId={activeTab?.datasourceId ?? ''}
+                                        activeSchema={activeTab?.schema ?? ''}
+                                        requestedCredentialProfile={
+                                            activeTab?.requestedCredentialProfile ?? ''
+                                        }
+                                        queryJustification={activeTab?.queryJustification ?? ''}
+                                        canOverrideCredentialProfile={isSystemAdmin}
+                                        disabled={!activeTab || activeTab.isExecuting}
+                                        visibleDatasources={visibleDatasources}
+                                        activeDatasource={visibleDatasources.find(
+                                            (datasource) =>
+                                                datasource.id === activeTab?.datasourceId
+                                        )}
+                                        availableSchemaNames={availableSchemaNames}
+                                        datasourceHealthTone={selectedDatasourceHealth}
+                                        datasourceHealthLabel={selectedDatasourceHealthLabel}
+                                        datasourceIcon={selectedDatasourceIcon}
+                                        searchQuery={explorerSearchQuery}
+                                        justificationInputRef={queryJustificationInputRef}
+                                        onDatasourceChange={handleDatasourceChangeForActiveTab}
+                                        onSchemaChange={(schema) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                schema
+                                            }));
+                                        }}
+                                        onProfileChange={(credentialProfile) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                requestedCredentialProfile: credentialProfile
+                                            }));
+                                        }}
+                                        onJustificationChange={(queryJustification) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                queryJustification
+                                            }));
+                                        }}
+                                        onSearchQueryChange={setExplorerSearchQuery}
+                                    />
                                     {schemaBrowserError ? (
-                                        <p className="form-error">{schemaBrowserError}</p>
+                                        <InlineNotice tone="error">
+                                            {schemaBrowserError}
+                                        </InlineNotice>
                                     ) : null}
                                     {loadingSchemaBrowser && !schemaBrowser ? (
                                         <p className="explorer-empty">Loading explorer...</p>
@@ -7605,10 +7514,10 @@ export default function WorkspacePage() {
                                 <div className="monaco-frame">
                                     {monacoLoadTimedOut ? (
                                         <div className="editor-fallback">
-                                            <p className="form-error">
+                                            <InlineNotice tone="error">
                                                 SQL editor failed to initialize. You can continue
                                                 using fallback mode.
-                                            </p>
+                                            </InlineNotice>
                                             <textarea
                                                 value={activeTab?.queryText ?? ''}
                                                 onChange={(event) => {
@@ -7721,28 +7630,23 @@ export default function WorkspacePage() {
 
                             <div className="editor-action-row" ref={editorActionRowRef}>
                                 <div className="row editor-primary-actions">
-                                    <IconButton
+                                    <LabeledActionButton
                                         icon="play"
-                                        title={
-                                            activeTab?.isExecuting
-                                                ? 'Running selection...'
-                                                : 'Run Selection'
-                                        }
+                                        label="Run"
+                                        title="Run selection"
                                         onClick={handleRunSelection}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !selectedDatasource
                                         }
+                                        variant="primary"
                                     />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
-                                        <IconButton
+                                        <LabeledActionButton
                                             icon="circle-play"
-                                            title={
-                                                activeTab?.isExecuting
-                                                    ? 'Running script...'
-                                                    : 'Run Script'
-                                            }
+                                            label="Run Script"
+                                            title="Run script"
                                             onClick={handleRunScript}
                                             disabled={
                                                 !activeTab ||
@@ -7754,9 +7658,10 @@ export default function WorkspacePage() {
                                             className="script-options-anchor"
                                             ref={scriptOptionsAnchorRef}
                                         >
-                                            <IconButton
+                                            <LabeledActionButton
                                                 icon="settings"
-                                                title="Options"
+                                                label="Options"
+                                                title="Script options"
                                                 onClick={() =>
                                                     setShowScriptOptions((current) => {
                                                         const next = !current;
@@ -7776,46 +7681,58 @@ export default function WorkspacePage() {
                                                   <div
                                                       className="script-options-popover is-floating"
                                                       role="dialog"
+                                                      aria-label="Script options"
                                                       ref={scriptOptionsPopoverRef}
                                                       style={{
                                                           top: `${scriptOptionsPosition.top}px`,
                                                           left: `${scriptOptionsPosition.left}px`
                                                       }}
                                                   >
-                                                      <label className="checkbox-row">
-                                                          <input
-                                                              type="checkbox"
-                                                              checked={scriptStopOnError}
-                                                              onChange={(event) =>
-                                                                  setScriptStopOnError(
-                                                                      event.target.checked
-                                                                  )
-                                                              }
-                                                          />
-                                                          <span>Stop on error</span>
-                                                      </label>
-                                                      <div className="script-option-row">
-                                                          <label htmlFor="script-transaction-mode">
-                                                              Transaction
-                                                          </label>
-                                                          <div className="select-wrap">
-                                                              <select
-                                                                  id="script-transaction-mode"
-                                                                  value={scriptTransactionMode}
+                                                      <div className="script-options-header">
+                                                          <span
+                                                              className="script-options-header-icon"
+                                                              aria-hidden
+                                                          >
+                                                              <IconGlyph icon="settings" />
+                                                          </span>
+                                                          <strong>Script Options</strong>
+                                                      </div>
+                                                      <div className="script-options-body">
+                                                          <label className="script-option-toggle">
+                                                              <span>Stop on error</span>
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={scriptStopOnError}
                                                                   onChange={(event) =>
-                                                                      setScriptTransactionMode(
-                                                                          event.target
-                                                                              .value as ScriptTransactionMode
+                                                                      setScriptStopOnError(
+                                                                          event.target.checked
                                                                       )
                                                                   }
-                                                              >
-                                                                  <option value="AUTOCOMMIT">
-                                                                      Autocommit
-                                                                  </option>
-                                                                  <option value="TRANSACTION">
-                                                                      Single transaction
-                                                                  </option>
-                                                              </select>
+                                                              />
+                                                          </label>
+                                                          <div className="script-option-row">
+                                                              <label htmlFor="script-transaction-mode">
+                                                                  Transaction mode
+                                                              </label>
+                                                              <div className="select-wrap">
+                                                                  <select
+                                                                      id="script-transaction-mode"
+                                                                      value={scriptTransactionMode}
+                                                                      onChange={(event) =>
+                                                                          setScriptTransactionMode(
+                                                                              event.target
+                                                                                  .value as ScriptTransactionMode
+                                                                          )
+                                                                      }
+                                                                  >
+                                                                      <option value="AUTOCOMMIT">
+                                                                          Autocommit
+                                                                      </option>
+                                                                      <option value="TRANSACTION">
+                                                                          Single transaction
+                                                                      </option>
+                                                                  </select>
+                                                              </div>
                                                           </div>
                                                       </div>
                                                   </div>,
@@ -7823,58 +7740,83 @@ export default function WorkspacePage() {
                                               )
                                             : null}
                                     </div>
-                                    <IconButton
-                                        icon="activity"
-                                        title="Analyze"
-                                        onClick={handleAnalyze}
-                                        disabled={
-                                            !activeTab ||
-                                            activeTab.isExecuting ||
-                                            !selectedDatasource
-                                        }
-                                    />
-                                    <IconButton
-                                        icon="file-text"
-                                        title="Explain"
-                                        onClick={handleExplain}
-                                        disabled={
-                                            !activeTab ||
-                                            activeTab.isExecuting ||
-                                            !selectedDatasource
-                                        }
-                                    />
-                                    <IconButton
-                                        icon="shield-check"
-                                        title={validatingSql ? 'Validating...' : 'Validate'}
-                                        onClick={() => void handleValidateSql()}
-                                        disabled={
-                                            !activeTab || validatingSql || !selectedDatasource
-                                        }
-                                    />
-                                    <IconButton
+                                    <details className="action-menu">
+                                        <summary
+                                            className="labeled-action-button"
+                                            title="Analyze, explain, or validate SQL"
+                                        >
+                                            <span className="labeled-action-icon" aria-hidden>
+                                                <IconGlyph icon="activity" />
+                                            </span>
+                                            <span>Query Tools</span>
+                                            <span className="action-menu-chevron" aria-hidden>
+                                                <IconGlyph icon="chevron-down" />
+                                            </span>
+                                        </summary>
+                                        <div className="action-menu-popover">
+                                            <button
+                                                type="button"
+                                                onClick={handleAnalyze}
+                                                disabled={
+                                                    !activeTab ||
+                                                    activeTab.isExecuting ||
+                                                    !selectedDatasource
+                                                }
+                                            >
+                                                <IconGlyph icon="activity" />
+                                                <span>Analyze</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleExplain}
+                                                disabled={
+                                                    !activeTab ||
+                                                    activeTab.isExecuting ||
+                                                    !selectedDatasource
+                                                }
+                                            >
+                                                <IconGlyph icon="file-text" />
+                                                <span>Explain</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleValidateSql()}
+                                                disabled={
+                                                    !activeTab ||
+                                                    validatingSql ||
+                                                    !selectedDatasource
+                                                }
+                                            >
+                                                <IconGlyph icon="shield-check" />
+                                                <span>
+                                                    {validatingSql ? 'Validating...' : 'Validate'}
+                                                </span>
+                                            </button>
+                                        </div>
+                                    </details>
+                                    <LabeledActionButton
                                         icon="align-start-horizontal"
+                                        label="Format SQL"
                                         title="Format SQL"
                                         onClick={handleFormatSql}
                                         disabled={!activeTab || activeTab.isExecuting}
                                     />
-                                    <IconButton
+                                    <LabeledActionButton
                                         icon="save"
+                                        label="Save"
                                         title="Save to Scripts"
                                         onClick={handleSaveResourceDraftFromEditor}
                                         disabled={!activeTab}
                                     />
-                                    <IconButton
-                                        icon="close"
-                                        title="Cancel"
-                                        onClick={() => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-
-                                            void handleCancelRun(activeTab.id);
-                                        }}
-                                        disabled={!activeTab || !activeTab.isExecuting}
-                                    />
+                                    {activeTab?.isExecuting ? (
+                                        <LabeledActionButton
+                                            icon="close"
+                                            label="Cancel"
+                                            title="Cancel running query"
+                                            onClick={() => void handleCancelRun(activeTab.id)}
+                                            variant="danger"
+                                        />
+                                    ) : null}
                                 </div>
                                 <div className="row editor-secondary-actions">
                                     <div
@@ -8119,20 +8061,24 @@ export default function WorkspacePage() {
                                     ) : null}
                                     {activeTab?.statusMessage &&
                                     !hideRedundantResultStatusMessage ? (
-                                        <p>{activeTab.statusMessage}</p>
+                                        <InlineNotice tone="info">
+                                            {activeTab.statusMessage}
+                                        </InlineNotice>
                                     ) : null}
                                     {activeTab?.errorMessage ? (
-                                        <p className="form-error" role="alert">
+                                        <InlineNotice tone="error">
                                             {activeTab.errorMessage}
-                                        </p>
+                                        </InlineNotice>
                                     ) : null}
                                     {activeTab?.rowLimitReached ? (
-                                        <p className="form-error" role="alert">
+                                        <InlineNotice tone="warning">
                                             Result row limit reached for this execution.
-                                        </p>
+                                        </InlineNotice>
                                     ) : null}
-                                    {copyFeedback ? (
-                                        <p className="form-success">{copyFeedback}</p>
+                                    {workbenchNotice ? (
+                                        <InlineNotice tone={workbenchNotice.tone}>
+                                            {workbenchNotice.message}
+                                        </InlineNotice>
                                     ) : null}
                                     {explainPlanText ? (
                                         <div className="explain-plan">
@@ -8337,12 +8283,10 @@ export default function WorkspacePage() {
                                 hidden={activeSection !== 'admin'}
                             >
                                 {adminError ? (
-                                    <p className="form-error" role="alert">
-                                        {adminError}
-                                    </p>
+                                    <InlineNotice tone="error">{adminError}</InlineNotice>
                                 ) : null}
                                 {adminSuccess ? (
-                                    <p className="form-success">{adminSuccess}</p>
+                                    <InlineNotice tone="success">{adminSuccess}</InlineNotice>
                                 ) : null}
 
                                 {activeAdminSubsection === 'groups' ? (
@@ -9261,12 +9205,10 @@ export default function WorkspacePage() {
                                 hidden={activeSection !== 'connections'}
                             >
                                 {adminError ? (
-                                    <p className="form-error" role="alert">
-                                        {adminError}
-                                    </p>
+                                    <InlineNotice tone="error">{adminError}</InlineNotice>
                                 ) : null}
                                 {adminSuccess ? (
-                                    <p className="form-success">{adminSuccess}</p>
+                                    <InlineNotice tone="success">{adminSuccess}</InlineNotice>
                                 ) : null}
 
                                 {activeSection === 'connections' ? (
@@ -9913,11 +9855,11 @@ export default function WorkspacePage() {
                                                                             </select>
                                                                         </div>
                                                                         {selectedDriverForForm ? (
-                                                                            <p
-                                                                                className={
+                                                                            <InlineNotice
+                                                                                tone={
                                                                                     selectedDriverForForm.available
-                                                                                        ? 'form-success'
-                                                                                        : 'form-error'
+                                                                                        ? 'success'
+                                                                                        : 'error'
                                                                                 }
                                                                             >
                                                                                 {
@@ -9930,7 +9872,7 @@ export default function WorkspacePage() {
                                                                                 {
                                                                                     selectedDriverForForm.message
                                                                                 }
-                                                                            </p>
+                                                                            </InlineNotice>
                                                                         ) : null}
                                                                     </div>
 
@@ -10198,11 +10140,11 @@ export default function WorkspacePage() {
                                                                                 </p>
                                                                             ) : null}
                                                                             {mavenDriverVersionsError ? (
-                                                                                <p className="form-error">
+                                                                                <InlineNotice tone="error">
                                                                                     {
                                                                                         mavenDriverVersionsError
                                                                                     }
-                                                                                </p>
+                                                                                </InlineNotice>
                                                                             ) : null}
 
                                                                             <button
@@ -11207,19 +11149,18 @@ export default function WorkspacePage() {
                                                                         </form>
 
                                                                         {testConnectionMessage ? (
-                                                                            <p
-                                                                                className={
+                                                                            <InlineNotice
+                                                                                tone={
                                                                                     testConnectionOutcome ===
                                                                                     'success'
-                                                                                        ? 'form-success'
-                                                                                        : 'form-error'
+                                                                                        ? 'success'
+                                                                                        : 'error'
                                                                                 }
-                                                                                role="alert"
                                                                             >
                                                                                 {
                                                                                     testConnectionMessage
                                                                                 }
-                                                                            </p>
+                                                                            </InlineNotice>
                                                                         ) : null}
                                                                     </div>
                                                                 </div>
@@ -11323,7 +11264,9 @@ export default function WorkspacePage() {
                                   {loadingObjectInspector ? (
                                       <p className="explorer-empty">Loading inspector...</p>
                                   ) : objectInspectorError ? (
-                                      <p className="form-error">{objectInspectorError}</p>
+                                      <InlineNotice tone="error">
+                                          {objectInspectorError}
+                                      </InlineNotice>
                                   ) : objectInspectorResponse ? (
                                       (() => {
                                           const sections = objectInspectorResponse.sections ?? [];

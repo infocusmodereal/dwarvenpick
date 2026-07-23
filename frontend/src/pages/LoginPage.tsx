@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { useTheme } from '../theme/ThemeContext';
+import InlineNotice from '../workbench/components/InlineNotice';
 
 type AuthMethod = 'local' | 'ldap' | 'oidc';
 
@@ -275,11 +276,7 @@ export default function LoginPage() {
                         </form>
                     ) : null}
 
-                    {errorMessage ? (
-                        <p className="form-error" role="alert">
-                            {errorMessage}
-                        </p>
-                    ) : null}
+                    {errorMessage ? <InlineNotice tone="error">{errorMessage}</InlineNotice> : null}
                 </div>
             </section>
         </AppShell>

@@ -571,6 +571,8 @@ export type IconGlyph =
     | 'info'
     | 'delete'
     | 'download'
+    | 'search'
+    | 'chevron-down'
     | 'play'
     | 'circle-play'
     | 'align-start-horizontal'
@@ -634,7 +636,7 @@ export type IconButtonProps = {
     title: string;
     onClick: () => void;
     disabled?: boolean;
-    variant?: 'default' | 'danger';
+    variant?: 'default' | 'primary' | 'danger';
 };
 
 export type ManagedDatasourceFormState = {
