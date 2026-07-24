@@ -6,6 +6,39 @@ export type ResultPageRequest = {
     previousPageTokens: string[];
 };
 
+export type CsvExportAvailability = {
+    capKnown: boolean;
+    exceeded: boolean;
+    summary: string;
+    note: string;
+};
+
+export const csvExportAvailability = (tab: WorkspaceTab): CsvExportAvailability => {
+    const completed = tab.executionStatus === 'SUCCEEDED';
+    const cap = tab.maxExportRows;
+    if (!completed || !Number.isInteger(cap) || (cap ?? 0) < 1) {
+        return {
+            capKnown: false,
+            exceeded: false,
+            summary: completed
+                ? `${tab.rowCount.toLocaleString()} rows · cap not reported`
+                : 'CSV cap available after completion',
+            note: 'CSV export limit is not reported by this server. Backend enforcement still applies.'
+        };
+    }
+
+    const resolvedCap = cap as number;
+    const exceeded = tab.rowCount > resolvedCap;
+    return {
+        capKnown: true,
+        exceeded,
+        summary: `${tab.rowCount.toLocaleString()} / ${resolvedCap.toLocaleString()} rows`,
+        note: exceeded
+            ? `This result exceeds the ${resolvedCap.toLocaleString()}-row CSV limit. Narrow the query to export.`
+            : `CSV exports all ${tab.rowCount.toLocaleString()} rows in their original order.`
+    };
+};
+
 export const nextResultPageRequest = (tab: WorkspaceTab): ResultPageRequest | null => {
     if (!tab.executionId || !tab.nextPageToken) {
         return null;

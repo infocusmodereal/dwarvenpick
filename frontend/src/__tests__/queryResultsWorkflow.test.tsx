@@ -277,6 +277,36 @@ describe('useQueryResultsWorkflow', () => {
         expect(result.current.view.exportingCsv).toBe(false);
     });
 
+    it('does not call the backend export when the completed result exceeds the reported cap', async () => {
+        const onFeedback = vi.fn();
+        const activeTab = {
+            ...tab('tab-a', 'exec-a', 'SUCCEEDED'),
+            rowCount: 5001,
+            maxExportRows: 5000
+        };
+        fetchMock.mockImplementation(async () => jsonResponse(resultPayload));
+        const { result } = renderHook(() =>
+            useQueryResultsWorkflow({
+                activeTab,
+                activeTabId: activeTab.id,
+                onFeedback,
+                readFriendlyError: vi.fn(),
+                updateWorkspaceTab: vi.fn()
+            })
+        );
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+        fetchMock.mockClear();
+
+        await act(async () => result.current.view.onExportCsv());
+
+        expect(onFeedback).toHaveBeenCalledWith(
+            'This result exceeds the 5,000-row CSV limit. Narrow the query to export.',
+            'warning'
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(result.current.view.exportingCsv).toBe(false);
+    });
+
     it('exports the full original-order result while the current page remains sorted', async () => {
         const onFeedback = vi.fn();
         const activeTab = {

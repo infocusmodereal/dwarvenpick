@@ -34,6 +34,9 @@ const resultTab = {
     ...buildWorkspaceTab('starrocks-prod-adhoc', 'Query 1', 'select value'),
     resultColumns: [{ name: 'value', jdbcType: 'VARCHAR' }],
     resultRows: [['alpha'], [null]],
+    executionStatus: 'SUCCEEDED',
+    rowCount: 2,
+    maxExportRows: 5000,
     nextPageToken: 'page-3',
     previousPageTokens: ['', 'page-1']
 };
@@ -55,8 +58,9 @@ describe('QueryResultsSection', () => {
         expect(workflow.onToggleExportMenu).toHaveBeenCalledOnce();
         expect(workflow.onExportIncludeHeadersChange).toHaveBeenCalledWith(false);
         expect(workflow.onExportCsv).toHaveBeenCalledOnce();
+        expect(screen.getByText('2 / 5,000 rows')).toBeInTheDocument();
         expect(
-            screen.getByText('CSV exports the full result in its original order.')
+            screen.getByText('CSV exports all 2 rows in their original order.')
         ).toBeInTheDocument();
 
         fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '250' } });
@@ -112,5 +116,43 @@ describe('QueryResultsSection', () => {
         const sortButton = screen.getByRole('button', { name: 'Sort current page by value' });
         expect(sortButton.closest('th')).toHaveAttribute('aria-sort', 'descending');
         expect(screen.getByText('Current page sort: value descending')).toBeInTheDocument();
+    });
+
+    it('explains and disables CSV download when the completed result exceeds the cap', () => {
+        const workflow = view();
+        render(
+            <QueryResultsSection
+                tab={{ ...resultTab, rowCount: 5001, maxExportRows: 5000 }}
+                view={workflow}
+                onCopyCell={vi.fn().mockResolvedValue(undefined)}
+            />
+        );
+
+        expect(screen.getByText('5,001 / 5,000 rows')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Export unavailable/ })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
+        expect(
+            screen.getByText(
+                'This result exceeds the 5,000-row CSV limit. Narrow the query to export.'
+            )
+        ).toBeInTheDocument();
+    });
+
+    it('keeps backend export available when an older server does not report the cap', () => {
+        render(
+            <QueryResultsSection
+                tab={{ ...resultTab, maxExportRows: undefined }}
+                view={view()}
+                onCopyCell={vi.fn().mockResolvedValue(undefined)}
+            />
+        );
+
+        expect(screen.getByText('2 rows · cap not reported')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Download CSV' })).toBeEnabled();
+        expect(
+            screen.getByText(
+                'CSV export limit is not reported by this server. Backend enforcement still applies.'
+            )
+        ).toBeInTheDocument();
     });
 });

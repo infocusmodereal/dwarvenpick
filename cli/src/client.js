@@ -79,6 +79,34 @@ export class DwarvenpickClient {
     return this.request(`/api/queries/${encodeURIComponent(executionId)}/results${query ? `?${query}` : ''}`);
   }
 
+  async exportCsv(executionId, { headers = true } = {}) {
+    const params = new URLSearchParams();
+    params.set('headers', headers ? 'true' : 'false');
+    const requestHeaders = {
+      Accept: 'text/csv',
+    };
+    const cookieHeader = this.cookieJar.header();
+    if (cookieHeader) {
+      requestHeaders.Cookie = cookieHeader;
+    }
+
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/api/queries/${encodeURIComponent(executionId)}/export.csv?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: requestHeaders,
+      },
+    );
+    this.cookieJar.storeFrom(response.headers);
+
+    if (!response.ok) {
+      const responseBody = await readResponseBody(response);
+      const message = responseErrorMessage(responseBody, response.statusText, response.status);
+      throw new HttpError(message, response.status, responseBody);
+    }
+    return response;
+  }
+
   async ensureCsrfToken() {
     if (!this.csrfToken) {
       this.csrfToken = await this.request('/api/auth/csrf');
@@ -113,17 +141,39 @@ export class DwarvenpickClient {
 
     this.cookieJar.storeFrom(response.headers);
 
-    const responseText = await response.text();
-    const contentType = response.headers.get('content-type') || '';
-    const responseBody = contentType.includes('application/json') && responseText ? JSON.parse(responseText) : responseText;
+    const responseBody = await readResponseBody(response);
 
     if (!response.ok) {
-      const message = responseBody?.error || responseBody?.message || response.statusText || `HTTP ${response.status}`;
+      const message = responseErrorMessage(responseBody, response.statusText, response.status);
       throw new HttpError(message, response.status, responseBody);
     }
 
     return responseBody;
   }
+}
+
+async function readResponseBody(response) {
+  const responseText = await response.text();
+  const contentType = response.headers.get('content-type') || '';
+  return contentType.includes('application/json') && responseText ? JSON.parse(responseText) : responseText;
+}
+
+function responseErrorMessage(responseBody, statusText, status) {
+  if (responseBody && typeof responseBody === 'object') {
+    return responseBody.error || responseBody.message || statusText || `HTTP ${status}`;
+  }
+  if (typeof responseBody === 'string' && responseBody.trim()) {
+    const lines = responseBody.trim().split(/\r?\n/);
+    if (lines[0]?.trim().toLowerCase() === 'error' && lines[1]) {
+      return lines
+        .slice(1)
+        .join('\n')
+        .replace(/^"|"$/g, '')
+        .replaceAll('""', '"');
+    }
+    return responseBody.trim();
+  }
+  return statusText || `HTTP ${status}`;
 }
 
 export class HttpError extends Error {

@@ -94,6 +94,7 @@ data class QueryExecutionStatusResponse(
     val columnCount: Int,
     val rowLimitReached: Boolean,
     val maxRowsPerQuery: Int,
+    val maxExportRows: Int? = null,
     val maxRuntimeSeconds: Int,
     val credentialProfile: String,
     val justification: String? = null,

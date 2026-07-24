@@ -1,5 +1,6 @@
 import { createWriteStream } from 'node:fs';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { finished } from 'node:stream/promises';
 import { parseArgs, parseDurationMs, parsePositiveInteger, UsageError } from './args.js';
 import { DwarvenpickClient } from './client.js';
@@ -81,17 +82,25 @@ export async function runQuery(client, parsed, config, streams = process) {
     throw new Error(`Query ${status.executionId} finished with ${status.status}: ${details}`);
   }
 
-  await streamResults(
-    client,
-    submitResponse.executionId,
-    {
-      pageSize: config.pageSize,
-      format: config.format,
-      headers: !parsed.options['no-headers'],
-      outputPath: config.output,
-    },
-    streams,
-  );
+  const headers = !parsed.options['no-headers'];
+  if (config.format === 'csv') {
+    if (!config.quiet) {
+      streams.stderr.write(`${csvExportStatusMessage(status)}\n`);
+    }
+    await streamCsvExport(client, submitResponse.executionId, { headers, outputPath: config.output }, streams);
+  } else {
+    await streamResults(
+      client,
+      submitResponse.executionId,
+      {
+        pageSize: config.pageSize,
+        format: config.format,
+        headers,
+        outputPath: config.output,
+      },
+      streams,
+    );
+  }
 }
 
 export function resolveConfig(options, env) {
@@ -254,6 +263,42 @@ export async function streamResults(client, executionId, options = {}, streams =
       await writeToSink(sink, `${wroteJsonRow ? '\n' : ''}  ]\n}\n`);
     }
   });
+}
+
+export async function streamCsvExport(client, executionId, options = {}, streams = process) {
+  const {
+    headers = true,
+    outputPath,
+  } = options;
+
+  await withOutputSink(outputPath, streams, async (sink) => {
+    const response = await client.exportCsv(executionId, { headers });
+    if (!response.body) {
+      return;
+    }
+    const source =
+      typeof response.body.getReader === 'function'
+        ? Readable.fromWeb(response.body)
+        : response.body;
+    for await (const chunk of source) {
+      await writeToSink(sink, chunk);
+    }
+  });
+}
+
+function csvExportStatusMessage(status) {
+  const rowCount = Number.isInteger(status.rowCount) ? status.rowCount : 0;
+  const maxExportRows =
+    Number.isInteger(status.maxExportRows) && status.maxExportRows > 0
+      ? status.maxExportRows
+      : null;
+  if (maxExportRows === null) {
+    return `CSV export: ${rowCount.toLocaleString()} rows; server limit not reported, backend enforcement applies.`;
+  }
+  if (rowCount > maxExportRows) {
+    return `CSV export: ${rowCount.toLocaleString()} rows exceeds the ${maxExportRows.toLocaleString()}-row server limit.`;
+  }
+  return `CSV export: ${rowCount.toLocaleString()} rows of ${maxExportRows.toLocaleString()} allowed.`;
 }
 
 function helpText() {

@@ -2,6 +2,7 @@ import type { ResultSortDirection, WorkspaceTab } from '../types';
 import type { QueryResultsView } from '../useQueryResultsWorkflow';
 import { sortDownIcon, sortNeutralIcon, sortUpIcon } from '../icons';
 import { IconButton, IconGlyph } from '../components/WorkbenchIcons';
+import { csvExportAvailability } from '../queryResults';
 
 type QueryResultsSectionProps = {
     onCopyCell: (value: string | null) => Promise<void>;
@@ -53,6 +54,7 @@ export default function QueryResultsSection({ onCopyCell, tab, view }: QueryResu
         activeSortColumn && resultSortState
             ? `${activeSortColumn} ${resultSortState.direction === 'asc' ? 'ascending' : 'descending'}`
             : 'none';
+    const exportAvailability = csvExportAvailability(tab);
 
     return (
         <div className="results-body">
@@ -69,12 +71,24 @@ export default function QueryResultsSection({ onCopyCell, tab, view }: QueryResu
                         Next Page
                     </button>
                     <div className="result-export-wrapper" ref={exportMenuRef}>
-                        <IconButton
-                            icon="download"
-                            title="Export CSV"
-                            onClick={onToggleExportMenu}
-                            disabled={exportingCsv}
-                        />
+                        <div className="result-export-trigger">
+                            <IconButton
+                                icon="download"
+                                title={
+                                    exportAvailability.exceeded
+                                        ? 'Export unavailable: result exceeds the CSV row limit'
+                                        : 'Export CSV'
+                                }
+                                onClick={onToggleExportMenu}
+                                disabled={exportingCsv}
+                            />
+                            <span
+                                className={`result-export-cap${exportAvailability.exceeded ? ' is-exceeded' : ''}`}
+                                aria-label={`CSV export: ${exportAvailability.summary}`}
+                            >
+                                {exportAvailability.summary}
+                            </span>
+                        </div>
                         {showExportMenu ? (
                             <div className="result-export-popover" role="dialog">
                                 <label className="checkbox-row">
@@ -90,12 +104,14 @@ export default function QueryResultsSection({ onCopyCell, tab, view }: QueryResu
                                 <button
                                     type="button"
                                     onClick={() => void onExportCsv()}
-                                    disabled={exportingCsv}
+                                    disabled={exportingCsv || exportAvailability.exceeded}
                                 >
                                     {exportingCsv ? 'Exporting...' : 'Download CSV'}
                                 </button>
-                                <p className="result-export-note">
-                                    CSV exports the full result in its original order.
+                                <p
+                                    className={`result-export-note${exportAvailability.exceeded ? ' is-warning' : ''}`}
+                                >
+                                    {exportAvailability.note}
                                 </p>
                             </div>
                         ) : null}

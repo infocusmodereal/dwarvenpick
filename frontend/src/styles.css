@@ -3841,6 +3841,24 @@ button:disabled {
     position: relative;
 }
 
+.result-export-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.result-export-cap {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 620;
+    white-space: nowrap;
+}
+
+.result-export-cap.is-exceeded,
+.result-export-note.is-warning {
+    color: var(--danger);
+}
+
 .result-export-popover {
     position: absolute;
     top: calc(100% + 0.32rem);
