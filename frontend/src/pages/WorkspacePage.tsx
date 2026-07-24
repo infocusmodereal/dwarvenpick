@@ -105,6 +105,7 @@ import {
 } from '../workbench/connectionUtils';
 import { prepareTabForQueryExecution } from '../workbench/queryExecutionState';
 import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
+import { readGovernedQueryError } from '../workbench/queryPolicyError';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useAuditEvents } from '../workbench/useAuditEvents';
 import { useQueryHistory } from '../workbench/useQueryHistory';
@@ -3921,7 +3922,11 @@ export default function WorkspacePage() {
                 });
 
                 if (!response.ok) {
-                    throw new Error(await readFriendlyError(response));
+                    throw new Error(
+                        response.status === 403
+                            ? await readGovernedQueryError(response)
+                            : await readFriendlyError(response)
+                    );
                 }
 
                 const payload = (await response.json()) as QueryExecutionResponse;

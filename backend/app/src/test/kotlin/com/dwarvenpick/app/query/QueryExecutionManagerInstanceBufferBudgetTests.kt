@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -75,6 +76,7 @@ class QueryExecutionManagerInstanceBufferBudgetTests {
     private fun testPolicy(maxRowsPerQuery: Int): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "unit-test-profile",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = true,
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = 10,

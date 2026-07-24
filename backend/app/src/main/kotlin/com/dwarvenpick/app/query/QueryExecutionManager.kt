@@ -191,20 +191,16 @@ class QueryExecutionManager(
         val normalizedSql = request.sql.trim()
         val statementSegments =
             SqlStatementSplitter
-                .splitSqlStatements(normalizedSql)
+                .splitSqlStatements(normalizedSql, policy.engine)
                 .filter { segment ->
-                    SqlSafety
-                        .stripLeadingSqlComments(segment.sql)
-                        .trim()
-                        .trimStart(';')
-                        .isNotBlank()
+                    SqlSafety.hasExecutableSql(segment.sql, policy.engine)
                 }
 
         if (statementSegments.isEmpty()) {
             throw IllegalArgumentException("SQL is empty.")
         }
 
-        val hasWriteIntent = statementSegments.any { segment -> !SqlSafety.isReadOnlySql(segment.sql) }
+        val hasWriteIntent = statementSegments.any { segment -> !SqlSafety.isReadOnlySql(segment.sql, policy.engine) }
         if (policy.readOnly && hasWriteIntent) {
             meterRegistry
                 .counter(
@@ -959,13 +955,9 @@ class QueryExecutionManager(
             record.activeStatement = statement
             val statementSegments =
                 SqlStatementSplitter
-                    .splitSqlStatements(record.sql)
+                    .splitSqlStatements(record.sql, handle.spec.engine)
                     .filter { segment ->
-                        SqlSafety
-                            .stripLeadingSqlComments(segment.sql)
-                            .trim()
-                            .trimStart(';')
-                            .isNotBlank()
+                        SqlSafety.hasExecutableSql(segment.sql, handle.spec.engine)
                     }
 
             if (statementSegments.isEmpty()) {

@@ -199,6 +199,7 @@ class QueryExecutionManagerBufferLimitTests {
     private fun testPolicy(maxRowsPerQuery: Int): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "unit-test-profile",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = true,
             maxRowsPerQuery = maxRowsPerQuery,
             maxRuntimeSeconds = 10,

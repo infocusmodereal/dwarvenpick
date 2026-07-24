@@ -5,6 +5,7 @@ import com.dwarvenpick.app.auth.DisabledUserException
 import com.dwarvenpick.app.auth.UserAccountService
 import com.dwarvenpick.app.auth.UserNotFoundException
 import com.dwarvenpick.app.datasource.CatalogDatasourceEntry
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service
@@ -24,6 +25,7 @@ class QueryAccessDeniedException(
 
 data class QueryAccessPolicy(
     val credentialProfile: String,
+    val engine: DatasourceEngine,
     val readOnly: Boolean,
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
@@ -385,6 +387,7 @@ class RbacService(
 
                 return QueryAccessPolicy(
                     credentialProfile = selectedProfile,
+                    engine = datasourceRegistryService.engineForDatasource(datasourceId),
                     readOnly = false,
                     maxRowsPerQuery = 5000,
                     maxRuntimeSeconds = 300,
@@ -408,6 +411,7 @@ class RbacService(
 
         return QueryAccessPolicy(
             credentialProfile = selectedCredentialProfile,
+            engine = datasourceRegistryService.engineForDatasource(datasourceId),
             readOnly = selectedAccessRules.all { access -> access.readOnly },
             maxRowsPerQuery = resolveLimit(selectedAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
             maxRuntimeSeconds = resolveLimit(selectedAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
@@ -457,6 +461,7 @@ class RbacService(
 
         return QueryAccessPolicy(
             credentialProfile = credentialProfile,
+            engine = datasourceRegistryService.engineForDatasource(datasourceId),
             readOnly = resolvedReadOnly,
             maxRowsPerQuery = resolveLimit(matchingAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
             maxRuntimeSeconds = resolveLimit(matchingAccessRules.map { access -> access.maxRuntimeSeconds }, 300),

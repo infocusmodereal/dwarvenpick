@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -19,6 +20,7 @@ class QueryExecutionLimitPolicyTests {
             limitPolicy.resolve(
                 QueryAccessPolicy(
                     credentialProfile = "read-write",
+                    engine = DatasourceEngine.POSTGRESQL,
                     readOnly = false,
                     maxRowsPerQuery = Int.MAX_VALUE,
                     maxRuntimeSeconds = Int.MAX_VALUE,
@@ -37,6 +39,7 @@ class QueryExecutionLimitPolicyTests {
             limitPolicy.resolve(
                 QueryAccessPolicy(
                     credentialProfile = "read-only",
+                    engine = DatasourceEngine.POSTGRESQL,
                     readOnly = true,
                     maxRowsPerQuery = 100,
                     maxRuntimeSeconds = 30,

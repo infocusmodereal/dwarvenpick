@@ -1,5 +1,7 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.datasource.DatasourceEngine
+
 data class SqlStatementSegment(
     val sql: String,
     val start: Int,
@@ -13,100 +15,29 @@ data class SqlStatementSegment(
  * - Support multi-statement scripting in a JDBC-safe way (execute statements one-by-one).
  * - Be good enough for common SQL: semicolon terminators, single/double quoted strings, line/block comments.
  *
- * Non-goals:
- * - Full SQL parsing (dollar-quoting, vendor-specific delimiters, etc.).
+ * This remains a bounded lexical splitter, not a full SQL parser. Dialect-specific inert regions are
+ * delegated to [SqlLexicalScanner] so semicolons inside supported literals and comments are preserved.
  */
 object SqlStatementSplitter {
-    fun splitSqlStatements(sql: String): List<SqlStatementSegment> {
+    @Deprecated(
+        message = "Pass DatasourceEngine so dialect-specific quoting cannot hide statement boundaries.",
+        replaceWith = ReplaceWith("splitSqlStatements(sql, engine)"),
+    )
+    fun splitSqlStatements(sql: String): List<SqlStatementSegment> = splitSqlStatements(sql, engine = null)
+
+    fun splitSqlStatements(
+        sql: String,
+        engine: DatasourceEngine?,
+    ): List<SqlStatementSegment> {
         if (sql.isBlank()) {
             return emptyList()
         }
 
         val segments = mutableListOf<SqlStatementSegment>()
         var segmentStart = 0
-
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var inLineComment = false
-        var inBlockComment = false
-
-        var index = 0
-        while (index < sql.length) {
-            val current = sql[index]
-            val next = if (index + 1 < sql.length) sql[index + 1] else null
-
-            if (inLineComment) {
-                if (current == '\n') {
-                    inLineComment = false
-                }
-                index += 1
-                continue
-            }
-
-            if (inBlockComment) {
-                if (current == '*' && next == '/') {
-                    inBlockComment = false
-                    index += 2
-                    continue
-                }
-                index += 1
-                continue
-            }
-
-            if (inSingleQuote) {
-                if (current == '\'' && next == '\'') {
-                    index += 2
-                    continue
-                }
-                if (current == '\'') {
-                    inSingleQuote = false
-                }
-                index += 1
-                continue
-            }
-
-            if (inDoubleQuote) {
-                if (current == '"' && next == '"') {
-                    index += 2
-                    continue
-                }
-                if (current == '"') {
-                    inDoubleQuote = false
-                }
-                index += 1
-                continue
-            }
-
-            if (current == '-' && next == '-') {
-                inLineComment = true
-                index += 2
-                continue
-            }
-
-            if (current == '/' && next == '*') {
-                inBlockComment = true
-                index += 2
-                continue
-            }
-
-            if (current == '\'') {
-                inSingleQuote = true
-                index += 1
-                continue
-            }
-
-            if (current == '"') {
-                inDoubleQuote = true
-                index += 1
-                continue
-            }
-
-            if (current == ';') {
-                trimSegment(sql, segmentStart, index)?.let { segments.add(it) }
-                segmentStart = index + 1
-            }
-
-            index += 1
+        SqlLexicalScanner.analyze(sql, engine).statementTerminators.forEach { terminator ->
+            trimSegment(sql, segmentStart, terminator)?.let { segments.add(it) }
+            segmentStart = terminator + 1
         }
 
         trimSegment(sql, segmentStart, sql.length)?.let { segments.add(it) }

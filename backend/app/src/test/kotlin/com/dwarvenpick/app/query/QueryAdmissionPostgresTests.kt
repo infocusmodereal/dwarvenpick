@@ -558,6 +558,7 @@ class QueryAdmissionPostgresTests {
     private fun defaultPolicy(): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "read-only",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = true,
             maxRowsPerQuery = 100,
             maxRuntimeSeconds = 30,
