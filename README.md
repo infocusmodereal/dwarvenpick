@@ -56,7 +56,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d --build
 Open:
 
 - UI: `http://localhost:3000`
-- Backend health: `http://localhost:3000/api/health`
+- Backend readiness: `http://localhost:3000/actuator/health/readiness`
 
 Seeded local development users (dev only, do not reuse in production):
 

@@ -44,7 +44,7 @@ docker compose -f deploy/docker/docker-compose.yml up --build -d
 ```
 Validate:
 - UI: `http://localhost:3000`
-- API health: `GET /api/health`
+- Backend readiness: `GET /actuator/health/readiness`
 - Auth/session flow and one query execution path
 
 When done:
