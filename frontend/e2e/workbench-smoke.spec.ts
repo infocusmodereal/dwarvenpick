@@ -40,9 +40,7 @@ const readResultRowCount = async (page: Page): Promise<number> => {
         .filter({ has: page.getByText('Rows', { exact: true }) })
         .locator('strong');
     const rawValue = (await rowStat.textContent())?.replaceAll(',', '').trim() || '';
-    const rowCount = Number.parseInt(rawValue, 10);
-    expect(Number.isFinite(rowCount)).toBe(true);
-    return rowCount;
+    return Number.parseInt(rawValue, 10);
 };
 
 test('governed workbench browser smoke', async ({ page }) => {
@@ -184,8 +182,13 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(page.getByText('Query Tools', { exact: true })).toBeVisible();
             await runQuery.click();
             await expect(page.locator('.result-stats-grid')).toContainText('SUCCEEDED');
-            observedRows = await readResultRowCount(page);
-            expect(observedRows).toBe(config.expectedRows);
+            await expect
+                .poll(() => readResultRowCount(page), {
+                    message: 'Wait for the completed result page to render',
+                    timeout: 15_000
+                })
+                .toBe(config.expectedRows);
+            observedRows = config.expectedRows;
         });
 
         await check('result paging and current-page sort', async () => {
