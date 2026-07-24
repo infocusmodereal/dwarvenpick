@@ -599,7 +599,8 @@ class QueryRuntimeRepository(
     fun markStaleActiveExecutions(
         cutoff: Instant,
         message: String,
-    ): Int = queryResultPersistenceRepository.markStaleActiveExecutions(cutoff, message)
+        maxRows: Int? = null,
+    ): Int = queryResultPersistenceRepository.markStaleActiveExecutions(cutoff, message, maxRows)
 
     fun clear() {
         namedParameterJdbcTemplate.update("DELETE FROM query_runtime_result_pages", emptyMap<String, Any>())

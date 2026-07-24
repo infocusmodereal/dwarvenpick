@@ -57,10 +57,26 @@ state, configure a shared PostgreSQL metadata DB:
 - `SPRING_DATASOURCE_USERNAME=<user>`
 - `SPRING_DATASOURCE_PASSWORD=<password>`
 
-The shared PostgreSQL metadata database also coordinates per-actor query admission across backend replicas. Admission
-uses a transaction-scoped advisory lock, then counts active `QUEUED`/`RUNNING` executions and inserts the new `QUEUED`
-record in the same transaction. `DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS` bounds lock waits and defaults to 10
-seconds. Embedded H2 uses an in-process transaction gate and remains suitable only for a single local backend process.
+The shared PostgreSQL metadata database also coordinates per-actor, per-connection, and namespace-wide query admission
+across backend replicas. Admission uses transaction-scoped advisory locks, reaps stale active rows, then counts active
+`QUEUED`/`RUNNING` executions and inserts the new `QUEUED` record in the same transaction. The actor lock key remains
+stable across releases so rolling upgrades preserve the existing per-actor limit. The broader limits become authoritative
+after every backend replica runs the release that supports them.
+
+The global lock intentionally serializes only the short admission transaction needed for an exact namespace count. It is
+non-blocking, retry delays happen after the transaction releases its connection, and opportunistic stale cleanup is capped
+at 50 rows per admission. The scheduled lifecycle cleanup retains the complete stale-row sweep. The additional actor lock
+is retained for mixed-version compatibility and can be reconsidered after the prior admission implementation is no longer
+present in any supported release.
+
+- `DWARVENPICK_QUERY_MAX_CONCURRENCY_PER_DATASOURCE` controls the shared active budget for one connection.
+- `DWARVENPICK_QUERY_MAX_CONCURRENCY_GLOBAL` controls the shared active budget for the namespace metadata database.
+- `DWARVENPICK_QUERY_ADMISSION_RETRY_ATTEMPTS` and `DWARVENPICK_QUERY_ADMISSION_RETRY_BACKOFF_MS` bound non-blocking
+  advisory-lock retries outside database transactions.
+- `DWARVENPICK_QUERY_ADMISSION_TIMEOUT_SECONDS` remains the metadata transaction timeout.
+
+Budget denials return HTTP `429`. Exhausted lock retries return HTTP `503` and do not create runtime or history rows.
+Embedded H2 uses an in-process transaction gate and remains suitable only for a single local backend process.
 
 Schema changes are managed by Flyway migrations. Existing deployments with pre-created state tables are baselined and
 migrated forward on startup.

@@ -236,6 +236,32 @@ class QueryRuntimeRepositoryTests {
     }
 
     @Test
+    fun `stale recovery can bound hot-path cleanup`() {
+        val now = Instant.now()
+        val oldest =
+            runtimeRecord("stale-oldest")
+                .copy(heartbeatAt = now.minusSeconds(300), rows = emptyList(), columns = emptyList())
+        val newer =
+            runtimeRecord("stale-newer")
+                .copy(heartbeatAt = now.minusSeconds(180), rows = emptyList(), columns = emptyList())
+        queryRuntimeRepository.save(oldest)
+        queryRuntimeRepository.save(newer)
+
+        assertThat(
+            queryRuntimeRepository.markStaleActiveExecutions(
+                cutoff = now.minusSeconds(60),
+                message = "stale",
+                maxRows = 1,
+            ),
+        ).isEqualTo(1)
+        assertThat(queryRuntimeRepository.findMetadata(oldest.executionId)?.status)
+            .isEqualTo(QueryExecutionStatus.CANCELED)
+        assertThat(queryRuntimeRepository.findMetadata(newer.executionId)?.status)
+            .isEqualTo(QueryExecutionStatus.RUNNING)
+        assertThat(queryRuntimeRepository.markStaleActiveExecutions(now.minusSeconds(60), "stale")).isEqualTo(1)
+    }
+
+    @Test
     fun `remote control requests preserve duplicates and allow kill upgrades`() {
         val record = runtimeRecord("remote-control-exec")
         queryRuntimeRepository.save(record)
@@ -430,9 +456,9 @@ class QueryRuntimeRepositoryTests {
             val results =
                 listOf("local-admission-1", "local-admission-2")
                     .map { executionId ->
-                        executor.submit<QueryAdmissionResult> {
+                        executor.submit<QueryAdmissionDecision> {
                             start.await()
-                            queryAdmissionRepository.reserve(
+                            queryAdmissionRepository.tryReserve(
                                 runtimeRecord(executionId)
                                     .copy(
                                         actor = "local-admission-user",
@@ -441,14 +467,18 @@ class QueryRuntimeRepositoryTests {
                                         columns = emptyList(),
                                         rows = emptyList(),
                                     ),
-                                concurrencyLimit = 1,
+                                limits = QueryAdmissionLimits(actor = 1, datasource = 10, global = 10),
+                                staleCutoff = Instant.now().minusSeconds(60),
                             )
                         }
                     }
             start.countDown()
 
             assertThat(results.map { it.get() })
-                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+                .containsExactlyInAnyOrder(
+                    QueryAdmissionDecision.Admitted,
+                    QueryAdmissionDecision.Limited(QueryAdmissionScope.ACTOR, 1),
+                )
             assertThat(
                 queryRuntimeRepository.listActiveMetadata(
                     actor = "local-admission-user",
@@ -468,7 +498,38 @@ class QueryRuntimeRepositoryTests {
             .isEqualTo(QueryAdmissionLockKey.forActor("admission-user"))
             .isNotEqualTo(QueryAdmissionLockKey.forActor("other-user"))
         assertThat(QueryAdmissionLockKey.NAMESPACE).isEqualTo(0x44575051)
+        assertThat(QueryAdmissionLockKey.GLOBAL_NAMESPACE).isNotEqualTo(QueryAdmissionLockKey.NAMESPACE)
         assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("LOCAL")
+    }
+
+    @Test
+    fun `admission reaps stale active rows before enforcing budgets`() {
+        val stale =
+            runtimeRecord("stale-admission")
+                .copy(
+                    actor = "stale-actor",
+                    status = QueryExecutionStatus.RUNNING,
+                    heartbeatAt = Instant.now().minusSeconds(180),
+                )
+        queryRuntimeRepository.save(stale)
+
+        val decision =
+            queryAdmissionRepository.tryReserve(
+                runtimeRecord("replacement-admission")
+                    .copy(
+                        actor = stale.actor,
+                        status = QueryExecutionStatus.QUEUED,
+                        startedAt = null,
+                        columns = emptyList(),
+                        rows = emptyList(),
+                    ),
+                limits = QueryAdmissionLimits(actor = 1, datasource = 1, global = 1),
+                staleCutoff = Instant.now().minusSeconds(60),
+            )
+
+        assertThat(decision).isEqualTo(QueryAdmissionDecision.Admitted)
+        assertThat(queryRuntimeRepository.findMetadata(stale.executionId)?.status)
+            .isEqualTo(QueryExecutionStatus.CANCELED)
     }
 
     private fun runtimeRecord(executionId: String): PersistedQueryRuntimeRecord {
