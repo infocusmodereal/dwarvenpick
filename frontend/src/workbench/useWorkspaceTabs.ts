@@ -55,6 +55,7 @@ export const buildWorkspaceTab = (
     rowCount: 0,
     columnCount: 0,
     maxRowsPerQuery: 0,
+    maxExportRows: undefined,
     maxRuntimeSeconds: 0,
     credentialProfile: '',
     scriptSummary: null

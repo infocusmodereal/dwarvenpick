@@ -3,6 +3,7 @@ import { firstPageToken, resultRowHeightPx, resultViewportHeightPx } from './con
 import {
     buildCsvExportUrl,
     buildResultPageUrl,
+    csvExportAvailability,
     csvExportFileName,
     nextResultPageRequest,
     previousResultPageRequest
@@ -243,6 +244,11 @@ export const useQueryResultsWorkflow = ({
     const handleExportCsv = useCallback(async () => {
         if (!activeTab?.executionId) {
             onFeedback('Run a query first to export CSV.', 'warning');
+            return;
+        }
+        const exportAvailability = csvExportAvailability(activeTab);
+        if (exportAvailability.exceeded) {
+            onFeedback(exportAvailability.note, 'warning');
             return;
         }
 

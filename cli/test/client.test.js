@@ -118,6 +118,53 @@ test('submitQuery preserves the governed read-only denial from the backend', asy
   );
 });
 
+test('exportCsv uses the governed backend endpoint with session cookies and header preference', async () => {
+  const requests = [];
+  const client = new DwarvenpickClient({
+    baseUrl: 'http://dwarvenpick.local',
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init });
+      return new Response('id\n1\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/csv' },
+      });
+    },
+  });
+  client.cookieJar.cookies.set('JSESSIONID', 'session-id');
+
+  const response = await client.exportCsv('exec/1', { headers: false });
+
+  assert.equal(await response.text(), 'id\n1\n');
+  assert.equal(
+    requests[0].url,
+    'http://dwarvenpick.local/api/queries/exec%2F1/export.csv?headers=false',
+  );
+  assert.equal(requests[0].init.headers.Accept, 'text/csv');
+  assert.equal(requests[0].init.headers.Cookie, 'JSESSIONID=session-id');
+});
+
+test('exportCsv preserves backend authorization and row-limit errors before streaming', async () => {
+  const client = new DwarvenpickClient({
+    baseUrl: 'http://dwarvenpick.local',
+    fetchImpl: async () =>
+      new Response('error\n"Export row limit exceeded (5001 rows > 5000 allowed)."\n', {
+        status: 400,
+        statusText: 'Bad Request',
+        headers: { 'Content-Type': 'text/csv' },
+      }),
+  });
+
+  await assert.rejects(
+    () => client.exportCsv('exec-limit'),
+    (error) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.status, 400);
+      assert.equal(error.message, 'Export row limit exceeded (5001 rows > 5000 allowed).');
+      return true;
+    },
+  );
+});
+
 function jsonResponse({ body, setCookies = [], ok = true, status = 200, statusText = 'OK' }) {
   return {
     ok,

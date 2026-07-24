@@ -147,6 +147,7 @@ export type QueryExecutionStatusResponse = {
     columnCount: number;
     rowLimitReached: boolean;
     maxRowsPerQuery: number;
+    maxExportRows?: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
     justification?: string;
@@ -521,6 +522,7 @@ export type WorkspaceTab = PersistentWorkspaceTab & {
     rowCount: number;
     columnCount: number;
     maxRowsPerQuery: number;
+    maxExportRows?: number;
     maxRuntimeSeconds: number;
     credentialProfile: string;
     scriptSummary?: QueryScriptSummary | null;

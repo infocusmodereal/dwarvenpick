@@ -3,8 +3,16 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import test from 'node:test';
-import { QueryInterruptedError, resolveConfig, runQuery, streamResults, waitForQuery } from '../src/main.js';
+import {
+  QueryInterruptedError,
+  resolveConfig,
+  runQuery,
+  streamCsvExport,
+  streamResults,
+  waitForQuery,
+} from '../src/main.js';
 
 test('streamResults writes CSV rows page by page', async () => {
   const calls = [];
@@ -63,6 +71,78 @@ test('runQuery submits justification from query options', async () => {
 
   assert.equal(submitRequests.length, 1);
   assert.equal(submitRequests[0].justification, 'TOPS-123 maintenance window');
+});
+
+test('runQuery routes CSV through backend export instead of paginated results', async () => {
+  const calls = [];
+  const client = queryClient({
+    status: { executionId: 'exec-csv', status: 'SUCCEEDED', rowCount: 2, maxExportRows: 5000 },
+    async exportCsv(executionId, options) {
+      calls.push(['export', executionId, options]);
+      return new Response('id\n1\n2\n', { headers: { 'Content-Type': 'text/csv' } });
+    },
+    async queryResults() {
+      calls.push(['results']);
+      throw new Error('CSV must not use paginated results');
+    },
+  });
+  const writes = [];
+
+  await runQuery(
+    client,
+    queryArgs({ format: 'csv' }),
+    queryConfig({ format: 'csv', quiet: false }),
+    recordingStreams(writes),
+  );
+
+  assert.deepEqual(calls, [['export', 'exec-csv', { headers: true }]]);
+  assert.match(writes.map(String).join(''), /CSV export: 2 rows of 5,000 allowed\./);
+  assert.match(writes.map(String).join(''), /id\n1\n2\n/);
+});
+
+test('runQuery lets backend enforcement decide when an older replica omits the CSV cap', async () => {
+  const calls = [];
+  const client = queryClient({
+    status: { executionId: 'exec-old', status: 'SUCCEEDED', rowCount: 5001 },
+    async exportCsv() {
+      calls.push('export');
+      throw new Error('Export row limit exceeded (5001 rows > 5000 allowed).');
+    },
+  });
+  const writes = [];
+
+  await assert.rejects(
+    () =>
+      runQuery(
+        client,
+        queryArgs({ format: 'csv' }),
+        queryConfig({ format: 'csv', quiet: false }),
+        recordingStreams(writes),
+      ),
+    /Export row limit exceeded/,
+  );
+
+  assert.deepEqual(calls, ['export']);
+  assert.match(writes.join(''), /server limit not reported, backend enforcement applies/);
+});
+
+test('runQuery quiet CSV mode emits no cap progress text', async () => {
+  const client = queryClient({
+    status: { executionId: 'exec-quiet', status: 'SUCCEEDED', rowCount: 1, maxExportRows: 5000 },
+    async exportCsv() {
+      return new Response('id\n1\n', { headers: { 'Content-Type': 'text/csv' } });
+    },
+  });
+  const writes = [];
+
+  await runQuery(
+    client,
+    queryArgs({ format: 'csv' }),
+    queryConfig({ format: 'csv', quiet: true }),
+    recordingStreams(writes),
+  );
+
+  assert.equal(writes.map(String).join(''), 'id\n1\n');
 });
 
 test('resolveConfig prefers --justification over DWARVENPICK_JUSTIFICATION', () => {
@@ -251,6 +331,32 @@ test('streamResults rejects unsupported formats before fetching results', async 
   );
 });
 
+test('streamCsvExport removes a partial output file when the backend stream fails', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dwarvenpick-cli-export-'));
+  const outputPath = join(directory, 'results.csv');
+  const body = Readable.from(
+    (async function* () {
+      yield Buffer.from('id\n1\n');
+      throw new Error('backend stream failed');
+    })(),
+  );
+  const client = {
+    async exportCsv() {
+      return { body };
+    },
+  };
+
+  try {
+    await assert.rejects(
+      () => streamCsvExport(client, 'exec-stream', { outputPath }, recordingStreams([])),
+      /backend stream failed/,
+    );
+    await assert.rejects(() => readFile(outputPath), /ENOENT/);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
 function pagedClient(calls, pages) {
   let index = 0;
   return {
@@ -278,6 +384,36 @@ function queryConfig(overrides = {}) {
     pollIntervalMs: 1,
     timeoutMs: 1_000,
     quiet: true,
+    ...overrides,
+  };
+}
+
+function queryArgs(options = {}) {
+  return {
+    command: 'query',
+    options: {
+      connection: 'postgresql-core',
+      sql: 'select 1',
+      ...options,
+    },
+    positional: [],
+  };
+}
+
+function queryClient(overrides = {}) {
+  return {
+    async resolveAuthMode() {
+      return 'local';
+    },
+    async login() {
+      return { username: 'analyst', provider: 'local' };
+    },
+    async submitQuery(request) {
+      return { executionId: overrides.status?.executionId || 'exec-query', datasourceId: request.datasourceId };
+    },
+    async queryStatus() {
+      return overrides.status || { executionId: 'exec-query', status: 'SUCCEEDED', rowCount: 1, maxExportRows: 5000 };
+    },
     ...overrides,
   };
 }

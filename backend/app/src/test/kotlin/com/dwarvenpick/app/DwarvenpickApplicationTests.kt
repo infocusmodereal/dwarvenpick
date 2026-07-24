@@ -604,6 +604,12 @@ class DwarvenpickApplicationTests {
         val finalStatus = waitForExecutionTerminalStatus(analystSession, executionId)
         assertThat(finalStatus).isEqualTo("SUCCEEDED")
 
+        mockMvc
+            .perform(get("/api/queries/$executionId").cookie(*analystSession))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.rowCount").value(25))
+            .andExpect(jsonPath("$.maxExportRows").value(5000))
+
         val firstPage =
             mockMvc
                 .perform(

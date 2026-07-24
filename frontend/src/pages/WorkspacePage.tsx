@@ -3603,6 +3603,7 @@ export default function WorkspacePage() {
                     rowCount: payload.rowCount,
                     columnCount: payload.columnCount,
                     maxRowsPerQuery: payload.maxRowsPerQuery,
+                    maxExportRows: payload.maxExportRows,
                     maxRuntimeSeconds: payload.maxRuntimeSeconds,
                     credentialProfile: payload.credentialProfile,
                     scriptSummary: payload.scriptSummary ?? null,

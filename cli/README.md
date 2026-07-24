@@ -96,6 +96,10 @@ dwarvenpick run \
   --output ./results.csv
 ```
 
+CSV output uses the backend export endpoint rather than reconstructing a file from result pages. The credential
+profile used by the execution must allow export, and the server CSV row cap is enforced. The CLI reports the completed
+row count and cap before download unless `--quiet` is set. Table and JSON output remain paginated.
+
 Use a specific credential profile:
 
 ```bash
