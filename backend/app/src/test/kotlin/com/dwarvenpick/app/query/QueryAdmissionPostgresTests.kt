@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.auth.AuthAuditEventStore
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.datasource.CreateDatasourceRequest
 import com.dwarvenpick.app.datasource.DatasourceEngine
@@ -14,11 +15,11 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -40,12 +41,19 @@ import javax.sql.DataSource
     properties = [
         "dwarvenpick.seed.enabled=false",
         "dwarvenpick.query.admission-timeout-seconds=1",
+        "dwarvenpick.query.admission-retry-attempts=20",
+        "dwarvenpick.query.admission-retry-backoff-ms=5",
+        "dwarvenpick.query.max-concurrency-per-datasource=2",
+        "dwarvenpick.query.max-concurrency-global=2",
     ],
 )
 @Testcontainers
 class QueryAdmissionPostgresTests {
     @Autowired
     private lateinit var queryAdmissionRepository: QueryAdmissionRepository
+
+    @Autowired
+    private lateinit var queryAdmissionService: QueryAdmissionService
 
     @Autowired
     private lateinit var queryRuntimeRepository: QueryRuntimeRepository
@@ -61,6 +69,9 @@ class QueryAdmissionPostgresTests {
 
     @Autowired
     private lateinit var authAuditLogger: AuthAuditLogger
+
+    @Autowired
+    private lateinit var authAuditEventStore: AuthAuditEventStore
 
     @Autowired
     private lateinit var queryExecutionProperties: QueryExecutionProperties
@@ -101,6 +112,8 @@ class QueryAdmissionPostgresTests {
     @BeforeEach
     fun resetRuntime() {
         queryRuntimeRepository.clear()
+        queryHistoryRepository.clear()
+        authAuditEventStore.clear()
     }
 
     @AfterEach
@@ -116,18 +129,24 @@ class QueryAdmissionPostgresTests {
             val results =
                 listOf("postgres-admission-1", "postgres-admission-2")
                     .map { executionId ->
-                        executor.submit<QueryAdmissionResult> {
+                        executor.submit<String> {
                             start.await()
-                            queryAdmissionRepository.reserve(
-                                runtimeRecord(executionId, actor = "postgres-admission-user"),
-                                concurrencyLimit = 1,
-                            )
+                            runCatching {
+                                queryAdmissionService.reserve(
+                                    runtimeRecord(executionId, actor = "postgres-admission-user"),
+                                    actorLimit = 1,
+                                )
+                                "admitted"
+                            }.getOrElse { exception ->
+                                require(exception is QueryConcurrencyLimitException)
+                                exception.scope.metricValue
+                            }
                         }
                     }
             start.countDown()
 
             assertThat(results.map { it.get() })
-                .containsExactlyInAnyOrder(QueryAdmissionResult.ADMITTED, QueryAdmissionResult.LIMIT_REACHED)
+                .containsExactlyInAnyOrder("admitted", QueryAdmissionScope.ACTOR.metricValue)
             assertThat(activeExecutions("postgres-admission-user")).hasSize(1)
             assertThat(queryAdmissionRepository.metadataDialect()).isEqualTo("POSTGRESQL")
         } finally {
@@ -136,13 +155,54 @@ class QueryAdmissionPostgresTests {
     }
 
     @Test
-    fun `advisory lock timeout fails as infrastructure error without reservation`() {
+    fun `postgres datasource budget admits only configured workers across actors`() {
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(6)
+        try {
+            val results =
+                (1..6).map { index ->
+                    executor.submit<String> {
+                        start.await()
+                        runCatching {
+                            queryAdmissionService.reserve(
+                                runtimeRecord(
+                                    executionId = "datasource-race-$index",
+                                    actor = "datasource-race-actor-$index",
+                                ),
+                                actorLimit = 5,
+                            )
+                            "admitted"
+                        }.getOrElse { exception ->
+                            require(exception is QueryConcurrencyLimitException)
+                            exception.scope.metricValue
+                        }
+                    }
+                }
+            start.countDown()
+
+            assertThat(results.map { it.get() })
+                .containsExactlyInAnyOrder(
+                    "admitted",
+                    "admitted",
+                    "datasource",
+                    "datasource",
+                    "datasource",
+                    "datasource",
+                )
+            assertThat(activeExecutionsByDatasource("admission-test")).hasSize(2)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `advisory lock contention returns bounded service unavailable without reservation`() {
         val actor = "postgres-lock-timeout-user"
         heldActorLock(actor).use {
             val startedAt = System.nanoTime()
             assertThatThrownBy {
-                queryAdmissionRepository.reserve(runtimeRecord("postgres-timeout", actor), concurrencyLimit = 1)
-            }.isInstanceOf(DataAccessException::class.java)
+                queryAdmissionService.reserve(runtimeRecord("postgres-timeout", actor), actorLimit = 1)
+            }.isInstanceOf(QueryAdmissionUnavailableException::class.java)
                 .isNotInstanceOf(QueryConcurrencyLimitException::class.java)
             assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(Duration.ofSeconds(5))
         }
@@ -163,7 +223,7 @@ class QueryAdmissionPostgresTests {
                 queryExecutionLimitPolicy = queryExecutionLimitPolicy,
                 queryHistoryRepository = queryHistoryRepository,
                 queryRuntimeRepository = queryRuntimeRepository,
-                queryAdmissionRepository = queryAdmissionRepository,
+                queryAdmissionService = queryAdmissionService,
                 persistedQueryResultAccessService = persistedQueryResultAccessService,
                 applicationInstanceId = applicationInstanceId,
                 queryLifecycleMetrics = queryLifecycleMetrics,
@@ -194,6 +254,132 @@ class QueryAdmissionPostgresTests {
             assertThat(activeExecutions(actor)).isEmpty()
         } finally {
             secondManager.shutdownGracefully()
+        }
+    }
+
+    @Test
+    fun `query managers enforce datasource budget across actors and record denial evidence`() {
+        val datasourceId = registerPostgresDatasource()
+        val secondManager = newManager("datasource-budget-second")
+        val thirdManager = newManager("datasource-budget-third")
+        val running =
+            listOf(
+                queryExecutionManager to "datasource-actor-one",
+                secondManager to "datasource-actor-two",
+            )
+        try {
+            val submitted =
+                running.mapIndexed { index, (manager, actor) ->
+                    manager.submitQuery(
+                        actor = actor,
+                        ipAddress = "127.0.0.${index + 1}",
+                        request =
+                            QueryExecutionRequest(
+                                datasourceId = datasourceId,
+                                sql = "select pg_sleep(10), ${index + 1} as ok",
+                            ),
+                        policy = defaultPolicy(),
+                    )
+                }
+            submitted.zip(running).forEach { (response, pair) ->
+                waitForStatus(pair.first, pair.second, response.executionId, QueryExecutionStatus.RUNNING)
+            }
+
+            val rejection =
+                assertThrows<QueryConcurrencyLimitException> {
+                    thirdManager.submitQuery(
+                        actor = "datasource-actor-three",
+                        ipAddress = "127.0.0.3",
+                        request = QueryExecutionRequest(datasourceId = datasourceId, sql = "select 3 as blocked"),
+                        policy = defaultPolicy(),
+                    )
+                }
+            assertThat(rejection.scope).isEqualTo(QueryAdmissionScope.DATASOURCE)
+            assertThat(rejection)
+                .hasMessage("Connection query limit reached (2). Try again after an active query finishes.")
+
+            assertThat(activeExecutionsByDatasource(datasourceId)).hasSize(2)
+            assertThat(
+                meterRegistry
+                    .get("dwarvenpick.query.admission.denials")
+                    .tag("scope", "datasource")
+                    .tag("datasourceId", datasourceId)
+                    .counter()
+                    .count(),
+            ).isEqualTo(1.0)
+            assertThat(authAuditEventStore.snapshot())
+                .anySatisfy { event ->
+                    assertThat(event.type).isEqualTo("query.execute")
+                    assertThat(event.outcome).isEqualTo("limited")
+                    assertThat(event.details["admissionScope"]).isEqualTo("datasource")
+                    assertThat(event.details["credentialProfile"]).isEqualTo("read-only")
+                }
+            assertThat(queryHistoryRepository.list(historyFilter("datasource-actor-three"))).isEmpty()
+        } finally {
+            running.forEach { (manager, actor) ->
+                activeExecutions(actor).forEach { execution ->
+                    manager.cancelQuery(actor, isSystemAdmin = false, execution.executionId)
+                    waitForTerminalStatus(manager, actor, execution.executionId)
+                }
+            }
+            secondManager.shutdownGracefully()
+            thirdManager.shutdownGracefully()
+        }
+    }
+
+    @Test
+    fun `query managers enforce global budget across datasources`() {
+        val firstDatasourceId = registerPostgresDatasource()
+        val secondDatasourceId = registerPostgresDatasource()
+        val thirdDatasourceId = registerPostgresDatasource()
+        val secondManager = newManager("global-budget-second")
+        val thirdManager = newManager("global-budget-third")
+        val running =
+            listOf(
+                Triple(queryExecutionManager, "global-actor-one", firstDatasourceId),
+                Triple(secondManager, "global-actor-two", secondDatasourceId),
+            )
+        try {
+            val submitted =
+                running.mapIndexed { index, (manager, actor, datasourceId) ->
+                    manager.submitQuery(
+                        actor = actor,
+                        ipAddress = "127.0.1.${index + 1}",
+                        request =
+                            QueryExecutionRequest(
+                                datasourceId = datasourceId,
+                                sql = "select pg_sleep(10), ${index + 1} as ok",
+                            ),
+                        policy = defaultPolicy(),
+                    )
+                }
+            submitted.zip(running).forEach { (response, triple) ->
+                waitForStatus(triple.first, triple.second, response.executionId, QueryExecutionStatus.RUNNING)
+            }
+
+            val rejection =
+                assertThrows<QueryConcurrencyLimitException> {
+                    thirdManager.submitQuery(
+                        actor = "global-actor-three",
+                        ipAddress = "127.0.1.3",
+                        request = QueryExecutionRequest(datasourceId = thirdDatasourceId, sql = "select 3 as blocked"),
+                        policy = defaultPolicy(),
+                    )
+                }
+            assertThat(rejection.scope).isEqualTo(QueryAdmissionScope.GLOBAL)
+            assertThat(rejection)
+                .hasMessage("Dwarvenpick query capacity is currently full (2). Try again shortly.")
+
+            assertThat(activeExecutionCount()).isEqualTo(2)
+        } finally {
+            running.forEach { (manager, actor, _) ->
+                activeExecutions(actor).forEach { execution ->
+                    manager.cancelQuery(actor, isSystemAdmin = false, execution.executionId)
+                    waitForTerminalStatus(manager, actor, execution.executionId)
+                }
+            }
+            secondManager.shutdownGracefully()
+            thirdManager.shutdownGracefully()
         }
     }
 
@@ -287,6 +473,37 @@ class QueryAdmissionPostgresTests {
             actorFilter = null,
         )
 
+    private fun activeExecutionsByDatasource(datasourceId: String): List<PersistedQueryRuntimeMetadataRecord> =
+        queryRuntimeRepository.listActiveMetadata(
+            actor = "admin",
+            isSystemAdmin = true,
+            datasourceId = datasourceId,
+            actorFilter = null,
+        )
+
+    private fun activeExecutionCount(): Int =
+        queryRuntimeRepository
+            .listActiveMetadata(
+                actor = "admin",
+                isSystemAdmin = true,
+                datasourceId = null,
+                actorFilter = null,
+            ).size
+
+    private fun historyFilter(actor: String): QueryHistoryFilter =
+        QueryHistoryFilter(
+            actor = actor,
+            isSystemAdmin = false,
+            datasourceId = null,
+            status = null,
+            from = null,
+            to = null,
+            limit = 100,
+            offset = 0,
+            actorFilter = null,
+            sortOrder = QueryHistorySortOrder.NEWEST,
+        )
+
     private fun newManager(instanceValue: String): QueryExecutionManager {
         val requesterInstanceId = mock(ApplicationInstanceId::class.java)
         `when`(requesterInstanceId.value).thenReturn(instanceValue)
@@ -298,7 +515,7 @@ class QueryAdmissionPostgresTests {
             queryExecutionLimitPolicy = queryExecutionLimitPolicy,
             queryHistoryRepository = queryHistoryRepository,
             queryRuntimeRepository = queryRuntimeRepository,
-            queryAdmissionRepository = queryAdmissionRepository,
+            queryAdmissionService = queryAdmissionService,
             persistedQueryResultAccessService = persistedQueryResultAccessService,
             applicationInstanceId = requesterInstanceId,
             queryLifecycleMetrics = queryLifecycleMetrics,

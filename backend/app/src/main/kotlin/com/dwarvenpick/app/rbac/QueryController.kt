@@ -7,6 +7,7 @@ import com.dwarvenpick.app.auth.ErrorResponse
 import com.dwarvenpick.app.controlplane.DatasourcePauseService
 import com.dwarvenpick.app.datasource.DriverNotAvailableException
 import com.dwarvenpick.app.datasource.ForbiddenNetworkTargetException
+import com.dwarvenpick.app.query.QueryAdmissionUnavailableException
 import com.dwarvenpick.app.query.QueryConcurrencyLimitException
 import com.dwarvenpick.app.query.QueryCsvWriter
 import com.dwarvenpick.app.query.QueryExecutionForbiddenException
@@ -97,13 +98,9 @@ class QueryController(
         } catch (ex: DatasourceNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
         } catch (ex: QueryConcurrencyLimitException) {
-            auditLimitReached(
-                actor = principal.username,
-                datasourceId = datasourceId,
-                ipAddress = httpServletRequest.remoteAddr,
-                message = ex.message,
-            )
             ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ErrorResponse(ex.message))
+        } catch (ex: QueryAdmissionUnavailableException) {
+            ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ErrorResponse(ex.message))
         } catch (ex: DriverNotAvailableException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
         } catch (ex: QueryReadOnlyViolationException) {
@@ -427,27 +424,6 @@ class QueryController(
                 outcome = "denied",
                 ipAddress = ipAddress,
                 details = mapOf("datasourceId" to datasourceId),
-            ),
-        )
-    }
-
-    private fun auditLimitReached(
-        actor: String,
-        datasourceId: String,
-        ipAddress: String?,
-        message: String?,
-    ) {
-        authAuditLogger.log(
-            AuthAuditEvent(
-                type = "query.execute",
-                actor = actor,
-                outcome = "limited",
-                ipAddress = ipAddress,
-                details =
-                    mapOf(
-                        "datasourceId" to datasourceId,
-                        "reason" to (message ?: "concurrency_limit"),
-                    ),
             ),
         )
     }

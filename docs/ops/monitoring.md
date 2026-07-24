@@ -44,6 +44,8 @@ If you use Prometheus Operator, create a `ServiceMonitor` that targets the backe
   - `dwarvenpick_query_duration_seconds{outcome=...}`
   - `dwarvenpick_query_cancel_total`
   - `dwarvenpick_query_timeout_total`
+  - `dwarvenpick_query_admission_denials_total{scope="actor|datasource|global",datasourceId=...}`
+  - `dwarvenpick_query_admission_failures_total{reason="lock_contention",datasourceId=...}`
   - `dwarvenpick_query_buffered_bytes`
   - `dwarvenpick_query_buffered_budget_bytes`
 - Exports:
@@ -88,6 +90,10 @@ Keep `/actuator/prometheus` enabled for internal Prometheus scraping. Public exp
    - Trigger: `max by (namespace, action) (dwarvenpick_query_remote_control_oldest_age_seconds) > 10` for 30s
 11. Slow remote query control observation:
    - Trigger: p95 of `dwarvenpick_query_remote_control_latency_seconds` above 5s with at least 3 observations in 15m
+12. Shared admission pressure:
+   - Trigger: `increase(dwarvenpick_query_admission_denials_total{scope=~"datasource|global"}[10m]) > 20`
+13. Admission coordination failure:
+   - Trigger: `increase(dwarvenpick_query_admission_failures_total{reason="lock_contention"}[5m]) > 0`
 
 Retention cleanup last-success timestamps update after every complete successful run, including runs that affect zero rows. Each backend replica runs cleanup against the shared metadata database; stale checks therefore use the newest successful timestamp for each namespace and scope. Row counters keep the bounded `scope`, `store`, and `action` dimensions and never include actor, datasource, or execution identifiers.
 

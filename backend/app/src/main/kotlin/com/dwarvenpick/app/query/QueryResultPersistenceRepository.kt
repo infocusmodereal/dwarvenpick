@@ -177,7 +177,16 @@ class QueryResultPersistenceRepository(
     fun markStaleActiveExecutions(
         cutoff: Instant,
         message: String,
+        maxRows: Int? = null,
     ): Int {
+        val boundedMaxRows = maxRows?.coerceAtLeast(1)
+        val limitClause = if (boundedMaxRows == null) "" else "LIMIT :maxRows"
+        val parameters =
+            mutableMapOf<String, Any>("cutoff" to cutoff.toTimestamp()).apply {
+                if (boundedMaxRows != null) {
+                    put("maxRows", boundedMaxRows)
+                }
+            }
         val executionIds =
             jdbc.queryForList(
                 """
@@ -185,9 +194,11 @@ class QueryResultPersistenceRepository(
                 FROM query_runtime_executions
                 WHERE status IN ('QUEUED', 'RUNNING')
                   AND heartbeat_at < :cutoff
+                ORDER BY heartbeat_at ASC
+                $limitClause
                 FOR UPDATE SKIP LOCKED
                 """.trimIndent(),
-                mapOf("cutoff" to cutoff.toTimestamp()),
+                parameters,
                 String::class.java,
             )
         executionIds.forEach { executionId ->

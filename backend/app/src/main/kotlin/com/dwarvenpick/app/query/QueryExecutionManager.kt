@@ -59,6 +59,8 @@ class QueryInvalidPageTokenException(
 
 class QueryConcurrencyLimitException(
     override val message: String,
+    val scope: QueryAdmissionScope = QueryAdmissionScope.ACTOR,
+    val limit: Int? = null,
 ) : RuntimeException(message)
 
 class QueryExportLimitExceededException(
@@ -151,7 +153,7 @@ class QueryExecutionManager(
     private val queryExecutionLimitPolicy: QueryExecutionLimitPolicy,
     private val queryHistoryRepository: QueryHistoryRepository,
     private val queryRuntimeRepository: QueryRuntimeRepository,
-    private val queryAdmissionRepository: QueryAdmissionRepository,
+    private val queryAdmissionService: QueryAdmissionService,
     private val persistedQueryResultAccessService: PersistedQueryResultAccessService,
     private val applicationInstanceId: ApplicationInstanceId,
     private val queryLifecycleMetrics: QueryLifecycleMetrics,
@@ -276,24 +278,10 @@ class QueryExecutionManager(
                 legacyCancelCheckGate =
                     LegacyCancelCheckGate(queryExecutionProperties.remoteControlPollIntervalMs),
             )
-        val admissionResult =
-            queryAdmissionRepository.reserve(
-                record = record.toPersistedRuntimeRecord(),
-                concurrencyLimit = concurrencyLimit,
-            )
-        if (admissionResult == QueryAdmissionResult.LIMIT_REACHED) {
-            meterRegistry
-                .counter(
-                    "dwarvenpick.query.execute.attempts",
-                    "outcome",
-                    "blocked_concurrency",
-                    "datasourceId",
-                    record.datasourceId,
-                ).increment()
-            throw QueryConcurrencyLimitException(
-                "Concurrent query limit reached ($concurrencyLimit). Cancel an active query before running another.",
-            )
-        }
+        queryAdmissionService.reserve(
+            record = record.toPersistedRuntimeRecord(),
+            actorLimit = concurrencyLimit,
+        )
 
         executions[executionId] = record
         syncHistoryOnly(record)
