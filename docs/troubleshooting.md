@@ -7,7 +7,7 @@ nav_order: 80
 
 ## UI is up but login fails
 
-- Confirm the backend is healthy: `GET /api/health`
+- Confirm the backend is ready to serve traffic: `GET /actuator/health/readiness`
 - Clear cookies for `localhost:3000` and retry.
 - Check backend logs for Spring Session schema errors (for example `SPRING_SESSION` table missing).
   - If using PostgreSQL, ensure the DB user can create tables/indexes on first start (or pre-create the Spring Session tables).

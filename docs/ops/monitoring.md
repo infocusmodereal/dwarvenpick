@@ -13,6 +13,10 @@ nav_order: 30
   - `GET /actuator/health/liveness`
   - `GET /actuator/health/readiness`
 
+Use readiness for smoke checks and traffic admission. The compatibility endpoint `GET /api/health` preserves its
+minimal response shape and mirrors readiness, including a non-success HTTP status when readiness is down. Liveness
+remains limited to the application's ability to keep running and does not check user-managed Connections.
+
 ## Configuration
 
 - `DWARVENPICK_METRICS_PROMETHEUS_ENABLED` (default: `true`) enables the Prometheus endpoint.
