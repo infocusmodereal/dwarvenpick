@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import AppShell from '../components/AppShell';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { useTheme } from '../theme/ThemeContext';

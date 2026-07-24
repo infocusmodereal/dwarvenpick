@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, vi } from 'vitest';
 import App from '../App';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -31,6 +31,11 @@ const resolveRequestUrl = (input: RequestInfo | URL): string => {
     }
 
     return String(input);
+};
+
+const LocationProbe = () => {
+    const location = useLocation();
+    return <output data-testid="router-location">{location.pathname}</output>;
 };
 
 describe('App shell', () => {
@@ -109,6 +114,20 @@ describe('App shell', () => {
         expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
         expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /local/i })).not.toBeInTheDocument();
+    });
+
+    it('redirects unknown routes to login with replace navigation', async () => {
+        render(
+            <ThemeProvider>
+                <MemoryRouter initialEntries={['/unknown']}>
+                    <App />
+                    <LocationProbe />
+                </MemoryRouter>
+            </ThemeProvider>
+        );
+
+        expect(await screen.findByTestId('router-location')).toHaveTextContent('/login');
+        expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
     });
 
     it('renders datasource management panel for system admin users', async () => {

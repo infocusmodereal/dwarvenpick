@@ -17,7 +17,7 @@ import 'monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetController2';
 import 'monaco-editor/esm/vs/basic-languages/sql/sql.contribution';
 import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import AppShell from '../components/AppShell';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import ExplorerControls from '../workbench/components/ExplorerControls';

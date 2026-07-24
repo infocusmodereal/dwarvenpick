@@ -5,7 +5,7 @@ import { EditorTabCloseIcon, EditorTabMenuIcon, IconGlyph } from './WorkbenchIco
 type QueryTabsBarProps = {
     workspaceTabs: WorkspaceTab[];
     activeTabId: string;
-    editorTabsRowRef: RefObject<HTMLDivElement>;
+    editorTabsRowRef: RefObject<HTMLDivElement | null>;
     onSelectTab: (tabId: string) => void;
     onCloseTab: (tabId: string) => void;
     onNewTab: () => void;

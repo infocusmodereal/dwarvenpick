@@ -25,7 +25,7 @@ export type VisibleResultRows = {
 
 export type QueryResultsView = {
     exportIncludeHeaders: boolean;
-    exportMenuRef: RefObject<HTMLDivElement>;
+    exportMenuRef: RefObject<HTMLDivElement | null>;
     exportingCsv: boolean;
     onExportCsv: () => Promise<void>;
     onExportIncludeHeadersChange: (value: boolean) => void;
