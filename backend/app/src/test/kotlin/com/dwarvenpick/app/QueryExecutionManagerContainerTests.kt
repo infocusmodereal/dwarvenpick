@@ -522,6 +522,7 @@ class QueryExecutionManagerContainerTests {
     private fun defaultPolicy(): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "admin-ro",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = false,
             maxRowsPerQuery = 5000,
             maxRuntimeSeconds = 120,

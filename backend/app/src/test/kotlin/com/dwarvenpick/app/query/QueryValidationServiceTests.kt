@@ -37,6 +37,23 @@ class QueryValidationServiceTests {
     }
 
     @Test
+    fun `mysql validation rejects executable comments before opening a connection`() {
+        val response =
+            service.validate(
+                request =
+                    QueryValidationRequest(
+                        datasourceId = "orders",
+                        sql = "/*! DELETE FROM orders */ SELECT 1",
+                    ),
+                policy = readOnlyPolicy().copy(engine = DatasourceEngine.MYSQL),
+            )
+
+        assertThat(response.valid).isFalse()
+        assertThat(response.message).contains("Read-only mode is enabled")
+        verifyNoInteractions(datasourcePoolManager)
+    }
+
+    @Test
     fun `validation rejects explain analyze before opening a connection`() {
         val response =
             service.validate(
@@ -112,6 +129,7 @@ class QueryValidationServiceTests {
     private fun readOnlyPolicy(): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "read-only",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = true,
             maxRowsPerQuery = 5000,
             maxRuntimeSeconds = 300,

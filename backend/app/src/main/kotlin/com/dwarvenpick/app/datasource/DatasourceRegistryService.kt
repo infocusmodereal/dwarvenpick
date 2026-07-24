@@ -661,6 +661,10 @@ class DatasourceRegistryService(
 
     fun hasDatasource(datasourceId: String): Boolean = datasourceRegistryRepository.find(datasourceId) != null
 
+    fun engineForDatasource(datasourceId: String): DatasourceEngine =
+        datasourceRegistryRepository.find(datasourceId)?.engine
+            ?: throw ManagedDatasourceNotFoundException("Datasource '$datasourceId' was not found.")
+
     fun credentialProfilesForDatasource(datasourceId: String): Set<String> {
         val datasource =
             datasourceRegistryRepository.find(datasourceId)

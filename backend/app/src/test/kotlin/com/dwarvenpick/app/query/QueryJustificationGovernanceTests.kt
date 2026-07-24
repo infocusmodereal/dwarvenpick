@@ -2,6 +2,7 @@ package com.dwarvenpick.app.query
 
 import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditEventStore
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.rbac.QueryAccessPolicy
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -203,9 +204,45 @@ class QueryJustificationGovernanceTests {
             )
     }
 
+    @Test
+    fun `read-only admission rejects dialect bypass vectors before reservation`() {
+        val blocked =
+            listOf(
+                DatasourceEngine.POSTGRESQL to "(DELETE FROM warehouse.customer)",
+                DatasourceEngine.POSTGRESQL to "SELECT * INTO customer_copy FROM warehouse.customer",
+                DatasourceEngine.POSTGRESQL to
+                    "WITH changed AS (UPDATE warehouse.customer SET name = 'x' RETURNING id) SELECT * FROM changed",
+                DatasourceEngine.MYSQL to "SELECT 1 /*! ; DROP TABLE customer */",
+                DatasourceEngine.MYSQL to "SELECT \$tag\$safe; value\$tag\$; DELETE FROM customer",
+                DatasourceEngine.STARROCKS to "/*M! DELETE FROM customer */ SELECT 1",
+            )
+
+        blocked.forEach { (engine, sql) ->
+            assertThatThrownBy {
+                queryExecutionManager.submitQuery(
+                    actor = "analyst",
+                    ipAddress = "127.0.0.1",
+                    request = QueryExecutionRequest(datasourceId = "simulated", sql = sql),
+                    policy = queryPolicy(readOnly = true).copy(engine = engine),
+                )
+            }.describedAs("$engine: $sql")
+                .isInstanceOf(QueryReadOnlyViolationException::class.java)
+        }
+
+        assertThat(
+            queryRuntimeRepository.listActive(
+                actor = "analyst",
+                isSystemAdmin = true,
+                datasourceId = null,
+                actorFilter = null,
+            ),
+        ).isEmpty()
+    }
+
     private fun queryPolicy(readOnly: Boolean): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = if (readOnly) "read-only" else "read-write",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = readOnly,
             maxRowsPerQuery = 100,
             maxRuntimeSeconds = 30,

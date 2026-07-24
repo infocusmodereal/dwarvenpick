@@ -20,6 +20,17 @@ Governance controls which users can see and query which connections.
 An export grant for one credential profile does not authorize exporting results produced with another profile on the
 same connection. Operators should provision export access explicitly for every profile that requires it.
 
+## Read-only enforcement
+
+`readOnly: true` enables Dwarvenpick's conservative, engine-aware lexical guard. It rejects write/admin statements,
+data-modifying CTEs, executing `EXPLAIN` variants, multi-statement bypasses, and write-like `SELECT INTO` forms before
+query admission.
+
+This guard is defense in depth, not a semantic SQL sandbox. SQL functions and engine extensions can have side effects
+that no lexical classifier can prove safe. Every read-only access rule must therefore use a database credential whose
+grants are independently read-only. Never map `readOnly: true` to a credential with database write, DDL, file-write, or
+administrative privileges.
+
 ## Local users
 
 When Local auth is enabled, SYSTEM_ADMINs can:

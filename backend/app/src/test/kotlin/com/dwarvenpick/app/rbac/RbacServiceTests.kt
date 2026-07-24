@@ -79,6 +79,7 @@ class RbacServiceTests {
         val policy = rbacService.resolveQueryAccessPolicy(overlappingPrincipal(), datasourceId)
 
         assertThat(policy.credentialProfile).isEqualTo("read-only")
+        assertThat(policy.engine).isEqualTo(DatasourceEngine.STARROCKS)
         assertThat(policy.readOnly).isTrue()
         assertThat(policy.maxRowsPerQuery).isEqualTo(100)
         assertThat(policy.maxRuntimeSeconds).isEqualTo(30)

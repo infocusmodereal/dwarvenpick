@@ -19,7 +19,7 @@ class QueryValidationService(
             return QueryValidationResponse(valid = false, message = "SQL is empty.")
         }
 
-        if (policy.readOnly && !SqlSafety.isReadOnlyScript(sql)) {
+        if (policy.readOnly && !SqlSafety.isReadOnlyScript(sql, policy.engine)) {
             return QueryValidationResponse(
                 valid = false,
                 message =
@@ -27,7 +27,7 @@ class QueryValidationService(
             )
         }
 
-        if (!SqlSafety.isSafeForValidation(sql)) {
+        if (!SqlSafety.isSafeForValidation(sql, policy.engine)) {
             return QueryValidationResponse(
                 valid = false,
                 message = "Validation does not run EXPLAIN ANALYZE or EXPLAIN of write statements.",

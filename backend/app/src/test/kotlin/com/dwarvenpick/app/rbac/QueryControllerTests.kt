@@ -6,6 +6,7 @@ import com.dwarvenpick.app.auth.AuthenticatedPrincipalResolver
 import com.dwarvenpick.app.auth.AuthenticatedUserPrincipal
 import com.dwarvenpick.app.auth.ErrorResponse
 import com.dwarvenpick.app.controlplane.DatasourcePauseService
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.datasource.ForbiddenNetworkTargetException
 import com.dwarvenpick.app.query.QueryAdmissionScope
 import com.dwarvenpick.app.query.QueryAdmissionUnavailableException
@@ -13,6 +14,7 @@ import com.dwarvenpick.app.query.QueryConcurrencyLimitException
 import com.dwarvenpick.app.query.QueryExecutionManager
 import com.dwarvenpick.app.query.QueryExecutionProperties
 import com.dwarvenpick.app.query.QueryExecutionRequest
+import com.dwarvenpick.app.query.QueryReadOnlyViolationException
 import com.dwarvenpick.app.query.QueryValidationRequest
 import com.dwarvenpick.app.query.QueryValidationService
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -64,6 +66,7 @@ class QueryControllerTests {
         val policy =
             QueryAccessPolicy(
                 credentialProfile = "read-only",
+                engine = DatasourceEngine.POSTGRESQL,
                 readOnly = true,
                 maxRowsPerQuery = 5000,
                 maxRuntimeSeconds = 300,
@@ -154,6 +157,40 @@ class QueryControllerTests {
         assertThat(response.body).isEqualTo(ErrorResponse(message))
     }
 
+    @Test
+    fun `execute returns the governed read-only denial message`() {
+        val principal = principal()
+        val authentication = UsernamePasswordAuthenticationToken(principal, "unused")
+        val httpRequest = mock(HttpServletRequest::class.java)
+        val request = QueryExecutionRequest(datasourceId = "orders", sql = "(DELETE FROM orders)")
+        val policy = readOnlyPolicy()
+        val denial =
+            "Read-only mode is enabled for this datasource access mapping. Only SELECT-like statements are allowed."
+
+        `when`(authenticatedPrincipalResolver.resolve(authentication)).thenReturn(principal)
+        `when`(httpRequest.remoteAddr).thenReturn("127.0.0.1")
+        `when`(
+            rbacService.resolveQueryAccessPolicy(
+                principal = principal,
+                datasourceId = request.datasourceId,
+                requestedCredentialProfile = null,
+            ),
+        ).thenReturn(policy)
+        `when`(
+            queryExecutionManager.submitQuery(
+                actor = principal.username,
+                ipAddress = httpRequest.remoteAddr,
+                request = request,
+                policy = policy,
+            ),
+        ).thenThrow(QueryReadOnlyViolationException(denial))
+
+        val response = controller.executeQuery(request, authentication, httpRequest)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
+        assertThat(response.body).isEqualTo(ErrorResponse(denial))
+    }
+
     private fun principal(): AuthenticatedUserPrincipal =
         AuthenticatedUserPrincipal(
             username = "ivan",
@@ -167,6 +204,7 @@ class QueryControllerTests {
     private fun readOnlyPolicy(): QueryAccessPolicy =
         QueryAccessPolicy(
             credentialProfile = "read-only",
+            engine = DatasourceEngine.POSTGRESQL,
             readOnly = true,
             maxRowsPerQuery = 5000,
             maxRuntimeSeconds = 300,

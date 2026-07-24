@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DwarvenpickClient, splitSetCookieHeader } from '../src/client.js';
+import { DwarvenpickClient, HttpError, splitSetCookieHeader } from '../src/client.js';
 
 test('splitSetCookieHeader keeps expires commas inside one cookie', () => {
   const cookies = splitSetCookieHeader('a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Path=/, b=2; Path=/');
@@ -86,11 +86,43 @@ test('cancelQuery posts cancellation with CSRF cookie and header', async () => {
   assert.match(requests[1].init.headers.Cookie, /XSRF-TOKEN=csrf-token/);
 });
 
-function jsonResponse({ body, setCookies = [] }) {
+test('submitQuery preserves the governed read-only denial from the backend', async () => {
+  const denial =
+    'Read-only mode is enabled for this datasource access mapping. Only SELECT-like statements are allowed.';
+  const client = new DwarvenpickClient({
+    baseUrl: 'http://dwarvenpick.local',
+    fetchImpl: async (url) => {
+      if (url.endsWith('/api/auth/csrf')) {
+        return jsonResponse({
+          body: { token: 'csrf-token', headerName: 'X-XSRF-TOKEN', parameterName: '_csrf' },
+          setCookies: ['XSRF-TOKEN=csrf-token; Path=/'],
+        });
+      }
+      return jsonResponse({
+        body: { error: denial },
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+      });
+    },
+  });
+
+  await assert.rejects(
+    () => client.submitQuery({ datasourceId: 'orders', sql: '(DELETE FROM orders)' }),
+    (error) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.status, 403);
+      assert.equal(error.message, denial);
+      return true;
+    },
+  );
+});
+
+function jsonResponse({ body, setCookies = [], ok = true, status = 200, statusText = 'OK' }) {
   return {
-    ok: true,
-    status: 200,
-    statusText: 'OK',
+    ok,
+    status,
+    statusText,
     headers: {
       get(name) {
         return name.toLowerCase() === 'content-type' ? 'application/json' : null;
