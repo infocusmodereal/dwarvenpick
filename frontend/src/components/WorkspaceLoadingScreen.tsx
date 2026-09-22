@@ -9,7 +9,7 @@ export default function WorkspaceLoadingScreen({
     subtitle = 'Preparing your connections, explorer and SQL editor.'
 }: WorkspaceLoadingScreenProps) {
     return (
-        <AppShell title="dwarvenpick" showTitle={false} topNav={false}>
+        <AppShell title="dwarvenpick" showTitle={false} topNav={false} className="auth-app-shell">
             <section className="panel login-card workspace-loading-card">
                 <div className="login-brand workspace-loading-brand">
                     <div className="workspace-loading-visual" aria-hidden="true">

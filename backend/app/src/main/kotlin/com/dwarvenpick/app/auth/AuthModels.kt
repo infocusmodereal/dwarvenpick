@@ -17,6 +17,7 @@ data class LoginRequest(
     val username: String = "",
     @field:NotBlank(message = "Password is required.")
     val password: String = "",
+    val rememberDevice: Boolean = false,
 )
 
 data class PasswordResetRequest(

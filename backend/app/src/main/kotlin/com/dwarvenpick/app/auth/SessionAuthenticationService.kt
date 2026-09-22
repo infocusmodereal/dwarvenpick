@@ -17,6 +17,7 @@ class SessionAuthenticationService(
         principal: AuthenticatedUserPrincipal,
         httpServletRequest: HttpServletRequest,
         httpServletResponse: HttpServletResponse,
+        rememberDevice: Boolean = false,
     ) {
         val authorities = principal.roles.map { SimpleGrantedAuthority("ROLE_${it.uppercase()}") }
         val authenticationToken =
@@ -30,6 +31,11 @@ class SessionAuthenticationService(
         context.authentication = authenticationToken
         SecurityContextHolder.setContext(context)
         val session = httpServletRequest.getSession(true)
+        httpServletRequest.changeSessionId()
+        httpServletRequest.setAttribute(
+            DeviceSessionCookieSerializer.MAX_AGE_ATTRIBUTE,
+            if (rememberDevice && session.maxInactiveInterval > 0) session.maxInactiveInterval else -1,
+        )
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
         securityContextRepository.saveContext(context, httpServletRequest, httpServletResponse)
     }
