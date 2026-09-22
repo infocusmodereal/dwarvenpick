@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import AppShell from '../components/AppShell';
+import BrandMark from '../components/BrandMark';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { useTheme } from '../theme/ThemeContext';
 import InlineNotice from '../workbench/components/InlineNotice';
@@ -221,13 +222,7 @@ export default function LoginPage() {
                     </span>
                 </button>
                 <div className="login-brand">
-                    <img
-                        src="/dwarvenpick-mark.svg"
-                        alt=""
-                        width={111}
-                        height={111}
-                        className="login-brand-mark"
-                    />
+                    <BrandMark alt="" width={111} height={111} className="login-brand-mark" />
                     <strong>dwarvenpick</strong>
                 </div>
                 <div className="login-form">

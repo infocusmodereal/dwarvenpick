@@ -42,6 +42,10 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
+        const favicon = document.querySelector<HTMLLinkElement>('#app-favicon');
+        if (favicon) {
+            favicon.href = `/brand/favicon-${theme}.png`;
+        }
     }, [theme]);
 
     const value = useMemo<ThemeContextValue>(

@@ -19,6 +19,7 @@ import { format as formatSql } from 'sql-formatter';
 import type { editor as MonacoEditorNamespace } from 'monaco-editor';
 import { useNavigate } from 'react-router';
 import AppShell from '../components/AppShell';
+import BrandMark from '../components/BrandMark';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import ExplorerControls from '../workbench/components/ExplorerControls';
 import InlineNotice, { type InlineNoticeTone } from '../workbench/components/InlineNotice';
@@ -6489,7 +6490,7 @@ export default function WorkspacePage() {
                             title="Open dwarves in Middle-earth reference"
                         >
                             <span className="workspace-logo-icon" aria-hidden>
-                                <img src="/dwarvenpick-mark.svg" alt="" width={24} height={24} />
+                                <BrandMark surface="dark" alt="" width={24} height={24} />
                             </span>
                             {!leftRailCollapsed ? (
                                 <span className="workspace-logo-label">dwarvenpick</span>

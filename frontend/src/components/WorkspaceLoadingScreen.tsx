@@ -1,4 +1,5 @@
 import AppShell from './AppShell';
+import BrandMark from './BrandMark';
 
 type WorkspaceLoadingScreenProps = {
     subtitle?: string;
@@ -14,8 +15,7 @@ export default function WorkspaceLoadingScreen({
                     <div className="workspace-loading-visual" aria-hidden="true">
                         <span className="workspace-loading-ring" />
                         <span className="workspace-loading-ring" />
-                        <img
-                            src="/dwarvenpick-mark.svg"
+                        <BrandMark
                             alt=""
                             width={111}
                             height={111}

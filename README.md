@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="frontend/public/dwarvenpick-mark.svg" width="140" alt="dwarvenpick logo" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/public/brand/mark-dark.png" />
+    <img src="frontend/public/brand/mark-light.png" width="140" alt="dwarvenpick logo" />
+  </picture>
 </p>
 
 # dwarvenpick
