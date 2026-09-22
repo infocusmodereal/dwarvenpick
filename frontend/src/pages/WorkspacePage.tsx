@@ -6490,7 +6490,7 @@ export default function WorkspacePage() {
                             title="Open dwarves in Middle-earth reference"
                         >
                             <span className="workspace-logo-icon" aria-hidden>
-                                <BrandMark surface="dark" alt="" width={24} height={24} />
+                                <BrandMark alt="" width={24} height={24} />
                             </span>
                             {!leftRailCollapsed ? (
                                 <span className="workspace-logo-label">dwarvenpick</span>
