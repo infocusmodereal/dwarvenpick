@@ -30,6 +30,7 @@ The PNG files are production derivatives of the approved logo, not editable vect
 Login and workspace loading share a centered, responsive 420 px card over the same background. Short viewports scroll instead of clipping the form. The SSO button uses a gold background and dark text in both themes.
 
 The password visibility button only reveals the current input temporarily; submitting masks it again. Passwords are never stored in browser storage.
+Username and Password use floating labels inside taller fields: focus raises the label, and entered or autofilled values keep it raised. The dark-theme Sign In button uses a lighter brown for contrast; the light-theme button is unchanged.
 
 For local and LDAP password sign-in, **Remember this device** is off by default. When selected, the HttpOnly session cookie survives browser restarts for at most the configured session timeout from sign-in (8 hours by default via `DWARVENPICK_SESSION_TIMEOUT`). Server-side expiration still applies, and logout invalidates the session. This does not extend the timeout or bypass authentication. Only use it on a trusted device. SSO persistence remains controlled by the identity provider; the checkbox applies to password sign-in only.
 

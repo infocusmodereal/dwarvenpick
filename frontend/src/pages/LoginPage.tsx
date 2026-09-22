@@ -245,27 +245,31 @@ export default function LoginPage() {
 
                     {showPasswordForm ? (
                         <form onSubmit={handleSubmit}>
-                            <label htmlFor="username">Username</label>
-                            <input
-                                id="username"
-                                name="username"
-                                autoComplete="username"
-                                value={username}
-                                onChange={(event) => setUsername(event.target.value)}
-                                required
-                            />
+                            <div className="login-floating-field">
+                                <input
+                                    id="username"
+                                    name="username"
+                                    autoComplete="username"
+                                    placeholder=" "
+                                    value={username}
+                                    onChange={(event) => setUsername(event.target.value)}
+                                    required
+                                />
+                                <label htmlFor="username">Username</label>
+                            </div>
 
-                            <label htmlFor="password">Password</label>
-                            <div className="login-password-field">
+                            <div className="login-floating-field login-password-field">
                                 <input
                                     id="password"
                                     name="password"
                                     type={passwordVisible ? 'text' : 'password'}
                                     autoComplete="current-password"
+                                    placeholder=" "
                                     value={password}
                                     onChange={(event) => setPassword(event.target.value)}
                                     required
                                 />
+                                <label htmlFor="password">Password</label>
                                 <button
                                     type="button"
                                     className="icon-button login-password-toggle"
