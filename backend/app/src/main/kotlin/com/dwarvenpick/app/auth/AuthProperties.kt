@@ -97,8 +97,14 @@ data class LdapAuthProperties(
     val userFilter: String = "(uid={0})",
     val attributeMapping: LdapAttributeMappingProperties = LdapAttributeMappingProperties(),
     val groupSync: LdapGroupSyncProperties = LdapGroupSyncProperties(),
+    val userGroupMappings: List<LdapUserGroupMapping> = emptyList(),
     val systemAdminGroups: Set<String> = emptySet(),
     val mock: LdapMockProperties = LdapMockProperties(),
+)
+
+data class LdapUserGroupMapping(
+    val username: String = "",
+    val groups: Set<String> = emptySet(),
 )
 
 enum class LdapTransport {

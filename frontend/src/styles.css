@@ -573,13 +573,115 @@ p {
     min-width: 0;
 }
 
-.login-card {
-    max-width: 600px;
-    margin-inline: auto;
-    margin-top: 3.2rem;
-    padding: 1.15rem;
+.app-shell.auth-app-shell {
+    min-height: 100dvh;
+    max-width: none;
+    padding: 1.5rem 1rem;
+    display: grid;
+    align-items: center;
+    background:
+        linear-gradient(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.28)),
+        url('/brand/auth-background.jpg') center / cover;
+}
+
+.auth-app-shell .login-card {
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 1.5rem;
     gap: 1rem;
     position: relative;
+}
+
+.auth-app-shell .login-sso-button {
+    background: linear-gradient(110deg, #ffb932, #efa322);
+    color: #201509;
+    border: 1px solid #ffc459;
+    border-radius: 0.65rem;
+    min-height: 2.75rem;
+    font-weight: 700;
+}
+
+.auth-app-shell .login-sso-button:hover:not(:disabled) {
+    background: #ffc459;
+    border-color: #ffd68a;
+}
+
+.login-floating-field {
+    position: relative;
+    min-width: 0;
+}
+
+.login-floating-field input {
+    width: 100%;
+    height: 3.75rem;
+    padding: 1.55rem 1rem 0.5rem;
+}
+
+.login-floating-field label {
+    position: absolute;
+    top: 50%;
+    left: 1rem;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: text;
+    transition:
+        top 160ms ease,
+        font-size 160ms ease,
+        transform 160ms ease;
+}
+
+.login-floating-field:focus-within label,
+.login-floating-field input:not(:placeholder-shown) + label,
+.login-floating-field input:autofill + label {
+    top: 0.6rem;
+    transform: none;
+    font-size: 0.7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .login-floating-field label {
+        transition: none;
+    }
+}
+
+.login-password-field input {
+    width: 100%;
+    padding-right: 3rem;
+}
+
+.login-password-field .login-password-toggle {
+    position: absolute;
+    right: 0.3rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.1rem;
+    height: 2.1rem;
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+}
+
+.login-password-toggle svg {
+    width: 1.15rem;
+    height: 1.15rem;
+}
+
+.login-form .login-remember-device {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-block: 0.25rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+.login-remember-device input {
+    width: 1rem;
+    height: 1rem;
+    accent-color: #efa322;
 }
 
 .login-theme-toggle {
@@ -624,7 +726,13 @@ p {
 }
 
 :root[data-theme='dark'] .login-form form button[type='submit'] {
-    border-color: rgba(243, 232, 217, 0.22);
+    background: #c49a6c;
+    color: #24180e;
+    border-color: #d7b58e;
+}
+
+:root[data-theme='dark'] .login-form form button[type='submit']:hover:not(:disabled) {
+    background: #d7b58e;
 }
 
 .chip {

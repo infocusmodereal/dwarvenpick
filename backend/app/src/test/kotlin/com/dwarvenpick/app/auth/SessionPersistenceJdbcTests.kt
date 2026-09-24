@@ -9,6 +9,7 @@ import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
@@ -16,6 +17,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
     properties = [
         "spring.session.store-type=jdbc",
         "dwarvenpick.auth.password-policy.min-length=8",
+        "server.servlet.session.timeout=30m",
     ],
 )
 @AutoConfigureMockMvc
@@ -25,6 +27,45 @@ class SessionPersistenceJdbcTests {
 
     @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
+
+    @Test
+    fun `remembered login persists cookie without extending session timeout and logout revokes it`() {
+        val login =
+            mockMvc
+                .perform(
+                    post("/api/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"username":"admin","password":"Admin1234!","rememberDevice":true}"""),
+                ).andExpect(status().isOk)
+                .andReturn()
+        val cookie = requireNotNull(login.response.getCookie("SESSION"))
+        assertThat(cookie.maxAge).isEqualTo(1800)
+        assertThat(cookie.isHttpOnly).isTrue()
+        assertThat(cookie.getAttribute("SameSite")).isEqualTo("Lax")
+        mockMvc.perform(get("/api/auth/me").cookie(cookie)).andExpect(status().isOk)
+        val logout =
+            mockMvc
+                .perform(post("/api/auth/logout").cookie(cookie).with(csrf()))
+                .andExpect(status().isOk)
+                .andReturn()
+        assertThat(requireNotNull(logout.response.getCookie("SESSION")).maxAge).isZero()
+        mockMvc.perform(get("/api/auth/me").cookie(cookie)).andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `ordinary login uses a browser session cookie`() {
+        val login =
+            mockMvc
+                .perform(
+                    post("/api/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"username":"admin","password":"Admin1234!"}"""),
+                ).andExpect(status().isOk)
+                .andReturn()
+        assertThat(requireNotNull(login.response.getCookie("SESSION")).maxAge).isEqualTo(-1)
+    }
 
     @Test
     fun `login persists session record when jdbc session store is enabled`() {

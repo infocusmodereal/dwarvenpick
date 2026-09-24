@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import AppShell from '../components/AppShell';
+import BrandMark from '../components/BrandMark';
 import { MoonIcon, SunIcon } from '../components/ThemeIcons';
 import { useTheme } from '../theme/ThemeContext';
 import InlineNotice from '../workbench/components/InlineNotice';
@@ -31,6 +32,8 @@ export default function LoginPage() {
     const [supportedMethods, setSupportedMethods] = useState<AuthMethod[]>(authMethodFallback);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [passwordVisible, setPasswordVisible] = useState(false);
+    const [rememberDevice, setRememberDevice] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -143,6 +146,7 @@ export default function LoginPage() {
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        setPasswordVisible(false);
         setErrorMessage('');
 
         if (supportedMethods.length === 0) {
@@ -172,7 +176,8 @@ export default function LoginPage() {
                     },
                     body: JSON.stringify({
                         username,
-                        password
+                        password,
+                        rememberDevice
                     })
                 });
 
@@ -207,7 +212,7 @@ export default function LoginPage() {
     };
 
     return (
-        <AppShell title="dwarvenpick" showTitle={false} topNav={false}>
+        <AppShell title="dwarvenpick" showTitle={false} topNav={false} className="auth-app-shell">
             <section className="panel login-card">
                 <button
                     type="button"
@@ -221,13 +226,7 @@ export default function LoginPage() {
                     </span>
                 </button>
                 <div className="login-brand">
-                    <img
-                        src="/dwarvenpick-mark.svg"
-                        alt=""
-                        width={111}
-                        height={111}
-                        className="login-brand-mark"
-                    />
+                    <BrandMark alt="" width={111} height={111} className="login-brand-mark" />
                     <strong>dwarvenpick</strong>
                 </div>
                 <div className="login-form">
@@ -246,26 +245,65 @@ export default function LoginPage() {
 
                     {showPasswordForm ? (
                         <form onSubmit={handleSubmit}>
-                            <label htmlFor="username">Username</label>
-                            <input
-                                id="username"
-                                name="username"
-                                autoComplete="username"
-                                value={username}
-                                onChange={(event) => setUsername(event.target.value)}
-                                required
-                            />
+                            <div className="login-floating-field">
+                                <input
+                                    id="username"
+                                    name="username"
+                                    autoComplete="username"
+                                    placeholder=" "
+                                    value={username}
+                                    onChange={(event) => setUsername(event.target.value)}
+                                    required
+                                />
+                                <label htmlFor="username">Username</label>
+                            </div>
 
-                            <label htmlFor="password">Password</label>
-                            <input
-                                id="password"
-                                name="password"
-                                type="password"
-                                autoComplete="current-password"
-                                value={password}
-                                onChange={(event) => setPassword(event.target.value)}
-                                required
-                            />
+                            <div className="login-floating-field login-password-field">
+                                <input
+                                    id="password"
+                                    name="password"
+                                    type={passwordVisible ? 'text' : 'password'}
+                                    autoComplete="current-password"
+                                    placeholder=" "
+                                    value={password}
+                                    onChange={(event) => setPassword(event.target.value)}
+                                    required
+                                />
+                                <label htmlFor="password">Password</label>
+                                <button
+                                    type="button"
+                                    className="icon-button login-password-toggle"
+                                    aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                                    title={passwordVisible ? 'Hide password' : 'Show password'}
+                                    aria-pressed={passwordVisible}
+                                    aria-controls="password"
+                                    onClick={() => setPasswordVisible((visible) => !visible)}
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        aria-hidden="true"
+                                    >
+                                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                        {passwordVisible ? <path d="m3 3 18 18" /> : null}
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <label
+                                className="login-remember-device"
+                                title="Keep this password sign-in on this device until the session expires. Use only on a trusted device. SSO follows your identity provider's settings."
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={rememberDevice}
+                                    onChange={(event) => setRememberDevice(event.target.checked)}
+                                />
+                                Remember this device
+                            </label>
 
                             <button
                                 type="submit"

@@ -27,6 +27,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.containsStringIgnoringCase
 import org.hamcrest.Matchers.hasItem
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -66,6 +67,8 @@ import java.time.Instant
         "dwarvenpick.auth.ldap.mock.users[0].email=ldap.user@example.local",
         "dwarvenpick.auth.ldap.mock.users[0].groups[0]=ldap-analysts",
         "dwarvenpick.auth.ldap.group-sync.mapping-rules.ldap-analysts=ANALYSTS",
+        "dwarvenpick.auth.ldap.user-group-mappings[0].username=LDAP.USER",
+        "dwarvenpick.auth.ldap.user-group-mappings[0].groups[0]=TEMPORARY_READERS",
     ],
 )
 @AutoConfigureMockMvc
@@ -264,6 +267,24 @@ class DwarvenpickApplicationTests {
             .andExpect(jsonPath("$.username").value("ldap.user"))
             .andExpect(jsonPath("$.provider").value("ldap"))
             .andExpect(jsonPath("$.groups", hasItem("ANALYSTS")))
+            .andExpect(jsonPath("$.groups", hasItem("TEMPORARY_READERS")))
+
+        // Provisioning again must retain configured memberships while removing stale ones.
+        userAccountService.addGroupMembership("ldap.user", "STALE_TEMPORARY_GROUP")
+        val refreshedSession =
+            mockMvc
+                .perform(
+                    post("/api/auth/ldap/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"username":"ldap.user","password":"LdapUser123!"}"""),
+                ).andExpect(status().isOk)
+                .andReturn()
+                .toSessionCookies()
+        mockMvc
+            .perform(get("/api/auth/me").cookie(*refreshedSession))
+            .andExpect(jsonPath("$.groups", hasItem("TEMPORARY_READERS")))
+            .andExpect(jsonPath("$.groups", not(hasItem("STALE_TEMPORARY_GROUP"))))
 
         val events = authAuditEventStore.snapshot()
         assertThat(events)

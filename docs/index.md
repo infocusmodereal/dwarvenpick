@@ -4,7 +4,7 @@ nav_order: 1
 ---
 
 <p align="center">
-  <img src="{{ site.baseurl }}/assets/dwarvenpick-mark.svg" width="120" alt="dwarvenpick logo" />
+  <img src="{{ site.baseurl }}/assets/dwarvenpick-mark.png" width="120" alt="dwarvenpick logo" />
 </p>
 
 # dwarvenpick

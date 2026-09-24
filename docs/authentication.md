@@ -96,3 +96,22 @@ In Helm deployments, auth methods are controlled via environment variables (or `
 - `DWARVENPICK_AUTH_OIDC_ENABLED=true|false`
 
 See sample Helm values under `deploy/helm/examples`.
+
+## Supplemental LDAP user groups
+
+Operators can grant named LDAP users additional internal groups without changing directory memberships:
+
+```yaml
+dwarvenpick:
+  auth:
+    ldap:
+      user-group-mappings:
+        - username: alice.example
+          groups: [temporary-deals-readers]
+```
+
+Mappings match the authenticated directory username exactly, ignoring case. They are applied only after successful LDAP authentication and combined with directory groups on every login. They do not create LDAP groups or local accounts. Wildcards, empty mappings, and system administrator groups are rejected at startup. Administrator roles continue to derive only from directory groups.
+
+Grant these internal groups explicit connection permissions using the normal connection catalog, preferably a read-only database credential with export disabled. Membership changes appear in the existing LDAP group-sync and login audit events. Configuration defaults to an empty list.
+
+For temporary access, remove the mapping and its dedicated connection grants when the exception ends. Membership removal takes effect at the next login; existing sessions retain their principal until logout or expiration, so remove connection grants as well for immediate access revocation. This setting does not implement automatic expiry.

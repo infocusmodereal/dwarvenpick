@@ -82,7 +82,12 @@ class AuthController(
                 recordAuthAttempt(provider = "local", outcome = "failed")
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse("Invalid username or password."))
             } else {
-                sessionAuthenticationService.establishSession(principal, httpServletRequest, httpServletResponse)
+                sessionAuthenticationService.establishSession(
+                    principal,
+                    httpServletRequest,
+                    httpServletResponse,
+                    request.rememberDevice,
+                )
 
                 audit(
                     type = "auth.local.login",
@@ -146,7 +151,12 @@ class AuthController(
                     roles = ldapResult.roles,
                 )
 
-            sessionAuthenticationService.establishSession(principal, httpServletRequest, httpServletResponse)
+            sessionAuthenticationService.establishSession(
+                principal,
+                httpServletRequest,
+                httpServletResponse,
+                request.rememberDevice,
+            )
 
             val addedGroups = ldapResult.mappedGroups - previousGroups
             val removedGroups = previousGroups - ldapResult.mappedGroups
