@@ -32,6 +32,17 @@ class LdapAuthenticationService(
 
     @PostConstruct
     internal fun validateConfiguration() {
+        authProperties.ldap.userGroupMappings.forEach { mapping ->
+            require(mapping.username.isNotBlank() && !mapping.username.contains("*")) {
+                "LDAP user group mappings require an exact username."
+            }
+            require(mapping.groups.isNotEmpty() && mapping.groups.none { it.isBlank() || it.contains("*") }) {
+                "LDAP user group mappings require explicit group names."
+            }
+            require(mapping.groups.none { group -> authProperties.ldap.systemAdminGroups.any { it.equals(group.trim(), true) } }) {
+                "LDAP user group mappings cannot target system administrator groups."
+            }
+        }
         if (!authProperties.ldap.enabled || authProperties.ldap.mock.enabled) {
             return
         }
@@ -83,7 +94,7 @@ class LdapAuthenticationService(
 
             LdapAuthenticationResult(
                 profile = profile,
-                mappedGroups = mappedGroups,
+                mappedGroups = mappedGroups + userGroups(profile.username),
                 roles = roles,
             )
         }.getOrElse { ex ->
@@ -118,8 +129,15 @@ class LdapAuthenticationService(
 
         val mappedGroups = mapGroups(mockUser.groups)
         val roles = resolveRoles(mappedGroups)
-        return LdapAuthenticationResult(profile = profile, mappedGroups = mappedGroups, roles = roles)
+        return LdapAuthenticationResult(profile = profile, mappedGroups = mappedGroups + userGroups(profile.username), roles = roles)
     }
+
+    private fun userGroups(username: String): Set<String> =
+        authProperties.ldap.userGroupMappings
+            .filter { it.username.trim().equals(username.trim(), ignoreCase = true) }
+            .flatMap { it.groups }
+            .map { it.trim() }
+            .toSet()
 
     private fun lookupUserProfile(
         ldapTemplate: LdapTemplate,
