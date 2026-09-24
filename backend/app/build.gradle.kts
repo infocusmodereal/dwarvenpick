@@ -6,7 +6,9 @@ plugins {
 }
 
 extra["testcontainers.version"] = "1.21.0"
-extra["netty.version"] = "4.1.136.Final"
+extra["netty.version"] = "4.1.137.Final"
+extra["tomcat.version"] = "10.1.59"
+extra["httpcore5.version"] = "5.4.3"
 
 fun releaseMetadataValue(name: String): String = System.getenv(name)?.trim()?.takeIf { it.isNotBlank() } ?: "unknown"
 
