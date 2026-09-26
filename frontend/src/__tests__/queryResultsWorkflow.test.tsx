@@ -116,6 +116,49 @@ describe('useQueryResultsWorkflow', () => {
         expect(tabs['tab-b']).toEqual(backgroundTab);
     });
 
+    it('does not restore cleared results or apply older concurrent page responses', async () => {
+        let currentTab = tab('tab-a', 'exec-a');
+        const pending: Array<(response: Response) => void> = [];
+        fetchMock.mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
+        const updateWorkspaceTab = (_: string, update: (current: WorkspaceTab) => WorkspaceTab) => {
+            currentTab = update(currentTab);
+        };
+        const { result } = renderHook(() =>
+            useQueryResultsWorkflow({
+                activeTab: currentTab,
+                activeTabId: currentTab.id,
+                onFeedback: vi.fn(),
+                readFriendlyError: vi.fn(),
+                updateWorkspaceTab
+            })
+        );
+        let oldRequest!: Promise<void>, nextRequest!: Promise<void>;
+        act(() => {
+            oldRequest = result.current.fetchQueryResultsPage('tab-a', 'exec-a', 'old');
+            nextRequest = result.current.fetchQueryResultsPage('tab-a', 'exec-a', 'next');
+        });
+        await act(async () => {
+            pending[1](jsonResponse(resultPayload));
+            await nextRequest;
+        });
+        await act(async () => {
+            pending[0](jsonResponse(resultPayload));
+            await oldRequest;
+        });
+        expect(currentTab.currentPageToken).toBe('next');
+        let clearingRequest!: Promise<void>;
+        act(() => {
+            clearingRequest = result.current.fetchQueryResultsPage('tab-a', 'exec-a');
+        });
+        currentTab = tab('tab-a');
+        await act(async () => {
+            pending[2](jsonResponse(resultPayload));
+            await clearingRequest;
+        });
+        expect(currentTab.resultRows).toEqual([]);
+        expect(currentTab.executionId).toBe('');
+    });
+
     it('preserves next and previous page token history', async () => {
         const activeTab = {
             ...tab('tab-a', 'exec-a'),
@@ -215,12 +258,39 @@ describe('useQueryResultsWorkflow', () => {
         expect(result.current.view.resultSortState).toEqual({ columnIndex: 0, direction: 'desc' });
         expect(result.current.view.visibleResultRows.rows[0]).toEqual(['100']);
 
-        act(() => result.current.view.onResultGridScroll(31 * 20));
+        act(() => result.current.view.onResultGridScroll(28 * 20));
         expect(result.current.view.visibleResultRows.start).toBe(12);
         expect(result.current.view.visibleResultRows.rows.length).toBeLessThan(100);
 
         act(() => result.current.view.onToggleResultSort(0));
         expect(result.current.view.resultSortState).toBeNull();
+    });
+
+    it('searches only loaded rows without fetching and recalculates virtualization for density and expanded height', () => {
+        const activeTab = {
+            ...tab('tab-a'),
+            resultRows: Array.from({ length: 200 }, (_, i) => [String(i), i % 2 ? 'odd' : 'even'])
+        };
+        const { result } = renderHook(() =>
+            useQueryResultsWorkflow({
+                activeTab,
+                activeTabId: activeTab.id,
+                onFeedback: vi.fn(),
+                readFriendlyError: vi.fn(),
+                updateWorkspaceTab: vi.fn()
+            })
+        );
+        act(() => result.current.view.onSearchChange('odd'));
+        expect(result.current.view.loadedRows).toHaveLength(100);
+        expect(result.current.view.loadedRows.every((row) => row[1] === 'odd')).toBe(true);
+        act(() => result.current.view.onDensityChange('comfortable'));
+        act(() => result.current.view.onViewportHeightChange(760));
+        act(() => result.current.view.onResultGridScroll(38 * 20));
+        expect(result.current.view.visibleResultRows.start).toBe(12);
+        expect(result.current.view.visibleResultRows.topSpacerPx).toBe(12 * 38);
+        expect(result.current.view.visibleResultRows.rows.length).toBeGreaterThanOrEqual(20);
+        expect(fetchMock).not.toHaveBeenCalled();
+        act(() => result.current.view.onDensityChange('compact'));
     });
 
     it('applies an active sort only to the current server page', () => {

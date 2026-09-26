@@ -127,6 +127,7 @@ data class QueryResultsRequest(
 data class QueryResultColumn(
     val name: String,
     val jdbcType: String,
+    val updateCount: Boolean = false,
 )
 
 data class QueryResultsResponse(

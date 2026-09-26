@@ -93,8 +93,6 @@ import {
 } from '../workbench/constants';
 import {
     adminIdentifierPattern,
-    formatExecutionDuration,
-    formatExecutionTimestamp,
     isTerminalExecutionStatus,
     isValidEmailAddress,
     normalizeAdminIdentifier
@@ -127,6 +125,8 @@ import {
 import AuditEventsSection from '../workbench/sections/AuditEventsSection';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import QueryResultsSection from '../workbench/sections/QueryResultsSection';
+import RunQueryButton from '../workbench/components/RunQueryButton';
+import { analysisSql, queryCapabilities } from '../workbench/queryCapabilities';
 import ResourceManagerSection from '../workbench/sections/ResourceManagerSection';
 import SystemHealthSection from '../workbench/sections/SystemHealthSection';
 import { chevronDownIcon, chevronRightIcon, resolveDatasourceIcon } from '../workbench/icons';
@@ -547,6 +547,7 @@ export default function WorkspacePage() {
     });
     const workbenchGridRef = useRef<HTMLDivElement | null>(null);
     const schemaBrowserSidebarRef = useRef<HTMLElement | null>(null);
+    const fallbackEditorRef = useRef<HTMLTextAreaElement>(null);
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
@@ -1426,104 +1427,18 @@ export default function WorkspacePage() {
         [activeTab?.datasourceId, visibleDatasources]
     );
 
-    const explainPlanText = useMemo(() => {
-        if (
-            !activeTab ||
-            activeTab.lastRunKind !== 'explain' ||
-            activeTab.resultRows.length === 0
-        ) {
-            return '';
-        }
-
-        return activeTab.resultRows
-            .map((row) => row.filter((cell) => cell !== null).join(' | '))
-            .join('\n');
-    }, [activeTab]);
-
-    const analyzePlan = useMemo(() => {
-        if (
-            !activeTab ||
-            activeTab.lastRunKind !== 'analyze' ||
-            activeTab.resultRows.length === 0
-        ) {
-            return null;
-        }
-
-        const combined = activeTab.resultRows
-            .map((row) => row.filter((cell) => cell !== null).join(' '))
-            .join('\n')
-            .trim();
-        if (!combined) {
-            return null;
-        }
-
-        try {
-            const parsed = JSON.parse(combined) as unknown;
-            return {
-                kind: 'json' as const,
-                raw: combined,
-                json: parsed
-            };
-        } catch {
-            return {
-                kind: 'text' as const,
-                raw: combined
-            };
-        }
-    }, [activeTab]);
-
-    const scriptSummaryLabel = useMemo(() => {
-        const summary = activeTab?.scriptSummary;
-        if (!summary || summary.statementCount <= 1) {
-            return '';
-        }
-
-        const failures = summary.statements.filter(
-            (statement) => statement.status === 'FAILED'
-        ).length;
-        const successes = summary.statements.filter(
-            (statement) => statement.status === 'SUCCEEDED'
-        ).length;
-        const total = summary.statementCount;
-        if (failures > 0) {
-            return `Script: ${total} statements (${successes} succeeded, ${failures} failed)`;
-        }
-
-        return `Script: ${total} statements (${successes} succeeded)`;
-    }, [activeTab?.scriptSummary]);
-
-    const executionDurationLabel = useMemo(() => {
-        if (!activeTab?.startedAt || !activeTab?.completedAt) {
-            return '-';
-        }
-        return formatExecutionDuration(activeTab.startedAt, activeTab.completedAt);
-    }, [activeTab?.completedAt, activeTab?.startedAt]);
-
-    const executionSubmittedAtLabel = useMemo(
-        () => formatExecutionTimestamp(activeTab?.submittedAt ?? ''),
-        [activeTab?.submittedAt]
-    );
-
-    const executionCompletedAtLabel = useMemo(
-        () => formatExecutionTimestamp(activeTab?.completedAt ?? ''),
-        [activeTab?.completedAt]
-    );
-
-    const hideRedundantResultStatusMessage = useMemo(() => {
-        if (!activeTab?.executionId || !activeTab.statusMessage) {
-            return false;
-        }
-
-        const normalized = activeTab.statusMessage.trim().toLowerCase();
-        if (activeTab.executionStatus === 'SUCCEEDED' && normalized === 'query succeeded.') {
-            return true;
-        }
-        if (activeTab.executionStatus === 'SUCCEEDED' && normalized === 'query succeeded') {
-            return true;
-        }
-
-        return false;
-    }, [activeTab?.executionId, activeTab?.executionStatus, activeTab?.statusMessage]);
+    const executionCapabilities = queryCapabilities(selectedDatasource?.engine ?? '');
+    const [resultsExpanded, setResultsExpanded] = useState(false);
+    useEffect(() => {
+        const restore = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && resultsExpanded) {
+                event.preventDefault();
+                setResultsExpanded(false);
+            }
+        };
+        window.addEventListener('keydown', restore);
+        return () => window.removeEventListener('keydown', restore);
+    }, [resultsExpanded]);
 
     const selectedDatasourceIcon = useMemo(
         () => resolveDatasourceIcon(selectedDatasource?.engine),
@@ -3972,6 +3887,16 @@ export default function WorkspacePage() {
         const model = editor?.getModel();
         const selection = editor?.getSelection();
 
+        const fallback = fallbackEditorRef.current;
+        if (fallback) {
+            const selectedSql = fallback.value.slice(
+                fallback.selectionStart,
+                fallback.selectionEnd
+            );
+            if (selectedSql) return { sql: selectedSql, mode: 'selection' as const };
+            const statement = statementAtCursor(fallback.value, fallback.selectionStart);
+            return { sql: statement?.sql ?? '', mode: 'statement' as const };
+        }
         if (model && selection && !selection.isEmpty()) {
             return {
                 sql: model.getValueInRange(selection),
@@ -4046,25 +3971,14 @@ export default function WorkspacePage() {
             return;
         }
 
-        const engine = selectedDatasource?.engine ?? '';
-        const normalizedSql = sqlToAnalyze.replace(/;+\s*$/, '').trim();
-        const analyzeSql =
-            /^explain\b/i.test(normalizedSql) || !normalizedSql
-                ? normalizedSql
-                : engine === 'POSTGRESQL'
-                  ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${normalizedSql}`
-                  : engine === 'MYSQL' || engine === 'MARIADB'
-                    ? `EXPLAIN FORMAT=JSON ${normalizedSql}`
-                    : engine === 'TRINO'
-                      ? `EXPLAIN ANALYZE ${normalizedSql}`
-                      : `EXPLAIN ${normalizedSql}`;
+        const analyzeSql = analysisSql(sqlToAnalyze, executionCapabilities);
 
         void executeSqlForTab(activeTab.id, analyzeSql, 'analyze', 'analyze');
     }, [
         activeTab,
         executeSqlForTab,
         resolveRunnableSqlForTab,
-        selectedDatasource?.engine,
+        executionCapabilities,
         showWorkbenchNotice
     ]);
 
@@ -5135,14 +5049,17 @@ export default function WorkspacePage() {
     useEffect(() => {
         const handleKeyboardShortcut = (event: KeyboardEvent) => {
             const activeElement = document.activeElement as HTMLElement | null;
-            const focusedInEditor = activeElement?.closest('.monaco-editor');
+            const focusedInEditor = activeElement?.closest(
+                '.monaco-editor, .fallback-editor-textarea'
+            );
             if (!focusedInEditor) {
                 return;
             }
 
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                 event.preventDefault();
-                handleRunSelection();
+                if (event.shiftKey) handleRunScript();
+                else handleRunSelection();
                 return;
             }
 
@@ -5156,7 +5073,13 @@ export default function WorkspacePage() {
         return () => {
             window.removeEventListener('keydown', handleKeyboardShortcut);
         };
-    }, [activeTab?.id, activeTab?.isExecuting, handleCancelRun, handleRunSelection]);
+    }, [
+        activeTab?.id,
+        activeTab?.isExecuting,
+        handleCancelRun,
+        handleRunSelection,
+        handleRunScript
+    ]);
 
     useEffect(() => {
         if (!tabsHydrated || typeof EventSource === 'undefined') {
@@ -7503,7 +7426,10 @@ export default function WorkspacePage() {
                             ) : null}
                         </aside>
 
-                        <section className="editor" ref={editorSectionRef}>
+                        <section
+                            className={`editor${resultsExpanded ? ' results-expanded' : ''}`}
+                            ref={editorSectionRef}
+                        >
                             <div className="editor-toolbar">
                                 <QueryTabsBar
                                     workspaceTabs={workspaceTabs}
@@ -7526,6 +7452,23 @@ export default function WorkspacePage() {
                                                 using fallback mode.
                                             </InlineNotice>
                                             <textarea
+                                                ref={fallbackEditorRef}
+                                                aria-label="Fallback SQL editor"
+                                                onSelect={(event) => {
+                                                    const field = event.currentTarget;
+                                                    setEditorCursorLegend((current) => ({
+                                                        ...current,
+                                                        selectedChars:
+                                                            field.selectionEnd -
+                                                            field.selectionStart,
+                                                        selectedLines: field.value
+                                                            .slice(
+                                                                field.selectionStart,
+                                                                field.selectionEnd
+                                                            )
+                                                            .split('\n').length
+                                                    }));
+                                                }}
                                                 value={activeTab?.queryText ?? ''}
                                                 onChange={(event) => {
                                                     if (!activeTab) {
@@ -7637,30 +7580,56 @@ export default function WorkspacePage() {
 
                             <div className="editor-action-row" ref={editorActionRowRef}>
                                 <div className="row editor-primary-actions">
+                                    <RunQueryButton
+                                        disabled={!activeTab || !selectedDatasource}
+                                        running={activeTab?.isExecuting ?? false}
+                                        hasSelection={editorCursorLegend.selectedChars > 0}
+                                        onRun={handleRunSelection}
+                                        onSelection={() => {
+                                            const fallback = fallbackEditorRef.current;
+                                            if (
+                                                activeTab &&
+                                                fallback &&
+                                                fallback.selectionEnd > fallback.selectionStart
+                                            ) {
+                                                void executeSqlForTab(
+                                                    activeTab.id,
+                                                    fallback.value.slice(
+                                                        fallback.selectionStart,
+                                                        fallback.selectionEnd
+                                                    ),
+                                                    'selection'
+                                                );
+                                                return;
+                                            }
+                                            const model = editorRef.current?.getModel();
+                                            const selection = editorRef.current?.getSelection();
+                                            if (
+                                                activeTab &&
+                                                model &&
+                                                selection &&
+                                                !selection.isEmpty()
+                                            ) {
+                                                void executeSqlForTab(
+                                                    activeTab.id,
+                                                    model.getValueInRange(selection),
+                                                    'selection'
+                                                );
+                                            }
+                                        }}
+                                        onScript={handleRunScript}
+                                        onCancel={() => {
+                                            if (activeTab) void handleCancelRun(activeTab.id);
+                                        }}
+                                    />
                                     <LabeledActionButton
-                                        icon="play"
-                                        label="Run"
-                                        title="Run selection"
-                                        onClick={handleRunSelection}
-                                        disabled={
-                                            !activeTab ||
-                                            activeTab.isExecuting ||
-                                            !selectedDatasource
-                                        }
-                                        variant="primary"
+                                        icon="align-start-horizontal"
+                                        label="Format SQL"
+                                        title="Format SQL (selection when available)"
+                                        onClick={handleFormatSql}
+                                        disabled={!activeTab || activeTab.isExecuting}
                                     />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
-                                        <LabeledActionButton
-                                            icon="circle-play"
-                                            label="Run Script"
-                                            title="Run script"
-                                            onClick={handleRunScript}
-                                            disabled={
-                                                !activeTab ||
-                                                activeTab.isExecuting ||
-                                                !selectedDatasource
-                                            }
-                                        />
                                         <div
                                             className="script-options-anchor"
                                             ref={scriptOptionsAnchorRef}
@@ -7763,20 +7732,31 @@ export default function WorkspacePage() {
                                         <div className="action-menu-popover">
                                             <button
                                                 type="button"
+                                                title={
+                                                    executionCapabilities.analyzeExecutes
+                                                        ? 'Analyze executes the SQL and may be expensive'
+                                                        : 'Request the connector analysis plan'
+                                                }
                                                 onClick={handleAnalyze}
                                                 disabled={
+                                                    !executionCapabilities.analyze ||
                                                     !activeTab ||
                                                     activeTab.isExecuting ||
                                                     !selectedDatasource
                                                 }
                                             >
                                                 <IconGlyph icon="activity" />
-                                                <span>Analyze</span>
+                                                <span>
+                                                    {executionCapabilities.analyzeExecutes
+                                                        ? 'Analyze (executes SQL)'
+                                                        : 'Analyze'}
+                                                </span>
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={handleExplain}
                                                 disabled={
+                                                    !executionCapabilities.explain ||
                                                     !activeTab ||
                                                     activeTab.isExecuting ||
                                                     !selectedDatasource
@@ -7802,28 +7782,12 @@ export default function WorkspacePage() {
                                         </div>
                                     </details>
                                     <LabeledActionButton
-                                        icon="align-start-horizontal"
-                                        label="Format SQL"
-                                        title="Format SQL"
-                                        onClick={handleFormatSql}
-                                        disabled={!activeTab || activeTab.isExecuting}
-                                    />
-                                    <LabeledActionButton
                                         icon="save"
                                         label="Save"
                                         title="Save to Scripts"
                                         onClick={handleSaveResourceDraftFromEditor}
                                         disabled={!activeTab}
                                     />
-                                    {activeTab?.isExecuting ? (
-                                        <LabeledActionButton
-                                            icon="close"
-                                            label="Cancel"
-                                            title="Cancel running query"
-                                            onClick={() => void handleCancelRun(activeTab.id)}
-                                            variant="danger"
-                                        />
-                                    ) : null}
                                 </div>
                                 <div className="row editor-secondary-actions">
                                     <div
@@ -7885,8 +7849,8 @@ export default function WorkspacePage() {
                                                       <ul>
                                                           <li>
                                                               <kbd>Ctrl/Cmd + Enter</kbd>: Run
-                                                              selection (or full tab if no
-                                                              selection)
+                                                              statement or selection (or full tab if
+                                                              no selection)
                                                           </li>
                                                           <li>
                                                               <kbd>Esc</kbd>: Cancel currently
@@ -7979,149 +7943,44 @@ export default function WorkspacePage() {
                             </div>
 
                             <section className="results" ref={resultsSectionRef}>
-                                <div className="results-head">
-                                    {activeTab?.executionId ? (
-                                        <div className="result-stats-grid">
-                                            <div className="result-stat">
-                                                <span>Status</span>
-                                                <strong>
-                                                    {activeTab.executionStatus ||
-                                                        'PENDING_SUBMISSION'}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Rows</span>
-                                                <strong>
-                                                    {activeTab.rowCount.toLocaleString()}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Columns</span>
-                                                <strong>
-                                                    {activeTab.columnCount.toLocaleString()}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Duration</span>
-                                                <strong>{executionDurationLabel}</strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Submitted</span>
-                                                <strong title={executionSubmittedAtLabel}>
-                                                    {executionSubmittedAtLabel}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Completed</span>
-                                                <strong title={executionCompletedAtLabel}>
-                                                    {executionCompletedAtLabel}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Row Limit</span>
-                                                <strong>
-                                                    {activeTab.maxRowsPerQuery > 0
-                                                        ? activeTab.maxRowsPerQuery.toLocaleString()
-                                                        : '-'}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Runtime Limit</span>
-                                                <strong>
-                                                    {activeTab.maxRuntimeSeconds > 0
-                                                        ? `${activeTab.maxRuntimeSeconds}s`
-                                                        : '-'}
-                                                </strong>
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                    {scriptSummaryLabel && activeTab?.scriptSummary ? (
-                                        <details className="script-summary">
-                                            <summary>{scriptSummaryLabel}</summary>
-                                            <div className="script-summary-body">
-                                                <table className="script-summary-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>#</th>
-                                                            <th>Status</th>
-                                                            <th>Statement</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {activeTab.scriptSummary.statements.map(
-                                                            (statement) => (
-                                                                <tr key={`stmt-${statement.index}`}>
-                                                                    <td>
-                                                                        {statement.index.toLocaleString()}
-                                                                    </td>
-                                                                    <td>{statement.status}</td>
-                                                                    <td title={statement.message}>
-                                                                        {statement.sqlPreview}
-                                                                    </td>
-                                                                </tr>
-                                                            )
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </details>
-                                    ) : null}
-                                    {activeTab?.statusMessage &&
-                                    !hideRedundantResultStatusMessage ? (
-                                        <InlineNotice tone="info">
-                                            {activeTab.statusMessage}
-                                        </InlineNotice>
-                                    ) : null}
-                                    {activeTab?.errorMessage ? (
-                                        <InlineNotice tone="error">
-                                            {activeTab.errorMessage}
-                                        </InlineNotice>
-                                    ) : null}
-                                    {activeTab?.rowLimitReached ? (
-                                        <InlineNotice tone="warning">
-                                            Result row limit reached for this execution.
-                                        </InlineNotice>
-                                    ) : null}
-                                    {workbenchNotice ? (
-                                        <InlineNotice tone={workbenchNotice.tone}>
-                                            {workbenchNotice.message}
-                                        </InlineNotice>
-                                    ) : null}
-                                    {explainPlanText ? (
-                                        <div className="explain-plan">
-                                            <h3>Explain Plan</h3>
-                                            <pre>{explainPlanText}</pre>
-                                        </div>
-                                    ) : null}
-                                    {analyzePlan ? (
-                                        <div className="analysis-plan">
-                                            <h3>Analysis</h3>
-                                            <pre>
-                                                {analyzePlan.kind === 'json'
-                                                    ? JSON.stringify(analyzePlan.json, null, 2)
-                                                    : analyzePlan.raw}
-                                            </pre>
-                                        </div>
-                                    ) : null}
-                                    {activeTab?.executionStatus === 'SUCCEEDED' &&
-                                    activeTab.resultColumns.length === 0 &&
-                                    !activeTab.errorMessage ? (
-                                        <p>Query completed successfully and returned no rows.</p>
-                                    ) : null}
-                                    {!activeTab?.executionId &&
-                                    !activeTab?.statusMessage &&
-                                    !activeTab?.errorMessage ? (
-                                        <p className="results-empty">Results</p>
-                                    ) : null}
-                                </div>
-
-                                {activeTab?.resultColumns.length ? (
+                                {activeTab && (
                                     <QueryResultsSection
+                                        key={`${activeTab.id}:${activeTab.executionId}`}
                                         tab={activeTab}
                                         view={queryResultsView}
                                         onCopyCell={handleCopyCell}
+                                        expanded={resultsExpanded}
+                                        onToggleExpanded={() =>
+                                            setResultsExpanded((current) => !current)
+                                        }
+                                        capabilities={executionCapabilities}
+                                        canExport={
+                                            selectEffectiveCredentialProfilePolicy(
+                                                selectedDatasource ?? undefined,
+                                                activeTab.requestedCredentialProfile
+                                            )?.canExport ?? false
+                                        }
+                                        onExplain={handleExplain}
+                                        onClear={() =>
+                                            updateWorkspaceTab(activeTab.id, (current) => ({
+                                                ...prepareTabForQueryExecution(
+                                                    current,
+                                                    'statement',
+                                                    'query'
+                                                ),
+                                                isExecuting: false,
+                                                statusMessage: ''
+                                            }))
+                                        }
+                                        notice={
+                                            workbenchNotice ? (
+                                                <InlineNotice tone={workbenchNotice.tone}>
+                                                    {workbenchNotice.message}
+                                                </InlineNotice>
+                                            ) : null
+                                        }
                                     />
-                                ) : null}
+                                )}
                             </section>
                         </section>
                     </div>

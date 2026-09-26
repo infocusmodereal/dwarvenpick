@@ -48,7 +48,7 @@ Notes:
 
 ### Run Script (multi-statement)
 
-Use **Run Script** for semicolon-delimited SQL scripts. The backend splits statements and executes them one-by-one.
+Use **Run > Run script** for semicolon-delimited SQL scripts. The backend splits statements and executes them one-by-one.
 
 Options:
 
@@ -71,19 +71,43 @@ Read-only access rules apply to **every** statement in a script.
 - Script-backed tabs autosave content changes back to the server.
 - Edit mode includes version history so owners can review and restore previous saved revisions.
 
-## Results
+## Execution and results
 
-- Results are shown as a table with paging controls.
-- Column sorting applies only to rows on the currently displayed server page. It does not reorder rows across other
-  pages.
-- You can export the full result set to CSV when the access rule for the query's exact credential profile allows
-  export. An export grant on another profile for the same connection does not apply. CSV export preserves the original
-  query result order and is not affected by current-page sorting.
-- The Results toolbar shows the completed row count and the server CSV row cap. When the result exceeds the cap,
-  Dwarvenpick keeps the export details available but disables download and asks you to narrow the query. During a
-  rolling upgrade an older backend may not report the cap; the export endpoint still enforces authorization and limits.
-- Drag the horizontal handle above Results to resize the results panel.
-- Script runs include a per-statement summary (succeeded/failed) to make it clear where a script stopped or failed.
+The toolbar below the SQL editor contains **Run**, **Format SQL**, **Options**,
+**Query Tools**, and **Save**. Run executes the selected SQL, or the statement at
+the cursor when there is no selection. Its dropdown also offers selection-only
+execution and Run script. Use Ctrl/Cmd+Enter for the current statement/selection,
+or Shift+Ctrl/Cmd+Enter for the complete script. During execution, Run becomes
+Cancel. Script transaction and stop-on-error settings remain in Options; access
+policy row/runtime limits remain enforced by the server.
+
+Results, Query Plan, and Stats share a compact execution summary. Query Plan
+shows the engine's textual/tabular plan from an explicit Explain or Analyze
+operation; opening the tab never submits SQL. Analyze is marked when it executes
+the SQL (PostgreSQL and Trino). Unsupported connectors show an empty state.
+Stats displays reported counts, execution duration, limits, application queue time,
+and timestamps. The execution API does not currently expose engine CPU, scan,
+shuffle, or peak-memory metrics, so the UI does not synthesize those values.
+
+Search and sorting operate **only on the loaded page** and never rerun SQL.
+Rows per page controls backend result pagination, independently of the query row
+limit. Columns can be hidden/restored for the current result; the native table
+does not support pinning, reordering, or manual widths. Density changes row
+height/padding and is remembered locally. Expand hides the editor within the
+Workbench; Restore or Escape brings it back without browser fullscreen.
+
+Select cells by clicking or focusing and pressing Enter/Space; select rows using
+the row checkboxes. The result action menu offers copying selected cells/rows or
+all loaded rows, governed CSV export of all materialized result rows in original
+order, and JSON export of the loaded page. JSON uses a columns/rows envelope to
+preserve duplicate column names and nulls. Local search, sorting, and hidden
+columns do not change export contents. The same menu clears sorting/search,
+resets the table view, or clears results without changing SQL or history.
+
+Zero-row queries remain successful empty result sets. JDBC update counts are
+marked explicitly in result metadata so DDL/DML displays affected rows without
+an artificial table; an ordinary SELECT column named `affected_rows` remains a
+table column. Older saved results without that marker retain their table view.
 
 ## Explorer
 

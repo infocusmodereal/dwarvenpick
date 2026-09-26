@@ -155,6 +155,7 @@ export type QueryExecutionStatusResponse = {
 };
 
 export type QueryResultColumn = {
+    updateCount?: boolean;
     name: string;
     jdbcType: string;
 };
