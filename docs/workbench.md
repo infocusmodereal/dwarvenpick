@@ -99,7 +99,7 @@ Workbench; Restore or Escape brings it back without browser fullscreen.
 Select cells by clicking or focusing and pressing Enter/Space; select rows using
 the row checkboxes. The result action menu offers copying selected cells/rows or
 all loaded rows, governed CSV export of all materialized result rows in original
-order, and JSON export of the loaded page. JSON uses a columns/rows envelope to
+order, and JSON export of the loaded page. JSON requires the executed credential profile to permit export and the loaded page to fit within the reported export row cap. JSON uses a columns/rows envelope to
 preserve duplicate column names and nulls. Local search, sorting, and hidden
 columns do not change export contents. The same menu clears sorting/search,
 resets the table view, or clears results without changing SQL or history.

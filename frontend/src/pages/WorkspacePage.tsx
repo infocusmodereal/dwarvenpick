@@ -127,6 +127,7 @@ import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import QueryResultsSection from '../workbench/sections/QueryResultsSection';
 import RunQueryButton from '../workbench/components/RunQueryButton';
 import { analysisSql, queryCapabilities } from '../workbench/queryCapabilities';
+import { canExportLoadedResults } from '../workbench/queryResults';
 import ResourceManagerSection from '../workbench/sections/ResourceManagerSection';
 import SystemHealthSection from '../workbench/sections/SystemHealthSection';
 import { chevronDownIcon, chevronRightIcon, resolveDatasourceIcon } from '../workbench/icons';
@@ -3499,12 +3500,13 @@ export default function WorkspacePage() {
             const payload = (await response.json()) as QueryExecutionStatusResponse;
             const terminal = isTerminalExecutionStatus(payload.status);
             updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId && currentTab.executionId !== executionId) {
+                if (currentTab.executionId !== executionId) {
                     return currentTab;
                 }
 
                 return {
                     ...currentTab,
+                    executionDatasourceId: payload.datasourceId,
                     executionStatus: payload.status,
                     queryHash: payload.queryHash,
                     statusMessage: payload.message,
@@ -7954,12 +7956,10 @@ export default function WorkspacePage() {
                                             setResultsExpanded((current) => !current)
                                         }
                                         capabilities={executionCapabilities}
-                                        canExport={
-                                            selectEffectiveCredentialProfilePolicy(
-                                                selectedDatasource ?? undefined,
-                                                activeTab.requestedCredentialProfile
-                                            )?.canExport ?? false
-                                        }
+                                        canExport={canExportLoadedResults(
+                                            activeTab,
+                                            visibleDatasources
+                                        )}
                                         onExplain={handleExplain}
                                         onClear={() =>
                                             updateWorkspaceTab(activeTab.id, (current) => ({

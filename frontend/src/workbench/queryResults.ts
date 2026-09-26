@@ -1,5 +1,6 @@
 import { firstPageToken } from './constants';
-import type { WorkspaceTab } from './types';
+import type { CatalogDatasourceResponse, WorkspaceTab } from './types';
+import { selectEffectiveCredentialProfilePolicy } from './credentialProfilePolicy';
 
 export type ResultPageRequest = {
     pageToken: string;
@@ -89,4 +90,24 @@ export const csvExportFileName = (
     const disposition = contentDisposition ?? '';
     const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
     return fileNameMatch?.[1] ?? fallbackName;
+};
+
+/** Local export controls follow the execution's profile, even after the editor context changes. */
+export const canExportLoadedResults = (
+    tab: WorkspaceTab,
+    datasources: CatalogDatasourceResponse[]
+): boolean => {
+    if (
+        !tab.executionId ||
+        tab.executionStatus !== 'SUCCEEDED' ||
+        !tab.executionDatasourceId ||
+        !tab.credentialProfile
+    )
+        return false;
+    return (
+        selectEffectiveCredentialProfilePolicy(
+            datasources.find((source) => source.id === tab.executionDatasourceId),
+            tab.credentialProfile
+        )?.canExport === true
+    );
 };

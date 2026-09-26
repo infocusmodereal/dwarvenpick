@@ -90,10 +90,20 @@ export default function QueryResultsSection({
     const pageOffset = (page - 1) * resultsPageSize;
     const activeSort = resultSortState ? tab.resultColumns[resultSortState.columnIndex] : null;
     const exportAvailability = csvExportAvailability(tab);
+    const loadedJsonWithinLimit =
+        Number.isInteger(tab.maxExportRows) &&
+        (tab.maxExportRows ?? 0) > 0 &&
+        tab.resultRows.length <= (tab.maxExportRows ?? 0);
     const loadedRows = view.loadedRows;
-    const planText = isPlan
-        ? tab.resultRows.map((row) => row.filter((value) => value !== null).join(' | ')).join('\n')
-        : '';
+    const planText =
+        isPlan && tab.resultRows.length
+            ? [
+                  ...(tab.resultColumns.length > 1
+                      ? [tab.resultColumns.map((column) => column.name).join(' | ')]
+                      : []),
+                  ...tab.resultRows.map((row) => row.map((value) => value ?? 'NULL').join(' | '))
+              ].join('\n')
+            : '';
     let formattedPlan = planText;
     try {
         formattedPlan = JSON.stringify(JSON.parse(planText), null, 2);
@@ -442,7 +452,17 @@ export default function QueryResultsSection({
                                 <p className="result-export-note">{exportAvailability.note}</p>
                                 <button
                                     type="button"
-                                    disabled={!canExport || !hasTable || !completed}
+                                    disabled={
+                                        !canExport ||
+                                        !hasTable ||
+                                        !completed ||
+                                        !loadedJsonWithinLimit
+                                    }
+                                    title={
+                                        loadedJsonWithinLimit
+                                            ? 'Export the original loaded page, including hidden columns'
+                                            : 'JSON export requires a reported export limit large enough for the loaded page'
+                                    }
                                     onClick={downloadJson}
                                 >
                                     Export JSON (loaded page)

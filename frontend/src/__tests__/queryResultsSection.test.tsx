@@ -5,6 +5,8 @@ import QueryResultsSection from '../workbench/sections/QueryResultsSection';
 import type { QueryResultsView } from '../workbench/useQueryResultsWorkflow';
 import { buildWorkspaceTab } from '../workbench/useWorkspaceTabs';
 import { queryCapabilities } from '../workbench/queryCapabilities';
+import { canExportLoadedResults } from '../workbench/queryResults';
+import type { CatalogDatasourceResponse } from '../workbench/types';
 
 const rows = [['alpha'], [null]];
 const view = (overrides: Partial<QueryResultsView> = {}): QueryResultsView => ({
@@ -158,6 +160,23 @@ describe('QueryResultsSection', () => {
         expect(screen.getByText('Seq Scan on orders (cost=0.00..12.00)')).toBeInTheDocument();
         rerender(
             <QueryResultsSection
+                tab={{
+                    ...resultTab,
+                    lastRunKind: 'explain',
+                    resultColumns: [
+                        { name: 'rows', jdbcType: 'INTEGER' },
+                        { name: 'Extra', jdbcType: 'VARCHAR' }
+                    ],
+                    resultRows: [['10', null]]
+                }}
+                view={view()}
+                onCopyCell={copy()}
+            />
+        );
+        expect(screen.getByText(/rows \| Extra/)).toHaveTextContent('10 | NULL');
+
+        rerender(
+            <QueryResultsSection
                 tab={resultTab}
                 view={view()}
                 onCopyCell={copy()}
@@ -251,6 +270,27 @@ describe('QueryResultsSection', () => {
         );
         expect(screen.getByLabelText('CANCELED')).toBeInTheDocument();
     });
+    it('requires a reported row cap for local JSON export while keeping CSV server-enforced', () => {
+        const { rerender } = render(
+            <QueryResultsSection
+                tab={{ ...resultTab, maxExportRows: undefined }}
+                view={view()}
+                onCopyCell={copy()}
+            />
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'More result actions' }));
+        expect(screen.getByRole('button', { name: 'Export JSON (loaded page)' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Export CSV (all result rows)' })).toBeEnabled();
+        rerender(
+            <QueryResultsSection
+                tab={{ ...resultTab, maxExportRows: 1 }}
+                view={view()}
+                onCopyCell={copy()}
+            />
+        );
+        expect(screen.getByRole('button', { name: 'Export JSON (loaded page)' })).toBeDisabled();
+    });
+
     it('disables governed exports and respects CSV caps', () => {
         const { rerender } = render(
             <QueryResultsSection
@@ -272,5 +312,53 @@ describe('QueryResultsSection', () => {
         );
         expect(screen.getByRole('button', { name: 'Export JSON (loaded page)' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Export CSV (all result rows)' })).toBeDisabled();
+    });
+});
+
+describe('local export provenance', () => {
+    it('uses the executed profile and connection instead of a later editor selection', () => {
+        const policy = {
+            readOnly: true,
+            maxRowsPerQuery: 5000,
+            maxRuntimeSeconds: 60,
+            concurrencyLimit: 1,
+            sysadmin: false,
+            justificationMode: 'NONE' as const
+        };
+        const sources: CatalogDatasourceResponse[] = [
+            {
+                id: 'original',
+                name: 'original',
+                engine: 'POSTGRESQL',
+                credentialProfiles: ['restricted', 'allowed'],
+                credentialProfilePolicies: [
+                    { ...policy, credentialProfile: 'restricted', canExport: false },
+                    { ...policy, credentialProfile: 'allowed', canExport: true }
+                ]
+            },
+            {
+                id: 'other',
+                name: 'other',
+                engine: 'MYSQL',
+                credentialProfiles: ['restricted'],
+                credentialProfilePolicies: [
+                    { ...policy, credentialProfile: 'restricted', canExport: true }
+                ]
+            }
+        ];
+        const executed = {
+            ...resultTab,
+            executionDatasourceId: 'original',
+            datasourceId: 'other',
+            credentialProfile: 'restricted',
+            requestedCredentialProfile: 'allowed'
+        };
+        expect(canExportLoadedResults(executed, sources)).toBe(false);
+        expect(canExportLoadedResults({ ...executed, credentialProfile: 'allowed' }, sources)).toBe(
+            true
+        );
+        expect(
+            canExportLoadedResults({ ...executed, executionDatasourceId: undefined }, sources)
+        ).toBe(false);
     });
 });

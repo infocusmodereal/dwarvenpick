@@ -502,6 +502,7 @@ export type PersistentWorkspaceTab = {
 };
 
 export type WorkspaceTab = PersistentWorkspaceTab & {
+    executionDatasourceId?: string;
     requestedCredentialProfile: string;
     queryJustification: string;
     isExecuting: boolean;
