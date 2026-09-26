@@ -98,11 +98,12 @@ Workbench; Restore or Escape brings it back without browser fullscreen.
 
 Select cells by clicking or focusing and pressing Enter/Space; select rows using
 the row checkboxes. The result action menu offers copying selected cells/rows or
-all loaded rows, governed CSV export of all materialized result rows in original
-order, and JSON export of the loaded page. JSON requires the executed credential profile to permit export and the loaded page to fit within the reported export row cap. JSON uses a columns/rows envelope to
+all loaded rows, clearing sorting/search, resetting the table view, and clearing
+results without changing SQL or history. The separate Export button offers
+governed CSV export of all materialized result rows in original order and JSON
+export of the loaded page. JSON requires the executed credential profile to permit export and the loaded page to fit within the reported export row cap. JSON uses a columns/rows envelope to
 preserve duplicate column names and nulls. Local search, sorting, and hidden
-columns do not change export contents. The same menu clears sorting/search,
-resets the table view, or clears results without changing SQL or history.
+columns do not change export contents.
 
 Zero-row queries remain successful empty result sets. JDBC update counts are
 marked explicitly in result metadata so DDL/DML displays affected rows without
