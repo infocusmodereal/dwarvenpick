@@ -102,7 +102,11 @@ import {
     optionsToInput,
     parseOptionsInput
 } from '../workbench/connectionUtils';
-import { prepareTabForQueryExecution } from '../workbench/queryExecutionState';
+import {
+    prepareTabForQueryExecution,
+    executionForId,
+    updateExecutionForId
+} from '../workbench/queryExecutionState';
 import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
 import { readGovernedQueryError } from '../workbench/queryPolicyError';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
@@ -3499,35 +3503,37 @@ export default function WorkspacePage() {
 
             const payload = (await response.json()) as QueryExecutionStatusResponse;
             const terminal = isTerminalExecutionStatus(payload.status);
-            updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId !== executionId) {
-                    return currentTab;
-                }
+            updateWorkspaceTab(tabId, (parent) =>
+                updateExecutionForId(parent, executionId, (currentTab) => {
+                    if (currentTab.executionId !== executionId) {
+                        return currentTab;
+                    }
 
-                return {
-                    ...currentTab,
-                    executionDatasourceId: payload.datasourceId,
-                    executionStatus: payload.status,
-                    queryHash: payload.queryHash,
-                    statusMessage: payload.message,
-                    errorMessage:
-                        payload.status === 'FAILED'
-                            ? (payload.errorSummary ?? payload.message)
-                            : '',
-                    rowLimitReached: payload.rowLimitReached,
-                    submittedAt: payload.submittedAt ?? currentTab.submittedAt,
-                    startedAt: payload.startedAt ?? '',
-                    completedAt: payload.completedAt ?? '',
-                    rowCount: payload.rowCount,
-                    columnCount: payload.columnCount,
-                    maxRowsPerQuery: payload.maxRowsPerQuery,
-                    maxExportRows: payload.maxExportRows,
-                    maxRuntimeSeconds: payload.maxRuntimeSeconds,
-                    credentialProfile: payload.credentialProfile,
-                    scriptSummary: payload.scriptSummary ?? null,
-                    isExecuting: !terminal
-                };
-            });
+                    return {
+                        ...currentTab,
+                        executionDatasourceId: payload.datasourceId,
+                        executionStatus: payload.status,
+                        queryHash: payload.queryHash,
+                        statusMessage: payload.message,
+                        errorMessage:
+                            payload.status === 'FAILED'
+                                ? (payload.errorSummary ?? payload.message)
+                                : '',
+                        rowLimitReached: payload.rowLimitReached,
+                        submittedAt: payload.submittedAt ?? currentTab.submittedAt,
+                        startedAt: payload.startedAt ?? '',
+                        completedAt: payload.completedAt ?? '',
+                        rowCount: payload.rowCount,
+                        columnCount: payload.columnCount,
+                        maxRowsPerQuery: payload.maxRowsPerQuery,
+                        maxExportRows: payload.maxExportRows,
+                        maxRuntimeSeconds: payload.maxRuntimeSeconds,
+                        credentialProfile: payload.credentialProfile,
+                        scriptSummary: payload.scriptSummary ?? null,
+                        isExecuting: !terminal
+                    };
+                })
+            );
 
             if (terminal) {
                 clearQueryStatusPolling(tabId);
@@ -3558,9 +3564,14 @@ export default function WorkspacePage() {
 
             const poll = async () => {
                 const trackedTab = workspaceTabsRef.current.find((tab) => tab.id === tabId);
+                const awaitingExecutionId =
+                    trackedTab &&
+                    ((trackedTab.isExecuting && !trackedTab.executionId) ||
+                        (trackedTab.planExecution?.isExecuting &&
+                            !trackedTab.planExecution.executionId));
                 if (
                     !trackedTab ||
-                    (trackedTab.executionId && trackedTab.executionId !== executionId)
+                    (!executionForId(trackedTab, executionId) && !awaitingExecutionId)
                 ) {
                     clearQueryStatusPolling(tabId);
                     return;
@@ -3580,19 +3591,24 @@ export default function WorkspacePage() {
                             error instanceof Error
                                 ? error.message
                                 : 'Execution status polling failed.';
-                        updateWorkspaceTab(tabId, (currentTab) => {
-                            if (currentTab.executionId && currentTab.executionId !== executionId) {
-                                return currentTab;
-                            }
+                        updateWorkspaceTab(tabId, (parent) =>
+                            updateExecutionForId(parent, executionId, (currentTab) => {
+                                if (
+                                    currentTab.executionId &&
+                                    currentTab.executionId !== executionId
+                                ) {
+                                    return currentTab;
+                                }
 
-                            return {
-                                ...currentTab,
-                                isExecuting: false,
-                                executionStatus: 'FAILED',
-                                statusMessage: 'Execution status unavailable.',
-                                errorMessage: message
-                            };
-                        });
+                                return {
+                                    ...currentTab,
+                                    isExecuting: false,
+                                    executionStatus: 'FAILED',
+                                    statusMessage: 'Execution status unavailable.',
+                                    errorMessage: message
+                                };
+                            })
+                        );
                         clearQueryStatusPolling(tabId);
                         void loadQueryHistory();
                         return;
@@ -3601,20 +3617,22 @@ export default function WorkspacePage() {
 
                 attempts += 1;
                 if (attempts >= queryStatusPollingMaxAttempts) {
-                    updateWorkspaceTab(tabId, (currentTab) => {
-                        if (currentTab.executionId && currentTab.executionId !== executionId) {
-                            return currentTab;
-                        }
+                    updateWorkspaceTab(tabId, (parent) =>
+                        updateExecutionForId(parent, executionId, (currentTab) => {
+                            if (currentTab.executionId && currentTab.executionId !== executionId) {
+                                return currentTab;
+                            }
 
-                        return {
-                            ...currentTab,
-                            isExecuting: false,
-                            executionStatus: 'FAILED',
-                            statusMessage: 'Execution polling timed out.',
-                            errorMessage:
-                                'Status polling timed out before the server returned a terminal state.'
-                        };
-                    });
+                            return {
+                                ...currentTab,
+                                isExecuting: false,
+                                executionStatus: 'FAILED',
+                                statusMessage: 'Execution polling timed out.',
+                                errorMessage:
+                                    'Status polling timed out before the server returned a terminal state.'
+                            };
+                        })
+                    );
                     clearQueryStatusPolling(tabId);
                     void loadQueryHistory();
                     return;
@@ -3638,7 +3656,8 @@ export default function WorkspacePage() {
 
     const handleCancelRun = useCallback(
         async (tabId: string, triggeredByShortcut = false) => {
-            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            const parent = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            const tab = parent?.planExecution?.isExecuting ? parent.planExecution : parent;
             if (!tab || !tab.executionId || isTerminalExecutionStatus(tab.executionStatus)) {
                 updateWorkspaceTab(tabId, (currentTab) => ({
                     ...currentTab,
@@ -3668,10 +3687,12 @@ export default function WorkspacePage() {
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to cancel query execution.';
-                updateWorkspaceTab(tabId, (currentTab) => ({
-                    ...currentTab,
-                    errorMessage: message
-                }));
+                updateWorkspaceTab(tabId, (currentTab) =>
+                    updateExecutionForId(currentTab, tab.executionId, (execution) => ({
+                        ...execution,
+                        errorMessage: message
+                    }))
+                );
             }
         },
         [
@@ -3698,7 +3719,7 @@ export default function WorkspacePage() {
                 delete resourceAutosaveTimerRef.current[tabId];
             }
             delete resourceAutosaveSnapshotRef.current[tabId];
-            if (closingTab.isExecuting) {
+            if (closingTab.isExecuting || closingTab.planExecution?.isExecuting) {
                 void handleCancelRun(tabId);
             }
 
@@ -3756,7 +3777,7 @@ export default function WorkspacePage() {
                 return;
             }
 
-            if (tab.isExecuting) {
+            if (tab.isExecuting || tab.planExecution?.isExecuting) {
                 return;
             }
 
@@ -3810,9 +3831,21 @@ export default function WorkspacePage() {
                 return;
             }
 
+            const isPlanRun = runKind === 'explain' || runKind === 'analyze';
+            const updateRun = (updater: (current: WorkspaceTab) => WorkspaceTab) =>
+                updateWorkspaceTab(tabId, (parent) =>
+                    isPlanRun
+                        ? { ...parent, planExecution: updater(parent.planExecution ?? parent) }
+                        : updater(parent)
+                );
             clearValidationMarkers();
             updateWorkspaceTab(tabId, (currentTab) =>
-                prepareTabForQueryExecution(currentTab, modeLabel, runKind)
+                isPlanRun
+                    ? {
+                          ...currentTab,
+                          planExecution: prepareTabForQueryExecution(currentTab, modeLabel, runKind)
+                      }
+                    : prepareTabForQueryExecution(currentTab, modeLabel, runKind)
             );
 
             try {
@@ -3849,7 +3882,7 @@ export default function WorkspacePage() {
                 }
 
                 const payload = (await response.json()) as QueryExecutionResponse;
-                updateWorkspaceTab(tabId, (currentTab) => ({
+                updateRun((currentTab) => ({
                     ...currentTab,
                     executionId: payload.executionId,
                     executionStatus: payload.status,
@@ -3861,7 +3894,7 @@ export default function WorkspacePage() {
             } catch (error) {
                 clearQueryStatusPolling(tabId);
                 const message = error instanceof Error ? error.message : 'Failed to run query.';
-                updateWorkspaceTab(tabId, (currentTab) => ({
+                updateRun((currentTab) => ({
                     ...currentTab,
                     isExecuting: false,
                     errorMessage: message,
@@ -5065,7 +5098,10 @@ export default function WorkspacePage() {
                 return;
             }
 
-            if (event.key === 'Escape' && activeTab?.isExecuting) {
+            if (
+                event.key === 'Escape' &&
+                (activeTab?.isExecuting || activeTab?.planExecution?.isExecuting)
+            ) {
                 event.preventDefault();
                 void handleCancelRun(activeTab.id, true);
             }
@@ -5078,6 +5114,7 @@ export default function WorkspacePage() {
     }, [
         activeTab?.id,
         activeTab?.isExecuting,
+        activeTab?.planExecution?.isExecuting,
         handleCancelRun,
         handleRunSelection,
         handleRunScript
@@ -5105,29 +5142,31 @@ export default function WorkspacePage() {
             }
 
             const tab = workspaceTabsRef.current.find(
-                (candidate) => candidate.executionId === payload.executionId
+                (candidate) => executionForId(candidate, payload.executionId)?.isExecuting
             );
             if (!tab) {
                 return;
             }
 
             const terminal = isTerminalExecutionStatus(payload.status);
-            updateWorkspaceTab(tab.id, (currentTab) => {
-                if (currentTab.executionId !== payload.executionId) {
-                    return currentTab;
-                }
+            updateWorkspaceTab(tab.id, (parent) =>
+                updateExecutionForId(parent, payload.executionId, (currentTab) => {
+                    if (currentTab.executionId !== payload.executionId) {
+                        return currentTab;
+                    }
 
-                return {
-                    ...currentTab,
-                    executionStatus: payload.status,
-                    statusMessage: payload.message,
-                    isExecuting: !terminal,
-                    errorMessage:
-                        payload.status === 'FAILED'
-                            ? currentTab.errorMessage || payload.message
-                            : currentTab.errorMessage
-                };
-            });
+                    return {
+                        ...currentTab,
+                        executionStatus: payload.status,
+                        statusMessage: payload.message,
+                        isExecuting: !terminal,
+                        errorMessage:
+                            payload.status === 'FAILED'
+                                ? currentTab.errorMessage || payload.message
+                                : currentTab.errorMessage
+                    };
+                })
+            );
 
             if (terminal) {
                 clearQueryStatusPolling(tab.id);
@@ -6891,7 +6930,11 @@ export default function WorkspacePage() {
                                         }
                                         queryJustification={activeTab?.queryJustification ?? ''}
                                         canOverrideCredentialProfile={isSystemAdmin}
-                                        disabled={!activeTab || activeTab.isExecuting}
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !!activeTab.planExecution?.isExecuting
+                                        }
                                         visibleDatasources={visibleDatasources}
                                         activeDatasource={visibleDatasources.find(
                                             (datasource) =>
@@ -7584,7 +7627,11 @@ export default function WorkspacePage() {
                                 <div className="row editor-primary-actions">
                                     <RunQueryButton
                                         disabled={!activeTab || !selectedDatasource}
-                                        running={activeTab?.isExecuting ?? false}
+                                        running={
+                                            (activeTab?.isExecuting ||
+                                                activeTab?.planExecution?.isExecuting) ??
+                                            false
+                                        }
                                         hasSelection={editorCursorLegend.selectedChars > 0}
                                         onRun={handleRunSelection}
                                         onSelection={() => {
@@ -7629,7 +7676,11 @@ export default function WorkspacePage() {
                                         label="Format SQL"
                                         title="Format SQL (selection when available)"
                                         onClick={handleFormatSql}
-                                        disabled={!activeTab || activeTab.isExecuting}
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !!activeTab.planExecution?.isExecuting
+                                        }
                                     />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
                                         <div
@@ -7651,7 +7702,11 @@ export default function WorkspacePage() {
                                                         return next;
                                                     })
                                                 }
-                                                disabled={!activeTab || activeTab.isExecuting}
+                                                disabled={
+                                                    !activeTab ||
+                                                    activeTab.isExecuting ||
+                                                    !!activeTab.planExecution?.isExecuting
+                                                }
                                             />
                                         </div>
                                         {showScriptOptions && scriptOptionsPosition
@@ -7744,6 +7799,7 @@ export default function WorkspacePage() {
                                                     !executionCapabilities.analyze ||
                                                     !activeTab ||
                                                     activeTab.isExecuting ||
+                                                    !!activeTab.planExecution?.isExecuting ||
                                                     !selectedDatasource
                                                 }
                                             >
@@ -7761,6 +7817,7 @@ export default function WorkspacePage() {
                                                     !executionCapabilities.explain ||
                                                     !activeTab ||
                                                     activeTab.isExecuting ||
+                                                    !!activeTab.planExecution?.isExecuting ||
                                                     !selectedDatasource
                                                 }
                                             >
@@ -7961,6 +8018,23 @@ export default function WorkspacePage() {
                                             visibleDatasources
                                         )}
                                         onExplain={handleExplain}
+                                        onPlanPage={(pageToken, previousTokens) => {
+                                            const plan = activeTab.planExecution;
+                                            if (!plan) return;
+                                            void fetchQueryResultsPage(
+                                                activeTab.id,
+                                                plan.executionId,
+                                                pageToken,
+                                                previousTokens
+                                            ).catch((error) =>
+                                                showWorkbenchNotice(
+                                                    error instanceof Error
+                                                        ? error.message
+                                                        : 'Failed to load plan page.',
+                                                    'error'
+                                                )
+                                            );
+                                        }}
                                         onClear={() =>
                                             updateWorkspaceTab(activeTab.id, (current) => ({
                                                 ...prepareTabForQueryExecution(

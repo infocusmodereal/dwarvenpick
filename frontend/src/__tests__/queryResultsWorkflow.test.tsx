@@ -88,6 +88,37 @@ describe('useQueryResultsWorkflow', () => {
         expect(tabs['tab-a'].resultRows).toEqual([]);
     });
 
+    it('loads plan pages without replacing query rows, metadata or page tokens', async () => {
+        const query = {
+            ...tab('tab-a', 'query'),
+            resultRows: [['original']],
+            rowCount: 200,
+            currentPageToken: 'query-page-2',
+            previousPageTokens: ['']
+        };
+        let current: WorkspaceTab = { ...query, planExecution: tab('tab-a', 'plan') };
+        fetchMock.mockResolvedValue(jsonResponse({ ...resultPayload, rows: [['plan node']] }));
+        const { result } = renderHook(() =>
+            useQueryResultsWorkflow({
+                activeTab: query,
+                activeTabId: query.id,
+                onFeedback: vi.fn(),
+                readFriendlyError: vi.fn(),
+                updateWorkspaceTab: (_id, updater) => {
+                    current = updater(current);
+                }
+            })
+        );
+        await act(async () => {
+            await result.current.fetchQueryResultsPage('tab-a', 'plan', 'plan-page-2', ['']);
+        });
+        expect(current.resultRows).toEqual([['original']]);
+        expect(current.currentPageToken).toBe('query-page-2');
+        expect(current.rowCount).toBe(200);
+        expect(current.planExecution?.resultRows).toEqual([['plan node']]);
+        expect(current.planExecution?.currentPageToken).toBe('plan-page-2');
+    });
+
     it('rejects a stale result response after the tab starts a newer execution', async () => {
         const activeTab = tab('tab-a');
         const backgroundTab = tab('tab-b', 'exec-new');

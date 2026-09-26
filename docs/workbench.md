@@ -154,3 +154,5 @@ The System Health page also includes a lightweight control plane for the selecte
 - Admin actions: pause/resume the connection, cancel/kill queued/running queries (optionally filtered by actor),
   and export queued/running queries as CSV.
 - Paused connection state is stored in the application database and survives backend restarts.
+
+Explain and Analyze keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.

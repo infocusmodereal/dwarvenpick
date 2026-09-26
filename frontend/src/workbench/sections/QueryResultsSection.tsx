@@ -16,6 +16,7 @@ type Props = {
     onToggleExpanded?: () => void;
     onClear?: () => void;
     onExplain?: () => void;
+    onPlanPage?: (token: string, previousTokens: string[]) => void;
     capabilities?: QueryCapabilities;
     canExport?: boolean;
     notice?: ReactNode;
@@ -46,6 +47,7 @@ export default function QueryResultsSection({
     onToggleExpanded,
     onClear,
     onExplain,
+    onPlanPage,
     capabilities,
     canExport = true,
     notice
@@ -69,7 +71,13 @@ export default function QueryResultsSection({
         onResultGridScroll,
         onViewportHeightChange
     } = view;
-    const isPlan = tab.lastRunKind === 'explain' || tab.lastRunKind === 'analyze';
+    const plan =
+        tab.planExecution ??
+        (tab.lastRunKind === 'explain' || tab.lastRunKind === 'analyze' ? tab : undefined);
+    const planExecutionId = tab.planExecution?.executionId;
+    useEffect(() => {
+        if (planExecutionId !== undefined) setPanel('plan');
+    }, [planExecutionId]);
     const updateCount = tab.resultColumns.length === 1 && tab.resultColumns[0].updateCount === true;
     const affectedRows =
         updateCount && tab.resultRows[0]?.[0] !== null ? Number(tab.resultRows[0]?.[0]) : NaN;
@@ -96,12 +104,12 @@ export default function QueryResultsSection({
         tab.resultRows.length <= (tab.maxExportRows ?? 0);
     const loadedRows = view.loadedRows;
     const planText =
-        isPlan && tab.resultRows.length
+        plan && plan.resultRows.length
             ? [
-                  ...(tab.resultColumns.length > 1
-                      ? [tab.resultColumns.map((column) => column.name).join(' | ')]
+                  ...(plan.resultColumns.length > 1
+                      ? [plan.resultColumns.map((column) => column.name).join(' | ')]
                       : []),
-                  ...tab.resultRows.map((row) => row.map((value) => value ?? 'NULL').join(' | '))
+                  ...plan.resultRows.map((row) => row.map((value) => value ?? 'NULL').join(' | '))
               ].join('\n')
             : '';
     let formattedPlan = planText;
@@ -191,8 +199,6 @@ export default function QueryResultsSection({
         if (Number.isFinite(queued) && queued >= 0)
             stats.push(['App queue time', `${formatCount(queued)} ms`]);
     }
-    if (tab.submittedAt) stats.push(['Submitted', formatExecutionTimestamp(tab.submittedAt)]);
-    if (tab.completedAt) stats.push(['Completed', formatExecutionTimestamp(tab.completedAt)]);
 
     return (
         <div
@@ -284,7 +290,7 @@ export default function QueryResultsSection({
                                         setMoreOpen(false);
                                     }}
                                 >
-                                    Columns
+                                    Show columns
                                 </button>
                                 {columnsOpen && (
                                     <ResultPopover
@@ -320,7 +326,6 @@ export default function QueryResultsSection({
                                 className="result-density"
                                 title="Change row height and vertical padding"
                             >
-                                Density{' '}
                                 <select
                                     aria-label="Density"
                                     value={view.density}
@@ -488,7 +493,9 @@ export default function QueryResultsSection({
                                 <strong>Result</strong>
                                 <button
                                     type="button"
-                                    disabled={tab.isExecuting || !tab.executionId}
+                                    disabled={
+                                        tab.isExecuting || plan?.isExecuting || !tab.executionId
+                                    }
                                     onClick={onClear}
                                 >
                                     Clear results
@@ -630,36 +637,87 @@ export default function QueryResultsSection({
             >
                 {panel === 'plan' ? (
                     <div className="result-plan">
-                        {planText ? (
+                        {capabilities?.explain && (
+                            <div className="result-plan-actions">
+                                <button
+                                    type="button"
+                                    title="Explicitly run EXPLAIN for the current statement or selection"
+                                    disabled={tab.isExecuting || plan?.isExecuting}
+                                    onClick={onExplain}
+                                >
+                                    {plan?.isExecuting
+                                        ? 'Requesting plan…'
+                                        : plan
+                                          ? 'Refresh plan'
+                                          : 'Explain current SQL'}
+                                </button>
+                                <span className="result-scope-note">
+                                    Query results are preserved. Opening this tab does not execute
+                                    SQL.
+                                </span>
+                            </div>
+                        )}
+                        {plan?.isExecuting ? (
+                            <p role="status">Requesting execution plan…</p>
+                        ) : plan?.errorMessage ? (
+                            <div className="result-error" role="alert">
+                                {plan.errorMessage}
+                            </div>
+                        ) : planText ? (
                             <>
                                 <p>
-                                    {tab.lastRunKind === 'analyze'
+                                    {plan?.lastRunKind === 'analyze'
                                         ? 'Analysis returned by the engine'
                                         : 'Plan returned by the engine'}
-                                    {tab.nextPageToken || tab.previousPageTokens.length
-                                        ? ' (loaded page; use Results to page through remaining plan rows)'
-                                        : ''}
                                 </p>
                                 <pre>{formattedPlan}</pre>
+                                {plan &&
+                                    (plan.nextPageToken || plan.previousPageTokens.length > 0) && (
+                                        <div
+                                            className="result-plan-actions"
+                                            aria-label="Plan pagination"
+                                        >
+                                            <button
+                                                type="button"
+                                                disabled={!plan.previousPageTokens.length}
+                                                onClick={() =>
+                                                    onPlanPage?.(
+                                                        plan.previousPageTokens.at(-1) ?? '',
+                                                        plan.previousPageTokens.slice(0, -1)
+                                                    )
+                                                }
+                                            >
+                                                Previous plan page
+                                            </button>
+                                            <span>Page {plan.previousPageTokens.length + 1}</span>
+                                            <button
+                                                type="button"
+                                                disabled={!plan.nextPageToken}
+                                                onClick={() =>
+                                                    onPlanPage?.(plan.nextPageToken, [
+                                                        ...plan.previousPageTokens,
+                                                        plan.currentPageToken
+                                                    ])
+                                                }
+                                            >
+                                                Next plan page
+                                            </button>
+                                        </div>
+                                    )}
                             </>
                         ) : (
                             <div className="result-empty-state">
-                                <strong>No execution plan available</strong>
+                                <strong>
+                                    {plan
+                                        ? 'No execution plan returned'
+                                        : 'No execution plan available'}
+                                </strong>
                                 <p>
                                     {capabilities?.explain
-                                        ? 'Use Explain to request a plan for the current SQL. Opening this tab does not execute SQL.'
+                                        ? plan?.statusMessage ||
+                                          'Use Explain to request a plan for the current SQL.'
                                         : 'This connector does not provide an execution plan through the current integration.'}
                                 </p>
-                                {capabilities?.explain && (
-                                    <button
-                                        type="button"
-                                        title="Explicitly run EXPLAIN for the current statement or selection"
-                                        disabled={tab.isExecuting}
-                                        onClick={onExplain}
-                                    >
-                                        Explain current SQL
-                                    </button>
-                                )}
                             </div>
                         )}
                     </div>
@@ -677,7 +735,24 @@ export default function QueryResultsSection({
                         ) : (
                             <p>Execution metrics will appear when available.</p>
                         )}
-                        <p className="result-scope-note">
+                        {(tab.submittedAt || tab.completedAt) && (
+                            <dl className="result-stats-timeline">
+                                {tab.submittedAt && (
+                                    <div>
+                                        <dt>Submitted</dt>
+                                        <dd>{formatExecutionTimestamp(tab.submittedAt)}</dd>
+                                    </div>
+                                )}
+                                {tab.completedAt && (
+                                    <div>
+                                        <dt>Completed</dt>
+                                        <dd>{formatExecutionTimestamp(tab.completedAt)}</dd>
+                                    </div>
+                                )}
+                            </dl>
+                        )}
+                        <p className="result-stats-note">
+                            <IconGlyph icon="info" />
                             Additional engine metrics were not reported for this execution.
                         </p>
                         {tab.scriptSummary && (
@@ -870,7 +945,7 @@ export default function QueryResultsSection({
                             )}
                             {!columns.length && (
                                 <p className="result-empty-state">
-                                    All columns are hidden. Restore them using Columns.
+                                    All columns are hidden. Restore them using Show columns.
                                 </p>
                             )}
                         </div>

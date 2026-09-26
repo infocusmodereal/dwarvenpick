@@ -9,6 +9,7 @@ import {
     previousResultPageRequest
 } from './queryResults';
 import type { QueryResultsResponse, ResultSortState, WorkspaceTab } from './types';
+import { updateExecutionForId } from './queryExecutionState';
 import { compareResultValues } from './utils';
 
 type UpdateWorkspaceTab = (
@@ -181,8 +182,9 @@ export const useQueryResultsWorkflow = ({
             pageToken = firstPageToken,
             previousPageTokens?: string[]
         ) => {
-            const requestVersion = (pageRequestVersion.current[tabId] ?? 0) + 1;
-            pageRequestVersion.current[tabId] = requestVersion;
+            const requestKey = `${tabId}:${executionId}`;
+            const requestVersion = (pageRequestVersion.current[requestKey] ?? 0) + 1;
+            pageRequestVersion.current[requestKey] = requestVersion;
             const response = await fetch(
                 buildResultPageUrl(executionId, resultsPageSize, pageToken),
                 {
@@ -195,25 +197,24 @@ export const useQueryResultsWorkflow = ({
             }
 
             const payload = (await response.json()) as QueryResultsResponse;
-            updateWorkspaceTab(tabId, (currentTab) => {
-                if (
-                    currentTab.executionId !== executionId ||
-                    pageRequestVersion.current[tabId] !== requestVersion
-                ) {
-                    return currentTab;
-                }
+            updateWorkspaceTab(tabId, (parent) =>
+                updateExecutionForId(parent, executionId, (currentTab) => {
+                    if (pageRequestVersion.current[requestKey] !== requestVersion) {
+                        return currentTab;
+                    }
 
-                return {
-                    ...currentTab,
-                    resultColumns: payload.columns,
-                    resultRows: payload.rows,
-                    nextPageToken: payload.nextPageToken ?? '',
-                    currentPageToken: pageToken,
-                    previousPageTokens: previousPageTokens ?? currentTab.previousPageTokens,
-                    rowLimitReached: payload.rowLimitReached,
-                    errorMessage: ''
-                };
-            });
+                    return {
+                        ...currentTab,
+                        resultColumns: payload.columns,
+                        resultRows: payload.rows,
+                        nextPageToken: payload.nextPageToken ?? '',
+                        currentPageToken: pageToken,
+                        previousPageTokens: previousPageTokens ?? currentTab.previousPageTokens,
+                        rowLimitReached: payload.rowLimitReached,
+                        errorMessage: ''
+                    };
+                })
+            );
         },
         [readFriendlyError, resultsPageSize, updateWorkspaceTab]
     );

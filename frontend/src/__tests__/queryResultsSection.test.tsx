@@ -97,7 +97,7 @@ describe('QueryResultsSection', () => {
     });
     it('hides/restores columns without changing SQL or loaded results', () => {
         render(<QueryResultsSection tab={resultTab} view={view()} onCopyCell={copy()} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Show columns' }));
         fireEvent.click(screen.getByRole('checkbox', { name: 'value' }));
         expect(
             screen.queryByRole('button', { name: 'Sort current page by value' })
@@ -109,7 +109,7 @@ describe('QueryResultsSection', () => {
         fireEvent.keyDown(screen.getByRole('dialog', { name: 'Result columns' }), {
             key: 'Escape'
         });
-        expect(screen.getByRole('button', { name: 'Columns' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'Show columns' })).toHaveFocus();
     });
     it('announces only active local sorting', () => {
         render(
@@ -190,6 +190,53 @@ describe('QueryResultsSection', () => {
             screen.queryByRole('button', { name: 'Explain current SQL' })
         ).not.toBeInTheDocument();
     });
+    it('keeps query rows and stats when a separate plan succeeds or fails', () => {
+        const plan = {
+            ...resultTab,
+            executionId: 'plan',
+            lastRunKind: 'explain' as const,
+            resultRows: [['Seq Scan on orders']],
+            rowCount: 16
+        };
+        const { rerender } = render(
+            <QueryResultsSection
+                tab={{ ...resultTab, planExecution: plan }}
+                view={view()}
+                onCopyCell={copy()}
+            />
+        );
+        expect(screen.getByRole('tab', { name: 'Query Plan' })).toHaveAttribute(
+            'aria-selected',
+            'true'
+        );
+        expect(screen.getByText('Seq Scan on orders')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
+        expect(screen.getByText('alpha')).toBeInTheDocument();
+        expect(screen.queryByText('Seq Scan on orders')).not.toBeInTheDocument();
+        expect(screen.getByText('Showing 1–2 of 2 rows')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('tab', { name: 'Stats' }));
+        expect(screen.getByText('Returned rows').nextSibling).toHaveTextContent('2');
+        rerender(
+            <QueryResultsSection
+                tab={{
+                    ...resultTab,
+                    planExecution: {
+                        ...plan,
+                        executionId: 'failed-plan',
+                        resultRows: [],
+                        errorMessage: 'Explain failed'
+                    }
+                }}
+                view={view()}
+                onCopyCell={copy()}
+            />
+        );
+        expect(screen.getByRole('alert')).toHaveTextContent('Explain failed');
+        fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
+        expect(screen.getByText('alpha')).toBeInTheDocument();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('shows zero rows as success and update counts without a synthetic table', () => {
         const { rerender } = render(
             <QueryResultsSection
