@@ -567,6 +567,11 @@ export type WorkspaceSection =
     'workbench' | 'history' | 'resources' | 'audit' | 'health' | 'admin' | 'connections';
 export type AdminSubsection = 'users' | 'groups' | 'access';
 export type IconGlyph =
+    | 'table'
+    | 'plan'
+    | 'chart'
+    | 'selection'
+    | 'script'
     | 'new'
     | 'rename'
     | 'duplicate'

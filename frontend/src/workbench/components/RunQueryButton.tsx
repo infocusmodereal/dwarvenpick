@@ -14,7 +14,7 @@ export default function RunQueryButton(props: Props) {
     const [open, setOpen] = useState(false);
     const root = useRef<HTMLDivElement>(null);
     const trigger = useRef<HTMLButtonElement>(null);
-    const shortcut = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
+    const shortcut = navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl';
     useEffect(() => {
         const close = (event: MouseEvent) => {
             if (!root.current?.contains(event.target as Node)) setOpen(false);
@@ -79,7 +79,14 @@ export default function RunQueryButton(props: Props) {
             {open && (
                 <div className="workbench-popover run-popover" role="menu" aria-label="Run options">
                     <button type="button" role="menuitem" onClick={() => run(props.onRun)}>
-                        Run statement <kbd>{shortcut}↵</kbd>
+                        <span className="run-menu-label">
+                            <IconGlyph icon="play" />
+                            Run statement
+                        </span>
+                        <span className="run-shortcut">
+                            <kbd>{shortcut}</kbd>
+                            <kbd>Enter</kbd>
+                        </span>
                     </button>
                     <button
                         type="button"
@@ -87,10 +94,21 @@ export default function RunQueryButton(props: Props) {
                         disabled={!props.hasSelection}
                         onClick={() => run(props.onSelection)}
                     >
-                        Run selection
+                        <span className="run-menu-label">
+                            <IconGlyph icon="selection" />
+                            Run selection
+                        </span>
                     </button>
                     <button type="button" role="menuitem" onClick={() => run(props.onScript)}>
-                        Run script <kbd>⇧{shortcut}↵</kbd>
+                        <span className="run-menu-label">
+                            <IconGlyph icon="script" />
+                            Run script
+                        </span>
+                        <span className="run-shortcut">
+                            <kbd>Shift</kbd>
+                            <kbd>{shortcut}</kbd>
+                            <kbd>Enter</kbd>
+                        </span>
                     </button>
                 </div>
             )}

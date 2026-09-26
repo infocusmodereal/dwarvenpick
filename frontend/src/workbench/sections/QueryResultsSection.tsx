@@ -60,9 +60,11 @@ export default function QueryResultsSection({
     const [selectedCells, setSelectedCells] = useState<string[]>([]);
     const [columnsOpen, setColumnsOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);
+    const [exportOpen, setExportOpen] = useState(false);
     const root = useRef<HTMLDivElement>(null);
     const tableWrap = useRef<HTMLDivElement>(null);
     const columnsTrigger = useRef<HTMLButtonElement>(null);
+    const exportTrigger = useRef<HTMLButtonElement>(null);
     const moreTrigger = useRef<HTMLButtonElement>(null);
     const {
         resultSortState,
@@ -144,6 +146,7 @@ export default function QueryResultsSection({
             if (!root.current?.contains(event.target as Node)) {
                 setColumnsOpen(false);
                 setMoreOpen(false);
+                setExportOpen(false);
             }
         };
         document.addEventListener('mousedown', close);
@@ -182,6 +185,7 @@ export default function QueryResultsSection({
         anchor.click();
         URL.revokeObjectURL(url);
         setMoreOpen(false);
+        setExportOpen(false);
     };
     const stats: Array<[string, string]> = [];
     if (duration) stats.push(['Execution duration', duration]);
@@ -205,11 +209,17 @@ export default function QueryResultsSection({
             className={`execution-results density-${view.density}`}
             ref={root}
             onKeyDown={(event) => {
-                if (event.key === 'Escape' && (columnsOpen || moreOpen)) {
+                if (event.key === 'Escape' && (columnsOpen || moreOpen || exportOpen)) {
                     event.stopPropagation();
-                    (columnsOpen ? columnsTrigger : moreTrigger).current?.focus();
+                    (columnsOpen
+                        ? columnsTrigger
+                        : exportOpen
+                          ? exportTrigger
+                          : moreTrigger
+                    ).current?.focus();
                     setColumnsOpen(false);
                     setMoreOpen(false);
+                    setExportOpen(false);
                 }
             }}
         >
@@ -256,12 +266,7 @@ export default function QueryResultsSection({
                             }
                             onClick={() => setPanel(item)}
                         >
-                            <IconGlyph
-                                icon={
-                                    ['file-text', 'activity', 'info'][index] as
-                                        'file-text' | 'activity' | 'info'
-                                }
-                            />
+                            <IconGlyph icon={(['table', 'plan', 'chart'] as const)[index]} />
                             {['Results', 'Query Plan', 'Stats'][index]}
                         </button>
                     ))}
@@ -288,6 +293,7 @@ export default function QueryResultsSection({
                                     onClick={() => {
                                         setColumnsOpen(!columnsOpen);
                                         setMoreOpen(false);
+                                        setExportOpen(false);
                                     }}
                                 >
                                     Show columns
@@ -341,94 +347,29 @@ export default function QueryResultsSection({
                             </label>
                         </>
                     )}
-                    <button
-                        type="button"
-                        className="result-expand"
-                        title={
-                            expanded
-                                ? 'Restore editor (Esc)'
-                                : 'Expand results; temporarily hide SQL editor'
-                        }
-                        aria-pressed={expanded}
-                        onClick={onToggleExpanded}
-                    >
-                        <svg
-                            viewBox="0 0 20 20"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            aria-hidden
-                        >
-                            <path
-                                d={
-                                    expanded
-                                        ? 'M2 7h5V2m6 0v5h5M2 13h5v5m6 0v-5h5'
-                                        : 'M7 2H2v5m11-5h5v5M2 13v5h5m6 0h5v-5'
-                                }
-                            />
-                        </svg>
-                        {expanded ? 'Restore' : 'Expand'}
-                    </button>
                     <div className="result-popover-anchor">
                         <button
-                            ref={moreTrigger}
+                            ref={exportTrigger}
                             type="button"
-                            className="result-more"
-                            title="More result actions"
-                            aria-label="More result actions"
-                            aria-expanded={moreOpen}
+                            title="Export results"
+                            aria-expanded={exportOpen}
                             aria-haspopup="dialog"
                             onClick={() => {
-                                setMoreOpen(!moreOpen);
+                                setExportOpen(!exportOpen);
                                 setColumnsOpen(false);
+                                setMoreOpen(false);
                             }}
                         >
-                            ⋮
+                            <IconGlyph icon="download" />
+                            Export
                         </button>
-                        {moreOpen && (
+                        {exportOpen && (
                             <ResultPopover
-                                className="result-more-popover"
-                                label="Result actions"
-                                anchor={moreTrigger}
+                                className="result-export-menu"
+                                label="Export results"
+                                anchor={exportTrigger}
                             >
-                                <strong>Copy</strong>
-                                <button
-                                    type="button"
-                                    disabled={!selectedCells.length}
-                                    onClick={() =>
-                                        void onCopyCell(
-                                            selectedCells
-                                                .map((key) => {
-                                                    const [row, col] = key.split(':').map(Number);
-                                                    return loadedRows[row]?.[col] ?? 'NULL';
-                                                })
-                                                .join('\t')
-                                        )
-                                    }
-                                >
-                                    Copy selected cells
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!selectedRows.length}
-                                    onClick={() =>
-                                        copyRows(
-                                            loadedRows.filter((_, index) =>
-                                                selectedRows.includes(index)
-                                            )
-                                        )
-                                    }
-                                >
-                                    Copy selected rows
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!hasTable || !tab.resultRows.length}
-                                    onClick={() => copyRows(tab.resultRows)}
-                                >
-                                    Copy all loaded results
-                                </button>
-                                <strong>Export</strong>
+                                <strong>Export results</strong>
                                 <label>
                                     <input
                                         type="checkbox"
@@ -472,23 +413,130 @@ export default function QueryResultsSection({
                                 >
                                     Export JSON (loaded page)
                                 </button>
+                            </ResultPopover>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        className="result-expand"
+                        title={
+                            expanded
+                                ? 'Restore editor (Esc)'
+                                : 'Expand results; temporarily hide SQL editor'
+                        }
+                        aria-pressed={expanded}
+                        onClick={onToggleExpanded}
+                    >
+                        <svg
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            aria-hidden
+                        >
+                            <path
+                                d={
+                                    expanded
+                                        ? 'M2 7h5V2m6 0v5h5M2 13h5v5m6 0v-5h5'
+                                        : 'M7 2H2v5m11-5h5v5M2 13v5h5m6 0h5v-5'
+                                }
+                            />
+                        </svg>
+                        {expanded ? 'Restore' : 'Expand'}
+                    </button>
+                    <div className="result-popover-anchor">
+                        <button
+                            ref={moreTrigger}
+                            type="button"
+                            className="result-more"
+                            title="More result actions"
+                            aria-label="More result actions"
+                            aria-expanded={moreOpen}
+                            aria-haspopup="dialog"
+                            onClick={() => {
+                                setMoreOpen(!moreOpen);
+                                setExportOpen(false);
+                                setColumnsOpen(false);
+                            }}
+                        >
+                            ⋮
+                        </button>
+                        {moreOpen && (
+                            <ResultPopover
+                                className="result-more-popover"
+                                label="Result actions"
+                                anchor={moreTrigger}
+                            >
+                                <strong>Copy</strong>
+                                <button
+                                    type="button"
+                                    title={
+                                        selectedCells.length
+                                            ? 'Copy selected cell values'
+                                            : 'Select cells in the table first'
+                                    }
+                                    disabled={!selectedCells.length}
+                                    onClick={() =>
+                                        void onCopyCell(
+                                            selectedCells
+                                                .map((key) => {
+                                                    const [row, col] = key.split(':').map(Number);
+                                                    return loadedRows[row]?.[col] ?? 'NULL';
+                                                })
+                                                .join('\t')
+                                        )
+                                    }
+                                >
+                                    <IconGlyph icon="copy" />
+                                    <span>Copy selected cells</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    title={
+                                        selectedRows.length
+                                            ? 'Copy selected rows'
+                                            : 'Select rows using the checkboxes first'
+                                    }
+                                    disabled={!selectedRows.length}
+                                    onClick={() =>
+                                        copyRows(
+                                            loadedRows.filter((_, index) =>
+                                                selectedRows.includes(index)
+                                            )
+                                        )
+                                    }
+                                >
+                                    <IconGlyph icon="copy" />
+                                    <span>Copy selected rows</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!hasTable || !tab.resultRows.length}
+                                    onClick={() => copyRows(tab.resultRows)}
+                                >
+                                    <IconGlyph icon="copy" />
+                                    <span>Copy all loaded results</span>
+                                </button>
                                 <strong>Table view</strong>
                                 <button
                                     type="button"
                                     disabled={!resultSortState}
                                     onClick={view.onClearSort}
                                 >
-                                    Clear sorting
+                                    <IconGlyph icon="close" />
+                                    <span>Clear sorting</span>
                                 </button>
                                 <button
                                     type="button"
                                     disabled={!view.search}
                                     onClick={() => view.onSearchChange('')}
                                 >
-                                    Clear search
+                                    <IconGlyph icon="search" />
+                                    <span>Clear search</span>
                                 </button>
                                 <button type="button" onClick={reset}>
-                                    Reset table view
+                                    <IconGlyph icon="refresh" />
+                                    <span>Reset table view</span>
                                 </button>
                                 <strong>Result</strong>
                                 <button
@@ -498,7 +546,8 @@ export default function QueryResultsSection({
                                     }
                                     onClick={onClear}
                                 >
-                                    Clear results
+                                    <IconGlyph icon="delete" />
+                                    <span>Clear results</span>
                                 </button>
                             </ResultPopover>
                         )}
@@ -849,7 +898,14 @@ export default function QueryResultsSection({
                                     {visibleResultRows.rows.map((row, relativeIndex) => {
                                         const index = visibleResultRows.start + relativeIndex;
                                         return (
-                                            <tr key={index}>
+                                            <tr
+                                                key={index}
+                                                className={
+                                                    (pageOffset + index) % 2
+                                                        ? 'result-row-alt'
+                                                        : undefined
+                                                }
+                                            >
                                                 <td className="result-row-index">
                                                     <label title="Select row to copy">
                                                         <input

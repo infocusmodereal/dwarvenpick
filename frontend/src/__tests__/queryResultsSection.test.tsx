@@ -87,6 +87,10 @@ describe('QueryResultsSection', () => {
         fireEvent.click(screen.getByRole('button', { name: 'More result actions' }));
         fireEvent.click(screen.getByRole('button', { name: 'Copy selected cells' }));
         expect(onCopyCell).toHaveBeenCalledWith('alpha');
+        expect(
+            screen.queryByRole('button', { name: 'Export CSV (all result rows)' })
+        ).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Export' }));
         fireEvent.click(screen.getByRole('checkbox', { name: 'Include CSV headers' }));
         expect(workflow.onExportIncludeHeadersChange).toHaveBeenCalledWith(false);
         fireEvent.click(screen.getByRole('button', { name: 'Export CSV (all result rows)' }));
@@ -95,6 +99,40 @@ describe('QueryResultsSection', () => {
             screen.getByText('CSV exports all 202 rows in their original order.')
         ).toBeInTheDocument();
     });
+    it('provides an independent Export popover and restores keyboard focus on Escape', () => {
+        render(<QueryResultsSection tab={resultTab} view={view()} onCopyCell={copy()} />);
+        const trigger = screen.getByRole('button', { name: 'Export' });
+        fireEvent.click(trigger);
+        expect(screen.getByRole('dialog', { name: 'Export results' })).toBeInTheDocument();
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Export CSV (all result rows)' }), {
+            key: 'Escape'
+        });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(trigger).toHaveFocus();
+        fireEvent.click(trigger);
+        fireEvent.click(screen.getByRole('button', { name: 'More result actions' }));
+        expect(screen.queryByRole('dialog', { name: 'Export results' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Copy selected cells' })).toBeDisabled();
+    });
+    it('keeps alternating row shading stable when the virtual window starts on an odd row', () => {
+        render(
+            <QueryResultsSection
+                tab={resultTab}
+                view={view({
+                    visibleResultRows: {
+                        start: 1,
+                        end: 2,
+                        topSpacerPx: 28,
+                        bottomSpacerPx: 0,
+                        rows: [['alpha']]
+                    }
+                })}
+                onCopyCell={copy()}
+            />
+        );
+        expect(screen.getByText('alpha').closest('tr')).toHaveClass('result-row-alt');
+    });
+
     it('hides/restores columns without changing SQL or loaded results', () => {
         render(<QueryResultsSection tab={resultTab} view={view()} onCopyCell={copy()} />);
         fireEvent.click(screen.getByRole('button', { name: 'Show columns' }));
@@ -325,7 +363,7 @@ describe('QueryResultsSection', () => {
                 onCopyCell={copy()}
             />
         );
-        fireEvent.click(screen.getByRole('button', { name: 'More result actions' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Export' }));
         expect(screen.getByRole('button', { name: 'Export JSON (loaded page)' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Export CSV (all result rows)' })).toBeEnabled();
         rerender(
@@ -346,7 +384,7 @@ describe('QueryResultsSection', () => {
                 onCopyCell={copy()}
             />
         );
-        fireEvent.click(screen.getByRole('button', { name: 'More result actions' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Export' }));
         expect(screen.getByRole('button', { name: 'Export CSV (all result rows)' })).toBeDisabled();
         expect(screen.getByText(/This result exceeds the 5,000-row CSV limit/)).toBeInTheDocument();
         rerender(

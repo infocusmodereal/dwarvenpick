@@ -226,7 +226,7 @@ test('governed workbench browser smoke', async ({ page }) => {
 
         await check('CSV export behavior', async () => {
             const results = page.locator('section.results');
-            await results.getByRole('button', { name: 'More result actions' }).click();
+            await results.getByRole('button', { name: 'Export', exact: true }).click();
             const exportButton = results.getByRole('button', {
                 name: 'Export CSV (all result rows)'
             });
