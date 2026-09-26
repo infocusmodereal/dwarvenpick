@@ -16,6 +16,7 @@
     --accent: #7d5b33;
     --accent-strong: #5d4224;
     --accent-soft: #dbc3a0;
+    --navigation-active-text: var(--accent-soft);
     --danger: #8e3f30;
     --border: #b8a284;
     --border-hover: #a78d6a;
@@ -67,6 +68,7 @@
     --accent: #d6a057;
     --accent-strong: #b37b39;
     --accent-soft: #3a2b1f;
+    --navigation-active-text: var(--accent);
     --danger: #d96a4d;
     --border: #4a3a2c;
     --border-hover: #7a5a34;
@@ -1764,9 +1766,9 @@ button:disabled {
 }
 
 .workspace-mode-tab.active {
-    background: linear-gradient(180deg, #9b7240 0%, #855f35 100%);
-    border-color: #af8450;
-    color: #fff6eb;
+    background: var(--hover-tint);
+    border-color: var(--navigation-active-text);
+    color: var(--navigation-active-text);
 }
 
 .workspace-mode-tab:hover:not(.active) {
