@@ -31,6 +31,18 @@ Examples:
    - Pooling
    - TLS
 
+## Trino catalog selection
+
+For Trino, set **Database** to a catalog or `catalog/schema`, for example
+`tpch/sf1`. Explorer loads only that catalog's schemas and fetches columns in
+batches of at most 32 selected tables. Names are matched exactly, including
+underscores and percent signs. Schema, table and column limits still apply.
+
+This avoids discovering unrelated catalogs and issuing a separate coordinator
+query for every table. Loads remain sequential and keep their cancellation and
+timeout controls. Connections without a catalog retain the generic JDBC path;
+select a catalog to use the optimized path.
+
 ## Uploading driver jars (Kubernetes)
 
 If you plan to upload JDBC driver jars from the UI, the backend needs a writable, persistent external drivers directory.
