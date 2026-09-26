@@ -111,6 +111,19 @@ class SchemaBrowserService(
                 }
             }
 
+            if (handle.spec.engine == DatasourceEngine.TRINO) {
+                val catalog = handle.connection.catalog
+                if (!catalog.isNullOrBlank()) {
+                    return@withConnection TrinoSchemaBrowser(schemaBrowserProperties).fetch(
+                        handle.connection,
+                        catalog,
+                        datasourceId,
+                        fetchedAt,
+                        load,
+                    )
+                }
+            }
+
             try {
                 run {
                     val connection = handle.connection

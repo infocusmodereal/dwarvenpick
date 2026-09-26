@@ -181,3 +181,47 @@ scripts/perf/run-query-smoke.sh
 - Pressure: max queued/running queries, buffer ratio, and pool ratio
 - Counters: completed executions, exports, and result-buffer rejections
 - Notable bottlenecks and suggested mitigations
+
+## Trino Explorer metadata
+
+Run the Trino 479 container regression and timing comparison with Docker available:
+
+```bash
+./gradlew :backend:app:test --tests '*TrinoSchemaBrowserContainerTests'
+```
+
+The test compares the generic JDBC discovery path with catalog-scoped Trino
+queries. Both paths are warmed before three measured rounds, execution order is
+alternated, and every measured load bypasses the application cache. The test
+asserts complete metadata equality within the selected catalog and fewer SQL
+requests; wall-clock time is reported, not asserted as a brittle CI threshold.
+`TRINO_METADATA` lines are retained in the JUnit XML under
+`backend/app/build/test-results/test/`.
+
+The optimized path uses one schema query, one table query per schema, and one
+column query per batch of at most 32 selected tables. It uses exact predicates
+on catalog-qualified `information_schema` tables, rather than wildcard JDBC
+metadata calls. A batch is restricted to one schema and stays below Trino 479's
+default 100 information-schema prefix prefetch limit. If that server setting is
+customized, inspect the query plan to confirm that prefixes remain table-scoped.
+For example:
+
+```sql
+EXPLAIN
+SELECT table_name, column_name, data_type
+FROM tpch.information_schema.columns
+WHERE table_schema = 'sf1'
+  AND table_name IN ('nation', 'region')
+  AND ordinal_position <= 200
+ORDER BY table_name, ordinal_position;
+```
+
+Trino 479 should show `prefixes=[tpch.sf1.nation, tpch.sf1.region]` (order can vary),
+not a whole-catalog prefix. Tests also cover more than one batch, views, complex
+types, wildcard characters and quotes in names, table/column limits, and a cache
+hit issuing no metadata queries. The existing disconnect cancellation regression
+runs the actual Trino JDBC driver against a local protocol fixture.
+
+These tests use synthetic TPCH and Memory connector metadata. They do not measure
+production connector latency or change cluster configuration. Connections without
+an explicit catalog continue using the generic JDBC path.
