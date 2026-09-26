@@ -119,20 +119,15 @@ export default function ExplorerControls({
             </div>
 
             <div className="explorer-control-group">
-                <div className="explorer-toolbar-label-row">
-                    <span className="tile-heading-icon" aria-hidden>
-                        <IconGlyph icon="search" />
-                    </span>
-                    <label htmlFor="explorer-search" className="explorer-toolbar-label-text">
-                        Search
-                    </label>
-                </div>
                 <div className="explorer-toolbar-control-row">
                     <div className="explorer-search-wrap">
+                        <span className="explorer-search-icon" aria-hidden>
+                            <IconGlyph icon="search" />
+                        </span>
                         <input
                             id="explorer-search"
                             aria-label="Search explorer objects"
-                            placeholder="Schemas, tables, columns"
+                            placeholder="Search objects"
                             value={searchQuery}
                             onChange={(event) => onSearchQueryChange(event.target.value)}
                         />

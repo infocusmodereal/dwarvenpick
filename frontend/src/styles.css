@@ -16,7 +16,7 @@
     --accent: #7d5b33;
     --accent-strong: #5d4224;
     --accent-soft: #dbc3a0;
-    --navigation-active-text: var(--accent-soft);
+    --navigation-active-text: #d6a057;
     --danger: #8e3f30;
     --border: #b8a284;
     --border-hover: #a78d6a;
@@ -447,6 +447,7 @@ p {
 }
 
 .monaco-host {
+    min-width: 0;
     border: 1px solid var(--border);
     border-radius: 0.8rem;
     overflow: hidden;
@@ -2091,13 +2092,18 @@ button:disabled {
     --workbench-results-min-height: 220px;
     --workbench-results-resizer-height: 20px;
     --workbench-main-surface: var(--workbench-surface);
+    min-width: 0;
     display: grid;
     grid-template-columns:
-        minmax(
+        clamp(
             var(--workbench-explorer-default-width),
-            var(--workbench-explorer-width, var(--workbench-explorer-default-width))
+            var(--workbench-explorer-width, var(--workbench-explorer-default-width)),
+            max(
+                var(--workbench-explorer-default-width),
+                calc(100% - var(--workbench-editor-min-width))
+            )
         )
-        minmax(var(--workbench-editor-min-width), 1fr);
+        minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     column-gap: 0;
     row-gap: 0;
@@ -2492,6 +2498,20 @@ button:disabled {
 
 .explorer-search-wrap input {
     width: 100%;
+    padding-left: 2rem;
+}
+
+.explorer-search-icon {
+    position: absolute;
+    left: 0.65rem;
+    display: inline-flex;
+    pointer-events: none;
+    color: var(--muted);
+}
+
+.explorer-search-icon svg {
+    width: 0.95rem;
+    height: 0.95rem;
 }
 
 .explorer-search-clear {
@@ -3006,6 +3026,7 @@ button:disabled {
 .editor {
     grid-column: 2;
     grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
     align-content: stretch;
     min-width: 0;
     min-height: 0;
@@ -5497,6 +5518,7 @@ select {
     display: none;
 }
 .results {
+    min-width: 0;
     display: block;
     padding: 0 0.85rem 0.6rem;
 }

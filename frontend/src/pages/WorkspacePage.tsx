@@ -805,14 +805,14 @@ export default function WorkspacePage() {
             minWidth,
             Math.min(maxConfiguredWidth, gridWidth - editorMinWidth)
         );
-        const currentWidth = workbenchExplorerSizePx ?? sidebar.getBoundingClientRect().width;
+        const currentWidth = sidebar.getBoundingClientRect().width;
 
         return {
             currentWidth,
             minWidth,
             maxWidth
         };
-    }, [workbenchExplorerSizePx]);
+    }, []);
 
     const handleExplorerResizerPointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
