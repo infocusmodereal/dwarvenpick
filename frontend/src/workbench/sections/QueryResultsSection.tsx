@@ -35,6 +35,8 @@ const ResultSortIcon = ({ direction }: { direction: ResultSortDirection | null }
     />
 );
 const formatCount = (value: number) => value.toLocaleString();
+const countLabel = (value: number, noun: string) =>
+    `${formatCount(value)} ${noun}${value === 1 ? '' : 's'}`;
 
 export default function QueryResultsSection({
     onCopyCell,
@@ -517,17 +519,17 @@ export default function QueryResultsSection({
                                 </span>
                             ) : hasTable ? (
                                 <span aria-label="Returned rows">
-                                    {formatCount(tab.rowCount)} rows
+                                    {countLabel(tab.rowCount, 'row')}
                                 </span>
                             ) : (
                                 <span>
                                     {Number.isFinite(affectedRows) && affectedRows >= 0
-                                        ? `${formatCount(affectedRows)} affected rows`
+                                        ? countLabel(affectedRows, 'affected row')
                                         : 'Succeeded'}
                                 </span>
                             )}
                             {duration && <span>{duration}</span>}
-                            {hasTable && <span>{formatCount(tab.columnCount)} columns</span>}
+                            {hasTable && <span>{countLabel(tab.columnCount, 'column')}</span>}
                             {tab.maxRowsPerQuery > 0 && (
                                 <span title="Query limit: maximum rows this execution can return">
                                     Limit {formatCount(tab.maxRowsPerQuery)}
@@ -656,8 +658,7 @@ export default function QueryResultsSection({
                             <p>Execution metrics will appear when available.</p>
                         )}
                         <p className="result-scope-note">
-                            Only reported execution metrics are shown. Engine CPU, scan and memory
-                            metrics are not exposed by this execution API.
+                            Additional engine metrics were not reported for this execution.
                         </p>
                         {tab.scriptSummary && (
                             <details className="script-summary">
@@ -857,7 +858,7 @@ export default function QueryResultsSection({
                             <span>
                                 {view.search
                                     ? `${loadedRows.length} matching rows on this page`
-                                    : `Showing ${tab.resultRows.length ? formatCount(pageOffset + 1) : '0'}–${formatCount(pageOffset + tab.resultRows.length)} of ${formatCount(tab.rowCount)} rows`}
+                                    : `Showing ${tab.resultRows.length ? formatCount(pageOffset + 1) : '0'}–${formatCount(pageOffset + tab.resultRows.length)} of ${countLabel(tab.rowCount, 'row')}`}
                             </span>
                             <span>Search and sorting apply to the loaded page only</span>
                         </footer>
