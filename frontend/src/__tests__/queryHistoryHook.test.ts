@@ -33,6 +33,21 @@ afterEach(() => {
 });
 
 describe('useQueryHistory', () => {
+    it('reads the filtered total without treating a missing header as zero', async () => {
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValue(new Response('[]', { headers: { 'X-Total-Count': '235' } }));
+        const readFriendlyError = vi.fn();
+        const { result } = renderHook(() =>
+            useQueryHistory({ enabled: true, fetchImpl: fetchMock, readFriendlyError })
+        );
+        await waitFor(() => expect(result.current.historyTotalCount).toBe(235));
+        expect(String(fetchMock.mock.calls[0][0])).toContain('includeTotal=true');
+        fetchMock.mockResolvedValue(new Response('[]'));
+        await act(() => result.current.loadQueryHistory());
+        expect(result.current.historyTotalCount).toBeNull();
+    });
+
     it('does not request history until it is enabled', () => {
         const fetchMock = vi.fn();
 

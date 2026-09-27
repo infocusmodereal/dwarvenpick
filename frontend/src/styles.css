@@ -6776,3 +6776,241 @@ select {
 .history-panel .history-query-preview {
     font-family: 'JetBrains Mono', monospace;
 }
+
+/* Quiet search fields keep focus on the outer control, not a nested input. */
+.inspection-search input,
+.audit-search input {
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 400;
+    padding: 0.5rem 0.6rem;
+    box-shadow: none;
+    outline: none;
+}
+.inspection-search input::placeholder,
+.audit-search input::placeholder {
+    font-size: inherit;
+    font-weight: 400;
+    color: var(--muted);
+    opacity: 1;
+}
+.inspection-search input:focus,
+.audit-search input:focus {
+    outline: none;
+    box-shadow: none;
+    border: 0;
+}
+.inspection-search:focus-within,
+.audit-search:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent-soft);
+    outline-offset: 1px;
+}
+.history-panel .query-history-table th,
+.admin-audit .history-table th {
+    background: var(--accent-soft);
+    color: var(--text);
+    box-shadow: inset 0 -2px var(--accent);
+    padding: 0.7rem 1rem;
+}
+.history-panel .query-history-table td,
+.admin-audit .history-table td {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+.history-panel .query-history-table th:nth-child(1) {
+    width: 165px;
+}
+.history-panel .query-history-table th:nth-child(2) {
+    width: 130px;
+}
+.history-panel .query-history-table th:nth-child(3) {
+    width: 190px;
+}
+.history-panel .query-history-table th:nth-child(7) {
+    width: 200px;
+}
+.history-panel .query-history-table {
+    min-width: 1160px;
+}
+.admin-audit .history-table th:nth-child(4),
+.admin-audit .history-table td:nth-child(4) {
+    width: 150px;
+}
+.compact-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-left: auto;
+}
+.compact-pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--text);
+    font-size: 1.1rem;
+}
+.compact-pagination-position {
+    display: inline-flex;
+    gap: 0.55rem;
+    align-items: center;
+    white-space: nowrap;
+}
+.compact-pagination-position strong {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--border-hover);
+    border-radius: 0.4rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+}
+.system-health-panel {
+    width: 100%;
+    max-width: 1180px;
+    align-self: start;
+}
+.system-health-panel .result-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 190px));
+    justify-content: start;
+    gap: 0.7rem 1.3rem;
+    padding: 0.55rem 0.4rem 0.75rem;
+}
+.system-health-panel .history-filters {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 320px));
+    justify-content: start;
+    gap: 0.65rem;
+    padding: 0.65rem;
+}
+.system-health-panel .panel-inner {
+    gap: 0.6rem;
+}
+.system-health-panel .system-health-control-plane > .panel-inner {
+    padding-top: 0.5rem;
+}
+.system-health-panel .health-latency-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(105px, 150px));
+}
+.system-health-panel .result-table th,
+.system-health-panel .result-table td {
+    padding: 0.5rem 0.8rem;
+}
+.compact-connections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    width: 100%;
+    min-width: 0;
+}
+.connections-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+.connections-engine-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.connections-engine-filter select {
+    font-size: 0.78rem;
+    min-width: 160px;
+}
+.connections-maintenance {
+    position: relative;
+    font-size: 0.75rem;
+}
+.connections-maintenance summary {
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0.5rem;
+}
+.connections-maintenance button {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 5;
+    white-space: nowrap;
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    font-size: 0.75rem;
+}
+.connections-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    overflow: auto;
+}
+.connections-table {
+    width: 100%;
+    min-width: 850px;
+}
+.connections-table th {
+    background: var(--accent-soft);
+    box-shadow: inset 0 -2px var(--accent);
+    position: sticky;
+    top: 0;
+}
+.connections-table th,
+.connections-table td {
+    padding: 0.65rem 1rem;
+    font-size: 0.78rem;
+    text-align: left;
+}
+.connections-table tbody tr:nth-child(even) td {
+    background: var(--result-row-stripe);
+}
+.connection-name-cell {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+.connection-name-cell img {
+    flex-shrink: 0;
+    object-fit: contain;
+    padding: 3px;
+    border-radius: 5px;
+    background: var(--vendor-badge-bg);
+    border: 1px solid var(--vendor-badge-border);
+}
+.connection-name-cell strong {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.connection-name-cell small {
+    display: block;
+    color: var(--muted);
+    margin-top: 0.25rem;
+}
+.connection-endpoint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+}
+.connection-row-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+.connection-row-actions .icon-button {
+    width: 1.8rem;
+    height: 1.8rem;
+}
+.admin-grid-connections .connection-editor-page {
+    max-width: 1100px;
+}

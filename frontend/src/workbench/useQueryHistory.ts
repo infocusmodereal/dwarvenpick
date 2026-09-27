@@ -26,6 +26,7 @@ export const useQueryHistory = ({
     const [historySortOrder, setHistorySortOrder] = useState<SortOrder>('newest');
     const [historyPageIndex, setHistoryPageIndex] = useState(0);
     const [historyPageSize, setHistoryPageSize] = useState(100);
+    const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(null);
     const [historyHasNextPage, setHistoryHasNextPage] = useState(false);
     const activeRequestRef = useRef<AbortController | null>(null);
     const requestSequenceRef = useRef(0);
@@ -42,6 +43,7 @@ export const useQueryHistory = ({
         activeRequestRef.current = controller;
         setLoadingQueryHistory(true);
         setQueryHistoryError('');
+        setHistoryTotalCount(null);
 
         try {
             const queryParams = new URLSearchParams();
@@ -63,6 +65,7 @@ export const useQueryHistory = ({
             queryParams.set('limit', String(historyPageSize + 1));
             queryParams.set('offset', String(historyPageIndex * historyPageSize));
             queryParams.set('sort', historySortOrder);
+            queryParams.set('includeTotal', 'true');
 
             const response = await fetchImpl(`/api/queries/history?${queryParams.toString()}`, {
                 method: 'GET',
@@ -78,6 +81,9 @@ export const useQueryHistory = ({
                 return;
             }
 
+            const totalHeader = response.headers?.get('X-Total-Count');
+            const total = totalHeader ? Number(totalHeader) : NaN;
+            setHistoryTotalCount(Number.isSafeInteger(total) && total >= 0 ? total : null);
             const rows = Array.isArray(payload) ? payload : [];
             setHistoryHasNextPage(rows.length > historyPageSize);
             setQueryHistoryEntries(rows.slice(0, historyPageSize));
@@ -174,6 +180,7 @@ export const useQueryHistory = ({
         historyDatasourceFilter,
         historyFromFilter,
         historyHasNextPage,
+        historyTotalCount,
         historyPageIndex,
         historyPageSize,
         queryHistoryError,

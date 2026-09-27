@@ -1,3 +1,4 @@
+import CompactPagination from '../components/CompactPagination';
 import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
 import { toStatusToneClass } from '../utils';
 import { IconButton, IconGlyph, LabeledActionButton } from '../components/WorkbenchIcons';
@@ -28,6 +29,7 @@ type QueryHistorySectionProps = {
     pageIndex: number;
     pageSize: number;
     hasNextPage: boolean;
+    totalCount?: number | null;
     onPageIndexChange: (value: number) => void;
     onPageSizeChange: (value: number) => void;
     onOpenEntry: (entry: QueryHistoryEntryResponse, rerun: boolean) => void;
@@ -88,6 +90,7 @@ export default function QueryHistorySection({
     pageIndex,
     pageSize,
     hasNextPage,
+    totalCount = null,
     onPageIndexChange,
     onPageSizeChange,
     onOpenEntry
@@ -512,26 +515,23 @@ export default function QueryHistorySection({
                     {search
                         ? `${filteredEntries.length} matching queries on this page`
                         : entries.length
-                          ? `Showing ${pageIndex * pageSize + 1}–${pageIndex * pageSize + entries.length}${hasNextPage ? ' · More available' : ''}`
+                          ? `Showing ${pageIndex * pageSize + 1}–${pageIndex * pageSize + entries.length}${totalCount !== null ? ` of ${totalCount}` : hasNextPage ? ' · More available' : ''}`
                           : '0 queries'}
                 </span>
-                <div className="result-pagination-controls row">
-                    <button
-                        type="button"
-                        onClick={() => onPageIndexChange(Math.max(0, pageIndex - 1))}
-                        disabled={pageIndex <= 0}
-                    >
-                        Previous Page
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => onPageIndexChange(pageIndex + 1)}
-                        disabled={!hasNextPage}
-                    >
-                        Next Page
-                    </button>
-                    <span className="muted-id">{`Page ${pageIndex + 1}`}</span>
-                </div>
+                <CompactPagination
+                    label="Query history pages"
+                    pageIndex={pageIndex}
+                    totalPages={
+                        totalCount !== null
+                            ? Math.max(1, Math.ceil(totalCount / pageSize))
+                            : !hasNextPage
+                              ? pageIndex + 1
+                              : null
+                    }
+                    hasNextPage={hasNextPage}
+                    disabled={loadingQueryHistory}
+                    onPageChange={onPageIndexChange}
+                />
                 <div className="result-page-size-inline">
                     <label htmlFor="history-page-size">Show rows</label>
                     <div className="select-wrap">

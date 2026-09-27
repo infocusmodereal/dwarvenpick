@@ -606,6 +606,30 @@ class QueryExecutionManager(
         return queryHistoryRepository.list(filter).map { historyRecord -> historyRecord.toResponse() }
     }
 
+    fun countHistory(
+        actor: String,
+        isSystemAdmin: Boolean,
+        datasourceId: String?,
+        status: QueryExecutionStatus?,
+        from: Instant?,
+        to: Instant?,
+        actorFilter: String?,
+    ): Long =
+        queryHistoryRepository.count(
+            QueryHistoryFilter(
+                actor = actor,
+                isSystemAdmin = isSystemAdmin,
+                datasourceId = datasourceId,
+                status = status,
+                from = from,
+                to = to,
+                limit = 1,
+                offset = 0,
+                actorFilter = actorFilter,
+                sortOrder = QueryHistorySortOrder.NEWEST,
+            ),
+        )
+
     fun pruneHistoryOlderThan(cutoff: Instant): Int = queryHistoryRepository.pruneOlderThan(cutoff)
 
     fun redactHistoryQueryTextOlderThan(cutoff: Instant): Int = queryHistoryRepository.redactQueryTextOlderThan(cutoff)

@@ -1,3 +1,4 @@
+import CompactPagination from '../components/CompactPagination';
 import type { AuditEventResponse } from '../types';
 import { IconButton, IconGlyph, LabeledActionButton } from '../components/WorkbenchIcons';
 import InlineNotice from '../components/InlineNotice';
@@ -373,25 +374,14 @@ export default function AuditEventsSection({
                         ? `Showing ${resolvedPageIndex * pageSize + 1}–${Math.min((resolvedPageIndex + 1) * pageSize, matchingEvents.length)} of ${matchingEvents.length}`
                         : '0 events'}
                 </span>
-                <div className="result-pagination-controls row">
-                    <button
-                        type="button"
-                        onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-                        disabled={resolvedPageIndex <= 0}
-                    >
-                        Previous Page
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() =>
-                            setPageIndex((current) => Math.min(totalPages - 1, current + 1))
-                        }
-                        disabled={resolvedPageIndex >= totalPages - 1}
-                    >
-                        Next Page
-                    </button>
-                    <span className="muted-id">{`Page ${resolvedPageIndex + 1} of ${totalPages}`}</span>
-                </div>
+                <CompactPagination
+                    label="Audit event pages"
+                    pageIndex={resolvedPageIndex}
+                    totalPages={totalPages}
+                    hasNextPage={resolvedPageIndex < totalPages - 1}
+                    disabled={loadingAuditEvents}
+                    onPageChange={setPageIndex}
+                />
                 <div className="result-page-size-inline">
                     <label htmlFor="audit-page-size">Show rows</label>
                     <div className="select-wrap">

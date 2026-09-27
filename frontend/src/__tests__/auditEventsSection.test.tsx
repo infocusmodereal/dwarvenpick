@@ -59,7 +59,7 @@ describe('AuditEventsSection', () => {
 
         expect(onAuditActorFilterChange).toHaveBeenCalledWith('analyst-11');
         expect(screen.getByText('analyst-11')).toBeInTheDocument();
-        expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+        expect(screen.getByLabelText('Page 2 of 2')).toBeInTheDocument();
     });
 
     it('searches only loaded events and exposes structured details on demand', () => {

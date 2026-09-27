@@ -1,3 +1,4 @@
+import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
 import SqlValidationControl from '../workbench/components/SqlValidationControl';
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import {
@@ -2334,6 +2335,7 @@ export default function WorkspacePage() {
         historyDatasourceFilter,
         historyFromFilter,
         historyHasNextPage,
+        historyTotalCount,
         historyPageIndex,
         historyPageSize,
         historySortOrder,
@@ -8032,6 +8034,7 @@ export default function WorkspacePage() {
                         pageIndex={historyPageIndex}
                         pageSize={historyPageSize}
                         hasNextPage={historyHasNextPage}
+                        totalCount={historyTotalCount}
                         onPageIndexChange={(value) => setHistoryPageIndex(value)}
                         onPageSizeChange={changeHistoryPageSize}
                         onOpenEntry={openHistoryEntry}
@@ -9108,108 +9111,23 @@ export default function WorkspacePage() {
                                         {activeSection === 'connections' ? (
                                             <section className="datasource-admin">
                                                 {connectionEditorMode === 'list' ? (
-                                                    <section className="connection-list-view">
-                                                        <div className="row connection-list-toolbar">
-                                                            <button
-                                                                type="button"
-                                                                onClick={
-                                                                    handleStartCreateManagedDatasource
-                                                                }
-                                                            >
-                                                                Create Connection
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                disabled={reencryptingCredentials}
-                                                                title="Re-encrypt stored credential profiles with the current server key. Useful after rotating encryption keys or restoring backups."
-                                                                onClick={() =>
-                                                                    void handleReencryptCredentials()
-                                                                }
-                                                            >
-                                                                {reencryptingCredentials
-                                                                    ? 'Re-encrypting...'
-                                                                    : 'Re-encrypt Credentials'}
-                                                            </button>
-                                                        </div>
-                                                        {managedDatasourcesByEngine.length === 0 ? (
-                                                            <p className="muted-id">
-                                                                No connections configured yet.
-                                                            </p>
-                                                        ) : (
-                                                            <div className="connection-catalog-list connection-catalog-list-standalone">
-                                                                {managedDatasourcesByEngine.map(
-                                                                    (datasource) => (
-                                                                        <article
-                                                                            key={datasource.id}
-                                                                            className="connection-catalog-item connection-catalog-item-tile"
-                                                                        >
-                                                                            <header className="connection-tile-top connection-tile-top-centered">
-                                                                                <span className="connection-catalog-actions connection-catalog-actions-floating">
-                                                                                    <IconButton
-                                                                                        icon="rename"
-                                                                                        title={`Edit ${datasource.name}`}
-                                                                                        onClick={() =>
-                                                                                            handleStartEditManagedDatasource(
-                                                                                                datasource.id
-                                                                                            )
-                                                                                        }
-                                                                                    />
-                                                                                    <IconButton
-                                                                                        icon="delete"
-                                                                                        title={`Delete ${datasource.name}`}
-                                                                                        variant="danger"
-                                                                                        disabled={
-                                                                                            deletingDatasource
-                                                                                        }
-                                                                                        onClick={() =>
-                                                                                            void handleDeleteManagedDatasource(
-                                                                                                datasource
-                                                                                            )
-                                                                                        }
-                                                                                    />
-                                                                                </span>
-                                                                                <span
-                                                                                    className="connection-catalog-icon"
-                                                                                    aria-hidden
-                                                                                >
-                                                                                    <img
-                                                                                        src={resolveDatasourceIcon(
-                                                                                            datasource.engine
-                                                                                        )}
-                                                                                        alt=""
-                                                                                        width={24}
-                                                                                        height={24}
-                                                                                    />
-                                                                                </span>
-                                                                                <span className="connection-catalog-main connection-catalog-main-centered">
-                                                                                    <span className="connection-catalog-name">
-                                                                                        {
-                                                                                            datasource.name
-                                                                                        }
-                                                                                    </span>
-                                                                                    {datasource.id !==
-                                                                                    datasource.name ? (
-                                                                                        <span className="connection-catalog-id">
-                                                                                            {
-                                                                                                datasource.id
-                                                                                            }
-                                                                                        </span>
-                                                                                    ) : null}
-                                                                                </span>
-                                                                            </header>
-                                                                            <footer className="connection-tile-bottom">
-                                                                                <span className="connection-catalog-engine">
-                                                                                    {
-                                                                                        datasource.engine
-                                                                                    }
-                                                                                </span>
-                                                                            </footer>
-                                                                        </article>
-                                                                    )
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </section>
+                                                    <ConnectionsCatalog
+                                                        connections={managedDatasourcesByEngine}
+                                                        deleting={deletingDatasource}
+                                                        reencrypting={reencryptingCredentials}
+                                                        onCreate={
+                                                            handleStartCreateManagedDatasource
+                                                        }
+                                                        onEdit={handleStartEditManagedDatasource}
+                                                        onDelete={(datasource) =>
+                                                            void handleDeleteManagedDatasource(
+                                                                datasource
+                                                            )
+                                                        }
+                                                        onReencrypt={() =>
+                                                            void handleReencryptCredentials()
+                                                        }
+                                                    />
                                                 ) : (
                                                     <div className="connection-editor-page">
                                                         <header className="connection-editor-heading">
