@@ -30,7 +30,7 @@ Use `Ctrl+Space` / `Cmd+Space` to open suggestions.
 
 ### Validate
 
-Use **Validate** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
+Use **SQL Validate** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
 `EXPLAIN` under the hood.
 
 Notes:
@@ -40,10 +40,10 @@ Notes:
   validate a write path.
 - Some engines can return line/column information; when available, the editor shows inline markers.
 
-### Explain vs Analyze
+### Query plans
 
-- **Explain** requests a query plan where supported.
-- **Analyze** is a deeper plan mode. Some engines may execute the query (for example PostgreSQL `EXPLAIN ANALYZE` and
+- **Explain** is available in the Query Plan tab and requests a plan where supported.
+- There is no separate Analyze toolbar action. Engine `EXPLAIN ANALYZE` SQL is a deeper plan mode. Some engines may execute the query (for example PostgreSQL `EXPLAIN ANALYZE` and
   Trino `EXPLAIN ANALYZE`). Use it deliberately on large tables.
 
 ### Run Script (multi-statement)
@@ -74,7 +74,7 @@ Read-only access rules apply to **every** statement in a script.
 ## Execution and results
 
 The toolbar below the SQL editor contains **Run**, **Format SQL**, **Options**,
-**Query Tools**, and **Save**. Run executes the selected SQL, or the statement at
+**SQL Validate**, and **Save**. Run executes the selected SQL, or the statement at
 the cursor when there is no selection. Its dropdown also offers selection-only
 execution and Run script. Use Ctrl/Cmd+Enter for the current statement/selection,
 or Shift+Ctrl/Cmd+Enter for the complete script. During execution, Run becomes
@@ -82,9 +82,8 @@ Cancel. Script transaction and stop-on-error settings remain in Options; access
 policy row/runtime limits remain enforced by the server.
 
 Results, Query Plan, and Stats share a compact execution summary. Query Plan
-shows the engine's textual/tabular plan from an explicit Explain or Analyze
-operation; opening the tab never submits SQL. Analyze is marked when it executes
-the SQL (PostgreSQL and Trino). Unsupported connectors show an empty state.
+shows the engine's textual/tabular plan from its explicit Explain action; opening
+the tab never submits SQL. Unsupported connectors show an empty state.
 Stats displays reported counts, execution duration, limits, application queue time,
 and timestamps. The execution API does not currently expose engine CPU, scan,
 shuffle, or peak-memory metrics, so the UI does not synthesize those values.
@@ -156,10 +155,12 @@ The System Health page also includes a lightweight control plane for the selecte
   and export queued/running queries as CSV.
 - Paused connection state is stored in the application database and survives backend restarts.
 
-Explain and Analyze keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.
+Plan requests keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.
 
 Explorer search uses an inline search icon and the placeholder "Search objects", while retaining its accessible name and clear action. The editor/results column fits the available viewport with both navigation panels open; a saved Explorer width is constrained to leave room for the editor. Active navigation uses theme gold in both Light and Dark.
 
 Result export is available from the dedicated download-icon Export button, separate from the secondary actions menu. Menus distinguish headings, disabled actions and explanatory text; Run shortcuts use separate readable key labels. Results uses alternating row shading based on the logical row index so it remains stable while scrolling a virtualized page. Query Plan uses an operator-tree icon and Stats uses a chart icon.
 
 Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.
+
+The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. SQL Validate retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.

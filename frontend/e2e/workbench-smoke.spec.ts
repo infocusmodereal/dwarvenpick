@@ -176,7 +176,9 @@ test('governed workbench browser smoke', async ({ page }) => {
                 page.getByRole('button', { name: 'Format SQL', exact: true })
             ).toBeVisible();
             await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
-            await expect(page.getByText('Query Tools', { exact: true })).toBeVisible();
+            await expect(
+                page.getByRole('button', { name: 'SQL Validate', exact: true })
+            ).toBeVisible();
             await runQuery.click();
             await expect(
                 page.locator('.result-execution-summary').getByLabel('Succeeded', { exact: true })

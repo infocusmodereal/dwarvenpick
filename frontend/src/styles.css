@@ -3497,10 +3497,12 @@ button:disabled {
     right: 0;
     bottom: calc(100% + 0.42rem);
     z-index: 30;
-    min-width: 270px;
+    width: min(360px, calc(100vw - 24px));
+    min-width: 0;
+    overflow: auto;
     border: 1px solid var(--border);
-    border-radius: 0.72rem;
-    background: var(--surface-alt);
+    border-radius: 0.5rem;
+    background: var(--surface);
     box-shadow: 0 14px 26px rgba(43, 30, 16, 0.2);
     padding: 0.62rem 0.72rem;
     display: grid;
@@ -3519,13 +3521,60 @@ button:disabled {
     font-size: 0.86rem;
 }
 
-.editor-shortcuts-popover ul {
+.editor-shortcuts-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.editor-shortcuts-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0.25rem;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 0.3rem;
+}
+.editor-shortcuts-close svg {
+    width: 1rem;
+    height: 1rem;
+}
+.editor-shortcut-list {
     margin: 0;
-    padding-left: 1rem;
     display: grid;
-    gap: 0.26rem;
-    font-size: 0.66rem;
-    line-height: 1.3;
+    gap: 0.25rem;
+}
+.editor-shortcut-list > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    font-size: 0.72rem;
+}
+.editor-shortcut-list dd {
+    display: flex;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    margin: 0;
+}
+.editor-shortcut-list kbd {
+    border: 1px solid var(--border-hover);
+    border-radius: 0.25rem;
+    padding: 0.2rem 0.3rem;
+    background: var(--surface-alt);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.68rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.editor-shortcuts-popover :is(button, summary):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .editor-diagnostics {
@@ -3535,6 +3584,10 @@ button:disabled {
 }
 
 .editor-diagnostics summary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0;
     cursor: pointer;
     font-size: 0.72rem;
     color: var(--muted);
@@ -6032,4 +6085,13 @@ select {
 }
 .result-plan pre {
     margin: 0;
+}
+
+.editor-diagnostics summary svg {
+    width: 0.9rem;
+    height: 0.9rem;
+    transform: rotate(-90deg);
+}
+.editor-diagnostics[open] summary svg {
+    transform: none;
 }

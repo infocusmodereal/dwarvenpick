@@ -130,7 +130,7 @@ import AuditEventsSection from '../workbench/sections/AuditEventsSection';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import QueryResultsSection from '../workbench/sections/QueryResultsSection';
 import RunQueryButton from '../workbench/components/RunQueryButton';
-import { analysisSql, queryCapabilities } from '../workbench/queryCapabilities';
+import { queryCapabilities } from '../workbench/queryCapabilities';
 import { canExportLoadedResults } from '../workbench/queryResults';
 import ResourceManagerSection from '../workbench/sections/ResourceManagerSection';
 import SystemHealthSection from '../workbench/sections/SystemHealthSection';
@@ -1306,12 +1306,27 @@ export default function WorkspacePage() {
             }
         };
 
+        const closeForResize = () => {
+            setShowEditorShortcuts(false);
+            setEditorShortcutsPosition(null);
+        };
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            closeForResize();
+            editorShortcutsRef.current?.querySelector('button')?.focus();
+        };
         if (showEditorShortcuts) {
+            document.addEventListener('keydown', handleEscape, true);
+            window.addEventListener('resize', closeForResize);
             document.addEventListener('mousedown', handleOutsideClick);
         }
 
         return () => {
             document.removeEventListener('mousedown', handleOutsideClick);
+            document.removeEventListener('keydown', handleEscape, true);
+            window.removeEventListener('resize', closeForResize);
         };
     }, [showEditorShortcuts]);
 
@@ -3993,29 +4008,6 @@ export default function WorkspacePage() {
             : `EXPLAIN ${sqlToExplain}`;
         void executeSqlForTab(activeTab.id, explainSql, 'explain', 'explain');
     }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, showWorkbenchNotice]);
-
-    const handleAnalyze = useCallback(() => {
-        if (!activeTab) {
-            return;
-        }
-
-        const resolvedSql = resolveRunnableSqlForTab(activeTab);
-        const sqlToAnalyze = resolvedSql.sql.trim();
-        if (!sqlToAnalyze) {
-            showWorkbenchNotice('Select SQL text first, or use Run Selection.', 'warning');
-            return;
-        }
-
-        const analyzeSql = analysisSql(sqlToAnalyze, executionCapabilities);
-
-        void executeSqlForTab(activeTab.id, analyzeSql, 'analyze', 'analyze');
-    }, [
-        activeTab,
-        executeSqlForTab,
-        resolveRunnableSqlForTab,
-        executionCapabilities,
-        showWorkbenchNotice
-    ]);
 
     const writeTextToClipboard = useCallback(async (value: string) => {
         if (navigator.clipboard?.writeText) {
@@ -7773,73 +7765,15 @@ export default function WorkspacePage() {
                                               )
                                             : null}
                                     </div>
-                                    <details className="action-menu">
-                                        <summary
-                                            className="labeled-action-button"
-                                            title="Analyze, explain, or validate SQL"
-                                        >
-                                            <span className="labeled-action-icon" aria-hidden>
-                                                <IconGlyph icon="activity" />
-                                            </span>
-                                            <span>Query Tools</span>
-                                            <span className="action-menu-chevron" aria-hidden>
-                                                <IconGlyph icon="chevron-down" />
-                                            </span>
-                                        </summary>
-                                        <div className="action-menu-popover">
-                                            <button
-                                                type="button"
-                                                title={
-                                                    executionCapabilities.analyzeExecutes
-                                                        ? 'Analyze executes the SQL and may be expensive'
-                                                        : 'Request the connector analysis plan'
-                                                }
-                                                onClick={handleAnalyze}
-                                                disabled={
-                                                    !executionCapabilities.analyze ||
-                                                    !activeTab ||
-                                                    activeTab.isExecuting ||
-                                                    !!activeTab.planExecution?.isExecuting ||
-                                                    !selectedDatasource
-                                                }
-                                            >
-                                                <IconGlyph icon="activity" />
-                                                <span>
-                                                    {executionCapabilities.analyzeExecutes
-                                                        ? 'Analyze (executes SQL)'
-                                                        : 'Analyze'}
-                                                </span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleExplain}
-                                                disabled={
-                                                    !executionCapabilities.explain ||
-                                                    !activeTab ||
-                                                    activeTab.isExecuting ||
-                                                    !!activeTab.planExecution?.isExecuting ||
-                                                    !selectedDatasource
-                                                }
-                                            >
-                                                <IconGlyph icon="file-text" />
-                                                <span>Explain</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleValidateSql()}
-                                                disabled={
-                                                    !activeTab ||
-                                                    validatingSql ||
-                                                    !selectedDatasource
-                                                }
-                                            >
-                                                <IconGlyph icon="shield-check" />
-                                                <span>
-                                                    {validatingSql ? 'Validating...' : 'Validate'}
-                                                </span>
-                                            </button>
-                                        </div>
-                                    </details>
+                                    <LabeledActionButton
+                                        icon="shield-check"
+                                        label={validatingSql ? 'Validating…' : 'SQL Validate'}
+                                        title="Validate the current statement or selection without executing it"
+                                        onClick={() => void handleValidateSql()}
+                                        disabled={
+                                            !activeTab || validatingSql || !selectedDatasource
+                                        }
+                                    />
                                     <LabeledActionButton
                                         icon="save"
                                         label="Save"
@@ -7853,8 +7787,12 @@ export default function WorkspacePage() {
                                         className="editor-shortcuts-wrapper"
                                         ref={editorShortcutsRef}
                                     >
-                                        <IconButton
-                                            icon="info"
+                                        <button
+                                            type="button"
+                                            className="icon-button"
+                                            aria-label="Editor shortcuts"
+                                            aria-haspopup="dialog"
+                                            aria-expanded={showEditorShortcuts}
                                             title="Editor shortcuts"
                                             onClick={() => {
                                                 const triggerRect =
@@ -7887,16 +7825,32 @@ export default function WorkspacePage() {
                                                     return next;
                                                 });
                                             }}
-                                        />
+                                        >
+                                            <span className="icon-button-glyph" aria-hidden>
+                                                <IconGlyph icon="info" />
+                                            </span>
+                                        </button>
                                         {showEditorShortcuts && editorShortcutsPosition
                                             ? createPortal(
                                                   <div
                                                       className="editor-shortcuts-popover is-floating"
                                                       role="dialog"
+                                                      aria-label="Editor shortcuts"
+                                                      onKeyDown={(event) => {
+                                                          if (event.key === 'Escape') {
+                                                              event.stopPropagation();
+                                                              setShowEditorShortcuts(false);
+                                                              setEditorShortcutsPosition(null);
+                                                              editorShortcutsRef.current
+                                                                  ?.querySelector('button')
+                                                                  ?.focus();
+                                                          }
+                                                      }}
                                                       ref={editorShortcutsPopoverRef}
                                                       style={{
                                                           top: `${editorShortcutsPosition.top}px`,
                                                           left: `${editorShortcutsPosition.left}px`,
+                                                          maxHeight: `${Math.min(420, editorShortcutsPosition.placement === 'above' ? editorShortcutsPosition.top - 12 : window.innerHeight - editorShortcutsPosition.top - 12)}px`,
                                                           transform:
                                                               editorShortcutsPosition.placement ===
                                                               'above'
@@ -7904,21 +7858,63 @@ export default function WorkspacePage() {
                                                                   : undefined
                                                       }}
                                                   >
-                                                      <h4>Editor Shortcuts</h4>
-                                                      <ul>
-                                                          <li>
-                                                              <kbd>Ctrl/Cmd + Enter</kbd>: Run
-                                                              statement or selection (or full tab if
-                                                              no selection)
-                                                          </li>
-                                                          <li>
-                                                              <kbd>Esc</kbd>: Cancel currently
-                                                              running execution
-                                                          </li>
-                                                      </ul>
+                                                      <div className="editor-shortcuts-heading">
+                                                          <h4>Shortcuts</h4>
+                                                          <button
+                                                              type="button"
+                                                              className="editor-shortcuts-close"
+                                                              aria-label="Close shortcuts"
+                                                              title="Close shortcuts"
+                                                              onClick={() => {
+                                                                  setShowEditorShortcuts(false);
+                                                                  setEditorShortcutsPosition(null);
+                                                                  editorShortcutsRef.current
+                                                                      ?.querySelector('button')
+                                                                      ?.focus();
+                                                              }}
+                                                          >
+                                                              <IconGlyph icon="close" />
+                                                          </button>
+                                                      </div>
+                                                      <dl className="editor-shortcut-list">
+                                                          <div>
+                                                              <dt>Run statement / selection</dt>
+                                                              <dd>
+                                                                  <kbd>
+                                                                      {navigator.platform.includes(
+                                                                          'Mac'
+                                                                      )
+                                                                          ? 'Cmd'
+                                                                          : 'Ctrl'}
+                                                                  </kbd>
+                                                                  <kbd>Enter</kbd>
+                                                              </dd>
+                                                          </div>
+                                                          <div>
+                                                              <dt>Run script</dt>
+                                                              <dd>
+                                                                  <kbd>Shift</kbd>
+                                                                  <kbd>
+                                                                      {navigator.platform.includes(
+                                                                          'Mac'
+                                                                      )
+                                                                          ? 'Cmd'
+                                                                          : 'Ctrl'}
+                                                                  </kbd>
+                                                                  <kbd>Enter</kbd>
+                                                              </dd>
+                                                          </div>
+                                                          <div>
+                                                              <dt>Cancel execution</dt>
+                                                              <dd>
+                                                                  <kbd>Esc</kbd>
+                                                              </dd>
+                                                          </div>
+                                                      </dl>
                                                       {isSystemAdmin ? (
                                                           <details className="editor-diagnostics">
                                                               <summary>
+                                                                  <IconGlyph icon="chevron-down" />
                                                                   Autocomplete diagnostics
                                                               </summary>
                                                               <dl>
