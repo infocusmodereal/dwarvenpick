@@ -35,17 +35,11 @@ class QueryHistoryRepository(
         namedParameterJdbcTemplate.update(insertSql, recordToPersist.toSqlParameters())
     }
 
-    fun list(filter: QueryHistoryFilter): List<QueryHistoryRecord> {
+    private fun historyPredicates(filter: QueryHistoryFilter): Pair<String, MapSqlParameterSource> {
         val parameters = MapSqlParameterSource()
         val predicates = mutableListOf<String>()
         val actorFilter = filter.actorFilter?.trim()?.takeIf { it.isNotBlank() }
         val datasourceId = filter.datasourceId?.trim()?.takeIf { it.isNotBlank() }
-        val orderDirection =
-            when (filter.sortOrder) {
-                QueryHistorySortOrder.NEWEST -> "DESC"
-                QueryHistorySortOrder.OLDEST -> "ASC"
-            }
-
         if (filter.isSystemAdmin) {
             if (actorFilter != null) {
                 predicates.add("actor = :actorFilter")
@@ -71,15 +65,25 @@ class QueryHistoryRepository(
             predicates.add("submitted_at <= :to")
             parameters.addValue("to", filter.to.toTimestamp())
         }
-        parameters
-            .addValue("limit", filter.limit.coerceIn(1, 1001))
-            .addValue("offset", filter.offset.coerceAtLeast(0))
         val whereClause =
             predicates
                 .takeIf { it.isNotEmpty() }
                 ?.joinToString(prefix = "WHERE ", separator = "\n              AND ")
                 ?: ""
 
+        return whereClause to parameters
+    }
+
+    fun count(filter: QueryHistoryFilter): Long {
+        val (whereClause, parameters) = historyPredicates(filter)
+        return namedParameterJdbcTemplate.queryForObject("SELECT COUNT(*) FROM query_history $whereClause", parameters, Long::class.java)
+            ?: 0L
+    }
+
+    fun list(filter: QueryHistoryFilter): List<QueryHistoryRecord> {
+        val (whereClause, parameters) = historyPredicates(filter)
+        val orderDirection = if (filter.sortOrder == QueryHistorySortOrder.NEWEST) "DESC" else "ASC"
+        parameters.addValue("limit", filter.limit.coerceIn(1, 1001)).addValue("offset", filter.offset.coerceAtLeast(0))
         return namedParameterJdbcTemplate.query(
             """
             SELECT

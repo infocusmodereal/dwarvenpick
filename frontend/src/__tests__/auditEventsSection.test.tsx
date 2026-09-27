@@ -52,14 +52,31 @@ describe('AuditEventsSection', () => {
         });
 
         fireEvent.change(screen.getByLabelText('Actor'), { target: { value: 'analyst-11' } });
-        fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '10' } });
+        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '10' } });
         expect(screen.getByText('analyst-1')).toBeInTheDocument();
         expect(screen.queryByText('analyst-11')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
 
         expect(onAuditActorFilterChange).toHaveBeenCalledWith('analyst-11');
         expect(screen.getByText('analyst-11')).toBeInTheDocument();
-        expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+        expect(screen.getByLabelText('Page 2 of 2')).toBeInTheDocument();
+    });
+
+    it('searches only loaded events and exposes structured details on demand', () => {
+        renderSection({ events: [event(1), event(2)] });
+        expect(screen.queryByText('exec-2')).not.toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Search loaded events'), {
+            target: { value: 'exec-2' }
+        });
+        expect(screen.queryByText('analyst-1')).not.toBeInTheDocument();
+        expect(screen.getByText('1 of 2 loaded events')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /View details/ }));
+        expect(screen.getByText('exec-2')).toBeInTheDocument();
+        expect(screen.getByText('executionId')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Hide details/ }));
+        expect(screen.queryByText('exec-2')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Clear Filters' }));
+        expect(screen.getByText('analyst-1')).toBeInTheDocument();
     });
 
     it('renders distinct loading, empty, and error states', () => {

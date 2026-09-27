@@ -84,6 +84,23 @@ class QueryHistoryRepositoryTests {
         assertThat(rows.single().queryTextRedacted).isTrue()
     }
 
+    @Test
+    fun `count uses the same access and filters as history pages without a page limit`() {
+        val now = Instant.now()
+        queryHistoryRepository.save(historyRecord("a", now, "select 1"))
+        queryHistoryRepository.save(historyRecord("b", now.minusSeconds(60), "select 2").copy(actor = "other"))
+        queryHistoryRepository.save(historyRecord("c", now, "select 3").copy(status = QueryExecutionStatus.FAILED))
+        val filter = historyFilter(1, 10, QueryHistorySortOrder.NEWEST)
+        assertThat(queryHistoryRepository.count(filter)).isEqualTo(2)
+        assertThat(queryHistoryRepository.count(filter.copy(actorFilter = "other"))).isEqualTo(2)
+        assertThat(queryHistoryRepository.count(filter.copy(isSystemAdmin = true))).isEqualTo(3)
+        assertThat(queryHistoryRepository.count(filter.copy(isSystemAdmin = true, actorFilter = "other"))).isEqualTo(1)
+        assertThat(queryHistoryRepository.count(filter.copy(status = QueryExecutionStatus.SUCCEEDED))).isEqualTo(1)
+        assertThat(queryHistoryRepository.count(filter.copy(datasourceId = "unmatched"))).isZero()
+        assertThat(queryHistoryRepository.count(filter.copy(isSystemAdmin = true, from = now.minusSeconds(1)))).isEqualTo(2)
+        assertThat(queryHistoryRepository.count(filter.copy(to = now.minusSeconds(1)))).isZero()
+    }
+
     private fun historyRecord(
         executionId: String,
         submittedAt: Instant,

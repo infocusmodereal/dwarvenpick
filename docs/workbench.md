@@ -156,6 +156,8 @@ The System Health page also includes a lightweight control plane for the selecte
   and export queued/running queries as CSV.
 - Paused connection state is stored in the application database and survives backend restarts.
 
+Long plans scroll within the available panel space, with plan pagination in a separate footer. The plan text can be focused for keyboard scrolling.
+
 Plan requests keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.
 
 Explorer search uses an inline search icon and the placeholder "Search objects", while retaining its accessible name and clear action. The editor/results column fits the available viewport with both navigation panels open; a saved Explorer width is constrained to leave room for the editor. Active navigation uses theme gold in both Light and Dark.
@@ -165,3 +167,15 @@ Result export is available from the dedicated download-icon Export button, separ
 Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.
 
 The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. Validate SQL retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.
+
+SQL validation feedback appears beside **Validate SQL**, separately from query results. Successful validation confirms the statement or selection; failures show the engine diagnostic and line/column when available. Dismiss with Escape, the close button, or a click outside. Editing SQL or changing tabs or execution context clears the feedback, and outdated responses are ignored.
+
+Audit Events keeps server filters for action, actor, outcome and time range together. **Search loaded events** searches only the loaded batch (up to the latest 200 matching events), including detail values. Expand **View details** for structured fields. Pagination and CSV export operate on the current loaded view; CSV exports the current page. Sorting changes the order of loaded events.
+
+Query History groups connection/status/time filters above the table. Search applies only to the current page, excludes redacted SQL, and clears when changing pages or server filters. **Details** expands execution metadata, justification, error diagnostics and SQL without executing it. Open and Rerun retain their existing behavior. Export includes only visible rows on the current page.
+
+System Health separates **Engine health**, **Query activity**, and **Connection pools**. Node details and recent errors expand on demand. Connection-wide pause/resume/cancel/kill controls are grouped under **Manage connection**; existing authorization and confirmation flows remain in place. Engine checks and query activity retain their separate update timestamps. Auto Refresh applies to query activity, while the header Refresh requests both engine health and query activity.
+
+History pagination shows the current page and total pages for the server-filtered, authorized history. The existing `GET /api/queries/history` array response is unchanged; clients can opt into `includeTotal=true` to receive the matching `X-Total-Count` response header. Audit pagination totals refer only to its loaded event batch. Both views use a compact shared pager and an outer search focus outline.
+
+Connections uses a compact table with local search and engine filtering. Endpoint, database and profile counts are visible without opening the editor; credential values remain in the existing protected editor flow. Maintenance groups credential re-encryption separately from normal create/edit actions. System Health uses a bounded content width so metrics remain easy to scan on wide displays.

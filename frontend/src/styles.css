@@ -6032,12 +6032,14 @@ select {
 }
 
 .result-plan {
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
 }
 .result-plan > .result-plan-actions:first-child {
+    flex-shrink: 0;
     justify-content: flex-end;
     margin-bottom: 0.65rem;
 }
@@ -6076,7 +6078,33 @@ select {
     opacity: 0.6;
 }
 .result-plan pre {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
     margin: 0;
+    padding: 0.5rem 0.5rem 1rem;
+    scrollbar-gutter: stable;
+}
+.result-plan-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.result-plan-pagination button {
+    padding: 0.35rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--text);
+    font-size: inherit;
 }
 
 .editor-diagnostics summary svg {
@@ -6103,4 +6131,911 @@ select {
     background: var(--hover-tint-strong);
     border-color: var(--accent);
     color: var(--accent);
+}
+
+/* SQL validation belongs to the editor action, not the previous execution. */
+.sql-validate-button > svg {
+    width: 1rem;
+    height: 1rem;
+}
+.sql-validate-button.is-valid {
+    border-color: var(--notice-success-fg);
+}
+.sql-validate-button.is-invalid {
+    border-color: var(--danger);
+}
+.sql-validation-feedback {
+    position: fixed;
+    z-index: 1600;
+    width: min(420px, calc(100vw - 24px));
+    padding: 0.9rem;
+    border: 1px solid var(--border-hover);
+    border-radius: 0.6rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 10px 30px #0004;
+    font-size: 0.8rem;
+}
+.sql-validation-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.sql-validation-heading > svg {
+    width: 1.1rem;
+    height: 1.1rem;
+}
+.sql-validation-heading button {
+    margin-left: auto;
+    padding: 0.2rem;
+    background: transparent;
+    color: var(--muted);
+}
+.sql-validation-heading button svg {
+    width: 1rem;
+    height: 1rem;
+}
+.sql-validation-feedback p {
+    margin: 0.65rem 0;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    max-height: 180px;
+    overflow: auto;
+}
+.sql-validation-feedback small,
+.sql-validation-location {
+    color: var(--muted);
+    display: block;
+    font-size: 0.72rem;
+    margin-top: 0.5rem;
+}
+.sql-validation-feedback.is-valid .sql-validation-heading {
+    color: var(--notice-success-fg);
+}
+.sql-validation-feedback.is-invalid .sql-validation-heading {
+    color: var(--danger);
+}
+
+.admin-audit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    align-items: stretch;
+}
+.admin-audit[hidden] {
+    display: none;
+}
+.audit-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+.audit-heading h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+.audit-heading p {
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.admin-audit .history-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    background: var(--surface-alt);
+}
+.admin-audit .filter-field {
+    min-width: 0;
+}
+.admin-audit .filter-field label {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+.admin-audit .filter-field input,
+.admin-audit .filter-field select {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.78rem;
+}
+.admin-audit .toolbar-actions {
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin: 0;
+}
+.audit-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 180px;
+    flex: 1;
+    max-width: 350px;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    padding-left: 0.6rem;
+    background: var(--surface-alt);
+}
+.audit-search svg {
+    width: 1rem;
+    height: 1rem;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+.audit-search input {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+}
+.audit-loaded-count {
+    margin-right: auto;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+.admin-audit .history-table-wrap {
+    flex: 1;
+    min-height: 180px;
+    max-height: none;
+    margin: 0;
+    border-radius: 0.4rem;
+}
+.admin-audit .history-table {
+    min-width: 740px;
+}
+.admin-audit .history-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface-alt);
+    box-shadow: inset 0 -2px var(--border-hover);
+    font-size: 0.72rem;
+}
+.admin-audit .history-table td {
+    padding: 0.6rem 0.75rem;
+    vertical-align: top;
+    font-size: 0.75rem;
+}
+.admin-audit .history-table tr:nth-child(even) > td {
+    background: var(--result-row-stripe);
+}
+.admin-audit .history-table .audit-row-selected > td {
+    background: var(--accent-soft);
+}
+.audit-inspect {
+    display: inline-flex;
+    gap: 0.7rem;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    background: transparent;
+    padding: 0.25rem 0.5rem;
+    color: var(--accent);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+.audit-inspect span {
+    color: var(--muted);
+    font-weight: 400;
+}
+.audit-detail-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem 1.5rem;
+    margin: 0;
+    padding: 0.8rem;
+    max-height: 320px;
+    overflow: auto;
+}
+.audit-detail-fields dt {
+    color: var(--muted);
+    font-size: 0.7rem;
+    margin-bottom: 0.3rem;
+}
+.audit-detail-fields dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+}
+.audit-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.audit-footer .result-pagination-controls {
+    margin-left: auto;
+}
+.audit-footer button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+}
+.admin-audit .filter-field {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+.audit-detail-preview {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 0.7rem;
+    margin-bottom: 0.4rem;
+}
+.audit-footer .result-page-size-inline label,
+.audit-footer .result-page-size-inline select {
+    font-size: 0.75rem;
+}
+.sql-validation-feedback {
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+}
+
+/* History and health share the compact inspection layout used by Audit Events. */
+.inspection-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+.inspection-heading h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+.inspection-heading p {
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.history-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.9rem;
+}
+.history-panel[hidden],
+.system-health-panel [hidden],
+.system-health-panel[hidden] {
+    display: none;
+}
+.history-panel .history-filters,
+.system-health-panel .history-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    gap: 0.8rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--surface-alt);
+}
+.history-panel .filter-field,
+.system-health-panel .filter-field {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+.history-panel .filter-field label,
+.system-health-panel .filter-field label {
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+.history-panel .filter-field input,
+.history-panel .filter-field select,
+.system-health-panel .filter-field input,
+.system-health-panel .filter-field select {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.78rem;
+}
+.history-panel .toolbar-actions {
+    gap: 0.65rem;
+    margin: 0;
+    flex-wrap: wrap;
+}
+.inspection-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 180px;
+    flex: 1;
+    max-width: 350px;
+    padding-left: 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--surface-alt);
+}
+.inspection-search svg {
+    width: 1rem;
+    height: 1rem;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+.inspection-search input {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+}
+.inspection-count {
+    margin-right: auto;
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+.history-panel .history-table-wrap {
+    flex: 1;
+    min-height: 180px;
+    max-height: none;
+    margin: 0;
+    border-radius: 0.4rem;
+}
+.history-panel .query-history-table {
+    min-width: 1040px;
+    width: 100%;
+}
+.history-panel .query-history-table th,
+.history-panel .query-history-table td {
+    width: auto;
+    padding: 0.6rem 0.7rem;
+    vertical-align: top;
+    font-size: 0.75rem;
+}
+.history-panel .query-history-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface-alt);
+    box-shadow: inset 0 -2px var(--border-hover);
+}
+.history-panel .query-history-table th:nth-child(1) {
+    width: 145px;
+}
+.history-panel .query-history-table th:nth-child(2) {
+    width: 100px;
+}
+.history-panel .query-history-table th:nth-child(3) {
+    width: 165px;
+}
+.history-panel .query-history-table th:nth-child(4),
+.history-panel .query-history-table th:nth-child(5) {
+    width: 75px;
+}
+.history-panel .query-history-table th:nth-child(7) {
+    width: 190px;
+}
+.history-panel .query-history-table tbody tr:nth-child(even) > td {
+    background: var(--result-row-stripe);
+}
+.history-panel .query-history-table td {
+    overflow-wrap: anywhere;
+}
+.history-panel .history-actions {
+    display: table-cell;
+    white-space: nowrap;
+}
+.history-panel .history-actions button {
+    display: inline-block;
+    margin-right: 0.3rem;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.72rem;
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    background: transparent;
+    color: var(--accent);
+}
+.inspection-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.inspection-footer .result-pagination-controls {
+    margin-left: auto;
+}
+.inspection-footer button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+}
+.inspection-footer label,
+.inspection-footer select {
+    font-size: 0.75rem;
+}
+.inspection-detail-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem 1.5rem;
+    margin: 0;
+    padding: 0.8rem;
+}
+.inspection-detail-fields dt {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+}
+.inspection-detail-fields dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+}
+.history-detail-sql {
+    margin: 0.5rem;
+    padding: 0.75rem;
+    max-height: 240px;
+    overflow: auto;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    font-size: 0.75rem;
+}
+.system-health-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.9rem;
+    padding: 0.82rem 0.95rem;
+    background: var(--workspace-surface);
+    border: 0;
+    box-shadow: none;
+}
+.system-health-panel > *,
+.system-health-panel .system-health-control-plane > * {
+    flex-shrink: 0;
+}
+.health-view-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    border-bottom: 1px solid var(--border);
+}
+.health-view-switcher button {
+    padding: 0.65rem 0.8rem;
+    border-radius: 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+.health-view-switcher button[aria-pressed='true'] {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+.system-health-panel .result-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.system-health-panel .result-stat {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+.system-health-panel .result-stat > span {
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+.system-health-panel .result-stat strong {
+    font-size: 0.88rem;
+    overflow-wrap: anywhere;
+}
+.system-health-panel .panel-inner {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+}
+.system-health-panel h3,
+.system-health-panel h4 {
+    font-size: 0.9rem;
+    margin: 0.5rem 0;
+}
+.system-health-panel .history-table-wrap {
+    max-height: 480px;
+    border-radius: 0.4rem;
+}
+.system-health-panel .history-table {
+    min-width: 650px;
+}
+.system-health-panel .result-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface-alt);
+    box-shadow: inset 0 -2px var(--border-hover);
+}
+.system-health-panel .result-table th,
+.system-health-panel .result-table td {
+    font-size: 0.75rem;
+}
+.system-health-panel .result-table tr:nth-child(even) > td {
+    background: var(--result-row-stripe);
+}
+.health-scope {
+    font-weight: 400;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-left: 0.5rem;
+}
+.health-management {
+    position: relative;
+    margin-left: auto;
+}
+.health-management summary,
+.health-node-details summary,
+.health-errors summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 0.78rem;
+    padding: 0.4rem 0;
+}
+.health-management-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 5;
+    display: grid;
+    gap: 0.55rem;
+    width: 245px;
+    padding: 0.75rem;
+    border: 1px solid var(--border-hover);
+    border-radius: 0.5rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+.health-management-menu p {
+    margin: 0 0 0.2rem;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+.health-management-menu button {
+    padding: 0.5rem;
+    border-radius: 0.3rem;
+    font-size: 0.75rem;
+    text-align: left;
+}
+.health-management-menu button:last-child {
+    color: var(--danger);
+}
+.health-node-details {
+    min-width: 200px;
+}
+.health-node-details .inspection-detail-fields {
+    max-height: 260px;
+    overflow: auto;
+}
+.health-active-queries .inline-code {
+    display: block;
+    max-width: 400px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 100px;
+    overflow: auto;
+}
+.system-health-panel .result-stats-grid {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    padding: 0.7rem 0.5rem 1rem;
+}
+.system-health-panel .result-stat .status-pill {
+    align-self: flex-start;
+    width: fit-content;
+    padding: 0.1rem 0.65rem;
+}
+.health-latency-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0.75rem 0.5rem;
+}
+.health-latency-metrics dt {
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+.health-latency-metrics dd {
+    font-size: 1rem;
+    margin: 0.3rem 0 0;
+    font-weight: 600;
+}
+.health-empty {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin: 0.4rem 0 1rem;
+}
+.history-detail-sql,
+.history-panel .history-query-preview {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Quiet search fields keep focus on the outer control, not a nested input. */
+.inspection-search input,
+.audit-search input {
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 400;
+    padding: 0.5rem 0.6rem;
+    box-shadow: none;
+    outline: none;
+}
+.inspection-search input::placeholder,
+.audit-search input::placeholder {
+    font-size: inherit;
+    font-weight: 400;
+    color: var(--muted);
+    opacity: 1;
+}
+.inspection-search input:focus,
+.audit-search input:focus {
+    outline: none;
+    box-shadow: none;
+    border: 0;
+}
+.inspection-search:focus-within,
+.audit-search:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent-soft);
+    outline-offset: 1px;
+}
+.history-panel .query-history-table th,
+.admin-audit .history-table th {
+    background: var(--accent-soft);
+    color: var(--text);
+    box-shadow: inset 0 -2px var(--accent);
+    padding: 0.7rem 1rem;
+}
+.history-panel .query-history-table td,
+.admin-audit .history-table td {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+.history-panel .query-history-table th:nth-child(1) {
+    width: 165px;
+}
+.history-panel .query-history-table th:nth-child(2) {
+    width: 130px;
+}
+.history-panel .query-history-table th:nth-child(3) {
+    width: 190px;
+}
+.history-panel .query-history-table th:nth-child(7) {
+    width: 200px;
+}
+.history-panel .query-history-table {
+    min-width: 1160px;
+}
+.admin-audit .history-table th:nth-child(4),
+.admin-audit .history-table td:nth-child(4) {
+    width: 150px;
+}
+.compact-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-left: auto;
+}
+.compact-pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--text);
+    font-size: 1.1rem;
+}
+.compact-pagination-position {
+    display: inline-flex;
+    gap: 0.55rem;
+    align-items: center;
+    white-space: nowrap;
+}
+.compact-pagination-position strong {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--border-hover);
+    border-radius: 0.4rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+}
+.system-health-panel {
+    width: 100%;
+    max-width: 1180px;
+    align-self: start;
+}
+.system-health-panel .result-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 190px));
+    justify-content: start;
+    gap: 0.7rem 1.3rem;
+    padding: 0.55rem 0.4rem 0.75rem;
+}
+.system-health-panel .history-filters {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 320px));
+    justify-content: start;
+    gap: 0.65rem;
+    padding: 0.65rem;
+}
+.system-health-panel .panel-inner {
+    gap: 0.6rem;
+}
+.system-health-panel .system-health-control-plane > .panel-inner {
+    padding-top: 0.5rem;
+}
+.system-health-panel .health-latency-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(105px, 150px));
+}
+.system-health-panel .result-table th,
+.system-health-panel .result-table td {
+    padding: 0.5rem 0.8rem;
+}
+.compact-connections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    width: 100%;
+    min-width: 0;
+}
+.connections-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+.connections-engine-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.connections-engine-filter select {
+    font-size: 0.78rem;
+    min-width: 160px;
+}
+.connections-maintenance {
+    position: relative;
+    font-size: 0.75rem;
+}
+.connections-maintenance summary {
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0.5rem;
+}
+.connections-maintenance button {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 5;
+    white-space: nowrap;
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    font-size: 0.75rem;
+}
+.connections-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    overflow: auto;
+}
+.connections-table {
+    width: 100%;
+    min-width: 850px;
+}
+.connections-table th {
+    background: var(--accent-soft);
+    box-shadow: inset 0 -2px var(--accent);
+    position: sticky;
+    top: 0;
+}
+.connections-table th,
+.connections-table td {
+    padding: 0.65rem 1rem;
+    font-size: 0.78rem;
+    text-align: left;
+}
+.connections-table tbody tr:nth-child(even) td {
+    background: var(--result-row-stripe);
+}
+.connection-name-cell {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+.connection-name-cell img {
+    flex-shrink: 0;
+    object-fit: contain;
+    padding: 3px;
+    border-radius: 5px;
+    background: var(--vendor-badge-bg);
+    border: 1px solid var(--vendor-badge-border);
+}
+.connection-name-cell strong {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.connection-name-cell small {
+    display: block;
+    color: var(--muted);
+    margin-top: 0.25rem;
+}
+.connection-endpoint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+}
+.connection-row-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+.connection-row-actions .icon-button {
+    width: 1.8rem;
+    height: 1.8rem;
+}
+.admin-grid-connections .connection-editor-page {
+    max-width: 1100px;
+}
+
+/* Keep audit summaries on one line; full values remain in expanded details. */
+.admin-audit .history-table {
+    min-width: 960px;
+}
+.admin-audit .history-table tbody tr:not(.audit-expanded-row) > td {
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.audit-detail-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+.audit-detail-summary .audit-detail-preview {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+.audit-detail-summary .audit-inspect {
+    flex-shrink: 0;
 }

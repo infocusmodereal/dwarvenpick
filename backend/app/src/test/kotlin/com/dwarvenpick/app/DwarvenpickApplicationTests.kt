@@ -928,8 +928,10 @@ class DwarvenpickApplicationTests {
                     .cookie(*analystSession)
                     .queryParam("limit", "1")
                     .queryParam("offset", "0")
+                    .queryParam("includeTotal", "true")
                     .queryParam("sort", "newest"),
             ).andExpect(status().isOk)
+            .andExpect(header().exists("X-Total-Count"))
             .andExpect(jsonPath("$[0].executionId").value(executionId))
             .andExpect(jsonPath("$[0].queryText").value("select generate_series(1,3)"))
             .andExpect(jsonPath("$[0].queryTextRedacted").value(false))

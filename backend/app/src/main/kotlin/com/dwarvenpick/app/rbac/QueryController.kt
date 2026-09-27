@@ -347,6 +347,7 @@ class QueryController(
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) actor: String?,
         @RequestParam(required = false) sort: String?,
+        @RequestParam(defaultValue = "false") includeTotal: Boolean,
         authentication: Authentication,
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
@@ -381,7 +382,21 @@ class QueryController(
                     offset = offset ?: 0,
                     sortOrder = sortOrder,
                 )
-            ResponseEntity.ok(history)
+            val builder = ResponseEntity.ok()
+            if (includeTotal) {
+                val total =
+                    queryExecutionManager.countHistory(
+                        principal.username,
+                        principal.roles.contains("SYSTEM_ADMIN"),
+                        datasourceId,
+                        statusFilter,
+                        fromInstant,
+                        toInstant,
+                        actor,
+                    )
+                builder.header("X-Total-Count", total.toString())
+            }
+            builder.body(history)
         } catch (ex: IllegalArgumentException) {
             ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message ?: "Bad request."))
         }

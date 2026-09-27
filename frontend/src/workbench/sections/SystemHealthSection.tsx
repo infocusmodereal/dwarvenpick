@@ -1,32 +1,12 @@
-import type {
-    CatalogDatasourceResponse,
-    ControlPlaneActiveQuery,
-    ControlPlaneDatasourceStatusResponse,
-    SystemHealthResponse
-} from '../types';
-import { IconButton } from '../components/WorkbenchIcons';
+import SystemHealthActivity, {
+    type ControlPlanePanelProps
+} from '../systemHealth/SystemHealthActivity';
+import { useState } from 'react';
+import { toStatusToneClass } from '../utils';
+import type { CatalogDatasourceResponse, SystemHealthResponse } from '../types';
+import { LabeledActionButton } from '../components/WorkbenchIcons';
 import InlineNotice from '../components/InlineNotice';
 import SystemHealthEngineView from '../systemHealth/SystemHealthEngineView';
-
-type ControlPlanePanelProps = {
-    loading: boolean;
-    error: string;
-    response: ControlPlaneDatasourceStatusResponse | null;
-    windowSeconds: number;
-    onWindowSecondsChange: (value: number) => void;
-    actorFilter: string;
-    onActorFilterChange: (value: string) => void;
-    autoRefresh: boolean;
-    onAutoRefreshChange: (value: boolean) => void;
-    onRefresh: () => void;
-    onPause: () => void;
-    onResume: () => void;
-    onCancelAll: () => void;
-    onKillAll: () => void;
-    onCancelExecution: (executionId: string) => void;
-    onKillExecution: (executionId: string) => void;
-    onExportCsv: () => void;
-};
 
 type SystemHealthSectionProps = {
     hidden: boolean;
@@ -42,20 +22,6 @@ type SystemHealthSectionProps = {
     controlPlane: ControlPlanePanelProps;
 };
 
-const formatDuration = (durationMs: number | null | undefined): string => {
-    if (durationMs === null || durationMs === undefined) {
-        return '-';
-    }
-    if (durationMs < 1000) {
-        return `${durationMs.toLocaleString()} ms`;
-    }
-    const seconds = Math.floor(durationMs / 1000);
-    return `${seconds.toLocaleString()} s`;
-};
-
-const buildActorOptions = (queries: ControlPlaneActiveQuery[]): string[] =>
-    Array.from(new Set(queries.map((query) => query.actor).filter(Boolean))).sort();
-
 export default function SystemHealthSection({
     hidden,
     visibleDatasources,
@@ -65,10 +31,23 @@ export default function SystemHealthSection({
     onCredentialProfileChange,
     loading,
     error,
-    response,
+    response: fetchedResponse,
     onRefresh,
-    controlPlane
+    controlPlane: fetchedControlPlane
 }: SystemHealthSectionProps) {
+    const response =
+        fetchedResponse?.datasourceId === datasourceId &&
+        fetchedResponse.credentialProfile === credentialProfile
+            ? fetchedResponse
+            : null;
+    const controlPlane = {
+        ...fetchedControlPlane,
+        response:
+            fetchedControlPlane.response?.datasourceId === datasourceId
+                ? fetchedControlPlane.response
+                : null
+    };
+    const [view, setView] = useState<'engine' | 'activity' | 'pools'>('engine');
     const datasourcesWithSysadminProfiles = visibleDatasources.filter(
         (datasource) => (datasource.sysadminCredentialProfiles ?? []).length > 0
     );
@@ -77,14 +56,27 @@ export default function SystemHealthSection({
         (datasource) => datasource.id === datasourceId
     );
     const availableProfiles = selectedDatasource?.sysadminCredentialProfiles ?? [];
-    const controlPlaneActorOptions = buildActorOptions(controlPlane.response?.activeQueries ?? []);
-    const normalizedControlPlaneActorFilter = controlPlane.actorFilter.trim();
-    const displayedActiveQueries = (controlPlane.response?.activeQueries ?? []).filter((query) =>
-        normalizedControlPlaneActorFilter ? query.actor === normalizedControlPlaneActorFilter : true
-    );
 
     return (
-        <section className="panel system-health-panel" hidden={hidden}>
+        <section className="panel system-health-panel" hidden={hidden} aria-label="System health">
+            <header className="inspection-heading">
+                <div>
+                    <h2>System Health</h2>
+                    <p>Engine health and query operations</p>
+                </div>
+                <LabeledActionButton
+                    icon="refresh"
+                    label="Refresh"
+                    title="Refresh engine health and query activity"
+                    disabled={
+                        loading || controlPlane.loading || !datasourceId || !credentialProfile
+                    }
+                    onClick={() => {
+                        onRefresh();
+                        controlPlane.onRefresh();
+                    }}
+                />
+            </header>
             {!hasSysadminConnections ? (
                 <InlineNotice tone="warning">
                     No connections have a sysadmin credential profile. Mark a credential profile as
@@ -151,13 +143,23 @@ export default function SystemHealthSection({
                 </div>
             </div>
 
-            <div className="row toolbar-actions">
-                <IconButton
-                    icon="refresh"
-                    title={loading ? 'Refreshing system health...' : 'Refresh system health'}
-                    onClick={onRefresh}
-                    disabled={loading || !datasourceId || !credentialProfile}
-                />
+            <div className="health-view-switcher" role="group" aria-label="Health views">
+                {(
+                    [
+                        ['engine', 'Engine health'],
+                        ['activity', 'Query activity'],
+                        ['pools', 'Connection pools']
+                    ] as const
+                ).map(([value, label]) => (
+                    <button
+                        key={value}
+                        type="button"
+                        aria-pressed={view === value}
+                        onClick={() => setView(value)}
+                    >
+                        {label}
+                    </button>
+                ))}
             </div>
 
             {error ? <InlineNotice tone="error">{error}</InlineNotice> : null}
@@ -179,7 +181,9 @@ export default function SystemHealthSection({
                         </div>
                         <div className="result-stat">
                             <span>Status</span>
-                            <strong>{response.status}</strong>
+                            <strong className={toStatusToneClass(response.status)}>
+                                {response.status}
+                            </strong>
                         </div>
                         <div className="result-stat">
                             <span>Nodes</span>
@@ -211,356 +215,21 @@ export default function SystemHealthSection({
                         </p>
                     ) : null}
 
-                    <SystemHealthEngineView response={response} />
+                    {view === 'engine' && (
+                        <div className="health-engine-details">
+                            <SystemHealthEngineView response={response} />
+                        </div>
+                    )}
                 </>
             ) : null}
 
-            {datasourceId ? (
-                <div className="panel-inner system-health-control-plane">
-                    <h3>Control Plane</h3>
-                    <div className="history-filters">
-                        <div className="filter-field">
-                            <label htmlFor="control-plane-window">Window</label>
-                            <div className="select-wrap">
-                                <select
-                                    id="control-plane-window"
-                                    value={controlPlane.windowSeconds}
-                                    onChange={(event) =>
-                                        controlPlane.onWindowSecondsChange(
-                                            Number(event.target.value)
-                                        )
-                                    }
-                                >
-                                    <option value={300}>Last 5 minutes</option>
-                                    <option value={900}>Last 15 minutes</option>
-                                    <option value={3600}>Last hour</option>
-                                    <option value={21600}>Last 6 hours</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="filter-field">
-                            <label htmlFor="control-plane-actor-filter">Actor</label>
-                            <input
-                                id="control-plane-actor-filter"
-                                value={controlPlane.actorFilter}
-                                onChange={(event) =>
-                                    controlPlane.onActorFilterChange(event.target.value)
-                                }
-                                placeholder="Filter actor..."
-                                list="control-plane-actor-options"
-                            />
-                            <datalist id="control-plane-actor-options">
-                                {controlPlaneActorOptions.map((actor) => (
-                                    <option key={`actor-${actor}`} value={actor} />
-                                ))}
-                            </datalist>
-                        </div>
-
-                        <div className="filter-field">
-                            <label htmlFor="control-plane-auto-refresh">Auto Refresh</label>
-                            <div className="select-wrap">
-                                <select
-                                    id="control-plane-auto-refresh"
-                                    value={controlPlane.autoRefresh ? 'on' : 'off'}
-                                    onChange={(event) =>
-                                        controlPlane.onAutoRefreshChange(
-                                            event.target.value === 'on'
-                                        )
-                                    }
-                                >
-                                    <option value="on">On (5s)</option>
-                                    <option value="off">Off</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="row toolbar-actions">
-                        <IconButton
-                            icon="refresh"
-                            title={
-                                controlPlane.loading
-                                    ? 'Refreshing control plane...'
-                                    : 'Refresh control plane'
-                            }
-                            onClick={controlPlane.onRefresh}
-                            disabled={controlPlane.loading || !datasourceId}
-                        />
-                        <button
-                            type="button"
-                            onClick={
-                                controlPlane.response?.paused
-                                    ? controlPlane.onResume
-                                    : controlPlane.onPause
-                            }
-                            disabled={!controlPlane.response || controlPlane.loading}
-                        >
-                            {controlPlane.response?.paused
-                                ? 'Resume connection'
-                                : 'Pause connection'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={controlPlane.onCancelAll}
-                            disabled={!controlPlane.response || controlPlane.loading}
-                        >
-                            Cancel queued/running
-                        </button>
-                        <button
-                            type="button"
-                            onClick={controlPlane.onKillAll}
-                            disabled={!controlPlane.response || controlPlane.loading}
-                        >
-                            Kill queued/running
-                        </button>
-                        <IconButton
-                            icon="download"
-                            title="Download running/queued queries as CSV"
-                            onClick={controlPlane.onExportCsv}
-                            disabled={!controlPlane.response || controlPlane.loading}
-                        />
-                    </div>
-
-                    {controlPlane.error ? (
-                        <InlineNotice tone="error">{controlPlane.error}</InlineNotice>
-                    ) : null}
-
-                    {controlPlane.response ? (
-                        <>
-                            <div className="result-stats-grid">
-                                <div className="result-stat">
-                                    <span>Paused</span>
-                                    <strong>{controlPlane.response.paused ? 'Yes' : 'No'}</strong>
-                                </div>
-                                <div className="result-stat">
-                                    <span>Queued</span>
-                                    <strong>
-                                        {controlPlane.response.queuedCount.toLocaleString()}
-                                    </strong>
-                                </div>
-                                <div className="result-stat">
-                                    <span>Running</span>
-                                    <strong>
-                                        {controlPlane.response.runningCount.toLocaleString()}
-                                    </strong>
-                                </div>
-                                <div className="result-stat">
-                                    <span>Pools</span>
-                                    <strong>
-                                        {controlPlane.response.pools.length.toLocaleString()}
-                                    </strong>
-                                </div>
-                                <div className="result-stat">
-                                    <span>Updated</span>
-                                    <strong title={controlPlane.response.fetchedAt}>
-                                        {new Date(controlPlane.response.fetchedAt).toLocaleString()}
-                                    </strong>
-                                </div>
-                            </div>
-
-                            <div className="panel-inner">
-                                <h4>Latency</h4>
-                                <div className="result-stats-grid">
-                                    <div className="result-stat">
-                                        <span>Samples</span>
-                                        <strong>
-                                            {controlPlane.response.latency.sampleSize.toLocaleString()}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Avg</span>
-                                        <strong>
-                                            {formatDuration(
-                                                controlPlane.response.latency.averageMs ?? null
-                                            )}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>P50</span>
-                                        <strong>
-                                            {formatDuration(
-                                                controlPlane.response.latency.p50Ms ?? null
-                                            )}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>P90</span>
-                                        <strong>
-                                            {formatDuration(
-                                                controlPlane.response.latency.p90Ms ?? null
-                                            )}
-                                        </strong>
-                                    </div>
-                                    <div className="result-stat">
-                                        <span>Max</span>
-                                        <strong>
-                                            {formatDuration(
-                                                controlPlane.response.latency.maxMs ?? null
-                                            )}
-                                        </strong>
-                                    </div>
-                                </div>
-
-                                {controlPlane.response.latency.latestErrors.length > 0 ? (
-                                    <div className="panel-inner">
-                                        <h4>Latest errors</h4>
-                                        <div className="history-table-wrap">
-                                            <table className="result-table history-table control-plane-errors-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Message</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {controlPlane.response.latency.latestErrors.map(
-                                                        (message, index) => (
-                                                            <tr key={`err-${index}-${message}`}>
-                                                                <td className="audit-details">
-                                                                    {message}
-                                                                </td>
-                                                            </tr>
-                                                        )
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </div>
-
-                            <div className="panel-inner">
-                                <h4>Connection pools</h4>
-                                <div className="history-table-wrap">
-                                    <table className="result-table history-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Credential Profile</th>
-                                                <th>Active</th>
-                                                <th>Idle</th>
-                                                <th>Total</th>
-                                                <th>Max</th>
-                                                <th>Awaiting</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {controlPlane.response.pools.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={6} className="muted-id">
-                                                        No pools reported.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                controlPlane.response.pools.map((pool) => (
-                                                    <tr
-                                                        key={`pool-${pool.datasourceId}-${pool.credentialProfile}`}
-                                                    >
-                                                        <td>{pool.credentialProfile}</td>
-                                                        <td>
-                                                            {pool.activeConnections.toLocaleString()}
-                                                        </td>
-                                                        <td>
-                                                            {pool.idleConnections.toLocaleString()}
-                                                        </td>
-                                                        <td>
-                                                            {pool.totalConnections.toLocaleString()}
-                                                        </td>
-                                                        <td>
-                                                            {pool.maximumPoolSize.toLocaleString()}
-                                                        </td>
-                                                        <td>
-                                                            {pool.threadsAwaitingConnection.toLocaleString()}
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div className="panel-inner">
-                                <h4>Queued/running queries</h4>
-                                <div className="history-table-wrap">
-                                    <table className="result-table history-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Status</th>
-                                                <th>Actor</th>
-                                                <th>Duration</th>
-                                                <th>Submitted</th>
-                                                <th>SQL</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {displayedActiveQueries.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={6} className="muted-id">
-                                                        {normalizedControlPlaneActorFilter
-                                                            ? 'No queued or running queries for this actor.'
-                                                            : 'No queued or running queries.'}
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                displayedActiveQueries.map((query) => (
-                                                    <tr key={`active-${query.executionId}`}>
-                                                        <td>
-                                                            <span className="status-pill">
-                                                                {query.status}
-                                                            </span>
-                                                        </td>
-                                                        <td>{query.actor}</td>
-                                                        <td>{formatDuration(query.durationMs)}</td>
-                                                        <td title={query.submittedAt}>
-                                                            {new Date(
-                                                                query.submittedAt
-                                                            ).toLocaleString()}
-                                                        </td>
-                                                        <td title={query.sqlPreview}>
-                                                            <code className="inline-code">
-                                                                {query.sqlPreview}
-                                                            </code>
-                                                        </td>
-                                                        <td>
-                                                            <div className="row toolbar-actions">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        controlPlane.onCancelExecution(
-                                                                            query.executionId
-                                                                        )
-                                                                    }
-                                                                    disabled={controlPlane.loading}
-                                                                >
-                                                                    Cancel
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        controlPlane.onKillExecution(
-                                                                            query.executionId
-                                                                        )
-                                                                    }
-                                                                    disabled={controlPlane.loading}
-                                                                >
-                                                                    Kill
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <p className="muted-id">Loading control plane status...</p>
-                    )}
-                </div>
-            ) : null}
+            {datasourceId && (
+                <SystemHealthActivity
+                    datasourceId={datasourceId}
+                    view={view}
+                    controlPlane={controlPlane}
+                />
+            )}
         </section>
     );
 }
