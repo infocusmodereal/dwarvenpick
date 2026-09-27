@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     prepareTabForQueryExecution,
+    executionForId,
+    updateExecutionForId,
     queryRunStatusMessage
 } from '../workbench/queryExecutionState';
 import {
@@ -37,6 +39,35 @@ describe('query workflow helpers', () => {
             statusMessage: 'Running analysis...',
             errorMessage: ''
         });
+    });
+
+    it('isolates plan status and errors from the query and rejects obsolete plan updates', () => {
+        const query = {
+            ...buildWorkspaceTab('postgres', 'Query', 'select 2'),
+            executionId: 'query',
+            resultRows: [['2']],
+            rowCount: 1,
+            currentPageToken: 'page-2',
+            previousPageTokens: ['']
+        };
+        const plan = {
+            ...prepareTabForQueryExecution(query, 'explain', 'explain'),
+            executionId: 'plan'
+        };
+        const parent = { ...query, planExecution: plan };
+        const failed = updateExecutionForId(parent, 'plan', (current) => ({
+            ...current,
+            errorMessage: 'Plan failed',
+            isExecuting: false
+        }));
+        expect(failed.resultRows).toBe(query.resultRows);
+        expect(failed.currentPageToken).toBe('page-2');
+        expect(failed.rowCount).toBe(1);
+        expect(failed.errorMessage).toBe('');
+        expect(executionForId(failed, 'plan')?.errorMessage).toBe('Plan failed');
+        const next = prepareTabForQueryExecution(failed, 'statement', 'query');
+        expect(next.planExecution).toBeUndefined();
+        expect(updateExecutionForId(next, 'plan', () => plan)).toBe(next);
     });
 
     it('maps run modes to user-facing status messages', () => {

@@ -155,6 +155,7 @@ export type QueryExecutionStatusResponse = {
 };
 
 export type QueryResultColumn = {
+    updateCount?: boolean;
     name: string;
     jdbcType: string;
 };
@@ -501,6 +502,8 @@ export type PersistentWorkspaceTab = {
 };
 
 export type WorkspaceTab = PersistentWorkspaceTab & {
+    planExecution?: WorkspaceTab;
+    executionDatasourceId?: string;
     requestedCredentialProfile: string;
     queryJustification: string;
     isExecuting: boolean;
@@ -564,6 +567,11 @@ export type WorkspaceSection =
     'workbench' | 'history' | 'resources' | 'audit' | 'health' | 'admin' | 'connections';
 export type AdminSubsection = 'users' | 'groups' | 'access';
 export type IconGlyph =
+    | 'table'
+    | 'plan'
+    | 'chart'
+    | 'selection'
+    | 'script'
     | 'new'
     | 'rename'
     | 'duplicate'

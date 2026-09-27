@@ -1123,7 +1123,7 @@ class QueryExecutionManager(
         record: QueryExecutionRecord,
         affectedRows: Int,
     ) {
-        replaceBufferedColumns(record, listOf(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER")))
+        replaceBufferedColumns(record, listOf(QueryResultColumn(name = "affected_rows", jdbcType = "INTEGER", updateCount = true)))
         appendBufferedRow(record, listOf(affectedRows.toString()))
     }
 

@@ -24,6 +24,7 @@ export const prepareTabForQueryExecution = (
     runKind: WorkspaceTab['lastRunKind']
 ): WorkspaceTab => ({
     ...tab,
+    planExecution: undefined,
     isExecuting: true,
     executionId: '',
     executionStatus: '',
@@ -48,3 +49,21 @@ export const prepareTabForQueryExecution = (
     statusMessage: queryRunStatusMessage(modeLabel),
     errorMessage: ''
 });
+
+// Explain/Analyze has its own execution lifecycle; never replace the query's rows or metadata.
+export const executionForId = (tab: WorkspaceTab, executionId: string): WorkspaceTab | undefined =>
+    tab.planExecution?.executionId === executionId
+        ? tab.planExecution
+        : tab.executionId === executionId
+          ? tab
+          : undefined;
+
+export const updateExecutionForId = (
+    tab: WorkspaceTab,
+    executionId: string,
+    updater: (execution: WorkspaceTab) => WorkspaceTab
+): WorkspaceTab => {
+    if (tab.planExecution?.executionId === executionId)
+        return { ...tab, planExecution: updater(tab.planExecution) };
+    return tab.executionId === executionId ? updater(tab) : tab;
+};

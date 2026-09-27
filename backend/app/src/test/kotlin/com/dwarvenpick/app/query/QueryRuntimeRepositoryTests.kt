@@ -34,6 +34,23 @@ class QueryRuntimeRepositoryTests {
     }
 
     @Test
+    fun `update count marker survives persisted result metadata`() {
+        val record =
+            runtimeRecord(executionId = "update-count-marker").copy(
+                columns = listOf(QueryResultColumn("affected_rows", "INTEGER", updateCount = true)),
+                rows = listOf(listOf("3")),
+            )
+        queryRuntimeRepository.save(record)
+        assertThat(
+            queryRuntimeRepository
+                .find(record.executionId)
+                ?.columns
+                ?.single()
+                ?.updateCount,
+        ).isTrue()
+    }
+
+    @Test
     fun `metadata paths do not deserialize persisted result rows`() {
         val record = runtimeRecord(executionId = "metadata-only-exec")
         queryRuntimeRepository.save(record)

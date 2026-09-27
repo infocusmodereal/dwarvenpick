@@ -30,7 +30,7 @@ Use `Ctrl+Space` / `Cmd+Space` to open suggestions.
 
 ### Validate
 
-Use **Validate** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
+Use **Validate SQL** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
 `EXPLAIN` under the hood.
 
 Notes:
@@ -40,15 +40,15 @@ Notes:
   validate a write path.
 - Some engines can return line/column information; when available, the editor shows inline markers.
 
-### Explain vs Analyze
+### Query plans
 
-- **Explain** requests a query plan where supported.
-- **Analyze** is a deeper plan mode. Some engines may execute the query (for example PostgreSQL `EXPLAIN ANALYZE` and
+- **Explain** is available in the Query Plan tab and requests a plan where supported.
+- There is no separate Analyze toolbar action. Engine `EXPLAIN ANALYZE` SQL is a deeper plan mode. Some engines may execute the query (for example PostgreSQL `EXPLAIN ANALYZE` and
   Trino `EXPLAIN ANALYZE`). Use it deliberately on large tables.
 
 ### Run Script (multi-statement)
 
-Use **Run Script** for semicolon-delimited SQL scripts. The backend splits statements and executes them one-by-one.
+Use **Run > Run script** for semicolon-delimited SQL scripts. The backend splits statements and executes them one-by-one.
 
 Options:
 
@@ -71,19 +71,42 @@ Read-only access rules apply to **every** statement in a script.
 - Script-backed tabs autosave content changes back to the server.
 - Edit mode includes version history so owners can review and restore previous saved revisions.
 
-## Results
+## Execution and results
 
-- Results are shown as a table with paging controls.
-- Column sorting applies only to rows on the currently displayed server page. It does not reorder rows across other
-  pages.
-- You can export the full result set to CSV when the access rule for the query's exact credential profile allows
-  export. An export grant on another profile for the same connection does not apply. CSV export preserves the original
-  query result order and is not affected by current-page sorting.
-- The Results toolbar shows the completed row count and the server CSV row cap. When the result exceeds the cap,
-  Dwarvenpick keeps the export details available but disables download and asks you to narrow the query. During a
-  rolling upgrade an older backend may not report the cap; the export endpoint still enforces authorization and limits.
-- Drag the horizontal handle above Results to resize the results panel.
-- Script runs include a per-statement summary (succeeded/failed) to make it clear where a script stopped or failed.
+The toolbar below the SQL editor contains **Run**, **Format SQL**, **Validate SQL**, and **Options**. Run executes the selected SQL, or the statement at
+the cursor when there is no selection. Its dropdown also offers selection-only
+execution and Run script. Use Ctrl/Cmd+Enter for the current statement/selection,
+or Shift+Ctrl/Cmd+Enter for the complete script. During execution, Run becomes
+Cancel. Script transaction and stop-on-error settings and Save to Scripts are available in Options; access
+policy row/runtime limits remain enforced by the server.
+
+Results, Query Plan, and Stats share a compact execution summary. Query Plan
+shows the engine's textual/tabular plan from its explicit Explain action; opening
+the tab never submits SQL. Unsupported connectors show an empty state.
+Stats displays reported counts, execution duration, limits, application queue time,
+and timestamps. The execution API does not currently expose engine CPU, scan,
+shuffle, or peak-memory metrics, so the UI does not synthesize those values.
+
+Search and sorting operate **only on the loaded page** and never rerun SQL.
+Show rows controls backend result pagination, independently of the query row
+limit. Columns can be hidden/restored for the current result; the native table
+does not support pinning, reordering, or manual widths. Density changes row
+height/padding and is remembered locally. Expand hides the editor within the
+Workbench; Restore or Escape brings it back without browser fullscreen.
+
+Select cells by clicking or focusing and pressing Enter/Space; select rows using
+the row checkboxes. The result action menu offers copying selected cells/rows or
+all loaded rows, clearing sorting/search, resetting the table view, and clearing
+results without changing SQL or history. The separate Export button offers
+governed CSV export of all materialized result rows in original order and JSON
+export of the loaded page. JSON requires the executed credential profile to permit export and the loaded page to fit within the reported export row cap. JSON uses a columns/rows envelope to
+preserve duplicate column names and nulls. Local search, sorting, and hidden
+columns do not change export contents.
+
+Zero-row queries remain successful empty result sets. JDBC update counts are
+marked explicitly in result metadata so DDL/DML displays affected rows without
+an artificial table; an ordinary SELECT column named `affected_rows` remains a
+table column. Older saved results without that marker retain their table view.
 
 ## Explorer
 
@@ -132,3 +155,13 @@ The System Health page also includes a lightweight control plane for the selecte
 - Admin actions: pause/resume the connection, cancel/kill queued/running queries (optionally filtered by actor),
   and export queued/running queries as CSV.
 - Paused connection state is stored in the application database and survives backend restarts.
+
+Plan requests keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.
+
+Explorer search uses an inline search icon and the placeholder "Search objects", while retaining its accessible name and clear action. The editor/results column fits the available viewport with both navigation panels open; a saved Explorer width is constrained to leave room for the editor. Active navigation uses theme gold in both Light and Dark.
+
+Result export is available from the dedicated download-icon Export button, separate from the secondary actions menu. Menus distinguish headings, disabled actions and explanatory text; Run shortcuts use separate readable key labels. Results uses alternating row shading based on the logical row index so it remains stable while scrolling a virtualized page. Query Plan uses an operator-tree icon and Stats uses a chart icon.
+
+Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.
+
+The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. Validate SQL retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.

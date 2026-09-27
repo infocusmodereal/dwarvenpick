@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { firstPageToken, resultRowHeightPx, resultViewportHeightPx } from './constants';
+import { firstPageToken, resultViewportHeightPx } from './constants';
 import {
     buildCsvExportUrl,
     buildResultPageUrl,
@@ -9,6 +9,7 @@ import {
     previousResultPageRequest
 } from './queryResults';
 import type { QueryResultsResponse, ResultSortState, WorkspaceTab } from './types';
+import { updateExecutionForId } from './queryExecutionState';
 import { compareResultValues } from './utils';
 
 type UpdateWorkspaceTab = (
@@ -25,6 +26,13 @@ export type VisibleResultRows = {
 };
 
 export type QueryResultsView = {
+    search: string;
+    onSearchChange: (value: string) => void;
+    density: 'comfortable' | 'compact';
+    onDensityChange: (value: 'comfortable' | 'compact') => void;
+    onViewportHeightChange: (height: number) => void;
+    onClearSort: () => void;
+    loadedRows: Array<Array<string | null>>;
     exportIncludeHeaders: boolean;
     exportMenuRef: RefObject<HTMLDivElement | null>;
     exportingCsv: boolean;
@@ -65,6 +73,25 @@ export const useQueryResultsWorkflow = ({
     ) => Promise<void>;
     view: QueryResultsView;
 } => {
+    const [search, setSearch] = useState('');
+    const [density, setDensity] = useState<'comfortable' | 'compact'>(() => {
+        try {
+            return localStorage.getItem('dwarvenpick.results.density') === 'comfortable'
+                ? 'comfortable'
+                : 'compact';
+        } catch {
+            return 'compact';
+        }
+    });
+    const [viewportHeight, setViewportHeight] = useState(resultViewportHeightPx);
+    const resultRowHeightPx = density === 'compact' ? 28 : 38;
+    useEffect(() => {
+        try {
+            localStorage.setItem('dwarvenpick.results.density', density);
+        } catch {
+            /* Optional preference. */
+        }
+    }, [density]);
     const [exportIncludeHeaders, setExportIncludeHeaders] = useState(true);
     const [exportingCsv, setExportingCsv] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -72,6 +99,9 @@ export const useQueryResultsWorkflow = ({
     const [resultSortState, setResultSortState] = useState<ResultSortState>(null);
     const [resultGridScrollTop, setResultGridScrollTop] = useState(0);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    const feedbackRef = useRef(onFeedback);
+    feedbackRef.current = onFeedback;
+    const pageRequestVersion = useRef<Record<string, number>>({});
 
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
@@ -91,13 +121,19 @@ export const useQueryResultsWorkflow = ({
     }, [showExportMenu]);
 
     useEffect(() => {
+        setSearch('');
         setResultGridScrollTop(0);
         setResultSortState(null);
         setShowExportMenu(false);
-    }, [activeTabId]);
+    }, [activeTabId, activeTab?.executionId]);
 
     const sortedResultRows = useMemo(() => {
-        const rows = activeTab?.resultRows ?? [];
+        const needle = search.trim().toLocaleLowerCase();
+        const rows = (activeTab?.resultRows ?? []).filter(
+            (row) =>
+                !needle ||
+                row.some((value) => (value ?? 'NULL').toLocaleLowerCase().includes(needle))
+        );
         if (!resultSortState) {
             return rows;
         }
@@ -109,7 +145,7 @@ export const useQueryResultsWorkflow = ({
                 resultSortState.direction
             )
         );
-    }, [activeTab?.resultRows, resultSortState]);
+    }, [activeTab?.resultRows, resultSortState, search]);
 
     const visibleResultRows = useMemo<VisibleResultRows>(() => {
         if (sortedResultRows.length === 0) {
@@ -122,7 +158,7 @@ export const useQueryResultsWorkflow = ({
             };
         }
 
-        const viewportRows = Math.ceil(resultViewportHeightPx / resultRowHeightPx);
+        const viewportRows = Math.ceil(viewportHeight / resultRowHeightPx);
         const overscanRows = 8;
         const start = Math.max(
             0,
@@ -137,7 +173,7 @@ export const useQueryResultsWorkflow = ({
             bottomSpacerPx: Math.max(0, (sortedResultRows.length - end) * resultRowHeightPx),
             rows: sortedResultRows.slice(start, end)
         };
-    }, [resultGridScrollTop, sortedResultRows]);
+    }, [resultGridScrollTop, sortedResultRows, resultRowHeightPx, viewportHeight]);
 
     const fetchQueryResultsPage = useCallback(
         async (
@@ -146,6 +182,9 @@ export const useQueryResultsWorkflow = ({
             pageToken = firstPageToken,
             previousPageTokens?: string[]
         ) => {
+            const requestKey = `${tabId}:${executionId}`;
+            const requestVersion = (pageRequestVersion.current[requestKey] ?? 0) + 1;
+            pageRequestVersion.current[requestKey] = requestVersion;
             const response = await fetch(
                 buildResultPageUrl(executionId, resultsPageSize, pageToken),
                 {
@@ -158,22 +197,24 @@ export const useQueryResultsWorkflow = ({
             }
 
             const payload = (await response.json()) as QueryResultsResponse;
-            updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId && currentTab.executionId !== executionId) {
-                    return currentTab;
-                }
+            updateWorkspaceTab(tabId, (parent) =>
+                updateExecutionForId(parent, executionId, (currentTab) => {
+                    if (pageRequestVersion.current[requestKey] !== requestVersion) {
+                        return currentTab;
+                    }
 
-                return {
-                    ...currentTab,
-                    resultColumns: payload.columns,
-                    resultRows: payload.rows,
-                    nextPageToken: payload.nextPageToken ?? '',
-                    currentPageToken: pageToken,
-                    previousPageTokens: previousPageTokens ?? currentTab.previousPageTokens,
-                    rowLimitReached: payload.rowLimitReached,
-                    errorMessage: ''
-                };
-            });
+                    return {
+                        ...currentTab,
+                        resultColumns: payload.columns,
+                        resultRows: payload.rows,
+                        nextPageToken: payload.nextPageToken ?? '',
+                        currentPageToken: pageToken,
+                        previousPageTokens: previousPageTokens ?? currentTab.previousPageTokens,
+                        rowLimitReached: payload.rowLimitReached,
+                        errorMessage: ''
+                    };
+                })
+            );
         },
         [readFriendlyError, resultsPageSize, updateWorkspaceTab]
     );
@@ -193,8 +234,13 @@ export const useQueryResultsWorkflow = ({
             activeTab.executionId,
             request.pageToken,
             request.previousPageTokens
+        ).catch((error) =>
+            onFeedback(
+                error instanceof Error ? error.message : 'Unable to load result page.',
+                'error'
+            )
         );
-    }, [activeTab, fetchQueryResultsPage]);
+    }, [activeTab, fetchQueryResultsPage, onFeedback]);
 
     const handleLoadPreviousResults = useCallback(() => {
         if (!activeTab) {
@@ -211,8 +257,13 @@ export const useQueryResultsWorkflow = ({
             activeTab.executionId,
             request.pageToken,
             request.previousPageTokens
+        ).catch((error) =>
+            onFeedback(
+                error instanceof Error ? error.message : 'Unable to load result page.',
+                'error'
+            )
         );
-    }, [activeTab, fetchQueryResultsPage]);
+    }, [activeTab, fetchQueryResultsPage, onFeedback]);
 
     useEffect(() => {
         if (!activeTab?.executionId || activeTab.executionStatus !== 'SUCCEEDED') {
@@ -220,7 +271,13 @@ export const useQueryResultsWorkflow = ({
         }
 
         setResultGridScrollTop(0);
-        void fetchQueryResultsPage(activeTab.id, activeTab.executionId, firstPageToken, []);
+        void fetchQueryResultsPage(activeTab.id, activeTab.executionId, firstPageToken, []).catch(
+            (error) =>
+                feedbackRef.current(
+                    error instanceof Error ? error.message : 'Unable to load result page.',
+                    'error'
+                )
+        );
     }, [
         activeTab?.executionId,
         activeTab?.executionStatus,
@@ -296,6 +353,19 @@ export const useQueryResultsWorkflow = ({
     return {
         fetchQueryResultsPage,
         view: {
+            search,
+            onSearchChange: (value) => {
+                setSearch(value);
+                setResultGridScrollTop(0);
+            },
+            density,
+            onDensityChange: (value) => {
+                setDensity(value);
+                setResultGridScrollTop(0);
+            },
+            onViewportHeightChange: setViewportHeight,
+            onClearSort: () => setResultSortState(null),
+            loadedRows: sortedResultRows,
             exportIncludeHeaders,
             exportMenuRef,
             exportingCsv,

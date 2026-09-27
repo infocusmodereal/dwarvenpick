@@ -92,8 +92,6 @@ import {
 } from '../workbench/constants';
 import {
     adminIdentifierPattern,
-    formatExecutionDuration,
-    formatExecutionTimestamp,
     isTerminalExecutionStatus,
     isValidEmailAddress,
     normalizeAdminIdentifier
@@ -103,7 +101,11 @@ import {
     optionsToInput,
     parseOptionsInput
 } from '../workbench/connectionUtils';
-import { prepareTabForQueryExecution } from '../workbench/queryExecutionState';
+import {
+    prepareTabForQueryExecution,
+    executionForId,
+    updateExecutionForId
+} from '../workbench/queryExecutionState';
 import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
 import { readGovernedQueryError } from '../workbench/queryPolicyError';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
@@ -127,6 +129,9 @@ import {
 import AuditEventsSection from '../workbench/sections/AuditEventsSection';
 import QueryHistorySection from '../workbench/sections/QueryHistorySection';
 import QueryResultsSection from '../workbench/sections/QueryResultsSection';
+import RunQueryButton from '../workbench/components/RunQueryButton';
+import { queryCapabilities } from '../workbench/queryCapabilities';
+import { canExportLoadedResults } from '../workbench/queryResults';
 import ResourceManagerSection from '../workbench/sections/ResourceManagerSection';
 import SystemHealthSection from '../workbench/sections/SystemHealthSection';
 import { chevronDownIcon, chevronRightIcon, resolveDatasourceIcon } from '../workbench/icons';
@@ -547,6 +552,7 @@ export default function WorkspacePage() {
     });
     const workbenchGridRef = useRef<HTMLDivElement | null>(null);
     const schemaBrowserSidebarRef = useRef<HTMLElement | null>(null);
+    const fallbackEditorRef = useRef<HTMLTextAreaElement>(null);
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
@@ -825,14 +831,14 @@ export default function WorkspacePage() {
             minWidth,
             Math.min(maxConfiguredWidth, gridWidth - editorMinWidth)
         );
-        const currentWidth = workbenchExplorerSizePx ?? sidebar.getBoundingClientRect().width;
+        const currentWidth = sidebar.getBoundingClientRect().width;
 
         return {
             currentWidth,
             minWidth,
             maxWidth
         };
-    }, [workbenchExplorerSizePx]);
+    }, []);
 
     const handleExplorerResizerPointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1326,12 +1332,27 @@ export default function WorkspacePage() {
             }
         };
 
+        const closeForResize = () => {
+            setShowEditorShortcuts(false);
+            setEditorShortcutsPosition(null);
+        };
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            closeForResize();
+            editorShortcutsRef.current?.querySelector('button')?.focus();
+        };
         if (showEditorShortcuts) {
+            document.addEventListener('keydown', handleEscape, true);
+            window.addEventListener('resize', closeForResize);
             document.addEventListener('mousedown', handleOutsideClick);
         }
 
         return () => {
             document.removeEventListener('mousedown', handleOutsideClick);
+            document.removeEventListener('keydown', handleEscape, true);
+            window.removeEventListener('resize', closeForResize);
         };
     }, [showEditorShortcuts]);
 
@@ -1364,7 +1385,7 @@ export default function WorkspacePage() {
 
         const triggerRect = anchor.getBoundingClientRect();
         const viewportPadding = 12;
-        const estimatedWidth = 240;
+        const estimatedWidth = 280;
         const maxLeft = Math.max(
             viewportPadding,
             window.innerWidth - estimatedWidth - viewportPadding
@@ -1452,104 +1473,18 @@ export default function WorkspacePage() {
         [activeTab?.datasourceId, visibleDatasources]
     );
 
-    const explainPlanText = useMemo(() => {
-        if (
-            !activeTab ||
-            activeTab.lastRunKind !== 'explain' ||
-            activeTab.resultRows.length === 0
-        ) {
-            return '';
-        }
-
-        return activeTab.resultRows
-            .map((row) => row.filter((cell) => cell !== null).join(' | '))
-            .join('\n');
-    }, [activeTab]);
-
-    const analyzePlan = useMemo(() => {
-        if (
-            !activeTab ||
-            activeTab.lastRunKind !== 'analyze' ||
-            activeTab.resultRows.length === 0
-        ) {
-            return null;
-        }
-
-        const combined = activeTab.resultRows
-            .map((row) => row.filter((cell) => cell !== null).join(' '))
-            .join('\n')
-            .trim();
-        if (!combined) {
-            return null;
-        }
-
-        try {
-            const parsed = JSON.parse(combined) as unknown;
-            return {
-                kind: 'json' as const,
-                raw: combined,
-                json: parsed
-            };
-        } catch {
-            return {
-                kind: 'text' as const,
-                raw: combined
-            };
-        }
-    }, [activeTab]);
-
-    const scriptSummaryLabel = useMemo(() => {
-        const summary = activeTab?.scriptSummary;
-        if (!summary || summary.statementCount <= 1) {
-            return '';
-        }
-
-        const failures = summary.statements.filter(
-            (statement) => statement.status === 'FAILED'
-        ).length;
-        const successes = summary.statements.filter(
-            (statement) => statement.status === 'SUCCEEDED'
-        ).length;
-        const total = summary.statementCount;
-        if (failures > 0) {
-            return `Script: ${total} statements (${successes} succeeded, ${failures} failed)`;
-        }
-
-        return `Script: ${total} statements (${successes} succeeded)`;
-    }, [activeTab?.scriptSummary]);
-
-    const executionDurationLabel = useMemo(() => {
-        if (!activeTab?.startedAt || !activeTab?.completedAt) {
-            return '-';
-        }
-        return formatExecutionDuration(activeTab.startedAt, activeTab.completedAt);
-    }, [activeTab?.completedAt, activeTab?.startedAt]);
-
-    const executionSubmittedAtLabel = useMemo(
-        () => formatExecutionTimestamp(activeTab?.submittedAt ?? ''),
-        [activeTab?.submittedAt]
-    );
-
-    const executionCompletedAtLabel = useMemo(
-        () => formatExecutionTimestamp(activeTab?.completedAt ?? ''),
-        [activeTab?.completedAt]
-    );
-
-    const hideRedundantResultStatusMessage = useMemo(() => {
-        if (!activeTab?.executionId || !activeTab.statusMessage) {
-            return false;
-        }
-
-        const normalized = activeTab.statusMessage.trim().toLowerCase();
-        if (activeTab.executionStatus === 'SUCCEEDED' && normalized === 'query succeeded.') {
-            return true;
-        }
-        if (activeTab.executionStatus === 'SUCCEEDED' && normalized === 'query succeeded') {
-            return true;
-        }
-
-        return false;
-    }, [activeTab?.executionId, activeTab?.executionStatus, activeTab?.statusMessage]);
+    const executionCapabilities = queryCapabilities(selectedDatasource?.engine ?? '');
+    const [resultsExpanded, setResultsExpanded] = useState(false);
+    useEffect(() => {
+        const restore = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && resultsExpanded) {
+                event.preventDefault();
+                setResultsExpanded(false);
+            }
+        };
+        window.addEventListener('keydown', restore);
+        return () => window.removeEventListener('keydown', restore);
+    }, [resultsExpanded]);
 
     const selectedDatasourceIcon = useMemo(
         () => resolveDatasourceIcon(selectedDatasource?.engine),
@@ -3513,34 +3448,37 @@ export default function WorkspacePage() {
 
             const payload = (await response.json()) as QueryExecutionStatusResponse;
             const terminal = isTerminalExecutionStatus(payload.status);
-            updateWorkspaceTab(tabId, (currentTab) => {
-                if (currentTab.executionId && currentTab.executionId !== executionId) {
-                    return currentTab;
-                }
+            updateWorkspaceTab(tabId, (parent) =>
+                updateExecutionForId(parent, executionId, (currentTab) => {
+                    if (currentTab.executionId !== executionId) {
+                        return currentTab;
+                    }
 
-                return {
-                    ...currentTab,
-                    executionStatus: payload.status,
-                    queryHash: payload.queryHash,
-                    statusMessage: payload.message,
-                    errorMessage:
-                        payload.status === 'FAILED'
-                            ? (payload.errorSummary ?? payload.message)
-                            : '',
-                    rowLimitReached: payload.rowLimitReached,
-                    submittedAt: payload.submittedAt ?? currentTab.submittedAt,
-                    startedAt: payload.startedAt ?? '',
-                    completedAt: payload.completedAt ?? '',
-                    rowCount: payload.rowCount,
-                    columnCount: payload.columnCount,
-                    maxRowsPerQuery: payload.maxRowsPerQuery,
-                    maxExportRows: payload.maxExportRows,
-                    maxRuntimeSeconds: payload.maxRuntimeSeconds,
-                    credentialProfile: payload.credentialProfile,
-                    scriptSummary: payload.scriptSummary ?? null,
-                    isExecuting: !terminal
-                };
-            });
+                    return {
+                        ...currentTab,
+                        executionDatasourceId: payload.datasourceId,
+                        executionStatus: payload.status,
+                        queryHash: payload.queryHash,
+                        statusMessage: payload.message,
+                        errorMessage:
+                            payload.status === 'FAILED'
+                                ? (payload.errorSummary ?? payload.message)
+                                : '',
+                        rowLimitReached: payload.rowLimitReached,
+                        submittedAt: payload.submittedAt ?? currentTab.submittedAt,
+                        startedAt: payload.startedAt ?? '',
+                        completedAt: payload.completedAt ?? '',
+                        rowCount: payload.rowCount,
+                        columnCount: payload.columnCount,
+                        maxRowsPerQuery: payload.maxRowsPerQuery,
+                        maxExportRows: payload.maxExportRows,
+                        maxRuntimeSeconds: payload.maxRuntimeSeconds,
+                        credentialProfile: payload.credentialProfile,
+                        scriptSummary: payload.scriptSummary ?? null,
+                        isExecuting: !terminal
+                    };
+                })
+            );
 
             if (terminal) {
                 clearQueryStatusPolling(tabId);
@@ -3571,9 +3509,14 @@ export default function WorkspacePage() {
 
             const poll = async () => {
                 const trackedTab = workspaceTabsRef.current.find((tab) => tab.id === tabId);
+                const awaitingExecutionId =
+                    trackedTab &&
+                    ((trackedTab.isExecuting && !trackedTab.executionId) ||
+                        (trackedTab.planExecution?.isExecuting &&
+                            !trackedTab.planExecution.executionId));
                 if (
                     !trackedTab ||
-                    (trackedTab.executionId && trackedTab.executionId !== executionId)
+                    (!executionForId(trackedTab, executionId) && !awaitingExecutionId)
                 ) {
                     clearQueryStatusPolling(tabId);
                     return;
@@ -3593,19 +3536,24 @@ export default function WorkspacePage() {
                             error instanceof Error
                                 ? error.message
                                 : 'Execution status polling failed.';
-                        updateWorkspaceTab(tabId, (currentTab) => {
-                            if (currentTab.executionId && currentTab.executionId !== executionId) {
-                                return currentTab;
-                            }
+                        updateWorkspaceTab(tabId, (parent) =>
+                            updateExecutionForId(parent, executionId, (currentTab) => {
+                                if (
+                                    currentTab.executionId &&
+                                    currentTab.executionId !== executionId
+                                ) {
+                                    return currentTab;
+                                }
 
-                            return {
-                                ...currentTab,
-                                isExecuting: false,
-                                executionStatus: 'FAILED',
-                                statusMessage: 'Execution status unavailable.',
-                                errorMessage: message
-                            };
-                        });
+                                return {
+                                    ...currentTab,
+                                    isExecuting: false,
+                                    executionStatus: 'FAILED',
+                                    statusMessage: 'Execution status unavailable.',
+                                    errorMessage: message
+                                };
+                            })
+                        );
                         clearQueryStatusPolling(tabId);
                         void loadQueryHistory();
                         return;
@@ -3614,20 +3562,22 @@ export default function WorkspacePage() {
 
                 attempts += 1;
                 if (attempts >= queryStatusPollingMaxAttempts) {
-                    updateWorkspaceTab(tabId, (currentTab) => {
-                        if (currentTab.executionId && currentTab.executionId !== executionId) {
-                            return currentTab;
-                        }
+                    updateWorkspaceTab(tabId, (parent) =>
+                        updateExecutionForId(parent, executionId, (currentTab) => {
+                            if (currentTab.executionId && currentTab.executionId !== executionId) {
+                                return currentTab;
+                            }
 
-                        return {
-                            ...currentTab,
-                            isExecuting: false,
-                            executionStatus: 'FAILED',
-                            statusMessage: 'Execution polling timed out.',
-                            errorMessage:
-                                'Status polling timed out before the server returned a terminal state.'
-                        };
-                    });
+                            return {
+                                ...currentTab,
+                                isExecuting: false,
+                                executionStatus: 'FAILED',
+                                statusMessage: 'Execution polling timed out.',
+                                errorMessage:
+                                    'Status polling timed out before the server returned a terminal state.'
+                            };
+                        })
+                    );
                     clearQueryStatusPolling(tabId);
                     void loadQueryHistory();
                     return;
@@ -3651,7 +3601,8 @@ export default function WorkspacePage() {
 
     const handleCancelRun = useCallback(
         async (tabId: string, triggeredByShortcut = false) => {
-            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            const parent = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+            const tab = parent?.planExecution?.isExecuting ? parent.planExecution : parent;
             if (!tab || !tab.executionId || isTerminalExecutionStatus(tab.executionStatus)) {
                 updateWorkspaceTab(tabId, (currentTab) => ({
                     ...currentTab,
@@ -3681,10 +3632,12 @@ export default function WorkspacePage() {
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : 'Failed to cancel query execution.';
-                updateWorkspaceTab(tabId, (currentTab) => ({
-                    ...currentTab,
-                    errorMessage: message
-                }));
+                updateWorkspaceTab(tabId, (currentTab) =>
+                    updateExecutionForId(currentTab, tab.executionId, (execution) => ({
+                        ...execution,
+                        errorMessage: message
+                    }))
+                );
             }
         },
         [
@@ -3711,7 +3664,7 @@ export default function WorkspacePage() {
                 delete resourceAutosaveTimerRef.current[tabId];
             }
             delete resourceAutosaveSnapshotRef.current[tabId];
-            if (closingTab.isExecuting) {
+            if (closingTab.isExecuting || closingTab.planExecution?.isExecuting) {
                 void handleCancelRun(tabId);
             }
 
@@ -3769,7 +3722,7 @@ export default function WorkspacePage() {
                 return;
             }
 
-            if (tab.isExecuting) {
+            if (tab.isExecuting || tab.planExecution?.isExecuting) {
                 return;
             }
 
@@ -3823,9 +3776,21 @@ export default function WorkspacePage() {
                 return;
             }
 
+            const isPlanRun = runKind === 'explain' || runKind === 'analyze';
+            const updateRun = (updater: (current: WorkspaceTab) => WorkspaceTab) =>
+                updateWorkspaceTab(tabId, (parent) =>
+                    isPlanRun
+                        ? { ...parent, planExecution: updater(parent.planExecution ?? parent) }
+                        : updater(parent)
+                );
             clearValidationMarkers();
             updateWorkspaceTab(tabId, (currentTab) =>
-                prepareTabForQueryExecution(currentTab, modeLabel, runKind)
+                isPlanRun
+                    ? {
+                          ...currentTab,
+                          planExecution: prepareTabForQueryExecution(currentTab, modeLabel, runKind)
+                      }
+                    : prepareTabForQueryExecution(currentTab, modeLabel, runKind)
             );
 
             try {
@@ -3862,7 +3827,7 @@ export default function WorkspacePage() {
                 }
 
                 const payload = (await response.json()) as QueryExecutionResponse;
-                updateWorkspaceTab(tabId, (currentTab) => ({
+                updateRun((currentTab) => ({
                     ...currentTab,
                     executionId: payload.executionId,
                     executionStatus: payload.status,
@@ -3874,7 +3839,7 @@ export default function WorkspacePage() {
             } catch (error) {
                 clearQueryStatusPolling(tabId);
                 const message = error instanceof Error ? error.message : 'Failed to run query.';
-                updateWorkspaceTab(tabId, (currentTab) => ({
+                updateRun((currentTab) => ({
                     ...currentTab,
                     isExecuting: false,
                     errorMessage: message,
@@ -3902,6 +3867,16 @@ export default function WorkspacePage() {
         const model = editor?.getModel();
         const selection = editor?.getSelection();
 
+        const fallback = fallbackEditorRef.current;
+        if (fallback) {
+            const selectedSql = fallback.value.slice(
+                fallback.selectionStart,
+                fallback.selectionEnd
+            );
+            if (selectedSql) return { sql: selectedSql, mode: 'selection' as const };
+            const statement = statementAtCursor(fallback.value, fallback.selectionStart);
+            return { sql: statement?.sql ?? '', mode: 'statement' as const };
+        }
         if (model && selection && !selection.isEmpty()) {
             return {
                 sql: model.getValueInRange(selection),
@@ -3963,40 +3938,6 @@ export default function WorkspacePage() {
             : `EXPLAIN ${sqlToExplain}`;
         void executeSqlForTab(activeTab.id, explainSql, 'explain', 'explain');
     }, [activeTab, executeSqlForTab, resolveRunnableSqlForTab, showWorkbenchNotice]);
-
-    const handleAnalyze = useCallback(() => {
-        if (!activeTab) {
-            return;
-        }
-
-        const resolvedSql = resolveRunnableSqlForTab(activeTab);
-        const sqlToAnalyze = resolvedSql.sql.trim();
-        if (!sqlToAnalyze) {
-            showWorkbenchNotice('Select SQL text first, or use Run Selection.', 'warning');
-            return;
-        }
-
-        const engine = selectedDatasource?.engine ?? '';
-        const normalizedSql = sqlToAnalyze.replace(/;+\s*$/, '').trim();
-        const analyzeSql =
-            /^explain\b/i.test(normalizedSql) || !normalizedSql
-                ? normalizedSql
-                : engine === 'POSTGRESQL'
-                  ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${normalizedSql}`
-                  : engine === 'MYSQL' || engine === 'MARIADB'
-                    ? `EXPLAIN FORMAT=JSON ${normalizedSql}`
-                    : engine === 'TRINO'
-                      ? `EXPLAIN ANALYZE ${normalizedSql}`
-                      : `EXPLAIN ${normalizedSql}`;
-
-        void executeSqlForTab(activeTab.id, analyzeSql, 'analyze', 'analyze');
-    }, [
-        activeTab,
-        executeSqlForTab,
-        resolveRunnableSqlForTab,
-        selectedDatasource?.engine,
-        showWorkbenchNotice
-    ]);
 
     const writeTextToClipboard = useCallback(async (value: string) => {
         if (navigator.clipboard?.writeText) {
@@ -5065,18 +5006,24 @@ export default function WorkspacePage() {
     useEffect(() => {
         const handleKeyboardShortcut = (event: KeyboardEvent) => {
             const activeElement = document.activeElement as HTMLElement | null;
-            const focusedInEditor = activeElement?.closest('.monaco-editor');
+            const focusedInEditor = activeElement?.closest(
+                '.monaco-editor, .fallback-editor-textarea'
+            );
             if (!focusedInEditor) {
                 return;
             }
 
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                 event.preventDefault();
-                handleRunSelection();
+                if (event.shiftKey) handleRunScript();
+                else handleRunSelection();
                 return;
             }
 
-            if (event.key === 'Escape' && activeTab?.isExecuting) {
+            if (
+                event.key === 'Escape' &&
+                (activeTab?.isExecuting || activeTab?.planExecution?.isExecuting)
+            ) {
                 event.preventDefault();
                 void handleCancelRun(activeTab.id, true);
             }
@@ -5086,7 +5033,14 @@ export default function WorkspacePage() {
         return () => {
             window.removeEventListener('keydown', handleKeyboardShortcut);
         };
-    }, [activeTab?.id, activeTab?.isExecuting, handleCancelRun, handleRunSelection]);
+    }, [
+        activeTab?.id,
+        activeTab?.isExecuting,
+        activeTab?.planExecution?.isExecuting,
+        handleCancelRun,
+        handleRunSelection,
+        handleRunScript
+    ]);
 
     useEffect(() => {
         if (!tabsHydrated || typeof EventSource === 'undefined') {
@@ -5110,29 +5064,31 @@ export default function WorkspacePage() {
             }
 
             const tab = workspaceTabsRef.current.find(
-                (candidate) => candidate.executionId === payload.executionId
+                (candidate) => executionForId(candidate, payload.executionId)?.isExecuting
             );
             if (!tab) {
                 return;
             }
 
             const terminal = isTerminalExecutionStatus(payload.status);
-            updateWorkspaceTab(tab.id, (currentTab) => {
-                if (currentTab.executionId !== payload.executionId) {
-                    return currentTab;
-                }
+            updateWorkspaceTab(tab.id, (parent) =>
+                updateExecutionForId(parent, payload.executionId, (currentTab) => {
+                    if (currentTab.executionId !== payload.executionId) {
+                        return currentTab;
+                    }
 
-                return {
-                    ...currentTab,
-                    executionStatus: payload.status,
-                    statusMessage: payload.message,
-                    isExecuting: !terminal,
-                    errorMessage:
-                        payload.status === 'FAILED'
-                            ? currentTab.errorMessage || payload.message
-                            : currentTab.errorMessage
-                };
-            });
+                    return {
+                        ...currentTab,
+                        executionStatus: payload.status,
+                        statusMessage: payload.message,
+                        isExecuting: !terminal,
+                        errorMessage:
+                            payload.status === 'FAILED'
+                                ? currentTab.errorMessage || payload.message
+                                : currentTab.errorMessage
+                    };
+                })
+            );
 
             if (terminal) {
                 clearQueryStatusPolling(tab.id);
@@ -6896,7 +6852,11 @@ export default function WorkspacePage() {
                                         }
                                         queryJustification={activeTab?.queryJustification ?? ''}
                                         canOverrideCredentialProfile={isSystemAdmin}
-                                        disabled={!activeTab || activeTab.isExecuting}
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !!activeTab.planExecution?.isExecuting
+                                        }
                                         visibleDatasources={visibleDatasources}
                                         activeDatasource={visibleDatasources.find(
                                             (datasource) =>
@@ -7433,7 +7393,10 @@ export default function WorkspacePage() {
                             ) : null}
                         </aside>
 
-                        <section className="editor" ref={editorSectionRef}>
+                        <section
+                            className={`editor${resultsExpanded ? ' results-expanded' : ''}`}
+                            ref={editorSectionRef}
+                        >
                             <div className="editor-toolbar">
                                 <QueryTabsBar
                                     workspaceTabs={workspaceTabs}
@@ -7456,6 +7419,23 @@ export default function WorkspacePage() {
                                                 using fallback mode.
                                             </InlineNotice>
                                             <textarea
+                                                ref={fallbackEditorRef}
+                                                aria-label="Fallback SQL editor"
+                                                onSelect={(event) => {
+                                                    const field = event.currentTarget;
+                                                    setEditorCursorLegend((current) => ({
+                                                        ...current,
+                                                        selectedChars:
+                                                            field.selectionEnd -
+                                                            field.selectionStart,
+                                                        selectedLines: field.value
+                                                            .slice(
+                                                                field.selectionStart,
+                                                                field.selectionEnd
+                                                            )
+                                                            .split('\n').length
+                                                    }));
+                                                }}
                                                 value={activeTab?.queryText ?? ''}
                                                 onChange={(event) => {
                                                     if (!activeTab) {
@@ -7567,30 +7547,73 @@ export default function WorkspacePage() {
 
                             <div className="editor-action-row" ref={editorActionRowRef}>
                                 <div className="row editor-primary-actions">
+                                    <RunQueryButton
+                                        disabled={!activeTab || !selectedDatasource}
+                                        running={
+                                            (activeTab?.isExecuting ||
+                                                activeTab?.planExecution?.isExecuting) ??
+                                            false
+                                        }
+                                        hasSelection={editorCursorLegend.selectedChars > 0}
+                                        onRun={handleRunSelection}
+                                        onSelection={() => {
+                                            const fallback = fallbackEditorRef.current;
+                                            if (
+                                                activeTab &&
+                                                fallback &&
+                                                fallback.selectionEnd > fallback.selectionStart
+                                            ) {
+                                                void executeSqlForTab(
+                                                    activeTab.id,
+                                                    fallback.value.slice(
+                                                        fallback.selectionStart,
+                                                        fallback.selectionEnd
+                                                    ),
+                                                    'selection'
+                                                );
+                                                return;
+                                            }
+                                            const model = editorRef.current?.getModel();
+                                            const selection = editorRef.current?.getSelection();
+                                            if (
+                                                activeTab &&
+                                                model &&
+                                                selection &&
+                                                !selection.isEmpty()
+                                            ) {
+                                                void executeSqlForTab(
+                                                    activeTab.id,
+                                                    model.getValueInRange(selection),
+                                                    'selection'
+                                                );
+                                            }
+                                        }}
+                                        onScript={handleRunScript}
+                                        onCancel={() => {
+                                            if (activeTab) void handleCancelRun(activeTab.id);
+                                        }}
+                                    />
                                     <LabeledActionButton
-                                        icon="play"
-                                        label="Run"
-                                        title="Run selection"
-                                        onClick={handleRunSelection}
+                                        icon="align-start-horizontal"
+                                        label="Format SQL"
+                                        title="Format SQL (selection when available)"
+                                        onClick={handleFormatSql}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
-                                            !selectedDatasource
+                                            !!activeTab.planExecution?.isExecuting
                                         }
-                                        variant="primary"
+                                    />
+                                    <LabeledActionButton
+                                        icon="shield-check"
+                                        label={validatingSql ? 'Validating…' : 'Validate SQL'}
+                                        title="Validate the current statement or selection without executing it"
+                                        onClick={() => void handleValidateSql()}
+                                        disabled={
+                                            !activeTab || validatingSql || !selectedDatasource
+                                        }
                                     />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
-                                        <LabeledActionButton
-                                            icon="circle-play"
-                                            label="Run Script"
-                                            title="Run script"
-                                            onClick={handleRunScript}
-                                            disabled={
-                                                !activeTab ||
-                                                activeTab.isExecuting ||
-                                                !selectedDatasource
-                                            }
-                                        />
                                         <div
                                             className="script-options-anchor"
                                             ref={scriptOptionsAnchorRef}
@@ -7610,7 +7633,7 @@ export default function WorkspacePage() {
                                                         return next;
                                                     })
                                                 }
-                                                disabled={!activeTab || activeTab.isExecuting}
+                                                disabled={!activeTab}
                                             />
                                         </div>
                                         {showScriptOptions && scriptOptionsPosition
@@ -7626,13 +7649,7 @@ export default function WorkspacePage() {
                                                       }}
                                                   >
                                                       <div className="script-options-header">
-                                                          <span
-                                                              className="script-options-header-icon"
-                                                              aria-hidden
-                                                          >
-                                                              <IconGlyph icon="settings" />
-                                                          </span>
-                                                          <strong>Script Options</strong>
+                                                          <strong>Execution</strong>
                                                       </div>
                                                       <div className="script-options-body">
                                                           <label className="script-option-toggle">
@@ -7640,6 +7657,11 @@ export default function WorkspacePage() {
                                                               <input
                                                                   type="checkbox"
                                                                   checked={scriptStopOnError}
+                                                                  disabled={
+                                                                      activeTab?.isExecuting ||
+                                                                      activeTab?.planExecution
+                                                                          ?.isExecuting
+                                                                  }
                                                                   onChange={(event) =>
                                                                       setScriptStopOnError(
                                                                           event.target.checked
@@ -7654,6 +7676,11 @@ export default function WorkspacePage() {
                                                               <div className="select-wrap">
                                                                   <select
                                                                       id="script-transaction-mode"
+                                                                      disabled={
+                                                                          activeTab?.isExecuting ||
+                                                                          activeTab?.planExecution
+                                                                              ?.isExecuting
+                                                                      }
                                                                       value={scriptTransactionMode}
                                                                       onChange={(event) =>
                                                                           setScriptTransactionMode(
@@ -7672,96 +7699,35 @@ export default function WorkspacePage() {
                                                               </div>
                                                           </div>
                                                       </div>
+                                                      <div className="script-options-footer">
+                                                          <LabeledActionButton
+                                                              icon="save"
+                                                              label="Save"
+                                                              title="Save to Scripts"
+                                                              onClick={() => {
+                                                                  setShowScriptOptions(false);
+                                                                  handleSaveResourceDraftFromEditor();
+                                                              }}
+                                                              disabled={!activeTab}
+                                                          />
+                                                      </div>
                                                   </div>,
                                                   document.body
                                               )
                                             : null}
                                     </div>
-                                    <details className="action-menu">
-                                        <summary
-                                            className="labeled-action-button"
-                                            title="Analyze, explain, or validate SQL"
-                                        >
-                                            <span className="labeled-action-icon" aria-hidden>
-                                                <IconGlyph icon="activity" />
-                                            </span>
-                                            <span>Query Tools</span>
-                                            <span className="action-menu-chevron" aria-hidden>
-                                                <IconGlyph icon="chevron-down" />
-                                            </span>
-                                        </summary>
-                                        <div className="action-menu-popover">
-                                            <button
-                                                type="button"
-                                                onClick={handleAnalyze}
-                                                disabled={
-                                                    !activeTab ||
-                                                    activeTab.isExecuting ||
-                                                    !selectedDatasource
-                                                }
-                                            >
-                                                <IconGlyph icon="activity" />
-                                                <span>Analyze</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleExplain}
-                                                disabled={
-                                                    !activeTab ||
-                                                    activeTab.isExecuting ||
-                                                    !selectedDatasource
-                                                }
-                                            >
-                                                <IconGlyph icon="file-text" />
-                                                <span>Explain</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleValidateSql()}
-                                                disabled={
-                                                    !activeTab ||
-                                                    validatingSql ||
-                                                    !selectedDatasource
-                                                }
-                                            >
-                                                <IconGlyph icon="shield-check" />
-                                                <span>
-                                                    {validatingSql ? 'Validating...' : 'Validate'}
-                                                </span>
-                                            </button>
-                                        </div>
-                                    </details>
-                                    <LabeledActionButton
-                                        icon="align-start-horizontal"
-                                        label="Format SQL"
-                                        title="Format SQL"
-                                        onClick={handleFormatSql}
-                                        disabled={!activeTab || activeTab.isExecuting}
-                                    />
-                                    <LabeledActionButton
-                                        icon="save"
-                                        label="Save"
-                                        title="Save to Scripts"
-                                        onClick={handleSaveResourceDraftFromEditor}
-                                        disabled={!activeTab}
-                                    />
-                                    {activeTab?.isExecuting ? (
-                                        <LabeledActionButton
-                                            icon="close"
-                                            label="Cancel"
-                                            title="Cancel running query"
-                                            onClick={() => void handleCancelRun(activeTab.id)}
-                                            variant="danger"
-                                        />
-                                    ) : null}
                                 </div>
                                 <div className="row editor-secondary-actions">
                                     <div
                                         className="editor-shortcuts-wrapper"
                                         ref={editorShortcutsRef}
                                     >
-                                        <IconButton
-                                            icon="info"
+                                        <button
+                                            type="button"
+                                            className="icon-button editor-help-trigger"
+                                            aria-label="Editor shortcuts"
+                                            aria-haspopup="dialog"
+                                            aria-expanded={showEditorShortcuts}
                                             title="Editor shortcuts"
                                             onClick={() => {
                                                 const triggerRect =
@@ -7794,16 +7760,32 @@ export default function WorkspacePage() {
                                                     return next;
                                                 });
                                             }}
-                                        />
+                                        >
+                                            <span className="icon-button-glyph" aria-hidden>
+                                                <IconGlyph icon="info" />
+                                            </span>
+                                        </button>
                                         {showEditorShortcuts && editorShortcutsPosition
                                             ? createPortal(
                                                   <div
                                                       className="editor-shortcuts-popover is-floating"
                                                       role="dialog"
+                                                      aria-label="Editor shortcuts"
+                                                      onKeyDown={(event) => {
+                                                          if (event.key === 'Escape') {
+                                                              event.stopPropagation();
+                                                              setShowEditorShortcuts(false);
+                                                              setEditorShortcutsPosition(null);
+                                                              editorShortcutsRef.current
+                                                                  ?.querySelector('button')
+                                                                  ?.focus();
+                                                          }
+                                                      }}
                                                       ref={editorShortcutsPopoverRef}
                                                       style={{
                                                           top: `${editorShortcutsPosition.top}px`,
                                                           left: `${editorShortcutsPosition.left}px`,
+                                                          maxHeight: `${Math.min(420, editorShortcutsPosition.placement === 'above' ? editorShortcutsPosition.top - 12 : window.innerHeight - editorShortcutsPosition.top - 12)}px`,
                                                           transform:
                                                               editorShortcutsPosition.placement ===
                                                               'above'
@@ -7811,21 +7793,63 @@ export default function WorkspacePage() {
                                                                   : undefined
                                                       }}
                                                   >
-                                                      <h4>Editor Shortcuts</h4>
-                                                      <ul>
-                                                          <li>
-                                                              <kbd>Ctrl/Cmd + Enter</kbd>: Run
-                                                              selection (or full tab if no
-                                                              selection)
-                                                          </li>
-                                                          <li>
-                                                              <kbd>Esc</kbd>: Cancel currently
-                                                              running execution
-                                                          </li>
-                                                      </ul>
+                                                      <div className="editor-shortcuts-heading">
+                                                          <h4>Shortcuts</h4>
+                                                          <button
+                                                              type="button"
+                                                              className="editor-shortcuts-close"
+                                                              aria-label="Close shortcuts"
+                                                              title="Close shortcuts"
+                                                              onClick={() => {
+                                                                  setShowEditorShortcuts(false);
+                                                                  setEditorShortcutsPosition(null);
+                                                                  editorShortcutsRef.current
+                                                                      ?.querySelector('button')
+                                                                      ?.focus();
+                                                              }}
+                                                          >
+                                                              <IconGlyph icon="close" />
+                                                          </button>
+                                                      </div>
+                                                      <dl className="editor-shortcut-list">
+                                                          <div>
+                                                              <dt>Run statement / selection</dt>
+                                                              <dd>
+                                                                  <kbd>
+                                                                      {navigator.platform.includes(
+                                                                          'Mac'
+                                                                      )
+                                                                          ? 'Cmd'
+                                                                          : 'Ctrl'}
+                                                                  </kbd>
+                                                                  <kbd>Enter</kbd>
+                                                              </dd>
+                                                          </div>
+                                                          <div>
+                                                              <dt>Run script</dt>
+                                                              <dd>
+                                                                  <kbd>Shift</kbd>
+                                                                  <kbd>
+                                                                      {navigator.platform.includes(
+                                                                          'Mac'
+                                                                      )
+                                                                          ? 'Cmd'
+                                                                          : 'Ctrl'}
+                                                                  </kbd>
+                                                                  <kbd>Enter</kbd>
+                                                              </dd>
+                                                          </div>
+                                                          <div>
+                                                              <dt>Cancel execution</dt>
+                                                              <dd>
+                                                                  <kbd>Esc</kbd>
+                                                              </dd>
+                                                          </div>
+                                                      </dl>
                                                       {isSystemAdmin ? (
                                                           <details className="editor-diagnostics">
                                                               <summary>
+                                                                  <IconGlyph icon="chevron-down" />
                                                                   Autocomplete diagnostics
                                                               </summary>
                                                               <dl>
@@ -7909,149 +7933,59 @@ export default function WorkspacePage() {
                             </div>
 
                             <section className="results" ref={resultsSectionRef}>
-                                <div className="results-head">
-                                    {activeTab?.executionId ? (
-                                        <div className="result-stats-grid">
-                                            <div className="result-stat">
-                                                <span>Status</span>
-                                                <strong>
-                                                    {activeTab.executionStatus ||
-                                                        'PENDING_SUBMISSION'}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Rows</span>
-                                                <strong>
-                                                    {activeTab.rowCount.toLocaleString()}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Columns</span>
-                                                <strong>
-                                                    {activeTab.columnCount.toLocaleString()}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Duration</span>
-                                                <strong>{executionDurationLabel}</strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Submitted</span>
-                                                <strong title={executionSubmittedAtLabel}>
-                                                    {executionSubmittedAtLabel}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Completed</span>
-                                                <strong title={executionCompletedAtLabel}>
-                                                    {executionCompletedAtLabel}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Row Limit</span>
-                                                <strong>
-                                                    {activeTab.maxRowsPerQuery > 0
-                                                        ? activeTab.maxRowsPerQuery.toLocaleString()
-                                                        : '-'}
-                                                </strong>
-                                            </div>
-                                            <div className="result-stat">
-                                                <span>Runtime Limit</span>
-                                                <strong>
-                                                    {activeTab.maxRuntimeSeconds > 0
-                                                        ? `${activeTab.maxRuntimeSeconds}s`
-                                                        : '-'}
-                                                </strong>
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                    {scriptSummaryLabel && activeTab?.scriptSummary ? (
-                                        <details className="script-summary">
-                                            <summary>{scriptSummaryLabel}</summary>
-                                            <div className="script-summary-body">
-                                                <table className="script-summary-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>#</th>
-                                                            <th>Status</th>
-                                                            <th>Statement</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {activeTab.scriptSummary.statements.map(
-                                                            (statement) => (
-                                                                <tr key={`stmt-${statement.index}`}>
-                                                                    <td>
-                                                                        {statement.index.toLocaleString()}
-                                                                    </td>
-                                                                    <td>{statement.status}</td>
-                                                                    <td title={statement.message}>
-                                                                        {statement.sqlPreview}
-                                                                    </td>
-                                                                </tr>
-                                                            )
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </details>
-                                    ) : null}
-                                    {activeTab?.statusMessage &&
-                                    !hideRedundantResultStatusMessage ? (
-                                        <InlineNotice tone="info">
-                                            {activeTab.statusMessage}
-                                        </InlineNotice>
-                                    ) : null}
-                                    {activeTab?.errorMessage ? (
-                                        <InlineNotice tone="error">
-                                            {activeTab.errorMessage}
-                                        </InlineNotice>
-                                    ) : null}
-                                    {activeTab?.rowLimitReached ? (
-                                        <InlineNotice tone="warning">
-                                            Result row limit reached for this execution.
-                                        </InlineNotice>
-                                    ) : null}
-                                    {workbenchNotice ? (
-                                        <InlineNotice tone={workbenchNotice.tone}>
-                                            {workbenchNotice.message}
-                                        </InlineNotice>
-                                    ) : null}
-                                    {explainPlanText ? (
-                                        <div className="explain-plan">
-                                            <h3>Explain Plan</h3>
-                                            <pre>{explainPlanText}</pre>
-                                        </div>
-                                    ) : null}
-                                    {analyzePlan ? (
-                                        <div className="analysis-plan">
-                                            <h3>Analysis</h3>
-                                            <pre>
-                                                {analyzePlan.kind === 'json'
-                                                    ? JSON.stringify(analyzePlan.json, null, 2)
-                                                    : analyzePlan.raw}
-                                            </pre>
-                                        </div>
-                                    ) : null}
-                                    {activeTab?.executionStatus === 'SUCCEEDED' &&
-                                    activeTab.resultColumns.length === 0 &&
-                                    !activeTab.errorMessage ? (
-                                        <p>Query completed successfully and returned no rows.</p>
-                                    ) : null}
-                                    {!activeTab?.executionId &&
-                                    !activeTab?.statusMessage &&
-                                    !activeTab?.errorMessage ? (
-                                        <p className="results-empty">Results</p>
-                                    ) : null}
-                                </div>
-
-                                {activeTab?.resultColumns.length ? (
+                                {activeTab && (
                                     <QueryResultsSection
+                                        key={`${activeTab.id}:${activeTab.executionId}`}
                                         tab={activeTab}
                                         view={queryResultsView}
                                         onCopyCell={handleCopyCell}
+                                        expanded={resultsExpanded}
+                                        onToggleExpanded={() =>
+                                            setResultsExpanded((current) => !current)
+                                        }
+                                        capabilities={executionCapabilities}
+                                        canExport={canExportLoadedResults(
+                                            activeTab,
+                                            visibleDatasources
+                                        )}
+                                        onExplain={handleExplain}
+                                        onPlanPage={(pageToken, previousTokens) => {
+                                            const plan = activeTab.planExecution;
+                                            if (!plan) return;
+                                            void fetchQueryResultsPage(
+                                                activeTab.id,
+                                                plan.executionId,
+                                                pageToken,
+                                                previousTokens
+                                            ).catch((error) =>
+                                                showWorkbenchNotice(
+                                                    error instanceof Error
+                                                        ? error.message
+                                                        : 'Failed to load plan page.',
+                                                    'error'
+                                                )
+                                            );
+                                        }}
+                                        onClear={() =>
+                                            updateWorkspaceTab(activeTab.id, (current) => ({
+                                                ...prepareTabForQueryExecution(
+                                                    current,
+                                                    'statement',
+                                                    'query'
+                                                ),
+                                                isExecuting: false,
+                                                statusMessage: ''
+                                            }))
+                                        }
+                                        notice={
+                                            workbenchNotice ? (
+                                                <InlineNotice tone={workbenchNotice.tone}>
+                                                    {workbenchNotice.message}
+                                                </InlineNotice>
+                                            ) : null
+                                        }
                                     />
-                                ) : null}
+                                )}
                             </section>
                         </section>
                     </div>

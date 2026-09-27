@@ -35,10 +35,7 @@ const sanitizeReleaseIdentity = (payload: unknown): ReleaseIdentity => {
 };
 
 const readResultRowCount = async (page: Page): Promise<number> => {
-    const rowStat = page
-        .locator('.result-stats-grid .result-stat')
-        .filter({ has: page.getByText('Rows', { exact: true }) })
-        .locator('strong');
+    const rowStat = page.getByLabel('Returned rows', { exact: true });
     const rawValue = (await rowStat.textContent())?.replaceAll(',', '').trim() || '';
     return Number.parseInt(rawValue, 10);
 };
@@ -85,7 +82,7 @@ test('governed workbench browser smoke', async ({ page }) => {
             }
             await page.waitForLoadState('networkidle');
             await page.getByLabel('Username').fill(config.username);
-            await page.getByLabel('Password').fill(config.password);
+            await page.getByLabel('Password', { exact: true }).fill(config.password);
             const signIn = page.getByRole('button', { name: 'Sign In' });
             await expect(signIn).toBeEnabled();
             await signIn.click();
@@ -146,7 +143,8 @@ test('governed workbench browser smoke', async ({ page }) => {
             await page.getByRole('button', { name: 'Options', exact: true }).click();
             const dialog = page.getByRole('dialog', { name: 'Script options' });
             await expect(dialog).toBeVisible();
-            await expect(dialog.getByText('Script Options', { exact: true })).toBeVisible();
+            await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+            await expect(dialog.getByText('Execution', { exact: true })).toBeVisible();
             await expect(dialog.getByText('Stop on error', { exact: true })).toBeVisible();
             const transactionMode = dialog.getByLabel('Transaction mode', { exact: true });
             await expect(transactionMode).toHaveValue('AUTOCOMMIT');
@@ -178,10 +176,14 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(
                 page.getByRole('button', { name: 'Format SQL', exact: true })
             ).toBeVisible();
-            await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
-            await expect(page.getByText('Query Tools', { exact: true })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+            await expect(
+                page.getByRole('button', { name: 'Validate SQL', exact: true })
+            ).toBeVisible();
             await runQuery.click();
-            await expect(page.locator('.result-stats-grid')).toContainText('SUCCEEDED');
+            await expect(
+                page.locator('.result-execution-summary').getByLabel('Succeeded', { exact: true })
+            ).toBeVisible();
             await expect
                 .poll(() => readResultRowCount(page), {
                     message: 'Wait for the completed result page to render',
@@ -193,7 +195,7 @@ test('governed workbench browser smoke', async ({ page }) => {
 
         await check('result paging and current-page sort', async () => {
             const results = page.locator('section.results');
-            const pageSize = results.getByLabel('Rows per page');
+            const pageSize = results.getByLabel('Show rows');
             await pageSize.selectOption('10');
 
             const nextPage = results.getByRole('button', { name: 'Next Page' });
@@ -227,25 +229,24 @@ test('governed workbench browser smoke', async ({ page }) => {
 
         await check('CSV export behavior', async () => {
             const results = page.locator('section.results');
-            const exportButton = results.getByRole('button', { name: 'Export CSV' });
+            await results.getByRole('button', { name: 'Export', exact: true }).click();
+            const exportButton = results.getByRole('button', {
+                name: 'Export CSV (all result rows)'
+            });
 
             if (config.expectedExport === 'denied') {
                 const unexpectedDownload = page
                     .waitForEvent('download', { timeout: 1_000 })
                     .then(() => true)
                     .catch(() => false);
-                await expect(exportButton).toBeEnabled();
-                await exportButton.click();
-                await page.getByRole('button', { name: 'Download CSV' }).click();
-                await expect(page.getByRole('alert')).toBeVisible();
+                await expect(exportButton).toBeDisabled();
                 expect(await unexpectedDownload).toBe(false);
                 return;
             }
 
             await expect(exportButton).toBeEnabled();
-            await exportButton.click();
             const downloadPromise = page.waitForEvent('download');
-            await page.getByRole('button', { name: 'Download CSV' }).click();
+            await exportButton.click();
             const download = await downloadPromise;
             const downloadPath = await download.path();
             expect(downloadPath).toBeTruthy();

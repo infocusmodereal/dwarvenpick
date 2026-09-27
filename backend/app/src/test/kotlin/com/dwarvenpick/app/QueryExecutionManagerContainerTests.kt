@@ -122,6 +122,31 @@ class QueryExecutionManagerContainerTests {
     }
 
     @Test
+    fun `update count is distinguished from a similarly named result column`() {
+        val datasourceId = registerPostgresDatasource()
+        val actor = "tc-update-count-user"
+        for ((sql, expected) in listOf("CREATE TEMP TABLE result_kind_test (id INTEGER)" to true, "SELECT 7 AS affected_rows" to false)) {
+            val submitted =
+                queryExecutionManager.submitQuery(
+                    actor = actor,
+                    ipAddress = "127.0.0.1",
+                    request = QueryExecutionRequest(datasourceId = datasourceId, sql = sql),
+                    policy = defaultPolicy(),
+                )
+            assertThat(waitForTerminalStatus(actor, submitted.executionId).status).isEqualTo("SUCCEEDED")
+            val result =
+                queryExecutionManager.getQueryResults(
+                    actor = actor,
+                    isSystemAdmin = false,
+                    executionId = submitted.executionId,
+                    request = QueryResultsRequest(pageSize = 10),
+                )
+            assertThat(result.columns.single().updateCount).isEqualTo(expected)
+            assertThat(result.rows.single().single()).isEqualTo(if (expected) "0" else "7")
+        }
+    }
+
+    @Test
     fun `postgres oversized text cell is truncated through jdbc result set`() {
         val datasourceId = registerPostgresDatasource()
         val actor = "tc-postgres-large-cell-user"

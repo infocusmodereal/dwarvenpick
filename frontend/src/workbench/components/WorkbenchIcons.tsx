@@ -30,6 +30,51 @@ import {
 } from '../icons';
 
 export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
+    if (['table', 'plan', 'chart', 'selection', 'script'].includes(icon)) {
+        return (
+            <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+            >
+                {icon === 'table' && (
+                    <>
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="M3 9h18M3 14h18M9 9v11" />
+                    </>
+                )}
+                {icon === 'plan' && (
+                    <>
+                        <rect x="9" y="2" width="6" height="5" rx="1" />
+                        <rect x="2" y="17" width="6" height="5" rx="1" />
+                        <rect x="16" y="17" width="6" height="5" rx="1" />
+                        <path d="M12 7v5M5 17v-5h14v5" />
+                    </>
+                )}
+                {icon === 'chart' && (
+                    <>
+                        <path d="M3 3v18h18" />
+                        <path d="M7 17v-5M12 17V7M17 17V4" />
+                    </>
+                )}
+                {icon === 'selection' && (
+                    <>
+                        <rect x="3" y="4" width="18" height="16" rx="2" strokeDasharray="3 3" />
+                        <path d="m10 8 6 4-6 4Z" />
+                    </>
+                )}
+                {icon === 'script' && (
+                    <>
+                        <path d="M14 2H5v20h14V7ZM14 2v5h5M8 11h8M8 15h8M8 19h5" />
+                    </>
+                )}
+            </svg>
+        );
+    }
     if (icon === 'new') {
         return (
             <span
