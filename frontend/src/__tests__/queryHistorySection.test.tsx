@@ -76,8 +76,31 @@ describe('QueryHistorySection', () => {
     it('renders governed query justification in history rows', () => {
         renderQueryHistorySection();
 
+        fireEvent.click(screen.getByRole('button', { name: 'Details' }));
         expect(screen.getByText('Justification')).toBeInTheDocument();
         expect(screen.getByText('TOPS-123 maintenance window')).toBeInTheDocument();
+    });
+
+    it('searches only visible page data and never searches redacted SQL', () => {
+        renderQueryHistorySection({
+            entries: [
+                historyEntry,
+                {
+                    ...historyEntry,
+                    executionId: 'redacted',
+                    queryTextRedacted: true,
+                    queryText: 'secret_value'
+                }
+            ]
+        });
+        fireEvent.change(screen.getByLabelText('Search current history page'), {
+            target: { value: 'secret_value' }
+        });
+        expect(screen.getByText('0 of 2 loaded queries')).toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Search current history page'), {
+            target: { value: 'campaignID' }
+        });
+        expect(screen.getByText('1 of 2 loaded queries')).toBeInTheDocument();
     });
 
     it('renders query hover card outside the scrollable table wrapper', () => {
@@ -238,7 +261,7 @@ describe('QueryHistorySection', () => {
             target: { value: 'FAILED' }
         });
         fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
-        fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '10' } });
+        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '10' } });
 
         expect(onStatusFilterChange).toHaveBeenCalledWith('FAILED');
         expect(onPageIndexChange).toHaveBeenCalledWith(1);
