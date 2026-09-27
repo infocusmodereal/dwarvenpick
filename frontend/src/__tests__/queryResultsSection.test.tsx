@@ -59,7 +59,7 @@ describe('QueryResultsSection', () => {
         expect(screen.queryByText(/sort: none/)).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Previous Page' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Next Page' })).toBeDisabled();
-        fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '250' } });
+        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '250' } });
         expect(workflow.onResultsPageSizeChange).toHaveBeenCalledWith(250);
         fireEvent.click(screen.getByRole('button', { name: 'Sort current page by value' }));
         expect(workflow.onToggleResultSort).toHaveBeenCalledWith(0);

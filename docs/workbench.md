@@ -30,7 +30,7 @@ Use `Ctrl+Space` / `Cmd+Space` to open suggestions.
 
 ### Validate
 
-Use **SQL Validate** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
+Use **Validate SQL** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
 `EXPLAIN` under the hood.
 
 Notes:
@@ -73,12 +73,11 @@ Read-only access rules apply to **every** statement in a script.
 
 ## Execution and results
 
-The toolbar below the SQL editor contains **Run**, **Format SQL**, **Options**,
-**SQL Validate**, and **Save**. Run executes the selected SQL, or the statement at
+The toolbar below the SQL editor contains **Run**, **Format SQL**, **Validate SQL**, and **Options**. Run executes the selected SQL, or the statement at
 the cursor when there is no selection. Its dropdown also offers selection-only
 execution and Run script. Use Ctrl/Cmd+Enter for the current statement/selection,
 or Shift+Ctrl/Cmd+Enter for the complete script. During execution, Run becomes
-Cancel. Script transaction and stop-on-error settings remain in Options; access
+Cancel. Script transaction and stop-on-error settings and Save to Scripts are available in Options; access
 policy row/runtime limits remain enforced by the server.
 
 Results, Query Plan, and Stats share a compact execution summary. Query Plan
@@ -89,7 +88,7 @@ and timestamps. The execution API does not currently expose engine CPU, scan,
 shuffle, or peak-memory metrics, so the UI does not synthesize those values.
 
 Search and sorting operate **only on the loaded page** and never rerun SQL.
-Rows per page controls backend result pagination, independently of the query row
+Show rows controls backend result pagination, independently of the query row
 limit. Columns can be hidden/restored for the current result; the native table
 does not support pinning, reordering, or manual widths. Density changes row
 height/padding and is remembered locally. Expand hides the editor within the
@@ -163,4 +162,4 @@ Result export is available from the dedicated download-icon Export button, separ
 
 Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.
 
-The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. SQL Validate retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.
+The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. Validate SQL retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.

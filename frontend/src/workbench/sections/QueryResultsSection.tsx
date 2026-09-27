@@ -632,9 +632,9 @@ export default function QueryResultsSection({
                 {panel === 'results' && hasTable && (
                     <div className="result-pagination">
                         <label>
-                            Rows per page{' '}
+                            Show rows{' '}
                             <select
-                                aria-label="Rows per page"
+                                aria-label="Show rows"
                                 title="Rows displayed per page, independent of query limit"
                                 value={resultsPageSize}
                                 onChange={(event) =>

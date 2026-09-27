@@ -143,7 +143,8 @@ test('governed workbench browser smoke', async ({ page }) => {
             await page.getByRole('button', { name: 'Options', exact: true }).click();
             const dialog = page.getByRole('dialog', { name: 'Script options' });
             await expect(dialog).toBeVisible();
-            await expect(dialog.getByText('Script Options', { exact: true })).toBeVisible();
+            await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+            await expect(dialog.getByText('Execution', { exact: true })).toBeVisible();
             await expect(dialog.getByText('Stop on error', { exact: true })).toBeVisible();
             const transactionMode = dialog.getByLabel('Transaction mode', { exact: true });
             await expect(transactionMode).toHaveValue('AUTOCOMMIT');
@@ -175,9 +176,9 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(
                 page.getByRole('button', { name: 'Format SQL', exact: true })
             ).toBeVisible();
-            await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
             await expect(
-                page.getByRole('button', { name: 'SQL Validate', exact: true })
+                page.getByRole('button', { name: 'Validate SQL', exact: true })
             ).toBeVisible();
             await runQuery.click();
             await expect(
@@ -194,7 +195,7 @@ test('governed workbench browser smoke', async ({ page }) => {
 
         await check('result paging and current-page sort', async () => {
             const results = page.locator('section.results');
-            const pageSize = results.getByLabel('Rows per page');
+            const pageSize = results.getByLabel('Show rows');
             await pageSize.selectOption('10');
 
             const nextPage = results.getByRole('button', { name: 'Next Page' });

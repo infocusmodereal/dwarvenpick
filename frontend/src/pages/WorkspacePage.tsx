@@ -1359,7 +1359,7 @@ export default function WorkspacePage() {
 
         const triggerRect = anchor.getBoundingClientRect();
         const viewportPadding = 12;
-        const estimatedWidth = 240;
+        const estimatedWidth = 280;
         const maxLeft = Math.max(
             viewportPadding,
             window.innerWidth - estimatedWidth - viewportPadding
@@ -7674,6 +7674,15 @@ export default function WorkspacePage() {
                                             !!activeTab.planExecution?.isExecuting
                                         }
                                     />
+                                    <LabeledActionButton
+                                        icon="shield-check"
+                                        label={validatingSql ? 'Validating…' : 'Validate SQL'}
+                                        title="Validate the current statement or selection without executing it"
+                                        onClick={() => void handleValidateSql()}
+                                        disabled={
+                                            !activeTab || validatingSql || !selectedDatasource
+                                        }
+                                    />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
                                         <div
                                             className="script-options-anchor"
@@ -7694,11 +7703,7 @@ export default function WorkspacePage() {
                                                         return next;
                                                     })
                                                 }
-                                                disabled={
-                                                    !activeTab ||
-                                                    activeTab.isExecuting ||
-                                                    !!activeTab.planExecution?.isExecuting
-                                                }
+                                                disabled={!activeTab}
                                             />
                                         </div>
                                         {showScriptOptions && scriptOptionsPosition
@@ -7714,13 +7719,7 @@ export default function WorkspacePage() {
                                                       }}
                                                   >
                                                       <div className="script-options-header">
-                                                          <span
-                                                              className="script-options-header-icon"
-                                                              aria-hidden
-                                                          >
-                                                              <IconGlyph icon="settings" />
-                                                          </span>
-                                                          <strong>Script Options</strong>
+                                                          <strong>Execution</strong>
                                                       </div>
                                                       <div className="script-options-body">
                                                           <label className="script-option-toggle">
@@ -7728,6 +7727,11 @@ export default function WorkspacePage() {
                                                               <input
                                                                   type="checkbox"
                                                                   checked={scriptStopOnError}
+                                                                  disabled={
+                                                                      activeTab?.isExecuting ||
+                                                                      activeTab?.planExecution
+                                                                          ?.isExecuting
+                                                                  }
                                                                   onChange={(event) =>
                                                                       setScriptStopOnError(
                                                                           event.target.checked
@@ -7742,6 +7746,11 @@ export default function WorkspacePage() {
                                                               <div className="select-wrap">
                                                                   <select
                                                                       id="script-transaction-mode"
+                                                                      disabled={
+                                                                          activeTab?.isExecuting ||
+                                                                          activeTab?.planExecution
+                                                                              ?.isExecuting
+                                                                      }
                                                                       value={scriptTransactionMode}
                                                                       onChange={(event) =>
                                                                           setScriptTransactionMode(
@@ -7760,27 +7769,23 @@ export default function WorkspacePage() {
                                                               </div>
                                                           </div>
                                                       </div>
+                                                      <div className="script-options-footer">
+                                                          <LabeledActionButton
+                                                              icon="save"
+                                                              label="Save"
+                                                              title="Save to Scripts"
+                                                              onClick={() => {
+                                                                  setShowScriptOptions(false);
+                                                                  handleSaveResourceDraftFromEditor();
+                                                              }}
+                                                              disabled={!activeTab}
+                                                          />
+                                                      </div>
                                                   </div>,
                                                   document.body
                                               )
                                             : null}
                                     </div>
-                                    <LabeledActionButton
-                                        icon="shield-check"
-                                        label={validatingSql ? 'Validating…' : 'SQL Validate'}
-                                        title="Validate the current statement or selection without executing it"
-                                        onClick={() => void handleValidateSql()}
-                                        disabled={
-                                            !activeTab || validatingSql || !selectedDatasource
-                                        }
-                                    />
-                                    <LabeledActionButton
-                                        icon="save"
-                                        label="Save"
-                                        title="Save to Scripts"
-                                        onClick={handleSaveResourceDraftFromEditor}
-                                        disabled={!activeTab}
-                                    />
                                 </div>
                                 <div className="row editor-secondary-actions">
                                     <div
@@ -7789,7 +7794,7 @@ export default function WorkspacePage() {
                                     >
                                         <button
                                             type="button"
-                                            className="icon-button"
+                                            className="icon-button editor-help-trigger"
                                             aria-label="Editor shortcuts"
                                             aria-haspopup="dialog"
                                             aria-expanded={showEditorShortcuts}
