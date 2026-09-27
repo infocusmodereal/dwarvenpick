@@ -156,6 +156,8 @@ The System Health page also includes a lightweight control plane for the selecte
   and export queued/running queries as CSV.
 - Paused connection state is stored in the application database and survives backend restarts.
 
+Long plans scroll within the available panel space, with plan pagination in a separate footer. The plan text can be focused for keyboard scrolling.
+
 Plan requests keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.
 
 Explorer search uses an inline search icon and the placeholder "Search objects", while retaining its accessible name and clear action. The editor/results column fits the available viewport with both navigation panels open; a saved Explorer width is constrained to leave room for the editor. Active navigation uses theme gold in both Light and Dark.

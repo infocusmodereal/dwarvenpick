@@ -711,11 +711,13 @@ export default function QueryResultsSection({
                             </div>
                         ) : planText ? (
                             <>
-                                <pre>{formattedPlan}</pre>
+                                <pre tabIndex={0} aria-label="Execution plan">
+                                    {formattedPlan}
+                                </pre>
                                 {plan &&
                                     (plan.nextPageToken || plan.previousPageTokens.length > 0) && (
                                         <div
-                                            className="result-plan-actions"
+                                            className="result-plan-pagination"
                                             aria-label="Plan pagination"
                                         >
                                             <button
