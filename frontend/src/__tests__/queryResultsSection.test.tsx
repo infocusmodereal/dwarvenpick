@@ -175,8 +175,8 @@ describe('QueryResultsSection', () => {
         );
         fireEvent.click(screen.getByRole('tab', { name: 'Query Plan' }));
         expect(onExplain).not.toHaveBeenCalled();
-        expect(screen.getByText('No execution plan available')).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Explain current SQL' }));
+        expect(screen.getByText('No plan yet')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Explain' }));
         expect(onExplain).toHaveBeenCalledOnce();
         fireEvent.keyDown(screen.getByRole('tab', { name: 'Query Plan' }), { key: 'ArrowRight' });
         expect(screen.getByRole('tab', { name: 'Stats' })).toHaveFocus();
@@ -221,12 +221,8 @@ describe('QueryResultsSection', () => {
                 capabilities={queryCapabilities('AEROSPIKE')}
             />
         );
-        expect(
-            screen.getByText(/This connector does not provide an execution plan/)
-        ).toBeInTheDocument();
-        expect(
-            screen.queryByRole('button', { name: 'Explain current SQL' })
-        ).not.toBeInTheDocument();
+        expect(screen.getByText(/Plans unavailable for this connection/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Explain' })).not.toBeInTheDocument();
     });
     it('keeps query rows and stats when a separate plan succeeds or fails', () => {
         const plan = {

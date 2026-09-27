@@ -161,3 +161,5 @@ Explain and Analyze keep their execution state and plan pagination separate from
 Explorer search uses an inline search icon and the placeholder "Search objects", while retaining its accessible name and clear action. The editor/results column fits the available viewport with both navigation panels open; a saved Explorer width is constrained to leave room for the editor. Active navigation uses theme gold in both Light and Dark.
 
 Result export is available from the dedicated download-icon Export button, separate from the secondary actions menu. Menus distinguish headings, disabled actions and explanatory text; Run shortcuts use separate readable key labels. Results uses alternating row shading based on the logical row index so it remains stable while scrolling a virtualized page. Query Plan uses an operator-tree icon and Stats uses a chart icon.
+
+Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.

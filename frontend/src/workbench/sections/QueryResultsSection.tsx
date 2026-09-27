@@ -204,6 +204,19 @@ export default function QueryResultsSection({
             stats.push(['App queue time', `${formatCount(queued)} ms`]);
     }
 
+    const explainButton = capabilities?.explain ? (
+        <button
+            type="button"
+            className="result-plan-trigger"
+            title="Run EXPLAIN for the current statement or selection. Your query results are preserved."
+            disabled={tab.isExecuting || plan?.isExecuting}
+            onClick={onExplain}
+        >
+            <IconGlyph icon={plan ? 'refresh' : 'plan'} />
+            {plan ? 'Refresh plan' : 'Explain'}
+        </button>
+    ) : null;
+
     return (
         <div
             className={`execution-results density-${view.density}`}
@@ -686,39 +699,18 @@ export default function QueryResultsSection({
             >
                 {panel === 'plan' ? (
                     <div className="result-plan">
-                        {capabilities?.explain && (
-                            <div className="result-plan-actions">
-                                <button
-                                    type="button"
-                                    title="Explicitly run EXPLAIN for the current statement or selection"
-                                    disabled={tab.isExecuting || plan?.isExecuting}
-                                    onClick={onExplain}
-                                >
-                                    {plan?.isExecuting
-                                        ? 'Requesting plan…'
-                                        : plan
-                                          ? 'Refresh plan'
-                                          : 'Explain current SQL'}
-                                </button>
-                                <span className="result-scope-note">
-                                    Query results are preserved. Opening this tab does not execute
-                                    SQL.
-                                </span>
-                            </div>
-                        )}
+                        {plan && <div className="result-plan-actions">{explainButton}</div>}
                         {plan?.isExecuting ? (
-                            <p role="status">Requesting execution plan…</p>
+                            <div className="result-plan-empty" role="status">
+                                <span className="execution-spinner" />
+                                <span>Generating plan…</span>
+                            </div>
                         ) : plan?.errorMessage ? (
                             <div className="result-error" role="alert">
                                 {plan.errorMessage}
                             </div>
                         ) : planText ? (
                             <>
-                                <p>
-                                    {plan?.lastRunKind === 'analyze'
-                                        ? 'Analysis returned by the engine'
-                                        : 'Plan returned by the engine'}
-                                </p>
                                 <pre>{formattedPlan}</pre>
                                 {plan &&
                                     (plan.nextPageToken || plan.previousPageTokens.length > 0) && (
@@ -755,18 +747,23 @@ export default function QueryResultsSection({
                                     )}
                             </>
                         ) : (
-                            <div className="result-empty-state">
-                                <strong>
-                                    {plan
-                                        ? 'No execution plan returned'
-                                        : 'No execution plan available'}
-                                </strong>
-                                <p>
-                                    {capabilities?.explain
-                                        ? plan?.statusMessage ||
-                                          'Use Explain to request a plan for the current SQL.'
-                                        : 'This connector does not provide an execution plan through the current integration.'}
-                                </p>
+                            <div className="result-plan-empty">
+                                <span className="result-plan-empty-icon">
+                                    <IconGlyph icon="plan" />
+                                </span>
+                                <span>
+                                    {!capabilities?.explain
+                                        ? 'Plans unavailable for this connection.'
+                                        : plan
+                                          ? plan.executionStatus === 'CANCELED' ||
+                                            plan.executionStatus === 'CANCELLED'
+                                              ? 'Plan request canceled.'
+                                              : plan.executionStatus === 'TIMED_OUT'
+                                                ? 'Plan request timed out.'
+                                                : 'No plan returned.'
+                                          : 'No plan yet'}
+                                </span>
+                                {!plan && explainButton}
                             </div>
                         )}
                     </div>
