@@ -4071,7 +4071,7 @@ button:disabled {
 }
 
 .result-meta-heading {
-    background: var(--surface-alt) !important;
+    background: var(--surface-alt);
     color: var(--muted);
     text-transform: uppercase;
     font-size: 0.58rem;
