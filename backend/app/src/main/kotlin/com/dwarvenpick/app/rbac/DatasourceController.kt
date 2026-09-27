@@ -3,6 +3,7 @@ package com.dwarvenpick.app.rbac
 import com.dwarvenpick.app.auth.AuthenticatedPrincipalResolver
 import com.dwarvenpick.app.auth.ErrorResponse
 import com.dwarvenpick.app.datasource.SchemaBrowserService
+import com.dwarvenpick.app.datasource.SchemaBrowserStreamService
 import com.dwarvenpick.app.datasource.SchemaBrowserUnavailableException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -12,6 +13,8 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 
 @RestController
 @RequestMapping("/api/datasources")
@@ -19,6 +22,7 @@ class DatasourceController(
     private val rbacService: RbacService,
     private val effectiveDatasourcePolicyService: EffectiveDatasourcePolicyService,
     private val schemaBrowserService: SchemaBrowserService,
+    private val schemaBrowserStreamService: SchemaBrowserStreamService,
     private val authenticatedPrincipalResolver: AuthenticatedPrincipalResolver,
 ) {
     @GetMapping
@@ -27,7 +31,33 @@ class DatasourceController(
         return effectiveDatasourcePolicyService.listPermittedDatasources(principal)
     }
 
-    @GetMapping("/{datasourceId}/schema-browser")
+    @GetMapping("/{datasourceId}/schema-browser", params = ["stream=true"])
+    fun streamSchemaBrowser(
+        @PathVariable datasourceId: String,
+        @RequestParam(required = false, defaultValue = "false") refresh: Boolean,
+        authentication: Authentication,
+    ): ResponseEntity<StreamingResponseBody> {
+        val principal = authenticatedPrincipalResolver.resolve(authentication)
+        if (!rbacService.canUserQuery(principal, datasourceId)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Datasource access denied for schema browser.")
+        }
+        val policy =
+            try {
+                rbacService.resolveQueryAccessPolicy(principal, datasourceId)
+            } catch (ex: DatasourceNotFoundException) {
+                throw ResponseStatusException(HttpStatus.NOT_FOUND, "Datasource not found.")
+            } catch (ex: QueryAccessDeniedException) {
+                throw ResponseStatusException(HttpStatus.FORBIDDEN, "Datasource access denied for schema browser.")
+            }
+        return ResponseEntity
+            .ok()
+            .header("Content-Type", "application/json")
+            .header("Cache-Control", "no-store")
+            .header("X-Accel-Buffering", "no")
+            .body(schemaBrowserStreamService.stream(datasourceId, policy.credentialProfile, refresh))
+    }
+
+    @GetMapping("/{datasourceId}/schema-browser", params = ["stream!=true"])
     fun schemaBrowser(
         @PathVariable datasourceId: String,
         @RequestParam(required = false, defaultValue = "false") refresh: Boolean,

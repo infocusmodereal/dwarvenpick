@@ -88,6 +88,7 @@ Read-only access rules apply to **every** statement in a script.
 ## Explorer
 
 - The Explorer shows databases/schemas/tables/columns for the active connection.
+- Switching connections or closing the workspace cancels the previous Explorer load. Late responses cannot replace the active connection's metadata.
 - StarRocks external catalog databases are shown as `catalog.database`, so inserting a table reference produces `catalog.database.table`.
 - Use it to navigate metadata and help author queries.
 - Drag the vertical handle between Explorer and the editor to resize Explorer horizontally. Double-click the handle to reset.

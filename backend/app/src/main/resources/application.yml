@@ -100,6 +100,7 @@ dwarvenpick:
       allow-cidrs: []
       deny-cidrs: []
   schema:
+    max-load-seconds: ${DWARVENPICK_SCHEMA_MAX_LOAD_SECONDS:120}
     cache-ttl-seconds: 300
     max-schemas: 100
     max-tables-per-schema: 100

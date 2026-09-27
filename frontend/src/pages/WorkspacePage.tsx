@@ -49,7 +49,6 @@ import type {
     DatasourceAccessResponse,
     DatasourceEngine,
     DatasourceHealthState,
-    DatasourceSchemaBrowserResponse,
     DriverDescriptorResponse,
     EditorCursorLegend,
     GroupAdminMode,
@@ -109,6 +108,7 @@ import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../work
 import { readGovernedQueryError } from '../workbench/queryPolicyError';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useAuditEvents } from '../workbench/useAuditEvents';
+import { useSchemaBrowser } from '../workbench/useSchemaBrowser';
 import { useQueryHistory } from '../workbench/useQueryHistory';
 import { useHistoryEntryActions } from '../workbench/useHistoryEntryActions';
 import { useQueryResultsWorkflow } from '../workbench/useQueryResultsWorkflow';
@@ -596,11 +596,30 @@ export default function WorkspacePage() {
         setLoadingControlPlane
     } = useControlPlaneState();
 
-    const [schemaBrowser, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(
-        null
+    const readFriendlyError = useCallback(
+        async (response: Response): Promise<string> => {
+            if (response.status === 401) {
+                navigate('/login', { replace: true });
+                return 'Session expired. Please sign in again.';
+            }
+
+            if (response.status === 403) {
+                return 'You do not have permission for this action.';
+            }
+
+            try {
+                const payload = (await response.json()) as ApiErrorResponse;
+                if (payload.error?.trim()) {
+                    return payload.error;
+                }
+            } catch {
+                // Use fallback friendly messages below when payload parsing fails.
+            }
+
+            return 'Request failed. Please try again.';
+        },
+        [navigate]
     );
-    const [loadingSchemaBrowser, setLoadingSchemaBrowser] = useState(false);
-    const [schemaBrowserError, setSchemaBrowserError] = useState('');
 
     const [resources, setResources] = useState<ResourceScriptSummaryResponse[]>([]);
     const [loadingResources, setLoadingResources] = useState(false);
@@ -692,6 +711,13 @@ export default function WorkspacePage() {
         selectedChars: 0,
         selectedLines: 0
     });
+
+    const { schemaBrowser, loadingSchemaBrowser, schemaBrowserError, loadSchemaBrowser } =
+        useSchemaBrowser({
+            datasourceId: activeTab?.datasourceId ?? '',
+            readFriendlyError,
+            setDatasourceHealthById
+        });
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
     const localAuthEnabled = authMethods.includes('local');
@@ -2313,31 +2339,6 @@ export default function WorkspacePage() {
         setCredentialPasswordInput('');
     }, [credentialProfileIdInput, selectedManagedDatasource]);
 
-    const readFriendlyError = useCallback(
-        async (response: Response): Promise<string> => {
-            if (response.status === 401) {
-                navigate('/login', { replace: true });
-                return 'Session expired. Please sign in again.';
-            }
-
-            if (response.status === 403) {
-                return 'You do not have permission for this action.';
-            }
-
-            try {
-                const payload = (await response.json()) as ApiErrorResponse;
-                if (payload.error?.trim()) {
-                    return payload.error;
-                }
-            } catch {
-                // Use fallback friendly messages below when payload parsing fails.
-            }
-
-            return 'Request failed. Please try again.';
-        },
-        [navigate]
-    );
-
     const {
         auditActionOptions,
         auditActorFilter,
@@ -2426,66 +2427,6 @@ export default function WorkspacePage() {
             navigate('/login', { replace: true });
         }
     }, [fetchCsrfToken, navigate]);
-
-    const loadSchemaBrowser = useCallback(
-        async (datasourceId: string, refresh = false) => {
-            const normalizedDatasourceId = datasourceId.trim();
-            if (!normalizedDatasourceId) {
-                setSchemaBrowser(null);
-                setDatasourceHealthById((current) => {
-                    if (!datasourceId) {
-                        return current;
-                    }
-                    return {
-                        ...current,
-                        [datasourceId]: 'unknown'
-                    };
-                });
-                return;
-            }
-
-            setLoadingSchemaBrowser(true);
-            setSchemaBrowserError('');
-            try {
-                const queryParams = new URLSearchParams();
-                if (refresh) {
-                    queryParams.set('refresh', 'true');
-                }
-
-                const response = await fetch(
-                    `/api/datasources/${normalizedDatasourceId}/schema-browser${
-                        queryParams.toString() ? `?${queryParams.toString()}` : ''
-                    }`,
-                    {
-                        method: 'GET',
-                        credentials: 'include'
-                    }
-                );
-                if (!response.ok) {
-                    throw new Error(await readFriendlyError(response));
-                }
-
-                const payload = (await response.json()) as DatasourceSchemaBrowserResponse;
-                setSchemaBrowser(payload);
-                setDatasourceHealthById((current) => ({
-                    ...current,
-                    [normalizedDatasourceId]: 'active'
-                }));
-            } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : 'Failed to load schema browser.';
-                setSchemaBrowser(null);
-                setSchemaBrowserError(message);
-                setDatasourceHealthById((current) => ({
-                    ...current,
-                    [normalizedDatasourceId]: 'inactive'
-                }));
-            } finally {
-                setLoadingSchemaBrowser(false);
-            }
-        },
-        [readFriendlyError]
-    );
 
     const loadObjectInspector = useCallback(
         async (
@@ -3150,17 +3091,6 @@ export default function WorkspacePage() {
 
         void loadAuditEvents();
     }, [adminSuccess, isSystemAdmin, loadAuditEvents]);
-
-    useEffect(() => {
-        const datasourceId = activeTab?.datasourceId ?? '';
-        if (!datasourceId) {
-            setSchemaBrowser(null);
-            setSchemaBrowserError('');
-            return;
-        }
-
-        void loadSchemaBrowser(datasourceId, false);
-    }, [activeTab?.datasourceId, loadSchemaBrowser]);
 
     useEffect(() => {
         if (!schemaBrowser) {
