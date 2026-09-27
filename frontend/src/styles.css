@@ -6132,3 +6132,255 @@ select {
     border-color: var(--accent);
     color: var(--accent);
 }
+
+/* SQL validation belongs to the editor action, not the previous execution. */
+.sql-validate-button > svg {
+    width: 1rem;
+    height: 1rem;
+}
+.sql-validate-button.is-valid {
+    border-color: var(--notice-success-fg);
+}
+.sql-validate-button.is-invalid {
+    border-color: var(--danger);
+}
+.sql-validation-feedback {
+    position: fixed;
+    z-index: 1600;
+    width: min(420px, calc(100vw - 24px));
+    padding: 0.9rem;
+    border: 1px solid var(--border-hover);
+    border-radius: 0.6rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 10px 30px #0004;
+    font-size: 0.8rem;
+}
+.sql-validation-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.sql-validation-heading > svg {
+    width: 1.1rem;
+    height: 1.1rem;
+}
+.sql-validation-heading button {
+    margin-left: auto;
+    padding: 0.2rem;
+    background: transparent;
+    color: var(--muted);
+}
+.sql-validation-heading button svg {
+    width: 1rem;
+    height: 1rem;
+}
+.sql-validation-feedback p {
+    margin: 0.65rem 0;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    max-height: 180px;
+    overflow: auto;
+}
+.sql-validation-feedback small,
+.sql-validation-location {
+    color: var(--muted);
+    display: block;
+    font-size: 0.72rem;
+    margin-top: 0.5rem;
+}
+.sql-validation-feedback.is-valid .sql-validation-heading {
+    color: var(--notice-success-fg);
+}
+.sql-validation-feedback.is-invalid .sql-validation-heading {
+    color: var(--danger);
+}
+
+.admin-audit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    align-items: stretch;
+}
+.admin-audit[hidden] {
+    display: none;
+}
+.audit-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+.audit-heading h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+.audit-heading p {
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.admin-audit .history-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    background: var(--surface-alt);
+}
+.admin-audit .filter-field {
+    min-width: 0;
+}
+.admin-audit .filter-field label {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+.admin-audit .filter-field input,
+.admin-audit .filter-field select {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.78rem;
+}
+.admin-audit .toolbar-actions {
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin: 0;
+}
+.audit-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 180px;
+    flex: 1;
+    max-width: 350px;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    padding-left: 0.6rem;
+    background: var(--surface-alt);
+}
+.audit-search svg {
+    width: 1rem;
+    height: 1rem;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+.audit-search input {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+}
+.audit-loaded-count {
+    margin-right: auto;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+.admin-audit .history-table-wrap {
+    flex: 1;
+    min-height: 180px;
+    max-height: none;
+    margin: 0;
+    border-radius: 0.4rem;
+}
+.admin-audit .history-table {
+    min-width: 740px;
+}
+.admin-audit .history-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface-alt);
+    box-shadow: inset 0 -2px var(--border-hover);
+    font-size: 0.72rem;
+}
+.admin-audit .history-table td {
+    padding: 0.6rem 0.75rem;
+    vertical-align: top;
+    font-size: 0.75rem;
+}
+.admin-audit .history-table tr:nth-child(even) > td {
+    background: var(--result-row-stripe);
+}
+.admin-audit .history-table .audit-row-selected > td {
+    background: var(--accent-soft);
+}
+.audit-inspect {
+    display: inline-flex;
+    gap: 0.7rem;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    background: transparent;
+    padding: 0.25rem 0.5rem;
+    color: var(--accent);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+.audit-inspect span {
+    color: var(--muted);
+    font-weight: 400;
+}
+.audit-detail-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem 1.5rem;
+    margin: 0;
+    padding: 0.8rem;
+    max-height: 320px;
+    overflow: auto;
+}
+.audit-detail-fields dt {
+    color: var(--muted);
+    font-size: 0.7rem;
+    margin-bottom: 0.3rem;
+}
+.audit-detail-fields dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+}
+.audit-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.audit-footer .result-pagination-controls {
+    margin-left: auto;
+}
+.audit-footer button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+}
+.admin-audit .filter-field {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+.audit-detail-preview {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 0.7rem;
+    margin-bottom: 0.4rem;
+}
+.audit-footer .result-page-size-inline label,
+.audit-footer .result-page-size-inline select {
+    font-size: 0.75rem;
+}
+.sql-validation-feedback {
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+}

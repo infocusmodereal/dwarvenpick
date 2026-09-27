@@ -167,3 +167,7 @@ Result export is available from the dedicated download-icon Export button, separ
 Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.
 
 The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. Validate SQL retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.
+
+SQL validation feedback appears beside **Validate SQL**, separately from query results. Successful validation confirms the statement or selection; failures show the engine diagnostic and line/column when available. Dismiss with Escape, the close button, or a click outside. Editing SQL or changing tabs or execution context clears the feedback, and outdated responses are ignored.
+
+Audit Events keeps server filters for action, actor, outcome and time range together. **Search loaded events** searches only the loaded batch (up to the latest 200 matching events), including detail values. Expand **View details** for structured fields. Pagination and CSV export operate on the current loaded view; CSV exports the current page. Sorting changes the order of loaded events.
