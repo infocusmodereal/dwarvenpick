@@ -303,33 +303,35 @@ export default function AuditEventsSection({
                                             </span>
                                         </td>
                                         <td className="audit-details">
-                                            <span className="audit-detail-preview">
-                                                {Object.entries(event.details)
-                                                    .slice(0, 2)
-                                                    .map(
-                                                        ([key, value]) =>
-                                                            `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`
-                                                    )
-                                                    .join(' · ') || 'No additional details'}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                className="audit-inspect"
-                                                aria-expanded={expandedEvent === event}
-                                                aria-controls={`audit-detail-${index}`}
-                                                onClick={() =>
-                                                    setExpandedEvent(
-                                                        expandedEvent === event ? null : event
-                                                    )
-                                                }
-                                            >
-                                                {expandedEvent === event
-                                                    ? 'Hide details'
-                                                    : 'View details'}
-                                                <span>
-                                                    {Object.keys(event.details).length} fields
+                                            <div className="audit-detail-summary">
+                                                <span className="audit-detail-preview">
+                                                    {Object.entries(event.details)
+                                                        .slice(0, 2)
+                                                        .map(
+                                                            ([key, value]) =>
+                                                                `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`
+                                                        )
+                                                        .join(' · ') || 'No additional details'}
                                                 </span>
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    className="audit-inspect"
+                                                    aria-expanded={expandedEvent === event}
+                                                    aria-controls={`audit-detail-${index}`}
+                                                    onClick={() =>
+                                                        setExpandedEvent(
+                                                            expandedEvent === event ? null : event
+                                                        )
+                                                    }
+                                                >
+                                                    {expandedEvent === event
+                                                        ? 'Hide details'
+                                                        : 'View details'}
+                                                    <span>
+                                                        {Object.keys(event.details).length} fields
+                                                    </span>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                     {expandedEvent === event && (
