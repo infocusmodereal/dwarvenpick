@@ -40,6 +40,24 @@ Open:
 - UI: `http://localhost:3000`
 - Keycloak admin: `http://localhost:8081` (`admin / admin`)
 
+If port `8080` is already occupied, choose another host port for the backend:
+
+```bash
+DWARVENPICK_BACKEND_PORT=18080 docker compose -f deploy/docker/docker-compose.yml up -d --build
+```
+
+For frontend development with hot reload, point Vite at that backend:
+
+```bash
+cd frontend
+npm ci
+DWARVENPICK_BACKEND_URL=http://localhost:18080 npm run dev
+```
+
+Open `http://localhost:5173` for hot reload. The Docker UI remains available at
+`http://localhost:3000`. Both settings default to the backend on port `8080`.
+Use the Docker UI for the configured OIDC redirect flow.
+
 ## LDAP integration tests
 
 LDAP authentication is covered by a Testcontainers-based integration test suite and requires Docker:
