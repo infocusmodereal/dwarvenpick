@@ -8,15 +8,18 @@ export default defineConfig({
         host: '0.0.0.0',
         proxy: {
             '/api': {
-                target: 'http://localhost:8080',
+                target: process.env.DWARVENPICK_BACKEND_URL || 'http://localhost:8080',
                 changeOrigin: true
             },
             '/actuator': {
-                target: 'http://localhost:8080',
+                target: process.env.DWARVENPICK_BACKEND_URL || 'http://localhost:8080',
                 changeOrigin: true
             },
             '/ws': {
-                target: 'ws://localhost:8080',
+                target: (process.env.DWARVENPICK_BACKEND_URL || 'http://localhost:8080').replace(
+                    /^http/,
+                    'ws'
+                ),
                 ws: true
             }
         }
