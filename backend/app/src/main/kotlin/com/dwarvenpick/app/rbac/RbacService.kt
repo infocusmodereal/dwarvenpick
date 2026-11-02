@@ -115,7 +115,7 @@ class RbacService(
         groupId: String,
         username: String,
     ): GroupResponse {
-        val group = rbacRepository.findGroup(groupId) ?: throw GroupNotFoundException("Group '$groupId' was not found.")
+        val group = rbacRepository.findGroup(groupId, forUpdate = true) ?: throw GroupNotFoundException("Group '$groupId' was not found.")
 
         val normalizedUsername = username.trim()
         if (normalizedUsername.isBlank()) {

@@ -226,7 +226,7 @@ class UserAccountService(
     ): AuthenticatedUserPrincipal =
         provisionExternal(
             AuthProvider.LDAP,
-            authProperties.ldap.url.ifBlank { "ldap-mock" },
+            authProperties.ldap.identityIssuer,
             profile.distinguishedName,
             profile.username,
             profile.displayName,

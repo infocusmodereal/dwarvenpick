@@ -29,13 +29,17 @@ class RbacRepository(
             groupRowMapper,
         )
 
-    fun findGroup(groupId: String): GroupRecord? =
+    fun findGroup(
+        groupId: String,
+        forUpdate: Boolean = false,
+    ): GroupRecord? =
         namedParameterJdbcTemplate
             .query(
                 """
                 SELECT group_id, group_name, description
                 FROM rbac_groups
                 WHERE group_id = :groupId
+                ${if (forUpdate) "FOR UPDATE" else ""}
                 """.trimIndent(),
                 mapOf("groupId" to groupId),
                 groupRowMapper,
@@ -95,7 +99,16 @@ class RbacRepository(
 
     @Transactional
     fun deleteGroup(groupId: String): GroupRecord? {
-        val group = findGroup(groupId) ?: return null
+        val group = findGroup(groupId, forUpdate = true) ?: return null
+        namedParameterJdbcTemplate.queryForList(
+            """
+            SELECT username FROM app_users
+            WHERE username IN (SELECT username FROM app_user_groups WHERE group_id = :groupId)
+            ORDER BY username FOR UPDATE
+            """.trimIndent(),
+            mapOf("groupId" to groupId),
+            String::class.java,
+        )
         namedParameterJdbcTemplate.update(
             "DELETE FROM rbac_datasource_access WHERE group_id = :groupId",
             mapOf("groupId" to groupId),

@@ -79,6 +79,20 @@ class OidcAuthenticationSuccessHandler(
                     subject = oidcUser.subject,
                 )
             } catch (_: ExternalIdentityConflictException) {
+                authAuditLogger.log(
+                    AuthAuditEvent(
+                        type = "auth.oidc.login",
+                        actor = username,
+                        outcome = "failed",
+                        ipAddress = request.remoteAddr,
+                        details =
+                            mapOf(
+                                "reason" to "identity_link_required",
+                                "issuer" to oidcUser.issuer.toString(),
+                                "subject" to oidcUser.subject,
+                            ),
+                    ),
+                )
                 org.springframework.security.core.context.SecurityContextHolder
                     .clearContext()
                 request.getSession(false)?.invalidate()

@@ -1,4 +1,5 @@
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
+import { runResourceSaveOnce } from '../workbench/resourceSaveGuard';
 import SqlValidationControl from '../workbench/components/SqlValidationControl';
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import {
@@ -652,6 +653,7 @@ export default function WorkspacePage() {
     const [restoringResourceVersionId, setRestoringResourceVersionId] = useState('');
     const resourceAutosaveTimerRef = useRef<Record<string, number>>({});
     const resourceAutosaveSnapshotRef = useRef<Record<string, string>>({});
+    const resourceSaveInFlightRef = useRef(new Set<string>());
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
     const validationContext = JSON.stringify([
         activeSection,
@@ -4258,60 +4260,61 @@ export default function WorkspacePage() {
                 announce?: boolean;
                 snapshotOverride?: string;
             }
-        ) => {
-            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
-            if (!tab?.resourceId) {
-                return false;
-            }
-
-            const snapshot = options?.snapshotOverride ?? buildResourceTabSnapshot(tab);
-            const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim();
-            const titleValidationMessage = validateResourceTitle(resourceTitle);
-            if (titleValidationMessage) {
-                if (options?.announce) {
-                    setResourceError(titleValidationMessage);
-                }
-                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
-                return false;
-            }
-
-            try {
-                const csrfToken = await fetchCsrfToken();
-                const response = await fetch(`/api/resources/${tab.resourceId}/content`, {
-                    method: 'PATCH',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [csrfToken.headerName]: csrfToken.token
-                    },
-                    body: JSON.stringify({
-                        expectedRevision: tab.resourceRevision,
-                        title: resourceTitle,
-                        sql: tab.queryText,
-                        datasourceId: tab.datasourceId.trim() || undefined
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(await readFriendlyError(response));
+        ) =>
+            runResourceSaveOnce(resourceSaveInFlightRef.current, tabId, async () => {
+                const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+                if (!tab?.resourceId) {
+                    return false;
                 }
 
-                const resource = (await response.json()) as ResourceScriptResponse;
-                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
-                replaceVisibleResource(resource);
-                syncResourceToTabs(resource, { targetTabId: tabId });
-                if (options?.announce) {
-                    showWorkbenchNotice('Script saved.');
+                const snapshot = options?.snapshotOverride ?? buildResourceTabSnapshot(tab);
+                const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim();
+                const titleValidationMessage = validateResourceTitle(resourceTitle);
+                if (titleValidationMessage) {
+                    if (options?.announce) {
+                        setResourceError(titleValidationMessage);
+                    }
+                    resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                    return false;
                 }
-                return true;
-            } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : 'Failed to save script content.';
-                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
-                setResourceError(message);
-                return false;
-            }
-        },
+
+                try {
+                    const csrfToken = await fetchCsrfToken();
+                    const response = await fetch(`/api/resources/${tab.resourceId}/content`, {
+                        method: 'PATCH',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            [csrfToken.headerName]: csrfToken.token
+                        },
+                        body: JSON.stringify({
+                            expectedRevision: tab.resourceRevision,
+                            title: resourceTitle,
+                            sql: tab.queryText,
+                            datasourceId: tab.datasourceId.trim() || undefined
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(await readFriendlyError(response));
+                    }
+
+                    const resource = (await response.json()) as ResourceScriptResponse;
+                    resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                    replaceVisibleResource(resource);
+                    syncResourceToTabs(resource, { targetTabId: tabId });
+                    if (options?.announce) {
+                        showWorkbenchNotice('Script saved.');
+                    }
+                    return true;
+                } catch (error) {
+                    const message =
+                        error instanceof Error ? error.message : 'Failed to save script content.';
+                    resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                    setResourceError(message);
+                    return false;
+                }
+            }),
         [
             buildResourceTabSnapshot,
             fetchCsrfToken,

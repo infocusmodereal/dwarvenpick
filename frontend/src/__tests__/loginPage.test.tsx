@@ -6,6 +6,24 @@ import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import { ThemeProvider } from '../theme/ThemeContext';
 
 describe('Login presentation', () => {
+    it.each([
+        [
+            'identity_link_required',
+            'Your external identity needs to be linked. Contact an administrator.'
+        ],
+        ['account_disabled', 'Your account is disabled. Contact an administrator.'],
+        ['oidc', 'SSO sign in failed. Please try again.']
+    ])('shows the %s failure after auth method discovery', async (code, message) => {
+        render(
+            <ThemeProvider>
+                <MemoryRouter initialEntries={[`/login?error=${code}`]}>
+                    <LoginPage />
+                </MemoryRouter>
+            </ThemeProvider>
+        );
+        await screen.findByRole('button', { name: 'Continue with SSO' });
+        expect(screen.getByText(message)).toBeVisible();
+    });
     beforeEach(() => {
         vi.stubGlobal(
             'fetch',

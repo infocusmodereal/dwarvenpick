@@ -116,6 +116,7 @@ dwarvenpick:
     ldap:
       enabled: false
       url: ""
+      identity-issuer: ${DWARVENPICK_AUTH_LDAP_IDENTITY_ISSUER:ldap-directory}
       transport: ${DWARVENPICK_AUTH_LDAP_TRANSPORT:AUTO}
       bind-dn: ""
       bind-password: ""

@@ -14,7 +14,12 @@ class AuthenticatedPrincipalResolver(
         }
         val sessionPrincipal = authentication.principal as? AuthenticatedUserPrincipal
         val current =
-            userAccountService.currentUserPrincipal(authentication.name)
+            try {
+                userAccountService.currentUserPrincipal(authentication.name)
+            } catch (_: DisabledUserException) {
+                throw org.springframework.security.access
+                    .AccessDeniedException("User account is disabled.")
+            }
                 ?: throw org.springframework.security.access
                     .AccessDeniedException("User account no longer exists.")
         if (sessionPrincipal?.userId != null && sessionPrincipal.userId != current.userId) {

@@ -189,6 +189,18 @@ class AuthController(
 
             ResponseEntity.ok(principal.toLoginResponse())
         } catch (_: ExternalIdentityConflictException) {
+            audit(
+                type = "auth.ldap.login",
+                actor = request.username,
+                outcome = "failed",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "reason" to "identity_link_required",
+                        "issuer" to authProperties.ldap.identityIssuer,
+                        "subject" to ldapResult.profile.distinguishedName,
+                    ),
+            )
             recordAuthAttempt(provider = "ldap", outcome = "failed")
             ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse("External identity requires administrator linking."))
         } catch (ex: DisabledUserException) {

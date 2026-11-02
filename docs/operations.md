@@ -43,7 +43,11 @@ records before retrying the migration. Historical query and audit references are
 retained independently of live accounts and connections. Restoring a backup is the
 rollback path; the old backend must not run against the new membership schema.
 
-Existing external users need administrator identity links; see Authentication.
+V6 invalidates persisted sessions; everyone must sign in again. Before reopening
+traffic on external-only deployments, bootstrap a verified administrator identity
+using the offline database procedure in [Authentication](authentication.md#external-only-upgrade-bootstrap).
+This does not require enabling local login or seeded credentials. Other external
+users also need verified identity links.
 Legacy account IDs are assigned once as `legacy:<username>`, while new accounts use
 UUIDs. Both remain stable for the lifetime of the account.
 

@@ -120,13 +120,21 @@ For temporary access, remove the mapping and its dedicated connection grants whe
 
 Accounts have an immutable `user_id`; usernames remain the public handle for existing
 APIs and historical ownership. OIDC login resolves `(provider, issuer, subject)`.
-LDAP resolves the configured directory URL and the authenticated distinguished name.
-A changed LDAP DN or directory URL therefore requires a new explicit link.
+LDAP resolves a stable directory identifier (`dwarvenpick.auth.ldap.identity-issuer`,
+default `ldap-directory`) and the authenticated distinguished name. Configure it
+through `DWARVENPICK_AUTH_LDAP_IDENTITY_ISSUER`. Keep the
+identifier unchanged when moving the same directory to another host or TLS transport;
+use a different identifier when replacing the directory with a different identity authority.
+A changed LDAP DN or identity issuer requires a new explicit link.
 A matching username alone never links identities or converts a local account.
 Local password reset is restricted to local accounts.
 
-Existing external accounts must be linked by a system administrator before their
-first login after this upgrade. Use `POST /api/auth/admin/users/{username}/identities`
+V6 deliberately invalidates all persisted sessions, including remember-device sessions,
+because the serialized principal format changes. Everyone must sign in again.
+For external-only installations, follow the offline bootstrap below before reopening
+traffic; no authenticated administrator session or local login is required.
+Otherwise, existing external accounts can be linked by a system administrator before
+their first login after this upgrade. Use `POST /api/auth/admin/users/{username}/identities`
 with an authenticated administrator session, a CSRF token and this JSON body:
 
 ```json
@@ -134,10 +142,48 @@ with an authenticated administrator session, a CSRF token and this JSON body:
 ```
 
 Verify the issuer and subject in the identity provider before linking. For LDAP,
-use `provider: LDAP`, the configured directory URL as issuer and the authenticated
+use `provider: LDAP`, the configured identity issuer as issuer and the authenticated
 DN as subject. The account's provider must match. Links are unique and cannot be
 silently reassigned; conflicts return HTTP 409. Successful links are audited.
 The endpoint does not enable disabled users or permit automatic cross-provider conversion.
+
+### External-only upgrade bootstrap
+
+1. Back up the application database and stop all writers. Independently verify at
+   least one existing external administrator's provider, issuer and immutable subject
+   against the authoritative directory/IdP. Do not infer ownership from a matching
+   username, email or a failed login attempt.
+2. Run the migrations while ingress remains closed. Using the application's database
+   administrator connection, explicitly link the verified legacy account. Replace all
+   example values below with that verified identity:
+
+   ```sql
+   BEGIN;
+   INSERT INTO app_external_identities (provider, issuer, subject, user_id)
+   SELECT provider, 'https://identity.example/realms/team', 'verified-provider-subject', user_id
+   FROM app_users
+   WHERE username = 'existing-admin' AND provider = 'OIDC' AND enabled = TRUE
+     AND user_id LIKE 'legacy:%'
+     AND NOT EXISTS (
+       SELECT 1 FROM app_external_identities links WHERE links.user_id = app_users.user_id
+     )
+   RETURNING provider, issuer, subject, user_id;
+   COMMIT;
+   ```
+
+   Execute through RETURNING first. Commit only after exactly one expected row is
+   returned; otherwise ROLLBACK and investigate. For LDAP substitute `LDAP`, the configured stable identity issuer and the verified
+   DN. Unique identity constraints reject reassignment. Record the operator's verified
+   mapping and approval in the deployment change record; direct SQL does not emit an
+   application audit event.
+3. Confirm the external provider still maps that administrator to SYSTEM_ADMIN.
+   Reopen traffic and sign in through the provider, then use the protected API above
+   for remaining verified accounts (or pre-link each via the same offline procedure).
+   Do not enable local auth or seed default credentials to recover access.
+
+Conflicting LDAP/OIDC login attempts record issuer and subject in restricted admin
+audit events to aid diagnosis, not as proof of account ownership. These identifiers
+follow audit retention and should not be exposed in public logs.
 
 Group authorization and administrative membership lists now read `app_user_groups`.
 External login replaces that account's memberships with its mapped provider groups,

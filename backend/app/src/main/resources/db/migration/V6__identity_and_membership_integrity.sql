@@ -1,5 +1,6 @@
 -- Preserve existing usernames and history while introducing immutable account IDs.
 ALTER TABLE app_users ADD COLUMN user_id VARCHAR(300);
+DELETE FROM SPRING_SESSION;
 UPDATE app_users SET user_id = 'legacy:' || username;
 ALTER TABLE app_users ALTER COLUMN user_id SET NOT NULL;
 ALTER TABLE app_users ADD CONSTRAINT app_users_user_id_unique UNIQUE (user_id);

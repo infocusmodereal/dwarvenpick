@@ -16,6 +16,15 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 @SpringBootTest
 @AutoConfigureMockMvc
 class ResourceRevisionHttpTests {
+    @Test fun `disabled session user is forbidden rather than a server error`() {
+        mvc
+            .perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .get("/api/auth/me")
+                    .with(user("disabled.user").roles("USER")),
+            ).andExpect(status().isForbidden)
+    }
+
     @Autowired private lateinit var mvc: MockMvc
 
     @Autowired private lateinit var resources: ResourceService
