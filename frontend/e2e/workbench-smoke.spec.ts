@@ -255,7 +255,7 @@ test('governed workbench browser smoke', async ({ page }) => {
         });
 
         await check('query history refresh', async () => {
-            await page.getByLabel('Query History').click();
+            await page.getByRole('tab', { name: 'Query History', exact: true }).click();
             const history = page.locator('section.history-panel');
             await expect(history).toBeVisible();
             const refresh = history.getByRole('button', { name: 'Refresh history' });
