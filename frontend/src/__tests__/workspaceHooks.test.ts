@@ -55,7 +55,8 @@ describe('workspace hooks helpers', () => {
             schema: 'Viper2',
             queryText: 'select * from adUnits',
             resourceScope: 'SHARED' as const,
-            resourceTags: ['ops']
+            resourceTags: ['ops'],
+            resourceRevision: 7
         };
 
         const hydrated = hydrateStoredWorkspaceTabs([datasource('starrocks-prod-adhoc')], {
@@ -70,8 +71,10 @@ describe('workspace hooks helpers', () => {
             queryText: 'select * from adUnits',
             isExecuting: false,
             executionId: '',
-            requestedCredentialProfile: ''
+            requestedCredentialProfile: '',
+            resourceRevision: 7
         });
+        expect(toPersistentTab(hydrated.tabs[0]).resourceRevision).toBe(7);
     });
 
     it('serializes only persistent tab fields', () => {

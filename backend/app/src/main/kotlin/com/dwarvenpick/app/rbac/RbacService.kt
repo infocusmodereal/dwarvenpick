@@ -9,6 +9,7 @@ import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.datasource.DatasourceRegistryService
 import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.Locale
 
 class GroupNotFoundException(
@@ -30,6 +31,7 @@ data class QueryAccessPolicy(
     val maxRowsPerQuery: Int,
     val maxRuntimeSeconds: Int,
     val concurrencyLimit: Int,
+    val authorization: Map<String, Any?> = emptyMap(),
 )
 
 data class GroupRecord(
@@ -108,6 +110,7 @@ class RbacService(
         return group.toResponse()
     }
 
+    @Transactional
     fun addMember(
         groupId: String,
         username: String,
@@ -128,10 +131,10 @@ class RbacService(
         }
 
         group.members.add(normalizedUsername)
-        rbacRepository.addMember(groupId, normalizedUsername)
         return group.toResponse()
     }
 
+    @Transactional
     fun removeMember(
         groupId: String,
         username: String,
@@ -152,10 +155,10 @@ class RbacService(
         }
 
         group.members.remove(normalizedUsername)
-        rbacRepository.removeMember(groupId, normalizedUsername)
         return group.toResponse()
     }
 
+    @Transactional
     fun deleteGroup(groupId: String): Boolean {
         val normalizedGroupId = groupId.trim()
         if (normalizedGroupId.isBlank()) {
@@ -166,13 +169,9 @@ class RbacService(
             throw IllegalArgumentException("Group '$normalizedGroupId' is a system group and cannot be deleted.")
         }
 
-        val removedGroup =
-            rbacRepository.deleteGroup(normalizedGroupId)
-                ?: throw GroupNotFoundException("Group '$normalizedGroupId' was not found.")
+        rbacRepository.deleteGroup(normalizedGroupId)
+            ?: throw GroupNotFoundException("Group '$normalizedGroupId' was not found.")
 
-        removedGroup.members.forEach { member ->
-            runCatching { userAccountService.removeGroupMembership(member, normalizedGroupId) }
-        }
         return true
     }
 
@@ -392,6 +391,7 @@ class RbacService(
                     maxRowsPerQuery = 5000,
                     maxRuntimeSeconds = 300,
                     concurrencyLimit = 5,
+                    authorization = authorizationEvidence(principal, emptyList()),
                 )
             }
 
@@ -416,6 +416,7 @@ class RbacService(
             maxRowsPerQuery = resolveLimit(selectedAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
             maxRuntimeSeconds = resolveLimit(selectedAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
             concurrencyLimit = resolveLimit(selectedAccessRules.map { access -> access.concurrencyLimit }, 5),
+            authorization = authorizationEvidence(principal, selectedAccessRules),
         )
     }
 
@@ -466,8 +467,36 @@ class RbacService(
             maxRowsPerQuery = resolveLimit(matchingAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
             maxRuntimeSeconds = resolveLimit(matchingAccessRules.map { access -> access.maxRuntimeSeconds }, 300),
             concurrencyLimit = resolveLimit(matchingAccessRules.map { access -> access.concurrencyLimit }, 5),
+            authorization = authorizationEvidence(principal, matchingAccessRules),
         )
     }
+
+    private fun authorizationEvidence(
+        principal: AuthenticatedUserPrincipal,
+        rules: List<DatasourceAccessRecord>,
+    ): Map<String, Any?> =
+        mapOf(
+            "schemaVersion" to 1,
+            "userId" to principal.userId,
+            "roles" to principal.roles.sorted(),
+            "groups" to principal.groups.sorted(),
+            "systemAdmin" to principal.roles.contains("SYSTEM_ADMIN"),
+            "resolution" to if (rules.isEmpty()) "SYSTEM_ADMIN_DEFAULT" else "GROUP_RULES",
+            "rules" to
+                rules.map { rule ->
+                    mapOf(
+                        "groupId" to rule.groupId,
+                        "datasourceId" to rule.datasourceId,
+                        "credentialProfile" to rule.credentialProfile,
+                        "canQuery" to rule.canQuery,
+                        "canExport" to rule.canExport,
+                        "readOnly" to rule.readOnly,
+                        "maxRowsPerQuery" to rule.maxRowsPerQuery,
+                        "maxRuntimeSeconds" to rule.maxRuntimeSeconds,
+                        "concurrencyLimit" to rule.concurrencyLimit,
+                    )
+                },
+        )
 
     private fun resolveLimit(
         values: List<Int?>,

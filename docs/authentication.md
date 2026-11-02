@@ -115,3 +115,32 @@ Mappings match the authenticated directory username exactly, ignoring case. They
 Grant these internal groups explicit connection permissions using the normal connection catalog, preferably a read-only database credential with export disabled. Membership changes appear in the existing LDAP group-sync and login audit events. Configuration defaults to an empty list.
 
 For temporary access, remove the mapping and its dedicated connection grants when the exception ends. Membership removal takes effect at the next login; existing sessions retain their principal until logout or expiration, so remove connection grants as well for immediate access revocation. This setting does not implement automatic expiry.
+
+## Stable accounts and external identity linking
+
+Accounts have an immutable `user_id`; usernames remain the public handle for existing
+APIs and historical ownership. OIDC login resolves `(provider, issuer, subject)`.
+LDAP resolves the configured directory URL and the authenticated distinguished name.
+A changed LDAP DN or directory URL therefore requires a new explicit link.
+A matching username alone never links identities or converts a local account.
+Local password reset is restricted to local accounts.
+
+Existing external accounts must be linked by a system administrator before their
+first login after this upgrade. Use `POST /api/auth/admin/users/{username}/identities`
+with an authenticated administrator session, a CSRF token and this JSON body:
+
+```json
+{"provider":"OIDC","issuer":"https://identity.example/realms/team","subject":"verified-provider-subject"}
+```
+
+Verify the issuer and subject in the identity provider before linking. For LDAP,
+use `provider: LDAP`, the configured directory URL as issuer and the authenticated
+DN as subject. The account's provider must match. Links are unique and cannot be
+silently reassigned; conflicts return HTTP 409. Successful links are audited.
+The endpoint does not enable disabled users or permit automatic cross-provider conversion.
+
+Group authorization and administrative membership lists now read `app_user_groups`.
+External login replaces that account's memberships with its mapped provider groups,
+as before. Manual grants to external accounts therefore last until the next sync.
+Authenticated requests reload account permissions; revoked memberships do not remain
+active merely because an older session still contains them.

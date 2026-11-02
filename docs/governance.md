@@ -41,3 +41,16 @@ When Local auth is enabled, SYSTEM_ADMINs can:
 
 When LDAP-only mode is enabled, user creation and password resets are intentionally disabled.
 The Users admin menu is also hidden in the UI to avoid presenting an empty local-user table.
+
+## Execution authorization evidence
+
+The queued `query.execute` audit event records a versioned authorization snapshot:
+stable user ID, roles, groups, matching group rules, whether system administrator
+resolution applied, the selected credential profile, effective execution limits and
+justification mode. Match it to query history using `executionId`. Later permission
+changes do not rewrite this evidence. No credential secret is included.
+
+This evidence follows audit retention, not result-session retention. Keep the audit
+retention window long enough for the investigations your team needs. Profile export
+permission is still checked when exporting, rather than granted forever by the
+execution-time snapshot.

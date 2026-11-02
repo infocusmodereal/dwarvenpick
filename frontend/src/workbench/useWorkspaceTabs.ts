@@ -33,6 +33,7 @@ export const buildWorkspaceTab = (
     resourceTags: resource?.tags ?? [],
     resourceAllowGroupEdit: resource?.allowGroupEdit,
     resourceOwner: resource?.owner,
+    resourceRevision: resource?.currentRevision,
     requestedCredentialProfile: '',
     queryJustification: '',
     queryText,
@@ -74,6 +75,7 @@ export const toPersistentTab = (tab: WorkspaceTab): PersistentWorkspaceTab => ({
     resourceFolderPath: tab.resourceFolderPath,
     resourceTags: tab.resourceTags,
     resourceAllowGroupEdit: tab.resourceAllowGroupEdit,
+    resourceRevision: tab.resourceRevision,
     resourceOwner: tab.resourceOwner
 });
 
@@ -140,6 +142,8 @@ export const hydrateStoredWorkspaceTabs = (
                     typeof tab.resourceAllowGroupEdit === 'boolean'
                         ? tab.resourceAllowGroupEdit
                         : undefined,
+                resourceRevision:
+                    typeof tab.resourceRevision === 'number' ? tab.resourceRevision : undefined,
                 resourceOwner:
                     typeof tab.resourceOwner === 'string' && tab.resourceOwner.trim()
                         ? tab.resourceOwner

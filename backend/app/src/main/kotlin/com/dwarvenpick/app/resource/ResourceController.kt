@@ -98,6 +98,11 @@ class ResourceController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
+        if (request?.expectedRevision == null) {
+            return ResponseEntity
+                .status(HttpStatus.PRECONDITION_REQUIRED)
+                .body(ErrorResponse("expectedRevision is required. Reload the script before saving."))
+        }
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         return try {
             val resource = resourceService.updateMetadata(principal, resourceId, request)
@@ -134,6 +139,11 @@ class ResourceController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
+        if (request?.expectedRevision == null) {
+            return ResponseEntity
+                .status(HttpStatus.PRECONDITION_REQUIRED)
+                .body(ErrorResponse("expectedRevision is required. Reload the script before saving."))
+        }
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         return try {
             val resource = resourceService.updateContent(principal, resourceId, request)
@@ -218,6 +228,8 @@ class ResourceController(
 
     private fun toErrorResponse(exception: Throwable): ResponseEntity<Any> =
         when (exception) {
+            is ResourceRevisionConflictException ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse(exception.message ?: "Revision conflict."))
             is ResourceNotFoundException ->
                 ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(exception.message))
             is ResourceAccessDeniedException ->
@@ -256,6 +268,11 @@ class ResourceController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest,
     ): ResponseEntity<Any> {
+        if (request?.expectedRevision == null) {
+            return ResponseEntity
+                .status(HttpStatus.PRECONDITION_REQUIRED)
+                .body(ErrorResponse("expectedRevision is required. Reload the script before saving."))
+        }
         val principal = authenticatedPrincipalResolver.resolve(authentication)
         return try {
             val resource =

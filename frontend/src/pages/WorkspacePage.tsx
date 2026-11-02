@@ -643,6 +643,7 @@ export default function WorkspacePage() {
     const [savingResource, setSavingResource] = useState(false);
     const [resourceEditorMode, setResourceEditorMode] = useState<ResourceManagerMode>('list');
     const [editingResourceId, setEditingResourceId] = useState('');
+    const [editingResourceRevision, setEditingResourceRevision] = useState<number>();
     const [resourceFormState, setResourceFormState] =
         useState<ResourceFormState>(buildBlankResourceForm());
     const [resourceFormSourceTabId, setResourceFormSourceTabId] = useState('');
@@ -1911,6 +1912,10 @@ export default function WorkspacePage() {
                         resourceFolderPath: resource.folderPath,
                         resourceTags: resource.tags,
                         resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceRevision:
+                            options?.targetTabId === tab.id || tab.queryText === resource.sql
+                                ? resource.currentRevision
+                                : tab.resourceRevision,
                         resourceOwner: resource.owner
                     };
                 })
@@ -4280,6 +4285,7 @@ export default function WorkspacePage() {
                         [csrfToken.headerName]: csrfToken.token
                     },
                     body: JSON.stringify({
+                        expectedRevision: tab.resourceRevision,
                         title: resourceTitle,
                         sql: tab.queryText,
                         datasourceId: tab.datasourceId.trim() || undefined
@@ -4373,6 +4379,7 @@ export default function WorkspacePage() {
             try {
                 const fullResource = await loadResourceDetail(resource.resourceId);
                 setEditingResourceId(fullResource.resourceId);
+                setEditingResourceRevision(fullResource.currentRevision);
                 setResourceEditorMode('edit');
                 setResourceFormSourceTabId('');
                 setResourceFormState({
@@ -4454,7 +4461,7 @@ export default function WorkspacePage() {
                         'Content-Type': 'application/json',
                         [csrfToken.headerName]: csrfToken.token
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ ...payload, expectedRevision: editingResourceRevision })
                 }
             );
 
@@ -4463,6 +4470,7 @@ export default function WorkspacePage() {
             }
 
             const resource = (await response.json()) as ResourceScriptResponse;
+            setEditingResourceRevision(resource.currentRevision);
             const sourceTabId = resourceFormSourceTabId;
 
             if (resourceEditorMode === 'create' && sourceTabId) {
@@ -4480,6 +4488,7 @@ export default function WorkspacePage() {
                         resourceFolderPath: resource.folderPath,
                         resourceTags: resource.tags,
                         resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceRevision: resource.currentRevision,
                         resourceOwner: resource.owner
                     };
                     resourceAutosaveSnapshotRef.current[sourceTabId] =
@@ -4519,6 +4528,7 @@ export default function WorkspacePage() {
     }, [
         buildResourceTabSnapshot,
         editingResourceId,
+        editingResourceRevision,
         fetchCsrfToken,
         loadResources,
         readFriendlyError,
@@ -4723,7 +4733,7 @@ export default function WorkspacePage() {
                             'Content-Type': 'application/json',
                             [csrfToken.headerName]: csrfToken.token
                         },
-                        body: JSON.stringify({})
+                        body: JSON.stringify({ expectedRevision: editingResourceRevision })
                     }
                 );
                 if (!response.ok) {
@@ -4731,6 +4741,7 @@ export default function WorkspacePage() {
                 }
 
                 const resource = (await response.json()) as ResourceScriptResponse;
+                setEditingResourceRevision(resource.currentRevision);
                 setResourceFormState({
                     title: resource.title,
                     sql: resource.sql,
@@ -4758,6 +4769,7 @@ export default function WorkspacePage() {
                         resourceFolderPath: resource.folderPath,
                         resourceTags: resource.tags,
                         resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceRevision: resource.currentRevision,
                         resourceOwner: resource.owner
                     };
                     resourceAutosaveSnapshotRef.current[tab.id] =
@@ -4780,6 +4792,7 @@ export default function WorkspacePage() {
         [
             buildResourceTabSnapshot,
             editingResourceId,
+            editingResourceRevision,
             fetchCsrfToken,
             loadResourceVersions,
             loadResources,

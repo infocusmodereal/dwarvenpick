@@ -549,6 +549,63 @@ class QueryRuntimeRepositoryTests {
             .isEqualTo(QueryExecutionStatus.CANCELED)
     }
 
+    @Test
+    fun `retention preserves long running queries and recently accessed exports`() {
+        val old = Instant.now().minusSeconds(7200)
+        val running = runtimeRecord("long-running").copy(submittedAt = old, lastAccessedAt = old)
+        val exporting =
+            runtimeRecord("exporting").copy(
+                status = QueryExecutionStatus.SUCCEEDED,
+                submittedAt = old,
+                completedAt = old,
+            )
+        val idle = exporting.copy(executionId = "idle", lastAccessedAt = old)
+        listOf(running, exporting, idle).forEach(queryRuntimeRepository::save)
+        assertThat(queryRuntimeRepository.pruneOlderThan(Instant.now().minusSeconds(3600))).isEqualTo(1)
+        assertThat(queryRuntimeRepository.find("long-running")).isNotNull()
+        assertThat(queryRuntimeRepository.find("exporting")).isNotNull()
+        assertThat(queryRuntimeRepository.find("idle")).isNull()
+    }
+
+    @Test
+    fun `terminal retry from another owner is rejected`() {
+        val record = runtimeRecord("wrong-owner-terminal").copy(status = QueryExecutionStatus.CANCELED, rows = emptyList())
+        queryRuntimeRepository.save(record)
+        val update = runtimeUpdate(record, QueryExecutionStatus.CANCELED, 0)
+        assertThrows<QueryRuntimeWriteRejectedException> {
+            queryRuntimeRepository.finalizeWithoutResults(update.copy(ownerInstanceId = "other-instance"))
+        }
+        queryRuntimeRepository.finalizeWithoutResults(update)
+        queryRuntimeRepository.finalizeWithoutResults(update)
+        assertThat(queryRuntimeRepository.find(record.executionId)?.status).isEqualTo(QueryExecutionStatus.CANCELED)
+    }
+
+    @Test
+    fun `backend loss fences late result writes and frees active execution`() {
+        val record = runtimeRecord("lost-backend").copy(heartbeatAt = Instant.now().minusSeconds(600))
+        queryRuntimeRepository.save(record)
+        assertThat(queryRuntimeRepository.markStaleActiveExecutions(Instant.now().minusSeconds(60), "Backend lost")).isEqualTo(1)
+        assertThrows<QueryRuntimeWriteRejectedException> {
+            queryRuntimeRepository.appendResultPage(record.executionId, record.ownerInstanceId, resultPage(1, 1, "late"))
+        }
+        assertThat(queryRuntimeRepository.find(record.executionId)?.status).isEqualTo(QueryExecutionStatus.CANCELED)
+    }
+
+    @Test
+    fun `export reports expiration instead of silently returning partial results`() {
+        val record =
+            runtimeRecord("expired-export").copy(
+                status = QueryExecutionStatus.SUCCEEDED,
+                rows = listOf(listOf("1"), listOf("2"), listOf("3")),
+            )
+        queryRuntimeRepository.save(record)
+        val rows = queryRuntimeRepository.rowIterable(record.executionId).iterator()
+        assertThat(rows.next()).containsExactly("1")
+        assertThat(rows.next()).containsExactly("2")
+        queryRuntimeRepository.expireResults(record.executionId, "Expired")
+        assertThrows<QueryResultsExpiredException> { rows.hasNext() }
+    }
+
     private fun runtimeRecord(executionId: String): PersistedQueryRuntimeRecord {
         val submittedAt = Instant.now()
         return PersistedQueryRuntimeRecord(

@@ -298,6 +298,13 @@ class QueryExecutionManager(
                     "datasourceId" to record.datasourceId,
                     "executionId" to executionId,
                     "queryHash" to queryHash,
+                    "authorization" to policy.authorization,
+                    "credentialProfile" to policy.credentialProfile,
+                    "readOnly" to policy.readOnly,
+                    "maxRowsPerQuery" to maxRows,
+                    "maxRuntimeSeconds" to maxRuntimeSeconds,
+                    "concurrencyLimit" to concurrencyLimit,
+                    "justificationMode" to queryJustificationPolicy.mode(policy.readOnly).name,
                 ),
         )
         meterRegistry

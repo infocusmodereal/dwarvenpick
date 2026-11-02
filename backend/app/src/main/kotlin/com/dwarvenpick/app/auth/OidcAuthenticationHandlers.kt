@@ -68,13 +68,39 @@ class OidcAuthenticationSuccessHandler(
 
         val roles = resolveRoles(groups)
         val principal =
-            userAccountService.provisionOrUpdateOidcUser(
-                username = username,
-                displayName = displayName,
-                email = email,
-                internalGroups = groups,
-                roles = roles,
-            )
+            try {
+                userAccountService.provisionOrUpdateOidcUser(
+                    username = username,
+                    displayName = displayName,
+                    email = email,
+                    internalGroups = groups,
+                    roles = roles,
+                    issuer = oidcUser.issuer.toString(),
+                    subject = oidcUser.subject,
+                )
+            } catch (_: ExternalIdentityConflictException) {
+                org.springframework.security.core.context.SecurityContextHolder
+                    .clearContext()
+                request.getSession(false)?.invalidate()
+                recordAuthAttempt(outcome = "failed")
+                redirectRelative(response, "/login?error=identity_link_required")
+                return
+            } catch (_: DisabledUserException) {
+                org.springframework.security.core.context.SecurityContextHolder
+                    .clearContext()
+                request.getSession(false)?.invalidate()
+                recordAuthAttempt(outcome = "failed")
+                redirectRelative(response, "/login?error=account_disabled")
+                return
+            } catch (exception: RuntimeException) {
+                logger.warn("OIDC account provisioning failed ({})", exception.javaClass.simpleName)
+                org.springframework.security.core.context.SecurityContextHolder
+                    .clearContext()
+                request.getSession(false)?.invalidate()
+                recordAuthAttempt(outcome = "failed")
+                redirectRelative(response, "/login?error=oidc")
+                return
+            }
 
         sessionAuthenticationService.establishSession(principal, request, response)
 

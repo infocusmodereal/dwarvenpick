@@ -53,6 +53,7 @@ data class AuthenticatedUserPrincipal(
     val provider: AuthProvider,
     val roles: Set<String>,
     val groups: Set<String>,
+    val userId: String? = null,
 ) : Serializable,
     Principal {
     override fun getName(): String = username
@@ -103,4 +104,10 @@ data class AuthMethodsResponse(
 
 data class ErrorResponse(
     val error: String,
+)
+
+data class LinkExternalIdentityRequest(
+    val provider: AuthProvider,
+    @field:NotBlank val issuer: String,
+    @field:NotBlank val subject: String,
 )

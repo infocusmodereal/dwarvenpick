@@ -90,6 +90,7 @@ data class CreateResourceRequest(
 )
 
 data class UpdateResourceMetadataRequest(
+    val expectedRevision: Int? = null,
     @field:NotBlank(message = "title is required.")
     val title: String = "",
     val sql: String = "",
@@ -102,6 +103,7 @@ data class UpdateResourceMetadataRequest(
 )
 
 data class UpdateResourceContentRequest(
+    val expectedRevision: Int? = null,
     @field:NotBlank(message = "title is required.")
     val title: String = "",
     val sql: String = "",
@@ -119,5 +121,6 @@ data class DuplicateResourceRequest(
 )
 
 data class RestoreResourceVersionRequest(
+    val expectedRevision: Int? = null,
     val keepCurrentMetadata: Boolean = false,
 )

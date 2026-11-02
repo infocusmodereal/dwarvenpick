@@ -199,12 +199,28 @@ class ResourceRepository(
                 versionRowMapper,
             ).firstOrNull()
 
+    fun lockResource(resourceId: String) {
+        namedParameterJdbcTemplate.queryForList(
+            "SELECT resource_id FROM resource_scripts WHERE resource_id = :resourceId FOR UPDATE",
+            mapOf("resourceId" to resourceId),
+            String::class.java,
+        )
+    }
+
     @Transactional
     fun saveResource(record: ResourceRecord) {
-        namedParameterJdbcTemplate.update(
-            "DELETE FROM resource_scripts WHERE resource_id = :resourceId",
-            mapOf("resourceId" to record.resourceId),
-        )
+        val updated =
+            namedParameterJdbcTemplate.update(
+                """
+                UPDATE resource_scripts SET title = :title, sql_text = :sqlText, scope = :scope,
+                  group_id = :groupId, folder_path = :folderPath, datasource_id = :datasourceId,
+                  tags_json = :tagsJson, allow_group_edit = :allowGroupEdit,
+                  updated_at = :updatedAt, current_revision = :currentRevision
+                WHERE resource_id = :resourceId
+                """.trimIndent(),
+                record.toParameters(),
+            )
+        if (updated > 0) return
         namedParameterJdbcTemplate.update(
             """
             INSERT INTO resource_scripts (

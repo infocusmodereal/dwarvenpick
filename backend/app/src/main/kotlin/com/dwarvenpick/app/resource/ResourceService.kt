@@ -6,10 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 import kotlin.io.path.exists
+
+class ResourceRevisionConflictException :
+    RuntimeException("Script changed since it was opened. Reload it before saving; your changes have not been written.")
 
 class ResourceNotFoundException(
     override val message: String,
@@ -161,7 +165,7 @@ class ResourceService(
             .map { version -> version.toResponse() }
     }
 
-    @Synchronized
+    @Transactional
     fun createResource(
         principal: AuthenticatedUserPrincipal,
         request: CreateResourceRequest,
@@ -184,17 +188,20 @@ class ResourceService(
                 updatedAt = now,
             )
         appendVersion(resource, principal.username, ResourceVersionAction.CREATED, now)
-        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
-    @Synchronized
+    @Transactional
     fun updateMetadata(
         principal: AuthenticatedUserPrincipal,
         resourceId: String,
         request: UpdateResourceMetadataRequest,
     ): ResourceScriptResponse {
+        resourceRepository.lockResource(resourceId)
         val resource = resourceRecord(resourceId)
+        if (request.expectedRevision != null && request.expectedRevision != resource.currentRevision) {
+            throw ResourceRevisionConflictException()
+        }
         enforceCanShare(principal, resource)
         val normalized = normalizeCreateOrMetadataRequest(principal, request)
         val now = Instant.now()
@@ -210,17 +217,20 @@ class ResourceService(
         resource.updatedAt = now
 
         appendVersion(resource, principal.username, ResourceVersionAction.UPDATED_METADATA, now)
-        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
-    @Synchronized
+    @Transactional
     fun updateContent(
         principal: AuthenticatedUserPrincipal,
         resourceId: String,
         request: UpdateResourceContentRequest,
     ): ResourceScriptResponse {
+        resourceRepository.lockResource(resourceId)
         val resource = resourceRecord(resourceId)
+        if (request.expectedRevision != null && request.expectedRevision != resource.currentRevision) {
+            throw ResourceRevisionConflictException()
+        }
         enforceCanEdit(principal, resource)
         val normalizedTitle = normalizeResourceTitle(request.title)
 
@@ -231,18 +241,21 @@ class ResourceService(
         resource.updatedAt = now
 
         appendVersion(resource, principal.username, ResourceVersionAction.UPDATED_CONTENT, now)
-        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
-    @Synchronized
+    @Transactional
     fun restoreVersion(
         principal: AuthenticatedUserPrincipal,
         resourceId: String,
         versionId: String,
         request: RestoreResourceVersionRequest,
     ): ResourceScriptResponse {
+        resourceRepository.lockResource(resourceId)
         val resource = resourceRecord(resourceId)
+        if (request.expectedRevision != null && request.expectedRevision != resource.currentRevision) {
+            throw ResourceRevisionConflictException()
+        }
         enforceCanShare(principal, resource)
         val version = versionRecord(resourceId, versionId)
         val now = Instant.now()
@@ -260,11 +273,10 @@ class ResourceService(
         resource.updatedAt = now
 
         appendVersion(resource, principal.username, ResourceVersionAction.RESTORED, now)
-        resourceRepository.saveResource(resource)
         return resource.toResponse(principal)
     }
 
-    @Synchronized
+    @Transactional
     fun duplicateResource(
         principal: AuthenticatedUserPrincipal,
         resourceId: String,
@@ -310,11 +322,10 @@ class ResourceService(
                 updatedAt = now,
             )
         appendVersion(copy, principal.username, ResourceVersionAction.DUPLICATED, now)
-        resourceRepository.saveResource(copy)
         return copy.toResponse(principal)
     }
 
-    @Synchronized
+    @Transactional
     fun deleteResource(
         principal: AuthenticatedUserPrincipal,
         resourceId: String,
@@ -344,6 +355,8 @@ class ResourceService(
         timestamp: Instant = Instant.now(),
     ) {
         val revision = resource.currentRevision + 1
+        resource.currentRevision = revision
+        resourceRepository.saveResource(resource)
         resourceRepository.saveVersion(
             ResourceVersionRecord(
                 versionId = UUID.randomUUID().toString(),
