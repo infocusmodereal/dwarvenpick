@@ -3,6 +3,9 @@ spring:
     name: dwarvenpick-backend
   jackson:
     default-property-inclusion: non_null
+    use-jackson2-defaults: true
+  jackson2:
+    default-property-inclusion: non_null
   session:
     store-type: jdbc
     jdbc:

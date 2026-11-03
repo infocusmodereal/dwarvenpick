@@ -126,6 +126,10 @@ Prerequisites:
 - Java 21 (backend)
 - Node.js 22 + npm (frontend)
 
+The backend uses Spring Boot 4.0 and Kotlin 2.2. Use the checked-in Gradle wrapper
+(8.14.3) rather than an older system Gradle. Upgrades from 0.40.x must follow the
+[0.41.1 release notes](docs/release-0.41.1.md), including the database and external-identity migration steps.
+
 Backend:
 
 ```bash

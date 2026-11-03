@@ -6,8 +6,6 @@ plugins {
 }
 
 extra["testcontainers.version"] = "1.21.0"
-extra["netty.version"] = "4.1.137.Final"
-extra["tomcat.version"] = "10.1.59"
 extra["httpcore5.version"] = "5.4.3"
 
 fun releaseMetadataValue(name: String): String = System.getenv(name)?.trim()?.takeIf { it.isNotBlank() } ?: "unknown"
@@ -18,13 +16,15 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
-    implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.session:spring-session-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-jackson2")
+    implementation("org.springframework.boot:spring-boot-starter-session-jdbc")
+    implementation("com.google.guava:guava:33.7.2-jre")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("com.zaxxer:HikariCP")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("org.flywaydb:flyway-core")
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.ldap:spring-ldap-core")
     implementation("com.aerospike:aerospike-client-jdk8:9.0.5")
@@ -37,8 +37,8 @@ dependencies {
     runtimeOnly("com.aerospike:aerospike-jdbc:1.10.1")
     runtimeOnly("com.h2database:h2")
 
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
     testImplementation(enforcedPlatform("org.testcontainers:testcontainers-bom:1.21.0"))
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:ldap")
