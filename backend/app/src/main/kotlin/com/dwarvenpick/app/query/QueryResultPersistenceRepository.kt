@@ -1,6 +1,7 @@
 package com.dwarvenpick.app.query
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.dao.EmptyResultDataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
@@ -92,6 +93,9 @@ class QueryResultPersistenceRepository(
     @Transactional
     fun finalizeWithoutResults(update: QueryRuntimeExecutionUpdate) {
         val current = lockExecution(update.executionId)
+        if (current.ownerInstanceId != update.ownerInstanceId) {
+            throw QueryRuntimeWriteRejectedException("Execution is owned by another backend.")
+        }
         if (current.status in terminalStatuses && current.status == update.status) {
             deleteResultPages(update.executionId)
             return
@@ -106,7 +110,12 @@ class QueryResultPersistenceRepository(
     @Transactional
     fun beginResultAccess(executionId: String): Boolean {
         val accessedAt = Instant.now()
-        val current = runCatching { lockExecution(executionId) }.getOrNull() ?: return false
+        val current =
+            try {
+                lockExecution(executionId)
+            } catch (_: EmptyResultDataAccessException) {
+                return false
+            }
         if (current.status != QueryExecutionStatus.SUCCEEDED || current.cancelRequested) {
             return false
         }
@@ -143,7 +152,12 @@ class QueryResultPersistenceRepository(
         cutoff: Instant,
         message: String,
     ): Boolean {
-        val current = runCatching { lockExecution(executionId) }.getOrNull() ?: return false
+        val current =
+            try {
+                lockExecution(executionId)
+            } catch (_: EmptyResultDataAccessException) {
+                return false
+            }
         if (current.status != QueryExecutionStatus.SUCCEEDED) {
             return false
         }

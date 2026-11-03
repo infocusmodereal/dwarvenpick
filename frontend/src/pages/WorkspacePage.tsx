@@ -1,4 +1,5 @@
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
+import { runResourceSaveOnce } from '../workbench/resourceSaveGuard';
 import SqlValidationControl from '../workbench/components/SqlValidationControl';
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import {
@@ -643,6 +644,7 @@ export default function WorkspacePage() {
     const [savingResource, setSavingResource] = useState(false);
     const [resourceEditorMode, setResourceEditorMode] = useState<ResourceManagerMode>('list');
     const [editingResourceId, setEditingResourceId] = useState('');
+    const [editingResourceRevision, setEditingResourceRevision] = useState<number>();
     const [resourceFormState, setResourceFormState] =
         useState<ResourceFormState>(buildBlankResourceForm());
     const [resourceFormSourceTabId, setResourceFormSourceTabId] = useState('');
@@ -651,6 +653,7 @@ export default function WorkspacePage() {
     const [restoringResourceVersionId, setRestoringResourceVersionId] = useState('');
     const resourceAutosaveTimerRef = useRef<Record<string, number>>({});
     const resourceAutosaveSnapshotRef = useRef<Record<string, string>>({});
+    const resourceSaveInFlightRef = useRef(new Set<string>());
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
     const validationContext = JSON.stringify([
         activeSection,
@@ -1911,6 +1914,10 @@ export default function WorkspacePage() {
                         resourceFolderPath: resource.folderPath,
                         resourceTags: resource.tags,
                         resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceRevision:
+                            options?.targetTabId === tab.id || tab.queryText === resource.sql
+                                ? resource.currentRevision
+                                : tab.resourceRevision,
                         resourceOwner: resource.owner
                     };
                 })
@@ -4253,59 +4260,61 @@ export default function WorkspacePage() {
                 announce?: boolean;
                 snapshotOverride?: string;
             }
-        ) => {
-            const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
-            if (!tab?.resourceId) {
-                return false;
-            }
-
-            const snapshot = options?.snapshotOverride ?? buildResourceTabSnapshot(tab);
-            const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim();
-            const titleValidationMessage = validateResourceTitle(resourceTitle);
-            if (titleValidationMessage) {
-                if (options?.announce) {
-                    setResourceError(titleValidationMessage);
-                }
-                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
-                return false;
-            }
-
-            try {
-                const csrfToken = await fetchCsrfToken();
-                const response = await fetch(`/api/resources/${tab.resourceId}/content`, {
-                    method: 'PATCH',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [csrfToken.headerName]: csrfToken.token
-                    },
-                    body: JSON.stringify({
-                        title: resourceTitle,
-                        sql: tab.queryText,
-                        datasourceId: tab.datasourceId.trim() || undefined
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(await readFriendlyError(response));
+        ) =>
+            runResourceSaveOnce(resourceSaveInFlightRef.current, tabId, async () => {
+                const tab = workspaceTabsRef.current.find((candidate) => candidate.id === tabId);
+                if (!tab?.resourceId) {
+                    return false;
                 }
 
-                const resource = (await response.json()) as ResourceScriptResponse;
-                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
-                replaceVisibleResource(resource);
-                syncResourceToTabs(resource, { targetTabId: tabId });
-                if (options?.announce) {
-                    showWorkbenchNotice('Script saved.');
+                const snapshot = options?.snapshotOverride ?? buildResourceTabSnapshot(tab);
+                const resourceTitle = tab.resourceTitle?.trim() || tab.title.trim();
+                const titleValidationMessage = validateResourceTitle(resourceTitle);
+                if (titleValidationMessage) {
+                    if (options?.announce) {
+                        setResourceError(titleValidationMessage);
+                    }
+                    resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                    return false;
                 }
-                return true;
-            } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : 'Failed to save script content.';
-                resourceAutosaveSnapshotRef.current[tabId] = snapshot;
-                setResourceError(message);
-                return false;
-            }
-        },
+
+                try {
+                    const csrfToken = await fetchCsrfToken();
+                    const response = await fetch(`/api/resources/${tab.resourceId}/content`, {
+                        method: 'PATCH',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            [csrfToken.headerName]: csrfToken.token
+                        },
+                        body: JSON.stringify({
+                            expectedRevision: tab.resourceRevision,
+                            title: resourceTitle,
+                            sql: tab.queryText,
+                            datasourceId: tab.datasourceId.trim() || undefined
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(await readFriendlyError(response));
+                    }
+
+                    const resource = (await response.json()) as ResourceScriptResponse;
+                    resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                    replaceVisibleResource(resource);
+                    syncResourceToTabs(resource, { targetTabId: tabId });
+                    if (options?.announce) {
+                        showWorkbenchNotice('Script saved.');
+                    }
+                    return true;
+                } catch (error) {
+                    const message =
+                        error instanceof Error ? error.message : 'Failed to save script content.';
+                    resourceAutosaveSnapshotRef.current[tabId] = snapshot;
+                    setResourceError(message);
+                    return false;
+                }
+            }),
         [
             buildResourceTabSnapshot,
             fetchCsrfToken,
@@ -4373,6 +4382,7 @@ export default function WorkspacePage() {
             try {
                 const fullResource = await loadResourceDetail(resource.resourceId);
                 setEditingResourceId(fullResource.resourceId);
+                setEditingResourceRevision(fullResource.currentRevision);
                 setResourceEditorMode('edit');
                 setResourceFormSourceTabId('');
                 setResourceFormState({
@@ -4454,7 +4464,7 @@ export default function WorkspacePage() {
                         'Content-Type': 'application/json',
                         [csrfToken.headerName]: csrfToken.token
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ ...payload, expectedRevision: editingResourceRevision })
                 }
             );
 
@@ -4463,6 +4473,7 @@ export default function WorkspacePage() {
             }
 
             const resource = (await response.json()) as ResourceScriptResponse;
+            setEditingResourceRevision(resource.currentRevision);
             const sourceTabId = resourceFormSourceTabId;
 
             if (resourceEditorMode === 'create' && sourceTabId) {
@@ -4480,6 +4491,7 @@ export default function WorkspacePage() {
                         resourceFolderPath: resource.folderPath,
                         resourceTags: resource.tags,
                         resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceRevision: resource.currentRevision,
                         resourceOwner: resource.owner
                     };
                     resourceAutosaveSnapshotRef.current[sourceTabId] =
@@ -4519,6 +4531,7 @@ export default function WorkspacePage() {
     }, [
         buildResourceTabSnapshot,
         editingResourceId,
+        editingResourceRevision,
         fetchCsrfToken,
         loadResources,
         readFriendlyError,
@@ -4723,7 +4736,7 @@ export default function WorkspacePage() {
                             'Content-Type': 'application/json',
                             [csrfToken.headerName]: csrfToken.token
                         },
-                        body: JSON.stringify({})
+                        body: JSON.stringify({ expectedRevision: editingResourceRevision })
                     }
                 );
                 if (!response.ok) {
@@ -4731,6 +4744,7 @@ export default function WorkspacePage() {
                 }
 
                 const resource = (await response.json()) as ResourceScriptResponse;
+                setEditingResourceRevision(resource.currentRevision);
                 setResourceFormState({
                     title: resource.title,
                     sql: resource.sql,
@@ -4758,6 +4772,7 @@ export default function WorkspacePage() {
                         resourceFolderPath: resource.folderPath,
                         resourceTags: resource.tags,
                         resourceAllowGroupEdit: resource.allowGroupEdit,
+                        resourceRevision: resource.currentRevision,
                         resourceOwner: resource.owner
                     };
                     resourceAutosaveSnapshotRef.current[tab.id] =
@@ -4780,6 +4795,7 @@ export default function WorkspacePage() {
         [
             buildResourceTabSnapshot,
             editingResourceId,
+            editingResourceRevision,
             fetchCsrfToken,
             loadResourceVersions,
             loadResources,

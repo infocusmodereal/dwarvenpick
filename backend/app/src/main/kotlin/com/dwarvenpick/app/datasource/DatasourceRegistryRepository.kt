@@ -127,6 +127,7 @@ class DatasourceRegistryRepository(
         }
     }
 
+    @Transactional
     fun saveCredentialProfile(
         datasourceId: String,
         record: CredentialProfileRecord,

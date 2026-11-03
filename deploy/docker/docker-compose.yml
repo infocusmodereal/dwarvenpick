@@ -229,7 +229,7 @@ services:
       DWARVENPICK_AUTH_LOCAL_ALLOW_WITH_OIDC: "true"
       SERVER_PORT: 8080
     ports:
-      - "8080:8080"
+      - "${DWARVENPICK_BACKEND_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_started

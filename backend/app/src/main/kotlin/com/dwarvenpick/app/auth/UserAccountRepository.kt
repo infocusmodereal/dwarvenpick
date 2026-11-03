@@ -22,7 +22,7 @@ class UserAccountRepository(
     fun list(): List<UserAccount> =
         namedParameterJdbcTemplate.query(
             """
-            SELECT username, display_name, email, password_hash, provider, enabled, temporary_password
+            SELECT user_id, username, display_name, email, password_hash, provider, enabled, temporary_password
             FROM app_users
             ORDER BY username
             """.trimIndent(),
@@ -34,9 +34,9 @@ class UserAccountRepository(
         namedParameterJdbcTemplate
             .query(
                 """
-                SELECT username, display_name, email, password_hash, provider, enabled, temporary_password
+                SELECT user_id, username, display_name, email, password_hash, provider, enabled, temporary_password
                 FROM app_users
-                WHERE username = :username
+                WHERE username = :username FOR UPDATE
                 """.trimIndent(),
                 mapOf("username" to username),
                 rowMapper,
@@ -50,6 +50,7 @@ class UserAccountRepository(
             namedParameterJdbcTemplate.update(
                 """
                 INSERT INTO app_users (
+                  user_id,
                   username,
                   display_name,
                   email,
@@ -61,6 +62,7 @@ class UserAccountRepository(
                   updated_at,
                   last_seen_at
                 ) VALUES (
+                  :userId,
                   :username,
                   :displayName,
                   :email,
@@ -122,6 +124,38 @@ class UserAccountRepository(
         }
     }
 
+    fun findExternal(
+        provider: AuthProvider,
+        issuer: String,
+        subject: String,
+    ): UserAccount? {
+        val usernames =
+            namedParameterJdbcTemplate.queryForList(
+                """
+                SELECT u.username FROM app_users u JOIN app_external_identities i ON u.user_id = i.user_id
+                WHERE i.provider = :provider AND i.issuer = :issuer AND i.subject = :subject
+                """.trimIndent(),
+                mapOf("provider" to provider.name, "issuer" to issuer, "subject" to subject),
+                String::class.java,
+            )
+        return usernames.firstOrNull()?.let(::find)
+    }
+
+    fun linkExternal(
+        account: UserAccount,
+        provider: AuthProvider,
+        issuer: String,
+        subject: String,
+    ) {
+        namedParameterJdbcTemplate.update(
+            """
+            INSERT INTO app_external_identities (provider, issuer, subject, user_id)
+            VALUES (:provider, :issuer, :subject, :userId)
+            """.trimIndent(),
+            mapOf("provider" to provider.name, "issuer" to issuer, "subject" to subject, "userId" to account.userId),
+        )
+    }
+
     @Transactional
     fun clear() {
         namedParameterJdbcTemplate.update("DELETE FROM app_user_groups", emptyMap<String, Any>())
@@ -134,6 +168,7 @@ class UserAccountRepository(
         createdAt: Instant? = null,
     ): MapSqlParameterSource =
         MapSqlParameterSource()
+            .addValue("userId", userId)
             .addValue("username", username)
             .addValue("displayName", displayName)
             .addValue("email", email)
@@ -149,6 +184,7 @@ class UserAccountRepository(
         val username = getString("username")
         return UserAccount(
             username = username,
+            userId = getString("user_id"),
             displayName = getString("display_name"),
             email = getString("email"),
             passwordHash = getString("password_hash"),

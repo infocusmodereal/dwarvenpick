@@ -165,3 +165,11 @@ Releases are cut from Git tags (`vX.Y.Z`). Pushing a tag triggers the `Release` 
 Apache-2.0. See `LICENSE`.
 
 LDAP operators can configure supplemental per-user internal groups for temporary access without directory changes. See [authentication](docs/authentication.md#supplemental-ldap-user-groups).
+
+### Integrity and concurrency
+
+Accounts use stable IDs and explicit external identity links. Group memberships have
+one authorization source, script writes reject stale revisions, and execution audit
+records retain the rules and limits used at submission. See [authentication](docs/authentication.md),
+[upgrade notes](docs/operations.md#identity-and-revision-integrity-upgrade) and
+[governance](docs/governance.md#execution-authorization-evidence) before upgrading.

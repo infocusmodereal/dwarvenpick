@@ -580,7 +580,12 @@ class QueryRuntimeRepository(
 
     fun pruneOlderThan(cutoff: Instant): Int =
         namedParameterJdbcTemplate.update(
-            "DELETE FROM query_runtime_executions WHERE COALESCE(completed_at, submitted_at) < :cutoff",
+            """
+            DELETE FROM query_runtime_executions
+            WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELED')
+              AND COALESCE(completed_at, submitted_at) < :cutoff
+              AND last_accessed_at < :cutoff
+            """.trimIndent(),
             mapOf("cutoff" to cutoff.toTimestamp()),
         )
 

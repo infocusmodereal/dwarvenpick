@@ -14,6 +14,9 @@ The Workbench is the main SQL editor and results viewer.
 
 ## Editor
 
+- Explorer keeps connection and schema controls compact, with **Access & policy** collapsed until needed and object search directly above the hierarchy. Required query justification remains visible.
+- Query History shows the submitting user in every row and includes it in current-page search and CSV export. Long connection names and usernames are truncated with their full value available on hover. Use the labeled icon actions to inspect details, open SQL or rerun it.
+
 - Create tabs for multiple queries.
 - Run selection or run the full query.
 - Use **Save to Scripts** to open the current editor contents as a draft in the Resource Manager with the active connection pre-selected.

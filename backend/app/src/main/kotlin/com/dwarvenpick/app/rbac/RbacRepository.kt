@@ -29,13 +29,17 @@ class RbacRepository(
             groupRowMapper,
         )
 
-    fun findGroup(groupId: String): GroupRecord? =
+    fun findGroup(
+        groupId: String,
+        forUpdate: Boolean = false,
+    ): GroupRecord? =
         namedParameterJdbcTemplate
             .query(
                 """
                 SELECT group_id, group_name, description
                 FROM rbac_groups
                 WHERE group_id = :groupId
+                ${if (forUpdate) "FOR UPDATE" else ""}
                 """.trimIndent(),
                 mapOf("groupId" to groupId),
                 groupRowMapper,
@@ -43,37 +47,28 @@ class RbacRepository(
 
     @Transactional
     fun saveGroup(group: GroupRecord) {
-        namedParameterJdbcTemplate.update(
-            "DELETE FROM rbac_groups WHERE group_id = :groupId",
-            mapOf("groupId" to group.id),
-        )
-        namedParameterJdbcTemplate.update(
-            """
-            INSERT INTO rbac_groups (group_id, group_name, description)
-            VALUES (:groupId, :groupName, :description)
-            """.trimIndent(),
-            mapOf(
-                "groupId" to group.id,
-                "groupName" to group.name,
-                "description" to group.description,
-            ),
-        )
-        namedParameterJdbcTemplate.update(
-            "DELETE FROM rbac_group_members WHERE group_id = :groupId",
-            mapOf("groupId" to group.id),
-        )
-        group.members.sorted().forEach { username ->
-            addMember(group.id, username)
+        val parameters = mapOf("groupId" to group.id, "groupName" to group.name, "description" to group.description)
+        val updated =
+            namedParameterJdbcTemplate.update(
+                "UPDATE rbac_groups SET group_name = :groupName, description = :description WHERE group_id = :groupId",
+                parameters,
+            )
+        if (updated == 0) {
+            namedParameterJdbcTemplate.update(
+                "INSERT INTO rbac_groups (group_id, group_name, description) VALUES (:groupId, :groupName, :description)",
+                parameters,
+            )
         }
     }
 
+    @Transactional
     fun addMember(
         groupId: String,
         username: String,
     ) {
         namedParameterJdbcTemplate.update(
             """
-            DELETE FROM rbac_group_members
+            DELETE FROM app_user_groups
             WHERE group_id = :groupId
               AND username = :username
             """.trimIndent(),
@@ -81,7 +76,7 @@ class RbacRepository(
         )
         namedParameterJdbcTemplate.update(
             """
-            INSERT INTO rbac_group_members (group_id, username)
+            INSERT INTO app_user_groups (group_id, username)
             VALUES (:groupId, :username)
             """.trimIndent(),
             mapOf("groupId" to groupId, "username" to username),
@@ -94,7 +89,7 @@ class RbacRepository(
     ) {
         namedParameterJdbcTemplate.update(
             """
-            DELETE FROM rbac_group_members
+            DELETE FROM app_user_groups
             WHERE group_id = :groupId
               AND username = :username
             """.trimIndent(),
@@ -104,13 +99,22 @@ class RbacRepository(
 
     @Transactional
     fun deleteGroup(groupId: String): GroupRecord? {
-        val group = findGroup(groupId) ?: return null
+        val group = findGroup(groupId, forUpdate = true) ?: return null
+        namedParameterJdbcTemplate.queryForList(
+            """
+            SELECT username FROM app_users
+            WHERE username IN (SELECT username FROM app_user_groups WHERE group_id = :groupId)
+            ORDER BY username FOR UPDATE
+            """.trimIndent(),
+            mapOf("groupId" to groupId),
+            String::class.java,
+        )
         namedParameterJdbcTemplate.update(
             "DELETE FROM rbac_datasource_access WHERE group_id = :groupId",
             mapOf("groupId" to groupId),
         )
         namedParameterJdbcTemplate.update(
-            "DELETE FROM rbac_group_members WHERE group_id = :groupId",
+            "DELETE FROM app_user_groups WHERE group_id = :groupId",
             mapOf("groupId" to groupId),
         )
         namedParameterJdbcTemplate.update(
@@ -135,6 +139,7 @@ class RbacRepository(
         )
     }
 
+    @Transactional
     fun saveDatasourceAccess(record: DatasourceAccessRecord) {
         namedParameterJdbcTemplate.update(
             """
@@ -188,7 +193,7 @@ class RbacRepository(
     @Transactional
     fun clear() {
         namedParameterJdbcTemplate.update("DELETE FROM rbac_datasource_access", emptyMap<String, Any>())
-        namedParameterJdbcTemplate.update("DELETE FROM rbac_group_members", emptyMap<String, Any>())
+        namedParameterJdbcTemplate.update("DELETE FROM app_user_groups", emptyMap<String, Any>())
         namedParameterJdbcTemplate.update("DELETE FROM rbac_groups", emptyMap<String, Any>())
     }
 
@@ -213,7 +218,7 @@ class RbacRepository(
             members =
                 namedParameterJdbcTemplate
                     .queryForList(
-                        "SELECT username FROM rbac_group_members WHERE group_id = :groupId ORDER BY username",
+                        "SELECT username FROM app_user_groups WHERE group_id = :groupId ORDER BY username",
                         mapOf("groupId" to groupId),
                         String::class.java,
                     ).toMutableSet(),

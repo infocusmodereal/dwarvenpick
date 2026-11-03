@@ -84,6 +84,11 @@ class RbacServiceTests {
         assertThat(policy.maxRowsPerQuery).isEqualTo(100)
         assertThat(policy.maxRuntimeSeconds).isEqualTo(30)
         assertThat(policy.concurrencyLimit).isEqualTo(1)
+        assertThat(policy.authorization["resolution"]).isEqualTo("GROUP_RULES")
+        val evidence = policy.authorization.toString()
+        assertThat(evidence).contains("alpha-readers", "read-only", "maxRowsPerQuery=100")
+        rbacService.deleteDatasourceAccess("alpha-readers", datasourceId)
+        assertThat(policy.authorization.toString()).isEqualTo(evidence)
     }
 
     @Test

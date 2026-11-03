@@ -73,6 +73,19 @@ afterEach(() => {
 });
 
 describe('QueryHistorySection', () => {
+    it('shows the submitting user by default and searches it on the current page', () => {
+        const connection = 'starrocks-production-very-long-connection-name';
+        renderQueryHistorySection({ entries: [{ ...historyEntry, datasourceId: connection }] });
+        expect(screen.getByRole('columnheader', { name: 'User' })).toBeInTheDocument();
+        expect(screen.getByTitle('analyst')).toBeVisible();
+        expect(screen.getByTitle(connection)).toHaveClass('history-cell-text');
+        fireEvent.change(screen.getByLabelText('Search current history page'), {
+            target: { value: 'analyst' }
+        });
+        expect(screen.getByText('1 of 1 loaded queries')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute('title');
+    });
+
     it('renders governed query justification in history rows', () => {
         renderQueryHistorySection();
 

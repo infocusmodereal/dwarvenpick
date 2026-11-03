@@ -39,6 +39,34 @@ class QueryJustificationGovernanceTests {
     }
 
     @Test
+    fun `queued audit retains authorization evidence and effective limits`() {
+        val policy =
+            queryPolicy(readOnly = true).copy(
+                authorization =
+                    mapOf(
+                        "userId" to "stable-user",
+                        "groups" to listOf("readers"),
+                        "rules" to listOf(mapOf("groupId" to "readers", "credentialProfile" to "read-only")),
+                    ),
+            )
+        val submitted =
+            queryExecutionManager.submitQuery(
+                "analyst",
+                null,
+                QueryExecutionRequest(datasourceId = "simulated", sql = "select 1"),
+                policy,
+            )
+        waitForTerminalStatus(submitted.executionId)
+        val event =
+            authAuditEventStore.snapshot().single {
+                it.type == "query.execute" && it.outcome == "queued" && it.details["executionId"] == submitted.executionId
+            }
+        assertThat(event.details["authorization"]).isEqualTo(policy.authorization)
+        assertThat(event.details["credentialProfile"]).isEqualTo(policy.credentialProfile)
+        assertThat(event.details).containsKeys("maxRowsPerQuery", "maxRuntimeSeconds", "concurrencyLimit", "justificationMode")
+    }
+
+    @Test
     fun `read-only query does not require justification when governance is enabled`() {
         val submitted =
             queryExecutionManager.submitQuery(

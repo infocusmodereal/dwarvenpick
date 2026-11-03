@@ -45,16 +45,19 @@ export default function LoginPage() {
 
     useEffect(() => {
         const params = new URLSearchParams(location.search);
-        if (params.get('error') === 'oidc') {
-            setErrorMessage('SSO sign in failed. Please try again.');
-        }
+        const messages: Record<string, string> = {
+            oidc: 'SSO sign in failed. Please try again.',
+            identity_link_required:
+                'Your external identity needs to be linked. Contact an administrator.',
+            account_disabled: 'Your account is disabled. Contact an administrator.'
+        };
+        setErrorMessage(messages[params.get('error') ?? ''] ?? '');
     }, [location.search]);
 
     useEffect(() => {
         let active = true;
 
         const loadAuthMethods = async () => {
-            setErrorMessage('');
             try {
                 const response = await fetch('/api/auth/methods', {
                     method: 'GET',

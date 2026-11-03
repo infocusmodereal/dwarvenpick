@@ -499,6 +499,7 @@ export type PersistentWorkspaceTab = {
     resourceTags?: string[];
     resourceAllowGroupEdit?: boolean;
     resourceOwner?: string;
+    resourceRevision?: number;
 };
 
 export type WorkspaceTab = PersistentWorkspaceTab & {

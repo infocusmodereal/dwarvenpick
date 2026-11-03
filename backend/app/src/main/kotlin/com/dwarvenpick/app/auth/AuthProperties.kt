@@ -90,6 +90,7 @@ data class PasswordPolicyProperties(
 data class LdapAuthProperties(
     val enabled: Boolean = false,
     val url: String = "",
+    val identityIssuer: String = "ldap-directory",
     val transport: LdapTransport = LdapTransport.AUTO,
     val bindDn: String = "",
     val bindPassword: String = "",

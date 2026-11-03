@@ -3,6 +3,8 @@ package com.dwarvenpick.app.auth
 import jakarta.annotation.PostConstruct
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 class DisabledUserException(
     override val message: String = "User account is disabled.",
@@ -11,6 +13,8 @@ class DisabledUserException(
 class UserNotFoundException(
     override val message: String,
 ) : RuntimeException(message)
+
+class ExternalIdentityConflictException : RuntimeException("External identity must be explicitly linked by an administrator.")
 
 private val localUsernamePattern = Regex("^[a-z][a-z0-9.-]*$")
 
@@ -24,6 +28,7 @@ data class UserAccount(
     var temporaryPassword: Boolean,
     val roles: MutableSet<String>,
     val groups: MutableSet<String>,
+    val userId: String = UUID.randomUUID().toString(),
 )
 
 data class AdminUserAccount(
@@ -38,6 +43,7 @@ data class AdminUserAccount(
 )
 
 @Service
+@Transactional
 class UserAccountService(
     private val authProperties: AuthProperties,
     private val passwordPolicyValidator: PasswordPolicyValidator,
@@ -173,6 +179,7 @@ class UserAccountService(
             throw DisabledUserException()
         }
 
+        if (user.provider != AuthProvider.LOCAL) return null
         val passwordHash = user.passwordHash ?: return null
         if (!passwordEncoder.matches(password, passwordHash)) {
             return null
@@ -184,6 +191,7 @@ class UserAccountService(
 
     fun currentUserPrincipal(username: String): AuthenticatedUserPrincipal? {
         val user = userAccountRepository.find(normalizeUsername(username)) ?: return null
+        if (!user.enabled) throw DisabledUserException()
         return toPrincipal(user)
     }
 
@@ -202,6 +210,7 @@ class UserAccountService(
             throw DisabledUserException()
         }
 
+        require(user.provider == AuthProvider.LOCAL) { "External accounts cannot use local password resets." }
         user.passwordHash = passwordEncoder.encode(newPassword)
         user.provider = AuthProvider.LOCAL
         user.temporaryPassword = temporaryPassword
@@ -209,108 +218,100 @@ class UserAccountService(
         return toPrincipal(user)
     }
 
+    @Transactional
     fun provisionOrUpdateLdapUser(
         profile: LdapUserProfile,
         internalGroups: Set<String>,
         roles: Set<String>,
-    ): AuthenticatedUserPrincipal {
-        val normalizedUsername = normalizeUsername(profile.username)
-        val existingUser = userAccountRepository.find(normalizedUsername)
+    ): AuthenticatedUserPrincipal =
+        provisionExternal(
+            AuthProvider.LDAP,
+            authProperties.ldap.identityIssuer,
+            profile.distinguishedName,
+            profile.username,
+            profile.displayName,
+            profile.email,
+            internalGroups,
+            roles,
+        )
 
-        val normalizedRoles =
-            roles
-                .asSequence()
-                .map { it.trim().uppercase() }
-                .filter { it.isNotBlank() }
-                .toMutableSet()
-                .apply { add("USER") }
-
-        if (existingUser == null) {
-            val user =
-                UserAccount(
-                    username = normalizedUsername,
-                    displayName = profile.displayName,
-                    email = profile.email,
-                    passwordHash = null,
-                    provider = AuthProvider.LDAP,
-                    enabled = true,
-                    temporaryPassword = false,
-                    roles = normalizedRoles,
-                    groups = internalGroups.toMutableSet(),
-                )
-            userAccountRepository.save(user)
-
-            return toPrincipal(user)
-        }
-
-        if (!existingUser.enabled) {
-            throw DisabledUserException()
-        }
-
-        existingUser.provider = AuthProvider.LDAP
-        existingUser.displayName = profile.displayName
-        existingUser.email = profile.email
-        existingUser.temporaryPassword = false
-        existingUser.groups.clear()
-        existingUser.groups.addAll(internalGroups)
-        existingUser.roles.clear()
-        existingUser.roles.addAll(normalizedRoles)
-
-        userAccountRepository.save(existingUser)
-        return toPrincipal(existingUser)
-    }
-
+    @Transactional
     fun provisionOrUpdateOidcUser(
         username: String,
         displayName: String,
         email: String?,
         internalGroups: Set<String>,
         roles: Set<String>,
+        issuer: String,
+        subject: String,
+    ): AuthenticatedUserPrincipal =
+        provisionExternal(
+            AuthProvider.OIDC,
+            issuer,
+            subject,
+            username,
+            displayName,
+            email,
+            internalGroups,
+            roles,
+        )
+
+    private fun provisionExternal(
+        provider: AuthProvider,
+        issuer: String,
+        subject: String,
+        username: String,
+        displayName: String,
+        email: String?,
+        groups: Set<String>,
+        roles: Set<String>,
     ): AuthenticatedUserPrincipal {
-        val normalizedUsername = normalizeUsername(username)
-        val existingUser = userAccountRepository.find(normalizedUsername)
-
-        val normalizedRoles =
-            roles
-                .asSequence()
-                .map { it.trim().uppercase() }
-                .filter { it.isNotBlank() }
-                .toMutableSet()
-                .apply { add("USER") }
-
-        if (existingUser == null) {
-            val user =
+        require(issuer.isNotBlank() && subject.isNotBlank()) { "External identity requires issuer and subject." }
+        val existing = userAccountRepository.findExternal(provider, issuer, subject)
+        val account =
+            existing ?: run {
+                val normalized = normalizeUsername(username)
+                if (userAccountRepository.find(normalized) != null) {
+                    throw ExternalIdentityConflictException()
+                }
                 UserAccount(
-                    username = normalizedUsername,
+                    username = normalized,
                     displayName = displayName,
                     email = email,
                     passwordHash = null,
-                    provider = AuthProvider.OIDC,
+                    provider = provider,
                     enabled = true,
                     temporaryPassword = false,
-                    roles = normalizedRoles,
-                    groups = internalGroups.toMutableSet(),
+                    roles = mutableSetOf(),
+                    groups = mutableSetOf(),
                 )
-            userAccountRepository.save(user)
+            }
+        if (!account.enabled) throw DisabledUserException()
+        account.displayName = displayName
+        account.email = email
+        account.groups.clear()
+        account.groups.addAll(groups)
+        account.roles.clear()
+        account.roles.addAll(roles.map { it.trim().uppercase() }.filter { it.isNotBlank() })
+        account.roles.add("USER")
+        userAccountRepository.save(account)
+        if (existing == null) userAccountRepository.linkExternal(account, provider, issuer, subject)
+        return toPrincipal(account)
+    }
 
-            return toPrincipal(user)
+    @Transactional
+    fun linkExternalIdentity(
+        username: String,
+        provider: AuthProvider,
+        issuer: String,
+        subject: String,
+    ) {
+        require(provider != AuthProvider.LOCAL && issuer.isNotBlank() && subject.isNotBlank()) {
+            "An external provider, issuer and subject are required."
         }
-
-        if (!existingUser.enabled) {
-            throw DisabledUserException()
-        }
-
-        existingUser.provider = AuthProvider.OIDC
-        existingUser.displayName = displayName
-        existingUser.email = email
-        existingUser.temporaryPassword = false
-        existingUser.groups.clear()
-        existingUser.groups.addAll(internalGroups)
-        existingUser.roles.clear()
-        existingUser.roles.addAll(normalizedRoles)
-
-        userAccountRepository.save(existingUser)
-        return toPrincipal(existingUser)
+        val account = userAccountRepository.find(normalizeUsername(username)) ?: throw UserNotFoundException("User not found.")
+        require(account.provider == provider) { "Provider must match the existing account; automatic provider conversion is not allowed." }
+        userAccountRepository.linkExternal(account, provider, issuer, subject)
     }
 
     fun addGroupMembership(
@@ -350,6 +351,7 @@ class UserAccountService(
     private fun toPrincipal(userAccount: UserAccount): AuthenticatedUserPrincipal =
         AuthenticatedUserPrincipal(
             username = userAccount.username,
+            userId = userAccount.userId,
             displayName = userAccount.displayName,
             email = userAccount.email,
             provider = userAccount.provider,

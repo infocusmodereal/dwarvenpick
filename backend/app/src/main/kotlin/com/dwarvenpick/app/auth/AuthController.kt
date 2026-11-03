@@ -188,6 +188,21 @@ class AuthController(
             recordAuthAttempt(provider = "ldap", outcome = "success")
 
             ResponseEntity.ok(principal.toLoginResponse())
+        } catch (_: ExternalIdentityConflictException) {
+            audit(
+                type = "auth.ldap.login",
+                actor = request.username,
+                outcome = "failed",
+                httpServletRequest = httpServletRequest,
+                details =
+                    mapOf(
+                        "reason" to "identity_link_required",
+                        "issuer" to authProperties.ldap.identityIssuer,
+                        "subject" to ldapResult.profile.distinguishedName,
+                    ),
+            )
+            recordAuthAttempt(provider = "ldap", outcome = "failed")
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse("External identity requires administrator linking."))
         } catch (ex: DisabledUserException) {
             audit(
                 type = "auth.ldap.login",
@@ -228,6 +243,36 @@ class AuthController(
     @GetMapping("/me")
     fun me(authentication: Authentication): CurrentUserResponse =
         authenticatedPrincipalResolver.resolve(authentication).toCurrentUserResponse()
+
+    @PostMapping("/admin/users/{username}/identities")
+    fun linkExternalIdentity(
+        @PathVariable username: String,
+        @Valid @RequestBody request: LinkExternalIdentityRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest,
+    ): ResponseEntity<Any> {
+        val principal = authenticatedPrincipalResolver.resolve(authentication)
+        if ("SYSTEM_ADMIN" !in principal.roles) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse("Administrator access required."))
+        }
+        return try {
+            userAccountService.linkExternalIdentity(username, request.provider, request.issuer, request.subject)
+            audit(
+                "auth.identity.link",
+                principal.username,
+                "success",
+                httpServletRequest,
+                mapOf("username" to username, "provider" to request.provider.name),
+            )
+            ResponseEntity.ok(mapOf("linked" to true))
+        } catch (exception: IllegalArgumentException) {
+            ResponseEntity.badRequest().body(ErrorResponse(exception.message ?: "Invalid identity."))
+        } catch (_: org.springframework.dao.DataIntegrityViolationException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse("Identity is already linked."))
+        } catch (_: UserNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("User not found."))
+        }
+    }
 
     @GetMapping("/admin/users")
     fun listAdminUsers(): ResponseEntity<Any> {

@@ -63,14 +63,15 @@ const CredentialProfilePolicyControl = forwardRef<
                 aria-label={isPolicyExpanded ? 'Hide access and policy' : 'Show access and policy'}
                 aria-expanded={isPolicyExpanded}
                 aria-controls={policyDetailsId}
+                title={isPolicyExpanded ? 'Hide access and policy' : 'Show access and policy'}
                 onClick={() => setIsPolicyExpanded((expanded) => !expanded)}
             >
                 <span className="tile-heading-icon" aria-hidden>
                     <IconGlyph icon="key-round" />
                 </span>
-                <span className="explorer-toolbar-label-text">Access &amp; Policy</span>
+                <span className="explorer-toolbar-label-text">Access &amp; policy</span>
                 <span className="effective-policy-disclosure-label" aria-hidden>
-                    {isPolicyExpanded ? 'Hide' : 'Show'}
+                    {isPolicyExpanded ? '−' : '+'}
                 </span>
             </button>
 
