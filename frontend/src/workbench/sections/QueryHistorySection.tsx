@@ -100,6 +100,7 @@ export default function QueryHistorySection({
     const filteredEntries = entries.filter((entry) =>
         [
             entry.datasourceId,
+            entry.actor,
             entry.status,
             entry.justification,
             entry.queryTextRedacted ? '' : entry.queryText
@@ -287,6 +288,7 @@ export default function QueryHistorySection({
                             entry.submittedAt,
                             entry.status,
                             entry.datasourceId,
+                            entry.actor,
                             entry.justification ?? '',
                             typeof entry.durationMs === 'number' ? entry.durationMs.toString() : '',
                             entry.rowCount.toString(),
@@ -300,6 +302,7 @@ export default function QueryHistorySection({
                                     'Submitted',
                                     'Status',
                                     'Connection',
+                                    'User',
                                     'Justification',
                                     'DurationMs',
                                     'Rows',
@@ -339,6 +342,7 @@ export default function QueryHistorySection({
                             <th>Submitted</th>
                             <th>Status</th>
                             <th>Connection</th>
+                            <th>User</th>
                             <th>Duration</th>
                             <th>Rows</th>
                             <th>Query</th>
@@ -348,11 +352,11 @@ export default function QueryHistorySection({
                     <tbody>
                         {loadingQueryHistory && entries.length === 0 ? (
                             <tr>
-                                <td colSpan={7}>Loading query history...</td>
+                                <td colSpan={8}>Loading query history...</td>
                             </tr>
                         ) : filteredEntries.length === 0 ? (
                             <tr>
-                                <td colSpan={7}>No history entries found for current filters.</td>
+                                <td colSpan={8}>No history entries found for current filters.</td>
                             </tr>
                         ) : (
                             filteredEntries.map((entry) => {
@@ -373,7 +377,22 @@ export default function QueryHistorySection({
                                                     {entry.status}
                                                 </span>
                                             </td>
-                                            <td>{entry.datasourceId}</td>
+                                            <td>
+                                                <span
+                                                    className="history-cell-text"
+                                                    title={entry.datasourceId}
+                                                >
+                                                    {entry.datasourceId}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span
+                                                    className="history-cell-text"
+                                                    title={entry.actor}
+                                                >
+                                                    {entry.actor}
+                                                </span>
+                                            </td>
                                             <td>
                                                 {typeof entry.durationMs === 'number'
                                                     ? `${entry.durationMs} ms`
@@ -421,7 +440,8 @@ export default function QueryHistorySection({
                                             <td className="history-actions">
                                                 <button
                                                     type="button"
-                                                    className="chip"
+                                                    className="icon-button"
+                                                    aria-label="Details"
                                                     aria-expanded={expandedId === entry.executionId}
                                                     onClick={() =>
                                                         setExpandedId(
@@ -432,32 +452,31 @@ export default function QueryHistorySection({
                                                     }
                                                     title="Inspect execution details"
                                                 >
-                                                    Details
+                                                    <span aria-hidden>
+                                                        <IconGlyph icon="info" />
+                                                    </span>
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    className="chip"
+                                                <IconButton
+                                                    icon="script"
+                                                    title="Open"
                                                     disabled={
                                                         !entry.queryText || entry.queryTextRedacted
                                                     }
                                                     onClick={() => onOpenEntry(entry, false)}
-                                                >
-                                                    Open
-                                                </button>
-                                                <button
-                                                    type="button"
+                                                />
+                                                <IconButton
+                                                    icon="play"
+                                                    title="Rerun"
                                                     disabled={
                                                         !entry.queryText || entry.queryTextRedacted
                                                     }
                                                     onClick={() => onOpenEntry(entry, true)}
-                                                >
-                                                    Rerun
-                                                </button>
+                                                />
                                             </td>
                                         </tr>
                                         {expandedId === entry.executionId && (
                                             <tr className="inspection-detail-row">
-                                                <td colSpan={7}>
+                                                <td colSpan={8}>
                                                     <dl className="inspection-detail-fields">
                                                         <div>
                                                             <dt>Execution ID</dt>

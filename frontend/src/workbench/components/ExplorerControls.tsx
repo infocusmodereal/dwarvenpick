@@ -118,6 +118,17 @@ export default function ExplorerControls({
                 </div>
             </div>
 
+            <CredentialProfilePolicyControl
+                ref={justificationInputRef}
+                datasource={activeDatasource}
+                requestedCredentialProfile={requestedCredentialProfile}
+                queryJustification={queryJustification}
+                canOverride={canOverrideCredentialProfile}
+                disabled={disabled}
+                onProfileChange={onProfileChange}
+                onJustificationChange={onJustificationChange}
+            />
+
             <div className="explorer-control-group">
                 <div className="explorer-toolbar-control-row">
                     <div className="explorer-search-wrap">
@@ -145,17 +156,6 @@ export default function ExplorerControls({
                     </div>
                 </div>
             </div>
-
-            <CredentialProfilePolicyControl
-                ref={justificationInputRef}
-                datasource={activeDatasource}
-                requestedCredentialProfile={requestedCredentialProfile}
-                queryJustification={queryJustification}
-                canOverride={canOverrideCredentialProfile}
-                disabled={disabled}
-                onProfileChange={onProfileChange}
-                onJustificationChange={onJustificationChange}
-            />
         </div>
     );
 }
