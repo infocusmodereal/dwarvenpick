@@ -1,12 +1,12 @@
 plugins {
-    kotlin("jvm") version "2.1.10" apply false
-    kotlin("plugin.spring") version "2.1.10" apply false
-    id("org.springframework.boot") version "3.5.16" apply false
+    kotlin("jvm") version "2.2.21" apply false
+    kotlin("plugin.spring") version "2.2.21" apply false
+    id("org.springframework.boot") version "4.0.9" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2" apply false
 }
 
-val defaultDevVersion = "0.41.0"
+val defaultDevVersion = "0.41.1"
 val computedVersion =
     System.getenv("DWARVENPICK_VERSION")?.trim()?.takeIf { it.isNotBlank() }
         ?: System.getenv("GITHUB_REF_NAME")
@@ -28,7 +28,7 @@ subprojects {
     plugins.withId("io.spring.dependency-management") {
         extensions.configure<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension> {
             imports {
-                mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.16")
+                mavenBom("org.springframework.boot:spring-boot-dependencies:4.0.9")
             }
         }
     }
