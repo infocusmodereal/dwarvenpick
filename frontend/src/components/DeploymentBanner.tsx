@@ -9,10 +9,12 @@ export default function DeploymentBanner({
     collapsed: boolean;
 }) {
     const [logoFailed, setLogoFailed] = useState(false);
-    if (!branding?.company || (collapsed && branding.environment)) return null;
+    if (!branding?.company) return null;
+    const showLogo = Boolean(branding.logoPath) && !logoFailed;
+    if (!showLogo && collapsed && branding.environment) return null;
     return (
         <div className="deployment-banner" title={branding.company}>
-            {branding.logoPath && !logoFailed && !collapsed ? (
+            {showLogo ? (
                 <img
                     src={branding.logoPath}
                     alt={branding.company}

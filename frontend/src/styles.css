@@ -7089,13 +7089,19 @@ select {
     display: block;
     box-sizing: border-box;
     max-width: 100%;
-    max-height: 112px;
+    max-height: 84px;
     width: auto;
     height: auto;
-    padding: 12px;
+    padding: 9px;
     object-fit: contain;
     background: white;
     border-radius: 4px;
+    box-shadow: 0 0 10px rgba(255, 226, 184, 0.14);
+}
+
+.workspace-left-rail.is-collapsed .deployment-banner img {
+    max-height: 44px;
+    padding: 2px;
 }
 
 .deployment-company,
