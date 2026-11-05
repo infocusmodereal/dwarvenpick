@@ -121,9 +121,12 @@ test('governed workbench browser smoke', async ({ page }) => {
                     response.request().method() === 'GET'
                 );
             });
-            await connection.selectOption({ label: config.datasource });
+            await connection.click();
+            const picker = page.getByRole('dialog', { name: 'Choose connection' });
+            await picker.getByRole('combobox').fill(config.datasource);
+            await picker.getByRole('option', { name: config.datasource, exact: true }).click();
             expect((await schemaResponsePromise).ok()).toBe(true);
-            await expect(connection).toHaveValue(config.datasource);
+            await expect(connection).toContainText(config.datasource);
 
             if (config.credentialProfile) {
                 await page

@@ -14,7 +14,7 @@ The Workbench is the main SQL editor and results viewer.
 
 ## Editor
 
-- Explorer keeps connection and schema controls compact, with **Access & policy** collapsed until needed and object search directly above the hierarchy. Required query justification remains visible.
+- Choose or search for a connection at the top of Explorer. The schema selector at the right of the SQL tabs sets the default for the active query. Search includes objects inside the collapsed **System schemas** group. Open **Access & policy** at the foot of Explorer for the active profile, export permissions and query limits. Required query justification remains visible.
 - Query History shows the submitting user in every row and includes it in current-page search and CSV export. Long connection names and usernames are truncated with their full value available on hover. Use the labeled icon actions to inspect details, open SQL or rerun it.
 
 - Create tabs for multiple queries.

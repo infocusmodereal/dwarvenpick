@@ -1,134 +1,164 @@
-import type { Ref } from 'react';
+import { useRef, useState } from 'react';
 import type { CatalogDatasourceResponse } from '../types';
-import { ExplorerIcon, IconGlyph, RailIcon } from './WorkbenchIcons';
-import CredentialProfilePolicyControl from './CredentialProfilePolicyControl';
+import { resolveDatasourceIcon } from '../icons';
+import { IconGlyph } from './WorkbenchIcons';
 
 type ExplorerControlsProps = {
-    activeDatasourceId: string;
-    activeSchema: string;
-    requestedCredentialProfile: string;
-    queryJustification: string;
-    canOverrideCredentialProfile: boolean;
+    activeDatasource?: CatalogDatasourceResponse;
     disabled: boolean;
     visibleDatasources: CatalogDatasourceResponse[];
-    activeDatasource?: CatalogDatasourceResponse;
-    availableSchemaNames: string[];
     datasourceHealthTone: string;
     datasourceHealthLabel: string;
-    datasourceIcon: string;
     searchQuery: string;
-    justificationInputRef: Ref<HTMLInputElement>;
-    onDatasourceChange: (datasourceId: string) => void;
-    onSchemaChange: (schema: string) => void;
-    onProfileChange: (credentialProfile: string) => void;
-    onJustificationChange: (justification: string) => void;
+    onDatasourceChange: (id: string) => void;
     onSearchQueryChange: (query: string) => void;
 };
 
 export default function ExplorerControls({
-    activeDatasourceId,
-    activeSchema,
-    requestedCredentialProfile,
-    queryJustification,
-    canOverrideCredentialProfile,
+    activeDatasource,
     disabled,
     visibleDatasources,
-    activeDatasource,
-    availableSchemaNames,
     datasourceHealthTone,
     datasourceHealthLabel,
-    datasourceIcon,
     searchQuery,
-    justificationInputRef,
     onDatasourceChange,
-    onSchemaChange,
-    onProfileChange,
-    onJustificationChange,
     onSearchQueryChange
 }: ExplorerControlsProps) {
+    const [open, setOpen] = useState(false);
+    const [filter, setFilter] = useState('');
+    const [cursor, setCursor] = useState(0);
+    const trigger = useRef<HTMLButtonElement>(null);
+    const list = useRef<HTMLUListElement>(null);
+    const options = visibleDatasources.filter((d) =>
+        (d.name + ' ' + d.engine).toLowerCase().includes(filter.trim().toLowerCase())
+    );
+    function close() {
+        setOpen(false);
+        trigger.current?.focus();
+    }
+    function choose(id: string) {
+        close();
+        onDatasourceChange(id);
+    }
+    function move(index: number) {
+        setCursor(index);
+        list.current?.children[index]?.scrollIntoView?.({ block: 'nearest' });
+    }
     return (
         <div className="explorer-toolbar-fields">
-            <div className="explorer-control-group">
-                <div className="explorer-toolbar-label-row">
-                    <span className="tile-heading-icon" aria-hidden>
-                        <RailIcon glyph="connections" />
+            <div
+                className="connection-switch"
+                onBlur={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+                }}
+            >
+                <button
+                    type="button"
+                    className="connection-trigger"
+                    ref={trigger}
+                    aria-label="Active tab connection"
+                    aria-haspopup="dialog"
+                    aria-expanded={open && !disabled}
+                    disabled={disabled}
+                    onClick={() => {
+                        setFilter('');
+                        setCursor(
+                            Math.max(
+                                0,
+                                visibleDatasources.findIndex((d) => d.id === activeDatasource?.id)
+                            )
+                        );
+                        setOpen(!open);
+                    }}
+                >
+                    <img src={resolveDatasourceIcon(activeDatasource?.engine)} alt="" />
+                    <span className="connection-identity">
+                        <strong>{activeDatasource?.name ?? 'Select connection'}</strong>
+                        <small>
+                            <i
+                                className={'editor-connection-health tone-' + datasourceHealthTone}
+                            />
+                            {datasourceHealthLabel}
+                            {activeDatasource && ' · ' + activeDatasource.engine}
+                        </small>
                     </span>
-                    <label htmlFor="tab-datasource" className="explorer-toolbar-label-text">
-                        Connection
-                    </label>
-                </div>
-                <div className="explorer-toolbar-control-row">
-                    <div className="editor-connection-picker">
-                        <span
-                            className={`editor-connection-health tone-${datasourceHealthTone}`}
-                            title={`Connection status: ${datasourceHealthLabel}`}
-                            aria-label={`Connection status ${datasourceHealthLabel}`}
+                    <span aria-hidden>▾</span>
+                </button>
+                {open && !disabled && (
+                    <div
+                        role="dialog"
+                        aria-label="Choose connection"
+                        className="connection-popover"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                                e.preventDefault();
+                                close();
+                            }
+                        }}
+                    >
+                        <input
+                            autoFocus
+                            role="combobox"
+                            aria-label="Find connection"
+                            placeholder="Find connection…"
+                            aria-expanded="true"
+                            aria-autocomplete="list"
+                            aria-controls="connection-options"
+                            aria-activedescendant={
+                                options[cursor] ? 'connection-option-' + cursor : undefined
+                            }
+                            value={filter}
+                            onChange={(e) => {
+                                setFilter(e.target.value);
+                                setCursor(0);
+                            }}
+                            onKeyDown={(e) => {
+                                if (!options.length) return;
+                                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    move(
+                                        (cursor +
+                                            (e.key === 'ArrowDown' ? 1 : -1) +
+                                            options.length) %
+                                            options.length
+                                    );
+                                }
+                                if (e.key === 'Enter' && options[cursor]) {
+                                    e.preventDefault();
+                                    choose(options[cursor].id);
+                                }
+                            }}
                         />
-                        <span className="editor-connection-icon" aria-hidden>
-                            <img src={datasourceIcon} alt="" width={16} height={16} />
-                        </span>
-                        <div className="select-wrap">
-                            <select
-                                id="tab-datasource"
-                                aria-label="Active tab connection"
-                                value={activeDatasourceId}
-                                onChange={(event) => onDatasourceChange(event.target.value)}
-                                disabled={disabled}
-                            >
-                                {visibleDatasources.map((datasource) => (
-                                    <option key={`tab-ds-${datasource.id}`} value={datasource.id}>
-                                        {datasource.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="explorer-control-group">
-                <div className="explorer-toolbar-label-row">
-                    <span className="tile-heading-icon" aria-hidden>
-                        <ExplorerIcon glyph="schema" />
-                    </span>
-                    <label htmlFor="tab-schema" className="explorer-toolbar-label-text">
-                        Default Schema
-                    </label>
-                </div>
-                <div className="explorer-toolbar-control-row">
-                    <div className="select-wrap">
-                        <select
-                            id="tab-schema"
-                            aria-label="Default schema"
-                            value={activeSchema}
-                            onChange={(event) => onSchemaChange(event.target.value)}
-                            disabled={!activeDatasourceId}
+                        <ul
+                            role="listbox"
+                            aria-label="Connections"
+                            id="connection-options"
+                            ref={list}
                         >
-                            <option value="">None</option>
-                            {availableSchemaNames.map((schemaName) => (
-                                <option key={`schema-option-${schemaName}`} value={schemaName}>
-                                    {schemaName}
-                                </option>
+                            {options.map((d, i) => (
+                                <li
+                                    key={d.id}
+                                    id={'connection-option-' + i}
+                                    role="option"
+                                    aria-label={d.name}
+                                    aria-selected={activeDatasource?.id === d.id}
+                                    className={i === cursor ? 'highlighted' : ''}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => choose(d.id)}
+                                >
+                                    <img src={resolveDatasourceIcon(d.engine)} alt="" />
+                                    <span>
+                                        {d.name}
+                                        <small>{d.engine}</small>
+                                    </span>
+                                    {activeDatasource?.id === d.id && <span aria-hidden>✓</span>}
+                                </li>
                             ))}
-                            {activeSchema && !availableSchemaNames.includes(activeSchema) ? (
-                                <option value={activeSchema}>{activeSchema}</option>
-                            ) : null}
-                        </select>
+                        </ul>
+                        {!options.length && <p role="status">No matching connections</p>}
                     </div>
-                </div>
+                )}
             </div>
-
-            <CredentialProfilePolicyControl
-                ref={justificationInputRef}
-                datasource={activeDatasource}
-                requestedCredentialProfile={requestedCredentialProfile}
-                queryJustification={queryJustification}
-                canOverride={canOverrideCredentialProfile}
-                disabled={disabled}
-                onProfileChange={onProfileChange}
-                onJustificationChange={onJustificationChange}
-            />
-
             <div className="explorer-control-group">
                 <div className="explorer-toolbar-control-row">
                     <div className="explorer-search-wrap">

@@ -67,11 +67,11 @@ const CredentialProfilePolicyControl = forwardRef<
                 onClick={() => setIsPolicyExpanded((expanded) => !expanded)}
             >
                 <span className="tile-heading-icon" aria-hidden>
-                    <IconGlyph icon="key-round" />
+                    <IconGlyph icon="shield-check" />
                 </span>
                 <span className="explorer-toolbar-label-text">Access &amp; policy</span>
                 <span className="effective-policy-disclosure-label" aria-hidden>
-                    {isPolicyExpanded ? '−' : '+'}
+                    {isPolicyExpanded ? '▾' : '▴'}
                 </span>
             </button>
 
@@ -124,16 +124,16 @@ const CredentialProfilePolicyControl = forwardRef<
                             <>
                                 <div className="credential-profile-policy-title">
                                     <IconGlyph icon="shield-check" />
-                                    <strong>Effective Policy</strong>
+                                    <strong>{policy.credentialProfile}</strong>
                                 </div>
                                 <div className="credential-profile-policy-flags">
-                                    <strong>{policy.credentialProfile}</strong>
                                     <span>{policy.readOnly ? 'Read-only' : 'Write-capable'}</span>
                                     <span>
                                         {policy.canExport ? 'Export allowed' : 'Export blocked'}
                                     </span>
                                     {policy.sysadmin ? <span>Elevated health access</span> : null}
                                 </div>
+                                <h4>Query limits</h4>
                                 <dl>
                                     <div>
                                         <dt>Rows</dt>
