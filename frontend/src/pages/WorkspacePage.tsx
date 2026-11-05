@@ -1,3 +1,4 @@
+import SearchablePicker from '../workbench/components/SearchablePicker';
 import { useDeploymentBranding } from '../components/useDeploymentBranding';
 import DeploymentBanner from '../components/DeploymentBanner';
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
@@ -7409,37 +7410,34 @@ export default function WorkspacePage() {
                                     onRenameTab={handleRenameTab}
                                     onDuplicateTab={handleDuplicateTab}
                                 />
-                                <label className="editor-schema">
+                                <div className="editor-schema">
                                     <span>Schema</span>
-                                    <select
-                                        aria-label="Default schema"
+                                    <SearchablePicker
+                                        key={activeTabId}
+                                        noun="schema"
+                                        triggerLabel="Default schema"
                                         value={activeTab?.schema ?? ''}
                                         disabled={!activeTab?.datasourceId}
-                                        onChange={(event) => {
-                                            const schema = event.currentTarget.value;
-                                            if (!activeTab) {
-                                                return;
-                                            }
-                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                                ...currentTab,
-                                                schema
-                                            }));
+                                        items={[
+                                            ...new Set([
+                                                '',
+                                                ...availableSchemaNames,
+                                                activeTab?.schema ?? ''
+                                            ])
+                                        ].map((value) => ({ value, label: value || 'None' }))}
+                                        onChange={(schema) => {
+                                            if (activeTab)
+                                                updateWorkspaceTab(activeTab.id, (current) => ({
+                                                    ...current,
+                                                    schema
+                                                }));
                                         }}
                                     >
-                                        <option value="">None</option>
-                                        {availableSchemaNames.map((name) => (
-                                            <option key={name} value={name}>
-                                                {name}
-                                            </option>
-                                        ))}
-                                        {activeTab?.schema &&
-                                            !availableSchemaNames.includes(activeTab.schema) && (
-                                                <option value={activeTab.schema}>
-                                                    {activeTab.schema}
-                                                </option>
-                                            )}
-                                    </select>
-                                </label>
+                                        <span className="schema-value">
+                                            {activeTab?.schema || 'None'}
+                                        </span>
+                                    </SearchablePicker>
+                                </div>
                             </div>
 
                             <div className="monaco-host" ref={monacoHostRef}>

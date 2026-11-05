@@ -123,18 +123,29 @@ const CredentialProfilePolicyControl = forwardRef<
                         {policy ? (
                             <>
                                 <div className="credential-profile-policy-title">
-                                    <IconGlyph icon="shield-check" />
+                                    <span>Effective profile</span>
                                     <strong>{policy.credentialProfile}</strong>
                                 </div>
-                                <div className="credential-profile-policy-flags">
-                                    <span>{policy.readOnly ? 'Read-only' : 'Write-capable'}</span>
-                                    <span>
-                                        {policy.canExport ? 'Export allowed' : 'Export blocked'}
-                                    </span>
-                                    {policy.sysadmin ? <span>Elevated health access</span> : null}
-                                </div>
+                                <dl className="policy-permissions">
+                                    <div>
+                                        <dt>SQL access</dt>
+                                        <dd>{policy.readOnly ? 'Read-only' : 'Write-capable'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>CSV</dt>
+                                        <dd>
+                                            {policy.canExport ? 'Export allowed' : 'Export blocked'}
+                                        </dd>
+                                    </div>
+                                    {policy.sysadmin && (
+                                        <div>
+                                            <dt>Diagnostics</dt>
+                                            <dd>Elevated health access</dd>
+                                        </div>
+                                    )}
+                                </dl>
                                 <h4>Query limits</h4>
-                                <dl>
+                                <dl className="policy-limits">
                                     <div>
                                         <dt>Rows</dt>
                                         <dd>{formatPolicyLimit(policy.maxRowsPerQuery)}</dd>
@@ -148,13 +159,11 @@ const CredentialProfilePolicyControl = forwardRef<
                                         <dd>{formatPolicyLimit(policy.concurrencyLimit)}</dd>
                                     </div>
                                 </dl>
-                                <p>
-                                    {policy.readOnly
-                                        ? 'Write statements are blocked.'
-                                        : requiresJustification
-                                          ? 'Justification required for every run, including SELECT.'
-                                          : 'Justification is not required by the server.'}
-                                </p>
+                                {requiresJustification ? (
+                                    <p>Justification required for every run, including SELECT.</p>
+                                ) : policy.readOnly ? (
+                                    <p>Write statements are blocked.</p>
+                                ) : null}
                             </>
                         ) : (
                             <p>Effective profile policy is unavailable.</p>

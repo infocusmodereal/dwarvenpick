@@ -7146,12 +7146,28 @@ select {
     font-size: 0.75rem;
     color: var(--muted);
 }
-.editor-schema select {
+.editor-schema {
+    font-family: 'JetBrains Mono Variable', monospace;
+}
+.editor-schema .connection-trigger {
     min-width: 0;
     max-width: 12rem;
-    width: 100%;
+    padding: 0.26rem 0.5rem;
+    font: inherit;
+}
+.editor-schema .schema-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.editor-schema .connection-popover {
+    left: auto;
+    right: 0;
+    width: min(15rem, 80vw);
     color: var(--text);
-    padding: 0.2rem 0.4rem;
+}
+.editor-schema .connection-popover input {
+    font: inherit;
 }
 .connection-switch {
     position: relative;
@@ -7287,44 +7303,70 @@ select {
     min-height: 2rem;
 }
 .access-policy-details {
-    background: var(--surface-alt);
-    border-radius: 0.5rem;
-    padding: 0.65rem;
-}
-.credential-profile-policy {
     background: transparent;
     border: 0;
+    padding: 0.1rem 0.38rem 0.45rem;
+    gap: 0.7rem;
+}
+.credential-profile-policy {
     padding: 0;
-    font-family: inherit;
+    border: 0;
+    background: transparent;
+    font: inherit;
     font-size: 0.76rem;
     gap: 0.45rem;
 }
-.credential-profile-policy-title strong {
-    overflow-wrap: anywhere;
-}
-.credential-profile-policy-flags span {
-    padding: 0.12rem 0.35rem;
-    border-radius: 0.3rem;
-    background: var(--surface);
-    color: var(--text);
-}
-.credential-profile-policy h4 {
-    border-top: 1px solid var(--border);
-    margin: 0.15rem 0 0;
-    padding-top: 0.55rem;
-    font-size: 0.72rem;
-    color: var(--muted);
-}
-.credential-profile-policy dl {
-    grid-template-columns: 1fr;
-    gap: 0.16rem;
-}
-.credential-profile-policy dl div {
+.credential-profile-policy-title,
+.credential-profile-policy .policy-permissions div {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 0.5rem;
 }
-.credential-profile-policy dd {
-    font-variant-numeric: tabular-nums;
+.credential-profile-policy-title span,
+.credential-profile-policy h4 {
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+.credential-profile-policy-title strong {
+    color: var(--accent);
+    font:
+        600 0.75rem 'JetBrains Mono Variable',
+        monospace;
+    overflow-wrap: anywhere;
+}
+.credential-profile-policy .policy-permissions {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+}
+.policy-permissions dd {
+    text-align: right;
+}
+.credential-profile-policy h4 {
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+    margin: 0;
+}
+.policy-limits {
+    background: var(--surface-alt);
+    border-radius: 0.35rem;
+    padding: 0.45rem 0;
+}
+.policy-limits div {
+    display: flex;
+    flex-direction: column-reverse;
+    text-align: center;
+    gap: 0.12rem;
+}
+.policy-limits div + div {
+    border-left: 1px solid var(--border);
+}
+.policy-limits dt {
+    font-size: 0.65rem;
+    overflow-wrap: anywhere;
+}
+.policy-limits dd {
+    font:
+        600 0.78rem 'JetBrains Mono Variable',
+        monospace;
 }
