@@ -32,6 +32,7 @@ data class QueryAccessPolicy(
     val maxRuntimeSeconds: Int,
     val concurrencyLimit: Int,
     val authorization: Map<String, Any?> = emptyMap(),
+    val sysadminProfile: Boolean = false,
 )
 
 data class GroupRecord(
@@ -365,7 +366,7 @@ class RbacService(
 
         if (matchingAccessRules.isEmpty()) {
             if (principal.roles.contains("SYSTEM_ADMIN")) {
-                val availableProfiles = datasourceRegistryService.credentialProfilesForDatasource(datasourceId)
+                val availableProfiles = datasourceRegistryService.listCredentialProfiles(datasourceId).associateBy { it.profileId }
                 val selectedProfile =
                     listOf(
                         "admin",
@@ -379,13 +380,14 @@ class RbacService(
                         "readonly",
                         "ro",
                     ).firstOrNull { candidate -> candidate in availableProfiles }
-                        ?: availableProfiles.sorted().firstOrNull()
+                        ?: availableProfiles.keys.sorted().firstOrNull()
                         ?: throw QueryAccessDeniedException(
                             "No credential profile is available for datasource '$datasourceId'.",
                         )
 
                 return QueryAccessPolicy(
                     credentialProfile = selectedProfile,
+                    sysadminProfile = availableProfiles.getValue(selectedProfile).sysadmin,
                     engine = datasourceRegistryService.engineForDatasource(datasourceId),
                     readOnly = false,
                     maxRowsPerQuery = 5000,
@@ -398,7 +400,7 @@ class RbacService(
             throw QueryAccessDeniedException("Datasource access denied for query execution.")
         }
 
-        val availableProfiles = datasourceRegistryService.credentialProfilesForDatasource(datasourceId)
+        val availableProfiles = datasourceRegistryService.listCredentialProfiles(datasourceId).associateBy { it.profileId }
         val selectedCredentialProfile =
             matchingAccessRules
                 .map { access -> access.credentialProfile }
@@ -411,6 +413,7 @@ class RbacService(
 
         return QueryAccessPolicy(
             credentialProfile = selectedCredentialProfile,
+            sysadminProfile = availableProfiles.getValue(selectedCredentialProfile).sysadmin,
             engine = datasourceRegistryService.engineForDatasource(datasourceId),
             readOnly = selectedAccessRules.all { access -> access.readOnly },
             maxRowsPerQuery = resolveLimit(selectedAccessRules.map { access -> access.maxRowsPerQuery }, 5000),
@@ -430,7 +433,7 @@ class RbacService(
             throw DatasourceNotFoundException("Datasource '$datasourceId' was not found.")
         }
 
-        val availableProfiles = datasourceRegistryService.credentialProfilesForDatasource(datasourceId)
+        val availableProfiles = datasourceRegistryService.listCredentialProfiles(datasourceId).associateBy { it.profileId }
         if (credentialProfile !in availableProfiles) {
             throw IllegalArgumentException(
                 "credentialProfile '$credentialProfile' is not available for datasource '$datasourceId'.",
@@ -462,6 +465,7 @@ class RbacService(
 
         return QueryAccessPolicy(
             credentialProfile = credentialProfile,
+            sysadminProfile = availableProfiles.getValue(credentialProfile).sysadmin,
             engine = datasourceRegistryService.engineForDatasource(datasourceId),
             readOnly = resolvedReadOnly,
             maxRowsPerQuery = resolveLimit(matchingAccessRules.map { access -> access.maxRowsPerQuery }, 5000),

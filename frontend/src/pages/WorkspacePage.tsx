@@ -3807,8 +3807,7 @@ export default function WorkspacePage() {
             ) {
                 updateWorkspaceTab(tabId, (currentTab) => ({
                     ...currentTab,
-                    errorMessage:
-                        'Justification is required for every run through this write-capable profile.',
+                    errorMessage: 'Enter a justification to run queries with this profile.',
                     statusMessage: ''
                 }));
                 requestAnimationFrame(() => queryJustificationInputRef.current?.focus());

@@ -2313,8 +2313,8 @@ button:disabled {
 
 .explorer-toolbar-fields {
     display: grid;
-    gap: 0.45rem;
-    padding: 0.45rem 0.35rem 0;
+    gap: 0.65rem;
+    padding: 0.65rem 0.6rem 0;
     flex-shrink: 0;
     border-bottom: 0;
     border-radius: 0;
@@ -7166,11 +7166,15 @@ select {
     min-width: 0;
 }
 .connection-identity strong {
-    font-size: 0.9375rem;
-    line-height: 1.25;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.4;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.connection-identity small {
+    font-weight: 400;
 }
 .connection-identity small,
 .connection-popover small {
@@ -7266,7 +7270,7 @@ select {
 .explorer-body > .access-policy-control {
     margin-top: auto;
     border-top: 1px solid var(--border);
-    padding: 0.35rem 0.35rem;
+    padding: 0.6rem 0.6rem 0.75rem;
     flex: 0 1 auto;
     max-height: 55%;
     overflow: auto;
@@ -7344,13 +7348,13 @@ select {
 }
 
 .access-policy-control {
-    gap: 0;
+    gap: 0.35rem;
 }
 .access-policy-details:empty {
     display: none;
 }
 .access-policy-details {
-    gap: 0.4rem;
+    gap: 0.875rem;
 }
 .access-policy-details select,
 .policy-reason textarea {
@@ -7361,15 +7365,19 @@ select {
 }
 .policy-reason {
     display: grid;
-    gap: 0.25rem;
+    gap: 0.4rem;
     font-size: 0.8125rem;
+}
+.policy-reason label {
+    font-weight: 500;
+    color: var(--muted);
 }
 .policy-reason label span {
     color: var(--accent);
 }
 .policy-reason textarea {
     resize: vertical;
-    min-height: 3.25rem;
+    min-height: 3.6rem;
 }
 .policy-chevron {
     display: inline-flex;

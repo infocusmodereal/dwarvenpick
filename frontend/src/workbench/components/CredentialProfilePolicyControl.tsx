@@ -84,7 +84,11 @@ const CredentialProfilePolicyControl = forwardRef<
                             onChange={(event) => onProfileChange(event.target.value)}
                             disabled={disabled}
                         >
-                            <option value="">Auto (RBAC)</option>
+                            <option value="">
+                                {datasource?.credentialProfilePolicies?.[0]?.credentialProfile
+                                    ? `Auto (RBAC): ${datasource.credentialProfilePolicies[0].credentialProfile}`
+                                    : 'Auto (RBAC)'}
+                            </option>
                             {(datasource?.credentialProfiles ?? []).map((profile) => (
                                 <option key={profile} value={profile}>
                                     {profile}
@@ -97,10 +101,11 @@ const CredentialProfilePolicyControl = forwardRef<
                 {requiresJustification && (
                     <div className="policy-reason">
                         <label htmlFor="tab-query-justification">
-                            Reason <span aria-hidden>*</span>
+                            Justification <span aria-hidden>*</span>
                         </label>
                         <textarea
                             id="tab-query-justification"
+                            placeholder="Change ticket or reason"
                             rows={2}
                             value={queryJustification}
                             onChange={(event) => onJustificationChange(event.target.value)}

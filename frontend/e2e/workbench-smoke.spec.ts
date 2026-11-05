@@ -158,7 +158,7 @@ test('governed workbench browser smoke', async ({ page }) => {
         });
 
         await check('safe query execution', async () => {
-            const justification = page.getByRole('textbox', { name: 'Reason', exact: true });
+            const justification = page.getByRole('textbox', { name: 'Justification', exact: true });
             if ((await justification.count()) > 0) {
                 await expect(justification).toBeVisible();
                 await justification.fill('Automated browser smoke validation');

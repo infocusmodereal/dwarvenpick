@@ -39,6 +39,7 @@ The backend sets baseline security headers on responses, including:
 - Role-protected routes return `403` for authenticated users without required permissions.
 - Connection visibility is user-scoped (`GET /api/datasources`) based on group-to-connection grants.
 - Query execution requests (`POST /api/queries`) are denied with `403` when connection access is not granted.
+- To require justification only for profiles marked sysadmin, enable `DWARVENPICK_QUERY_REQUIRE_ADMIN_PROFILE_JUSTIFICATION` and leave write justification disabled. Both settings use the effective profile, including Auto (RBAC).
 - Deployments can require a query justification for non-read-only credential profiles and write-like scripts with
   `dwarvenpick.query.require-write-justification` or `DWARVENPICK_QUERY_REQUIRE_WRITE_JUSTIFICATION`.
 - Justifications are trimmed, control characters are normalized, capped by `dwarvenpick.query.max-justification-length`,

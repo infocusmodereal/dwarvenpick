@@ -216,7 +216,9 @@ class QueryExecutionManager(
         }
         val justification = normalizeQueryJustification(request.justification)
         val defaultSchema = QueryDefaultSchema.normalize(request.defaultSchema)
-        enforceWriteJustification(
+        val justificationMode = queryJustificationPolicy.mode(policy.readOnly, policy.sysadminProfile)
+        enforceJustification(
+            mode = justificationMode,
             actor = actor,
             ipAddress = ipAddress,
             datasourceId = request.datasourceId.trim(),
@@ -304,7 +306,7 @@ class QueryExecutionManager(
                     "maxRowsPerQuery" to maxRows,
                     "maxRuntimeSeconds" to maxRuntimeSeconds,
                     "concurrencyLimit" to concurrencyLimit,
-                    "justificationMode" to queryJustificationPolicy.mode(policy.readOnly).name,
+                    "justificationMode" to justificationMode.name,
                 ),
         )
         meterRegistry
@@ -2254,7 +2256,8 @@ class QueryExecutionManager(
         return normalized
     }
 
-    private fun enforceWriteJustification(
+    private fun enforceJustification(
+        mode: QueryJustificationMode,
         actor: String,
         ipAddress: String?,
         datasourceId: String,
@@ -2262,7 +2265,7 @@ class QueryExecutionManager(
         hasWriteIntent: Boolean,
         justification: String?,
     ) {
-        if (!queryJustificationPolicy.requiresJustification(policy.readOnly) || justification != null) {
+        if (mode == QueryJustificationMode.NONE || justification != null) {
             return
         }
 
@@ -2291,7 +2294,7 @@ class QueryExecutionManager(
             ),
         )
         throw QueryJustificationRequiredException(
-            "A justification is required for non-read-only credential profiles or write-like scripts.",
+            "A justification is required for this credential profile.",
         )
     }
 

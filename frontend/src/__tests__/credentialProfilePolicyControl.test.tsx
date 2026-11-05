@@ -63,7 +63,7 @@ describe('CredentialProfilePolicyControl', () => {
         expect(
             screen.queryByLabelText('Effective credential profile policy')
         ).not.toBeInTheDocument();
-        expect(screen.queryByRole('textbox', { name: 'Reason' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('textbox', { name: 'Justification' })).not.toBeInTheDocument();
 
         disclosure.focus();
         await user.keyboard('{Enter}');
@@ -93,7 +93,7 @@ describe('CredentialProfilePolicyControl', () => {
             'read-write'
         );
 
-        const justification = screen.getByRole('textbox', { name: 'Reason' });
+        const justification = screen.getByRole('textbox', { name: 'Justification' });
         expect(screen.getByText('Permissions & limits').parentElement).not.toHaveAttribute('open');
         expect(justification).toBeRequired();
         expect(justification).toHaveAttribute('id', 'tab-query-justification');
@@ -110,14 +110,14 @@ describe('CredentialProfilePolicyControl', () => {
         expect(
             screen.queryByLabelText('Effective credential profile policy')
         ).not.toBeInTheDocument();
-        expect(screen.getByRole('textbox', { name: 'Reason' })).toBeVisible();
+        expect(screen.getByRole('textbox', { name: 'Justification' })).toBeVisible();
 
         await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
         await user.selectOptions(
             screen.getByRole('combobox', { name: 'Credential Profile' }),
             'read-only'
         );
-        expect(screen.queryByRole('textbox', { name: 'Reason' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('textbox', { name: 'Justification' })).not.toBeInTheDocument();
     });
 
     it('formats unlimited sentinels without exposing raw integer values', async () => {

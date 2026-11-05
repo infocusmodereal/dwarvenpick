@@ -11,12 +11,15 @@ enum class QueryJustificationMode {
 class QueryJustificationPolicy(
     private val queryExecutionProperties: QueryExecutionProperties,
 ) {
-    fun mode(readOnly: Boolean): QueryJustificationMode =
-        if (queryExecutionProperties.requireWriteJustification && !readOnly) {
+    fun mode(
+        readOnly: Boolean,
+        sysadminProfile: Boolean = false,
+    ): QueryJustificationMode =
+        if ((queryExecutionProperties.requireAdminProfileJustification && sysadminProfile) ||
+            (queryExecutionProperties.requireWriteJustification && !readOnly)
+        ) {
             QueryJustificationMode.PROFILE_REQUIRED
         } else {
             QueryJustificationMode.NONE
         }
-
-    fun requiresJustification(readOnly: Boolean): Boolean = mode(readOnly) == QueryJustificationMode.PROFILE_REQUIRED
 }
