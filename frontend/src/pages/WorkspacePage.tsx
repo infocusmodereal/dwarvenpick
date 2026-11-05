@@ -1,3 +1,4 @@
+import DeploymentBanner from '../components/DeploymentBanner';
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
 import { runResourceSaveOnce } from '../workbench/resourceSaveGuard';
 import SqlValidationControl from '../workbench/components/SqlValidationControl';
@@ -6433,6 +6434,7 @@ export default function WorkspacePage() {
                             <RailIcon glyph={leftRailCollapsed ? 'menu' : 'collapse'} />
                         </button>
                     </div>
+                    <DeploymentBanner collapsed={leftRailCollapsed} />
                     <div className="workspace-left-rail-separator" aria-hidden />
                     <nav
                         className="workspace-mode-tabs"

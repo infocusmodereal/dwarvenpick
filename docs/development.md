@@ -110,3 +110,22 @@ DWARVENPICK_IMAGE_TAG=local-dev \
 DWARVENPICK_BUILD_TAG=local-dev \
 ./gradlew :backend:app:bootJar
 ```
+
+### Optional deployment branding
+
+Mount a JSON file at `/usr/share/nginx/html/branding/deployment.json` in the frontend container
+(or edit `frontend/public/branding/deployment.json` when running Vite). The default is `{}`.
+Each deployment can supply its own labels and artwork without rebuilding the image:
+
+```json
+{
+    "company": "Example Company",
+    "environment": "dev",
+    "logoPath": "/branding/company.svg"
+}
+```
+
+Mount the logo at the corresponding path under the frontend document root. Use a same-origin
+path and artwork suitable for a white background. The company name is the image's accessible
+label and appears as text when the logo is omitted or cannot load. Either label can be used
+on its own. The collapsed menu prioritizes the environment. Reload the page after updating the files.
