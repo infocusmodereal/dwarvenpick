@@ -2284,7 +2284,7 @@ button:disabled {
 
 .schema-browser-header h3 {
     margin-right: auto;
-    font-size: 1.03rem;
+    font-size: 1.125rem;
     letter-spacing: -0.02em;
 }
 
@@ -2313,8 +2313,8 @@ button:disabled {
 
 .explorer-toolbar-fields {
     display: grid;
-    gap: 0.5rem;
-    padding: 0.4rem 0.2rem 0;
+    gap: 0.45rem;
+    padding: 0.45rem 0.35rem 0;
     flex-shrink: 0;
     border-bottom: 0;
     border-radius: 0;
@@ -2331,8 +2331,8 @@ button:disabled {
 .explorer-toolbar-fields select {
     height: 1.92rem;
     padding: 0.32rem 0.54rem;
-    font-size: 0.71rem;
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.8125rem;
+    font-family: 'JetBrains Mono Variable', monospace;
 }
 
 .explorer-toolbar-fields select {
@@ -2347,12 +2347,12 @@ button:disabled {
 }
 
 .explorer-toolbar-label-text {
-    font-size: 0.7rem;
+    font-size: 0.875rem;
     letter-spacing: 0.01em;
     text-transform: none;
-    color: var(--muted);
+    color: var(--text);
     font-weight: 620;
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-family: inherit;
 }
 
 .explorer-toolbar-control-row {
@@ -2471,13 +2471,13 @@ button:disabled {
 
 .explorer-search-wrap {
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
     align-items: center;
-    gap: 0.24rem;
 }
 
 .explorer-search-wrap input {
+    padding-right: 2rem;
+    min-width: 0;
     width: 100%;
     padding-left: 2rem;
 }
@@ -2496,12 +2496,14 @@ button:disabled {
 }
 
 .explorer-search-clear {
-    width: 1.84rem;
-    height: 1.84rem;
-    border: 1px solid var(--border);
+    position: absolute;
+    right: 0.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 0;
     border-radius: 0.62rem;
     padding: 0;
-    background: var(--surface-alt);
+    background: transparent;
     color: var(--muted);
     display: inline-flex;
     align-items: center;
@@ -2686,11 +2688,11 @@ button:disabled {
 .explorer-item-title {
     min-width: 0;
     white-space: nowrap;
-    font-size: 0.77rem;
+    font-size: 0.8125rem;
     font-weight: 460;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-family: 'JetBrains Mono Variable', monospace;
 }
 
 .explorer-name-hover-card {
@@ -7164,6 +7166,8 @@ select {
     min-width: 0;
 }
 .connection-identity strong {
+    font-size: 0.9375rem;
+    line-height: 1.25;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7262,7 +7266,7 @@ select {
 .explorer-body > .access-policy-control {
     margin-top: auto;
     border-top: 1px solid var(--border);
-    padding: 0.35rem 0.25rem;
+    padding: 0.35rem 0.35rem;
     flex: 0 1 auto;
     max-height: 55%;
     overflow: auto;
@@ -7273,7 +7277,7 @@ select {
 .access-policy-details {
     background: transparent;
     border: 0;
-    padding: 0.1rem 0.38rem 0.45rem;
+    padding: 0.1rem 0 0.45rem;
     gap: 0.7rem;
 }
 .credential-profile-policy {
@@ -7353,19 +7357,19 @@ select {
     min-width: 0;
     width: 100%;
     font-family: 'JetBrains Mono Variable', monospace;
-    font-size: 0.77rem;
+    font-size: 0.8125rem;
 }
 .policy-reason {
     display: grid;
-    gap: 0.2rem;
-    font-size: 0.75rem;
+    gap: 0.25rem;
+    font-size: 0.8125rem;
 }
 .policy-reason label span {
     color: var(--accent);
 }
 .policy-reason textarea {
     resize: vertical;
-    min-height: 2.75rem;
+    min-height: 3.25rem;
 }
 .policy-chevron {
     display: inline-flex;
@@ -7382,7 +7386,7 @@ select {
     cursor: pointer;
     padding: 0.4rem 0;
     border-top: 1px solid var(--border);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
 }
 .policy-secondary summary::-webkit-details-marker {
     display: none;
