@@ -17,7 +17,7 @@ const formatPolicyLimit = (value: number, suffix = ''): string =>
     value === 2147483647 ? 'Unlimited' : `${value.toLocaleString()}${suffix}`;
 
 const CredentialProfilePolicyControl = forwardRef<
-    HTMLInputElement,
+    HTMLTextAreaElement,
     CredentialProfilePolicyControlProps
 >(function CredentialProfilePolicyControl(
     {
@@ -35,7 +35,7 @@ const CredentialProfilePolicyControl = forwardRef<
     const policyDetailsId = useId();
     const policy = selectEffectiveCredentialProfilePolicy(datasource, requestedCredentialProfile);
     const requiresJustification = policy?.justificationMode === 'PROFILE_REQUIRED';
-    const justificationInputRef = useRef<HTMLInputElement | null>(null);
+    const justificationInputRef = useRef<HTMLTextAreaElement | null>(null);
     const wasJustificationRequired = useRef(false);
 
     useEffect(() => {
@@ -46,7 +46,7 @@ const CredentialProfilePolicyControl = forwardRef<
         wasJustificationRequired.current = requiresJustification;
     }, [requiresJustification]);
 
-    const setJustificationRef = (node: HTMLInputElement | null) => {
+    const setJustificationRef = (node: HTMLTextAreaElement | null) => {
         justificationInputRef.current = node;
         if (typeof forwardedJustificationRef === 'function') {
             forwardedJustificationRef(node);
@@ -70,133 +70,111 @@ const CredentialProfilePolicyControl = forwardRef<
                     <IconGlyph icon="shield-check" />
                 </span>
                 <span className="explorer-toolbar-label-text">Access &amp; policy</span>
-                <span className="effective-policy-disclosure-label" aria-hidden>
-                    {isPolicyExpanded ? '▾' : '▴'}
+                <span className="policy-chevron" aria-hidden>
+                    <IconGlyph icon="chevron-down" />
                 </span>
             </button>
 
-            {isPolicyExpanded ? (
-                <div
-                    id={policyDetailsId}
-                    className="access-policy-details"
-                    aria-label="Access and effective credential profile policy"
-                >
-                    {canOverride ? (
-                        <div className="explorer-control-group">
-                            <div className="explorer-toolbar-label-row">
-                                <span className="tile-heading-icon" aria-hidden>
-                                    <IconGlyph icon="key-round" />
-                                </span>
-                                <label
-                                    htmlFor="tab-credential-profile"
-                                    className="explorer-toolbar-label-text"
-                                >
-                                    Credential Profile
-                                </label>
-                            </div>
-                            <div className="select-wrap">
-                                <select
-                                    id="tab-credential-profile"
-                                    aria-label="Credential Profile"
-                                    value={requestedCredentialProfile}
-                                    onChange={(event) => onProfileChange(event.target.value)}
-                                    disabled={disabled}
-                                >
-                                    <option value="">Auto (RBAC)</option>
-                                    {(datasource?.credentialProfiles ?? []).map((profile) => (
-                                        <option
-                                            key={`credential-profile-${profile}`}
-                                            value={profile}
-                                        >
-                                            {profile}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    ) : null}
-
-                    <div
-                        className="credential-profile-policy"
-                        aria-label="Effective credential profile policy"
-                    >
-                        {policy ? (
-                            <>
-                                <div className="credential-profile-policy-title">
-                                    <span>Effective profile</span>
-                                    <strong>{policy.credentialProfile}</strong>
-                                </div>
-                                <dl className="policy-permissions">
-                                    <div>
-                                        <dt>SQL access</dt>
-                                        <dd>{policy.readOnly ? 'Read-only' : 'Write-capable'}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>CSV</dt>
-                                        <dd>
-                                            {policy.canExport ? 'Export allowed' : 'Export blocked'}
-                                        </dd>
-                                    </div>
-                                    {policy.sysadmin && (
-                                        <div>
-                                            <dt>Diagnostics</dt>
-                                            <dd>Elevated health access</dd>
-                                        </div>
-                                    )}
-                                </dl>
-                                <h4>Query limits</h4>
-                                <dl className="policy-limits">
-                                    <div>
-                                        <dt>Rows</dt>
-                                        <dd>{formatPolicyLimit(policy.maxRowsPerQuery)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Runtime</dt>
-                                        <dd>{formatPolicyLimit(policy.maxRuntimeSeconds, 's')}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Concurrency</dt>
-                                        <dd>{formatPolicyLimit(policy.concurrencyLimit)}</dd>
-                                    </div>
-                                </dl>
-                                {requiresJustification ? (
-                                    <p>Justification required for every run, including SELECT.</p>
-                                ) : policy.readOnly ? (
-                                    <p>Write statements are blocked.</p>
-                                ) : null}
-                            </>
-                        ) : (
-                            <p>Effective profile policy is unavailable.</p>
-                        )}
-                    </div>
-                </div>
-            ) : null}
-
-            {requiresJustification ? (
-                <div className="explorer-control-group justification-control">
-                    <div className="explorer-toolbar-label-row">
-                        <span className="tile-heading-icon" aria-hidden>
-                            <IconGlyph icon="file-text" />
-                        </span>
-                        <label
-                            htmlFor="tab-query-justification"
-                            className="explorer-toolbar-label-text"
+            <div id={policyDetailsId} className="access-policy-details">
+                {isPolicyExpanded &&
+                    (canOverride ? (
+                        <select
+                            aria-label="Credential Profile"
+                            value={requestedCredentialProfile}
+                            onChange={(event) => onProfileChange(event.target.value)}
+                            disabled={disabled}
                         >
-                            Justification
+                            <option value="">Auto (RBAC)</option>
+                            {(datasource?.credentialProfiles ?? []).map((profile) => (
+                                <option key={profile} value={profile}>
+                                    {profile}
+                                </option>
+                            ))}
+                        </select>
+                    ) : (
+                        policy && <strong>{policy.credentialProfile}</strong>
+                    ))}
+                {requiresJustification && (
+                    <div className="policy-reason">
+                        <label htmlFor="tab-query-justification">
+                            Reason <span aria-hidden>*</span>
                         </label>
+                        <textarea
+                            id="tab-query-justification"
+                            rows={2}
+                            value={queryJustification}
+                            onChange={(event) => onJustificationChange(event.target.value)}
+                            required
+                            disabled={disabled}
+                            ref={setJustificationRef}
+                        />
                     </div>
-                    <input
-                        id="tab-query-justification"
-                        type="text"
-                        value={queryJustification}
-                        onChange={(event) => onJustificationChange(event.target.value)}
-                        placeholder="Change ticket or reason"
-                        required
-                        disabled={disabled}
-                        ref={setJustificationRef}
-                    />
-                </div>
-            ) : null}
+                )}
+                {isPolicyExpanded && (
+                    <details className="policy-secondary">
+                        <summary>
+                            <span className="policy-chevron" aria-hidden>
+                                <IconGlyph icon="chevron-down" />
+                            </span>
+                            Permissions &amp; limits
+                        </summary>
+                        <div
+                            className="credential-profile-policy"
+                            aria-label="Effective credential profile policy"
+                        >
+                            {policy ? (
+                                <>
+                                    <div className="credential-profile-policy-title">
+                                        <span>Effective profile</span>
+                                        <strong>{policy.credentialProfile}</strong>
+                                    </div>
+                                    <dl className="policy-permissions">
+                                        <div>
+                                            <dt>SQL access</dt>
+                                            <dd>
+                                                {policy.readOnly ? 'Read-only' : 'Write-capable'}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt>CSV</dt>
+                                            <dd>
+                                                {policy.canExport
+                                                    ? 'Export allowed'
+                                                    : 'Export blocked'}
+                                            </dd>
+                                        </div>
+                                        {policy.sysadmin && (
+                                            <div>
+                                                <dt>Diagnostics</dt>
+                                                <dd>Elevated health access</dd>
+                                            </div>
+                                        )}
+                                    </dl>
+                                    <h4>Query limits</h4>
+                                    <dl className="policy-limits">
+                                        <div>
+                                            <dt>Rows</dt>
+                                            <dd>{formatPolicyLimit(policy.maxRowsPerQuery)}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Runtime</dt>
+                                            <dd>
+                                                {formatPolicyLimit(policy.maxRuntimeSeconds, 's')}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt>Concurrency</dt>
+                                            <dd>{formatPolicyLimit(policy.concurrencyLimit)}</dd>
+                                        </div>
+                                    </dl>
+                                </>
+                            ) : (
+                                <p>Effective profile policy is unavailable.</p>
+                            )}
+                        </div>
+                    </details>
+                )}
+            </div>
         </div>
     );
 });

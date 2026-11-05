@@ -579,7 +579,7 @@ export default function WorkspacePage() {
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
-    const queryJustificationInputRef = useRef<HTMLInputElement | null>(null);
+    const queryJustificationInputRef = useRef<HTMLTextAreaElement | null>(null);
     const monacoHostRef = useRef<HTMLDivElement | null>(null);
     const resultsSectionRef = useRef<HTMLElement | null>(null);
     const resultsResizeStateRef = useRef<{

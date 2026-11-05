@@ -2399,12 +2399,6 @@ button:disabled {
     outline-offset: 2px;
 }
 
-.effective-policy-disclosure-label {
-    color: var(--accent);
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
-    font-size: 0.64rem;
-}
-
 .access-policy-control {
     display: grid;
     gap: 0.44rem;
@@ -2447,32 +2441,6 @@ button:disabled {
     width: 0.88rem;
     height: 0.88rem;
     color: var(--accent);
-}
-
-.justification-control {
-    padding: 0.52rem 0.58rem;
-    border: 1px solid var(--notice-warning-border);
-    border-radius: 0.42rem;
-    background: var(--notice-warning-bg);
-}
-
-.justification-control .explorer-toolbar-label-text {
-    color: var(--notice-warning-fg);
-}
-
-.credential-profile-policy-flags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.24rem 0.46rem;
-    align-items: baseline;
-}
-
-.credential-profile-policy-flags strong {
-    color: var(--text);
-}
-
-.credential-profile-policy-flags span {
-    color: var(--muted);
 }
 
 .credential-profile-policy dl {
@@ -7369,4 +7337,56 @@ select {
     font:
         600 0.78rem 'JetBrains Mono Variable',
         monospace;
+}
+
+.access-policy-control {
+    gap: 0;
+}
+.access-policy-details:empty {
+    display: none;
+}
+.access-policy-details {
+    gap: 0.4rem;
+}
+.access-policy-details select,
+.policy-reason textarea {
+    min-width: 0;
+    width: 100%;
+    font-family: 'JetBrains Mono Variable', monospace;
+    font-size: 0.77rem;
+}
+.policy-reason {
+    display: grid;
+    gap: 0.2rem;
+    font-size: 0.75rem;
+}
+.policy-reason label span {
+    color: var(--accent);
+}
+.policy-reason textarea {
+    resize: vertical;
+    min-height: 2.75rem;
+}
+.policy-chevron {
+    display: inline-flex;
+    width: 0.9rem;
+    height: 0.9rem;
+}
+.effective-policy-disclosure[aria-expanded='true'] .policy-chevron {
+    transform: rotate(180deg);
+}
+.policy-secondary summary {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    padding: 0.4rem 0;
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+}
+.policy-secondary summary::-webkit-details-marker {
+    display: none;
+}
+.policy-secondary:not([open]) .policy-chevron {
+    transform: rotate(-90deg);
 }
