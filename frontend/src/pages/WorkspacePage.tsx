@@ -1,3 +1,4 @@
+import { useDeploymentBranding } from '../components/useDeploymentBranding';
 import DeploymentBanner from '../components/DeploymentBanner';
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
 import { runResourceSaveOnce } from '../workbench/resourceSaveGuard';
@@ -677,6 +678,7 @@ export default function WorkspacePage() {
     const [userAdminMode, setUserAdminMode] = useState<UserAdminMode>('list');
     const [accessAdminMode, setAccessAdminMode] = useState<AccessAdminMode>('list');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
+    const branding = useDeploymentBranding();
     const [leftRailCollapsed, setLeftRailCollapsed] = useState(true);
     const [showVersionInfo, setShowVersionInfo] = useState(false);
     const [collapsedAdminSubmenuOpen, setCollapsedAdminSubmenuOpen] = useState(false);
@@ -6434,7 +6436,11 @@ export default function WorkspacePage() {
                             <RailIcon glyph={leftRailCollapsed ? 'menu' : 'collapse'} />
                         </button>
                     </div>
-                    <DeploymentBanner collapsed={leftRailCollapsed} />
+                    {branding?.environment && (
+                        <span className="deployment-environment" title={branding.environment}>
+                            {branding.environment}
+                        </span>
+                    )}
                     <div className="workspace-left-rail-separator" aria-hidden />
                     <nav
                         className="workspace-mode-tabs"
@@ -6703,6 +6709,7 @@ export default function WorkspacePage() {
                     </nav>
 
                     <div className="workspace-left-footer">
+                        <DeploymentBanner branding={branding} collapsed={leftRailCollapsed} />
                         {currentUser ? (
                             <div className="workspace-left-user" ref={leftRailUserMenuRef}>
                                 <button
