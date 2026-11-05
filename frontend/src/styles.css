@@ -1883,7 +1883,6 @@ button:disabled {
     display: grid;
     gap: 0.45rem;
     padding-top: 0.48rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .workspace-left-user {

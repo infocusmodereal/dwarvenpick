@@ -128,4 +128,4 @@ Each deployment can supply its own labels and artwork without rebuilding the ima
 Mount the logo at the corresponding path under the frontend document root. Use a same-origin
 path and artwork suitable for a white background. The company name is the image's accessible
 label and appears as text when the logo is omitted or cannot load. Either label can be used
-on its own. The environment is centered beneath the product name, and the company appears above the user menu. The collapsed menu prioritizes the environment. Reload the page after updating the files.
+on its own. The environment is centered below the last visible navigation item, and the company appears above the divider separating the user menu. The collapsed menu prioritizes the environment. Reload the page after updating the files.

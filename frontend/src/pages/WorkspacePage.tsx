@@ -6436,11 +6436,6 @@ export default function WorkspacePage() {
                             <RailIcon glyph={leftRailCollapsed ? 'menu' : 'collapse'} />
                         </button>
                     </div>
-                    {branding?.environment && (
-                        <span className="deployment-environment" title={branding.environment}>
-                            {branding.environment}
-                        </span>
-                    )}
                     <div className="workspace-left-rail-separator" aria-hidden />
                     <nav
                         className="workspace-mode-tabs"
@@ -6707,9 +6702,15 @@ export default function WorkspacePage() {
                             </div>
                         ) : null}
                     </nav>
+                    {branding?.environment && (
+                        <span className="deployment-environment" title={branding.environment}>
+                            {branding.environment}
+                        </span>
+                    )}
 
                     <div className="workspace-left-footer">
                         <DeploymentBanner branding={branding} collapsed={leftRailCollapsed} />
+                        <div className="workspace-left-rail-separator" aria-hidden />
                         {currentUser ? (
                             <div className="workspace-left-user" ref={leftRailUserMenuRef}>
                                 <button
