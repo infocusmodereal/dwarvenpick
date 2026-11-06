@@ -5,6 +5,15 @@ import org.junit.jupiter.api.Test
 
 class QueryJustificationPolicyTests {
     @Test
+    fun `admin profile governance follows the profile flag regardless of write access`() {
+        val policy = QueryJustificationPolicy(QueryExecutionProperties(requireAdminProfileJustification = true))
+        for (readOnly in listOf(true, false)) {
+            assertThat(policy.mode(readOnly, sysadminProfile = true)).isEqualTo(QueryJustificationMode.PROFILE_REQUIRED)
+            assertThat(policy.mode(readOnly, sysadminProfile = false)).isEqualTo(QueryJustificationMode.NONE)
+        }
+    }
+
+    @Test
     fun `governed write-capable profiles require justification for every run`() {
         val policy =
             QueryJustificationPolicy(
@@ -12,9 +21,7 @@ class QueryJustificationPolicyTests {
             )
 
         assertThat(policy.mode(readOnly = false)).isEqualTo(QueryJustificationMode.PROFILE_REQUIRED)
-        assertThat(policy.requiresJustification(readOnly = false)).isTrue()
         assertThat(policy.mode(readOnly = true)).isEqualTo(QueryJustificationMode.NONE)
-        assertThat(policy.requiresJustification(readOnly = true)).isFalse()
     }
 
     @Test
@@ -25,6 +32,5 @@ class QueryJustificationPolicyTests {
             )
 
         assertThat(policy.mode(readOnly = false)).isEqualTo(QueryJustificationMode.NONE)
-        assertThat(policy.requiresJustification(readOnly = false)).isFalse()
     }
 }

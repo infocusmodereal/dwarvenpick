@@ -72,12 +72,12 @@ describe('CredentialProfilePolicyControl', () => {
             'aria-expanded',
             'true'
         );
+        await user.click(screen.getByText('Permissions & limits'));
         const policy = screen.getByLabelText('Effective credential profile policy');
         expect(within(policy).getByText('read-only')).toBeInTheDocument();
         expect(within(policy).getByText('Read-only')).toBeInTheDocument();
         expect(within(policy).getByText('Export blocked')).toBeInTheDocument();
         expect(within(policy).getByText('Elevated health access')).toBeInTheDocument();
-        expect(within(policy).getByText('Write statements are blocked.')).toBeInTheDocument();
         expect(within(policy).getByText('Rows').nextElementSibling?.textContent).toBe('1,000');
         expect(within(policy).getByText('Runtime').nextElementSibling?.textContent).toBe('60s');
         expect(within(policy).getByText('Concurrency').nextElementSibling?.textContent).toBe('2');
@@ -94,17 +94,16 @@ describe('CredentialProfilePolicyControl', () => {
         );
 
         const justification = screen.getByRole('textbox', { name: 'Justification' });
+        expect(screen.getByText('Permissions & limits').parentElement).not.toHaveAttribute('open');
         expect(justification).toBeRequired();
         expect(justification).toHaveAttribute('id', 'tab-query-justification');
         expect(justification).toHaveFocus();
         await user.type(justification, 'TOPS-123 approved change');
         expect(justification).toHaveValue('TOPS-123 approved change');
 
+        await user.click(screen.getByText('Permissions & limits'));
         const policy = screen.getByLabelText('Effective credential profile policy');
         expect(within(policy).getByText('Write-capable')).toBeInTheDocument();
-        expect(
-            within(policy).getByText('Justification required for every run, including SELECT.')
-        ).toBeInTheDocument();
         expect(within(policy).getByText('Rows').nextElementSibling?.textContent).toBe('500');
 
         await user.click(screen.getByRole('button', { name: 'Hide access and policy' }));
@@ -147,6 +146,7 @@ describe('CredentialProfilePolicyControl', () => {
         );
 
         await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
+        await user.click(screen.getByText('Permissions & limits'));
         expect(screen.getAllByText('Unlimited')).toHaveLength(3);
         expect(screen.queryByText('2147483647')).not.toBeInTheDocument();
     });

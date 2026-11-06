@@ -121,18 +121,21 @@ test('governed workbench browser smoke', async ({ page }) => {
                     response.request().method() === 'GET'
                 );
             });
-            await connection.selectOption({ label: config.datasource });
+            await connection.click();
+            const picker = page.getByRole('dialog', { name: 'Choose connection' });
+            await picker.getByRole('combobox').fill(config.datasource);
+            await picker.getByRole('option', { name: config.datasource, exact: true }).click();
             expect((await schemaResponsePromise).ok()).toBe(true);
-            await expect(connection).toHaveValue(config.datasource);
+            await expect(connection).toContainText(config.datasource);
 
             if (config.credentialProfile) {
-                await page
-                    .getByRole('button', { name: 'Show access and policy', exact: true })
-                    .click();
                 const profile = page.getByRole('combobox', {
                     name: 'Credential Profile',
                     exact: true
                 });
+                if (!(await profile.isVisible())) {
+                    await page.getByRole('button', { name: 'Show access and policy' }).click();
+                }
                 await expect(profile).toBeVisible();
                 await profile.selectOption(config.credentialProfile);
                 await expect(profile).toHaveValue(config.credentialProfile);
@@ -155,7 +158,7 @@ test('governed workbench browser smoke', async ({ page }) => {
         });
 
         await check('safe query execution', async () => {
-            const justification = page.getByLabel('Justification', { exact: true });
+            const justification = page.getByRole('textbox', { name: 'Justification', exact: true });
             if ((await justification.count()) > 0) {
                 await expect(justification).toBeVisible();
                 await justification.fill('Automated browser smoke validation');

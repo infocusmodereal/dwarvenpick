@@ -93,8 +93,8 @@ class EffectiveDatasourcePolicyService(
                 maxRowsPerQuery = effectiveLimits.maxRowsPerQuery,
                 maxRuntimeSeconds = effectiveLimits.maxRuntimeSeconds,
                 concurrencyLimit = effectiveLimits.concurrencyLimit,
-                sysadmin = credentialProfile in datasource.sysadminCredentialProfiles,
-                justificationMode = queryJustificationPolicy.mode(policy.readOnly),
+                sysadmin = policy.sysadminProfile,
+                justificationMode = queryJustificationPolicy.mode(policy.readOnly, policy.sysadminProfile),
             )
         }
     }
