@@ -2176,7 +2176,7 @@ button:disabled {
     border: 0;
     background: transparent;
     border-radius: 0;
-    padding: 0.72rem calc(15px - 0.6rem) 0.1rem;
+    padding: 0.72rem calc(20px - 0.6rem) 0.1rem;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 0.35rem;
