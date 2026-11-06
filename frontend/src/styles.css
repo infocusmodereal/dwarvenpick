@@ -2120,15 +2120,12 @@ button:disabled {
     height: 100%;
     overflow: visible;
     background: var(--workspace-surface);
-    padding: 0 0 0 0.9rem;
-    transition:
-        grid-template-columns 360ms ease,
-        padding-left 360ms ease;
+    padding: 0;
+    transition: grid-template-columns 360ms ease;
 }
 
 .workspace-grid.is-explorer-collapsed {
     grid-template-columns: 48px minmax(0, 1fr);
-    padding-left: 0.55rem;
 }
 
 .sidebar {
