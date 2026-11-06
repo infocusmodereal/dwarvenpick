@@ -7109,23 +7109,37 @@ select {
 .editor-schema {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
     margin: 0.2rem 0.55rem 0.2rem auto;
     min-width: 0;
     max-width: 38%;
     font-size: 0.75rem;
-    color: var(--muted);
-}
-.editor-schema {
     font-family: 'JetBrains Mono Variable', monospace;
 }
 .editor-schema .connection-trigger {
     min-width: 0;
-    max-width: 12rem;
-    padding: 0.26rem 0.5rem;
+    max-width: 17rem;
+    min-height: 1.9rem;
+    gap: 0.4rem;
+    padding: 0.25rem 0.65rem;
+    border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
     font: inherit;
 }
+.editor-schema .connection-trigger:is(:hover, [aria-expanded='true']):enabled {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 26%, var(--surface));
+}
+.editor-schema .connection-trigger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.editor-schema .schema-label,
+.editor-schema .explorer-icon-glyph {
+    color: var(--accent);
+    flex-shrink: 0;
+}
 .editor-schema .schema-value {
+    font-weight: 650;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

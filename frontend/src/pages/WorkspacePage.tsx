@@ -7412,7 +7412,6 @@ export default function WorkspacePage() {
                                     onDuplicateTab={handleDuplicateTab}
                                 />
                                 <div className="editor-schema">
-                                    <span>Schema</span>
                                     <SearchablePicker
                                         key={activeTabId}
                                         noun="schema"
@@ -7434,6 +7433,8 @@ export default function WorkspacePage() {
                                                 }));
                                         }}
                                     >
+                                        <ExplorerIcon glyph="schema" />
+                                        <span className="schema-label">Schema</span>
                                         <span className="schema-value">
                                             {activeTab?.schema || 'None'}
                                         </span>
