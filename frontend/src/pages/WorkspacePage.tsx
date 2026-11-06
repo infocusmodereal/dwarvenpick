@@ -6713,7 +6713,9 @@ export default function WorkspacePage() {
                     </nav>
                     {branding?.environment && (
                         <span className="deployment-environment" title={branding.environment}>
-                            {branding.environment}
+                            {leftRailCollapsed
+                                ? Array.from(branding.environment).slice(0, 2).join('')
+                                : branding.environment}
                         </span>
                     )}
 

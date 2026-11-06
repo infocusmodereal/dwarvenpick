@@ -7074,8 +7074,7 @@ select {
     padding: 2px;
 }
 
-.deployment-company,
-.deployment-environment {
+.deployment-company {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -7087,6 +7086,7 @@ select {
 }
 
 .deployment-environment {
+    white-space: nowrap;
     box-sizing: border-box;
     padding: 0.12rem 0.32rem;
     border: 1px solid currentColor;

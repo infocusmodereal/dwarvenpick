@@ -13,7 +13,7 @@ function readBranding(value: unknown): Branding | null {
         return typeof field === 'string' ? field.trim() : '';
     };
     const company = text('company');
-    const environment = text('environment');
+    const environment = Array.from(text('environment')).slice(0, 5).join('');
     const path = text('logoPath');
     const logoPath = company && /^\/(?!\/)[^\\]*$/.test(path) ? path : '';
     return company || environment ? { company, environment, logoPath } : null;
