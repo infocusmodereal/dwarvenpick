@@ -1,6 +1,6 @@
 import { type ReactNode, useId, useRef, useState } from 'react';
 
-type PickerItem = { value: string; label: string; detail?: string; icon?: string };
+type PickerItem = { value: string; label: string; iconLabel?: string; icon?: string };
 type Props = {
     noun: 'connection' | 'schema';
     triggerLabel: string;
@@ -26,7 +26,9 @@ export default function SearchablePicker({
     const list = useRef<HTMLUListElement>(null);
     const listId = useId();
     const options = items.filter((item) =>
-        (item.label + ' ' + (item.detail ?? '')).toLowerCase().includes(filter.trim().toLowerCase())
+        (item.label + ' ' + (item.iconLabel ?? ''))
+            .toLowerCase()
+            .includes(filter.trim().toLowerCase())
     );
     function close() {
         setOpen(false);
@@ -52,6 +54,7 @@ export default function SearchablePicker({
                 className="connection-trigger"
                 ref={trigger}
                 aria-label={triggerLabel}
+                aria-description={items.find((item) => item.value === value)?.iconLabel}
                 aria-haspopup="dialog"
                 aria-expanded={open && !disabled}
                 disabled={disabled}
@@ -122,16 +125,20 @@ export default function SearchablePicker({
                                 id={listId + '-' + i}
                                 role="option"
                                 aria-label={item.label}
+                                aria-description={item.iconLabel}
                                 aria-selected={value === item.value}
                                 className={i === cursor ? 'highlighted' : ''}
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => choose(item.value)}
                             >
-                                {item.icon && <img src={item.icon} alt="" />}
-                                <span>
-                                    {item.label}
-                                    {item.detail && <small>{item.detail}</small>}
-                                </span>
+                                {item.icon && (
+                                    <img
+                                        src={item.icon}
+                                        alt={item.iconLabel ?? ''}
+                                        title={item.iconLabel}
+                                    />
+                                )}
+                                <span>{item.label}</span>
                                 {value === item.value && <span aria-hidden>✓</span>}
                             </li>
                         ))}

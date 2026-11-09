@@ -3,6 +3,16 @@ import type { CatalogDatasourceResponse } from '../types';
 import { resolveDatasourceIcon } from '../icons';
 import { IconGlyph } from './WorkbenchIcons';
 
+const engineNames: Record<string, string> = {
+    POSTGRESQL: 'PostgreSQL',
+    MYSQL: 'MySQL',
+    MARIADB: 'MariaDB',
+    STARROCKS: 'StarRocks',
+    TRINO: 'Trino',
+    VERTICA: 'Vertica',
+    AEROSPIKE: 'Aerospike'
+};
+
 type ExplorerControlsProps = {
     activeDatasource?: CatalogDatasourceResponse;
     disabled: boolean;
@@ -34,18 +44,29 @@ export default function ExplorerControls({
                 items={visibleDatasources.map((d) => ({
                     value: d.id,
                     label: d.name,
-                    detail: d.engine,
+                    iconLabel: engineNames[d.engine] ?? d.engine,
                     icon: resolveDatasourceIcon(d.engine)
                 }))}
                 onChange={onDatasourceChange}
             >
-                <img src={resolveDatasourceIcon(activeDatasource?.engine)} alt="" />
+                <img
+                    src={resolveDatasourceIcon(activeDatasource?.engine)}
+                    alt={
+                        activeDatasource
+                            ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
+                            : ''
+                    }
+                    title={
+                        activeDatasource
+                            ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
+                            : undefined
+                    }
+                />
                 <span className="connection-identity">
                     <strong>{activeDatasource?.name ?? 'Select connection'}</strong>
                     <small>
                         <i className={'editor-connection-health tone-' + datasourceHealthTone} />
                         {datasourceHealthLabel}
-                        {activeDatasource && ' · ' + activeDatasource.engine}
                     </small>
                 </span>
             </SearchablePicker>
