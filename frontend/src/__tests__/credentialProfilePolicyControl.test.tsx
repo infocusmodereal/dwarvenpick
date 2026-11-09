@@ -51,6 +51,12 @@ const ProfileControlHarness = ({ disabled = false }: { disabled?: boolean }) => 
 };
 
 describe('CredentialProfilePolicyControl', () => {
+    beforeAll(() => {
+        HTMLElement.prototype.showPopover = vi.fn();
+    });
+    afterAll(() => {
+        Reflect.deleteProperty(HTMLElement.prototype, 'showPopover');
+    });
     it('collapses policy details by default and expands with the keyboard', async () => {
         const user = userEvent.setup();
         render(<ProfileControlHarness />);
@@ -58,7 +64,7 @@ describe('CredentialProfilePolicyControl', () => {
         const disclosure = screen.getByRole('button', { name: 'Show access and policy' });
         expect(disclosure).toHaveAttribute('aria-expanded', 'false');
         expect(
-            screen.queryByRole('combobox', { name: 'Credential Profile' })
+            screen.queryByRole('button', { name: 'Credential Profile' })
         ).not.toBeInTheDocument();
         expect(
             screen.queryByLabelText('Effective credential profile policy')
@@ -88,10 +94,8 @@ describe('CredentialProfilePolicyControl', () => {
         render(<ProfileControlHarness />);
 
         await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
-        await user.selectOptions(
-            screen.getByRole('combobox', { name: 'Credential Profile' }),
-            'read-write'
-        );
+        await user.click(screen.getByRole('button', { name: 'Credential Profile' }));
+        await user.click(screen.getByRole('option', { name: 'read-write' }));
 
         const justification = screen.getByRole('textbox', { name: 'Justification' });
         expect(screen.getByText('Permissions & limits').parentElement).not.toHaveAttribute('open');
@@ -113,10 +117,8 @@ describe('CredentialProfilePolicyControl', () => {
         expect(screen.getByRole('textbox', { name: 'Justification' })).toBeVisible();
 
         await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
-        await user.selectOptions(
-            screen.getByRole('combobox', { name: 'Credential Profile' }),
-            'read-only'
-        );
+        await user.click(screen.getByRole('button', { name: 'Credential Profile' }));
+        await user.click(screen.getByRole('option', { name: 'read-only' }));
         expect(screen.queryByRole('textbox', { name: 'Justification' })).not.toBeInTheDocument();
     });
 
@@ -156,7 +158,7 @@ describe('CredentialProfilePolicyControl', () => {
         render(<ProfileControlHarness disabled />);
 
         await user.click(screen.getByRole('button', { name: 'Show access and policy' }));
-        expect(screen.getByRole('combobox', { name: 'Credential Profile' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Credential Profile' })).toBeDisabled();
     });
 
     it('detects a blank justification only for a governed write-capable policy', () => {
@@ -182,7 +184,7 @@ describe('CredentialProfilePolicyControl', () => {
         );
 
         expect(
-            screen.queryByRole('combobox', { name: 'Credential Profile' })
+            screen.queryByRole('button', { name: 'Credential Profile' })
         ).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Show access and policy' })).toBeInTheDocument();
     });

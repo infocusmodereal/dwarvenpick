@@ -129,7 +129,7 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(connection).toContainText(config.datasource);
 
             if (config.credentialProfile) {
-                const profile = page.getByRole('combobox', {
+                const profile = page.getByRole('button', {
                     name: 'Credential Profile',
                     exact: true
                 });
@@ -137,8 +137,11 @@ test('governed workbench browser smoke', async ({ page }) => {
                     await page.getByRole('button', { name: 'Show access and policy' }).click();
                 }
                 await expect(profile).toBeVisible();
-                await profile.selectOption(config.credentialProfile);
-                await expect(profile).toHaveValue(config.credentialProfile);
+                await profile.click();
+                await page
+                    .getByRole('option', { name: config.credentialProfile, exact: true })
+                    .click();
+                await expect(profile).toContainText(config.credentialProfile);
             }
         });
 

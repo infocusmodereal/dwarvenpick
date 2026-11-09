@@ -7413,3 +7413,32 @@ select {
 .policy-secondary:not([open]) .policy-chevron {
     transform: rotate(-90deg);
 }
+
+.access-policy-details .connection-trigger {
+    padding: 0.58rem 0.72rem;
+    border-radius: 0.6rem;
+    background: var(--control-bg);
+    font:
+        0.8125rem 'JetBrains Mono Variable',
+        monospace;
+}
+.access-policy-details .connection-trigger > span:first-child {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.connection-popover.profile-popover {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    overflow: auto;
+    font:
+        0.8125rem 'JetBrains Mono Variable',
+        monospace;
+    color: var(--text);
+}
+.profile-popover input {
+    font: inherit;
+}

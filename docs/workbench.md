@@ -1,184 +1,183 @@
----
-title: Workbench
-nav_order: 3
----
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
-# Workbench
-
-The Workbench is the main SQL editor and results viewer.
-
-## Theme
-
-- Use the user menu in the left rail to toggle between Light mode and Dark mode.
-- The main navigation rail opens collapsed by default; use the rail toggle to expand it when you want labels.
-
-## Editor
-
-- Choose or search for a connection at the top of Explorer by name or engine. Hover over its icon to see the database engine. At the right of the SQL tabs, open **Schema** and type to filter. Use the arrow keys and Enter to set the default for the active tab, or choose **None** to clear it. Search includes objects inside the collapsed **System schemas** group. Open **Access & policy** at the foot of Explorer to select a profile. Auto (RBAC) shows the profile it will use. When that profile requires justification, enter a change ticket or reason below the selector. Expand **Permissions & limits** for policy details.
-- Query History shows the submitting user in every row and includes it in current-page search and CSV export. Long connection names and usernames are truncated with their full value available on hover. Use the labeled icon actions to inspect details, open SQL or rerun it.
-
-- Create tabs for multiple queries.
-- Run selection or run the full query.
-- Use **Save to Scripts** to open the current editor contents as a draft in the Resource Manager with the active connection pre-selected.
-
-### Autocomplete
-
-The editor provides basic autocomplete:
-
-- SQL keywords
-- Schemas/tables/columns discovered by **Explorer** for the active connection
-- StarRocks external catalog objects as fully qualified `catalog.database.table` references
-
-Use `Ctrl+Space` / `Cmd+Space` to open suggestions.
-
-### Validate
-
-Use **Validate SQL** to check SQL syntax and planning without running the query. Validation is engine-aware and uses
-`EXPLAIN` under the hood.
-
-Notes:
-
-- Validation may still require privileges to read metadata.
-- Validation refuses `EXPLAIN ANALYZE` and `EXPLAIN` of write statements because those plan modes may execute work or
-  validate a write path.
-- Some engines can return line/column information; when available, the editor shows inline markers.
-
-### Query plans
-
-- **Explain** is available in the Query Plan tab and requests a plan where supported.
-- There is no separate Analyze toolbar action. Engine `EXPLAIN ANALYZE` SQL is a deeper plan mode. Some engines may execute the query (for example PostgreSQL `EXPLAIN ANALYZE` and
-  Trino `EXPLAIN ANALYZE`). Use it deliberately on large tables.
-
-### Run Script (multi-statement)
-
-Use **Run > Run script** for semicolon-delimited SQL scripts. The backend splits statements and executes them one-by-one.
-
-Options:
-
-- **Stop on error**: stop at the first failing statement (recommended for safe operations).
-- **Transaction mode**:
-    - `AUTOCOMMIT`: each statement commits independently.
-    - `TRANSACTION`: attempt to run the whole script in one transaction and roll back on failure (where supported).
-
-Read-only access rules apply to **every** statement in a script.
-
-## Scripts
-
-- The **Scripts** section is a server-backed Resource Manager for SQL files.
-- Scripts and their version history are stored in the application database.
-- Save scripts into **Private** or **Shared** spaces.
-- Shared scripts require a group and can optionally allow group members to update content.
-- Organize scripts with folder paths, tags, and a folder tree view.
-- Associate a script with a fixed connection when you want it to open against a specific target.
-- Open or run a saved script directly into the Workbench.
-- Script-backed tabs autosave content changes back to the server.
-- Edit mode includes version history so owners can review and restore previous saved revisions.
-
-## Execution and results
-
-The toolbar below the SQL editor contains **Run**, **Format SQL**, **Validate SQL**, and **Options**. Run executes the selected SQL, or the statement at
-the cursor when there is no selection. Its dropdown also offers selection-only
-execution and Run script. Use Ctrl/Cmd+Enter for the current statement/selection,
-or Shift+Ctrl/Cmd+Enter for the complete script. During execution, Run becomes
-Cancel. Script transaction and stop-on-error settings and Save to Scripts are available in Options; access
-policy row/runtime limits remain enforced by the server.
-
-Results, Query Plan, and Stats share a compact execution summary. Query Plan
-shows the engine's textual/tabular plan from its explicit Explain action; opening
-the tab never submits SQL. Unsupported connectors show an empty state.
-Stats displays reported counts, execution duration, limits, application queue time,
-and timestamps. The execution API does not currently expose engine CPU, scan,
-shuffle, or peak-memory metrics, so the UI does not synthesize those values.
-
-Search and sorting operate **only on the loaded page** and never rerun SQL.
-Show rows controls backend result pagination, independently of the query row
-limit. Columns can be hidden/restored for the current result; the native table
-does not support pinning, reordering, or manual widths. Density changes row
-height/padding and is remembered locally. Expand hides the editor within the
-Workbench; Restore or Escape brings it back without browser fullscreen.
-
-Select cells by clicking or focusing and pressing Enter/Space; select rows using
-the row checkboxes. The result action menu offers copying selected cells/rows or
-all loaded rows, clearing sorting/search, resetting the table view, and clearing
-results without changing SQL or history. The separate Export button offers
-governed CSV export of all materialized result rows in original order and JSON
-export of the loaded page. JSON requires the executed credential profile to permit export and the loaded page to fit within the reported export row cap. JSON uses a columns/rows envelope to
-preserve duplicate column names and nulls. Local search, sorting, and hidden
-columns do not change export contents.
-
-Zero-row queries remain successful empty result sets. JDBC update counts are
-marked explicitly in result metadata so DDL/DML displays affected rows without
-an artificial table; an ordinary SELECT column named `affected_rows` remains a
-table column. Older saved results without that marker retain their table view.
-
-## Explorer
-
-- The Explorer shows databases/schemas/tables/columns for the active connection.
-- Switching connections or closing the workspace cancels the previous Explorer load. Late responses cannot replace the active connection's metadata.
-- Trino Explorer metadata is scoped to the connection's configured catalog.
-- StarRocks external catalog databases are shown as `catalog.database`, so inserting a table reference produces `catalog.database.table`.
-- Use it to navigate metadata and help author queries.
-- Drag the vertical handle between Explorer and the editor to resize Explorer horizontally. Double-click the handle to reset.
-- Use **Search** to filter schemas/tables/columns (DataGrip-style).
-- Use the **Inspect** icon on a table/view to open the Object Inspector:
-    - DDL / `SHOW CREATE` (engine-specific)
-    - Indexes, constraints, partitions (when available)
-    - Size & basic statistics (when available)
-    - If the selected credentials do not have the required privileges, the inspector shows an explicit message per section.
-
-## Query History
-
-- Filter by connection/status/time range and sort by newest/oldest.
-- Query history, active query status, and buffered result pages are stored in the application database, so they survive
-  backend restarts, redeployments, and routing to a different backend replica.
-- When configured, governed write-capable requests store the submitted justification in status, history, and audit.
-- Paginate through persisted history and export the current page as CSV.
-- History retention is controlled by `dwarvenpick.query.history-retention-days`.
-- Optional SQL text redaction is controlled by `dwarvenpick.query.query-text-redaction-days`.
-
-## Audit Events (SYSTEM_ADMIN)
-
-- Filter audit events by action/actor/outcome/time range and sort by newest/oldest.
-- Paginate results and export the current page as CSV.
-- Audit event retention is controlled by `dwarvenpick.query.audit-retention-days`.
-
-## System Health (SYSTEM_ADMIN)
-
-- Select a connection and a **sysadmin credential profile** to run engine-specific health checks.
-- Only credential profiles marked as **sysadmin** are shown in the picker.
-- If no connections have a sysadmin credential profile, the page shows an explicit message.
-- If the selected credentials do not have the required privileges, the page shows an explicit message.
-
-### Control Plane
-
-The System Health page also includes a lightweight control plane for the selected connection:
-
-- Real-time view (polling) of queued/running queries and connection pool saturation across backend replicas.
-- Latency summary (windowed) and latest error samples.
-- Admin actions: pause/resume the connection, cancel/kill queued/running queries (optionally filtered by actor),
-  and export queued/running queries as CSV.
-- Paused connection state is stored in the application database and survives backend restarts.
-
-Long plans scroll within the available panel space, with plan pagination in a separate footer. The plan text can be focused for keyboard scrolling.
-
-Plan requests keep their execution state and plan pagination separate from the query result. Requesting or refreshing a plan preserves the Results rows, current page, sorting, search, column visibility, and query metrics. Plan errors appear only in Query Plan. Running a new query clears the previous plan. Stats separates execution metrics from submitted/completed timestamps. The result toolbar uses Show columns and a density selector without a repeated visible label.
-
-Explorer search uses an inline search icon and the placeholder "Search objects", while retaining its accessible name and clear action. The editor/results column fits the available viewport with both navigation panels open; a saved Explorer width is constrained to leave room for the editor. Active navigation uses theme gold in both Light and Dark.
-
-Result export is available from the dedicated download-icon Export button, separate from the secondary actions menu. Menus distinguish headings, disabled actions and explanatory text; Run shortcuts use separate readable key labels. Results uses alternating row shading based on the logical row index so it remains stable while scrolling a virtualized page. Query Plan uses an operator-tree icon and Stats uses a chart icon.
-
-Query Plan starts with a compact empty state and a single Explain action. Its tooltip describes the explicit execution and result preservation. Once a plan is available, the panel prioritizes the plan text with a compact Refresh plan control; errors and unsupported connectors retain concise states.
-
-The editor shortcut help uses compact action/key rows for statement or selection, complete script, and cancellation. Autocomplete diagnostics remain collapsed and admin-only. Validate SQL retains the existing validation endpoint and inline errors; Explain is available only in Query Plan, and Analyze has been removed from the toolbar.
-
-SQL validation feedback appears beside **Validate SQL**, separately from query results. Successful validation confirms the statement or selection; failures show the engine diagnostic and line/column when available. Dismiss with Escape, the close button, or a click outside. Editing SQL or changing tabs or execution context clears the feedback, and outdated responses are ignored.
-
-Audit Events keeps server filters for action, actor, outcome and time range together. **Search loaded events** searches only the loaded batch (up to the latest 200 matching events), including detail values. Expand **View details** for structured fields. Pagination and CSV export operate on the current loaded view; CSV exports the current page. Sorting changes the order of loaded events.
-
-Query History groups connection/status/time filters above the table. Search applies only to the current page, excludes redacted SQL, and clears when changing pages or server filters. **Details** expands execution metadata, justification, error diagnostics and SQL without executing it. Open and Rerun retain their existing behavior. Export includes only visible rows on the current page.
-
-System Health separates **Engine health**, **Query activity**, and **Connection pools**. Node details and recent errors expand on demand. Connection-wide pause/resume/cancel/kill controls are grouped under **Manage connection**; existing authorization and confirmation flows remain in place. Engine checks and query activity retain their separate update timestamps. Auto Refresh applies to query activity, while the header Refresh requests both engine health and query activity.
-
-History pagination shows the current page and total pages for the server-filtered, authorized history. The existing `GET /api/queries/history` array response is unchanged; clients can opt into `includeTotal=true` to receive the matching `X-Total-Count` response header. Audit pagination totals refer only to its loaded event batch. Both views use a compact shared pager and an outer search focus outline.
-
-Connections uses a compact table with local search and engine filtering. Endpoint, database and profile counts are visible without opening the editor; credential values remain in the existing protected editor flow. Maintenance groups credential re-encryption separately from normal create/edit actions. System Health uses a bounded content width so metrics remain easy to scan on wide displays.
+type PickerItem = { value: string; label: string; iconLabel?: string; icon?: string };
+type Props = {
+    noun: 'connection' | 'schema' | 'profile';
+    placement?: 'bottom' | 'top';
+    triggerLabel: string;
+    value: string;
+    items: PickerItem[];
+    disabled: boolean;
+    children: ReactNode;
+    onChange: (value: string) => void;
+};
+export default function SearchablePicker({
+    noun,
+    placement = 'bottom',
+    triggerLabel,
+    value,
+    items,
+    disabled,
+    children,
+    onChange
+}: Props) {
+    const [open, setOpen] = useState(false);
+    const [filter, setFilter] = useState('');
+    const [cursor, setCursor] = useState(0);
+    const trigger = useRef<HTMLButtonElement>(null);
+    const list = useRef<HTMLUListElement>(null);
+    const listId = useId();
+    const popover = useRef<HTMLDivElement>(null);
+    const plural = { connection: 'connections', schema: 'schemas', profile: 'profiles' }[noun];
+    useLayoutEffect(() => {
+        if (!open || disabled || placement !== 'top' || !popover.current || !trigger.current)
+            return;
+        const bounds = trigger.current.getBoundingClientRect();
+        Object.assign(popover.current.style, {
+            left: `${bounds.left}px`,
+            bottom: `${window.innerHeight - bounds.top + 4}px`,
+            width: `${bounds.width}px`,
+            maxHeight: `${Math.max(0, bounds.top - 8)}px`
+        });
+        popover.current.showPopover();
+        popover.current.querySelector('input')?.focus();
+    }, [open, disabled, placement]);
+    useEffect(() => {
+        if (!open || placement !== 'top') return;
+        const dismiss = () => setOpen(false);
+        const onScroll = (event: Event) => {
+            if (event.target instanceof Node && popover.current?.contains(event.target)) return;
+            dismiss();
+        };
+        window.addEventListener('resize', dismiss);
+        window.addEventListener('scroll', onScroll, true);
+        return () => {
+            window.removeEventListener('resize', dismiss);
+            window.removeEventListener('scroll', onScroll, true);
+        };
+    }, [open, placement]);
+    const options = items.filter((item) =>
+        (item.label + ' ' + (item.iconLabel ?? ''))
+            .toLowerCase()
+            .includes(filter.trim().toLowerCase())
+    );
+    function close() {
+        setOpen(false);
+        trigger.current?.focus();
+    }
+    function choose(id: string) {
+        close();
+        onChange(id);
+    }
+    function move(index: number) {
+        setCursor(index);
+        list.current?.children[index]?.scrollIntoView?.({ block: 'nearest' });
+    }
+    return (
+        <div
+            className="connection-switch"
+            onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+            }}
+        >
+            <button
+                type="button"
+                className="connection-trigger"
+                ref={trigger}
+                aria-label={triggerLabel}
+                aria-description={items.find((item) => item.value === value)?.iconLabel}
+                aria-haspopup="dialog"
+                aria-expanded={open && !disabled}
+                disabled={disabled}
+                onClick={() => {
+                    setFilter('');
+                    setCursor(
+                        Math.max(
+                            0,
+                            items.findIndex((item) => item.value === value)
+                        )
+                    );
+                    setOpen(!open);
+                }}
+            >
+                {children}
+                <span aria-hidden>▾</span>
+            </button>
+            {open && !disabled && (
+                <div
+                    role="dialog"
+                    aria-label={`Choose ${noun}`}
+                    className={
+                        placement === 'top'
+                            ? 'connection-popover profile-popover'
+                            : 'connection-popover'
+                    }
+                    ref={popover}
+                    popover={placement === 'top' ? 'manual' : undefined}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            close();
+                        }
+                    }}
+                >
+                    <input
+                        autoFocus
+                        role="combobox"
+                        aria-label={`Find ${noun}`}
+                        placeholder={`Find ${noun}…`}
+                        aria-expanded="true"
+                        aria-autocomplete="list"
+                        aria-controls={listId}
+                        aria-activedescendant={options[cursor] ? listId + '-' + cursor : undefined}
+                        value={filter}
+                        onChange={(e) => {
+                            setFilter(e.target.value);
+                            setCursor(0);
+                        }}
+                        onKeyDown={(e) => {
+                            if (!options.length) return;
+                            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                move(
+                                    (cursor + (e.key === 'ArrowDown' ? 1 : -1) + options.length) %
+                                        options.length
+                                );
+                            }
+                            if (e.key === 'Enter' && options[cursor]) {
+                                e.preventDefault();
+                                choose(options[cursor].value);
+                            }
+                        }}
+                    />
+                    <ul role="listbox" aria-label={plural} id={listId} ref={list}>
+                        {options.map((item, i) => (
+                            <li
+                                key={item.value}
+                                id={listId + '-' + i}
+                                role="option"
+                                aria-label={item.label}
+                                aria-description={item.iconLabel}
+                                aria-selected={value === item.value}
+                                className={i === cursor ? 'highlighted' : ''}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => choose(item.value)}
+                            >
+                                {item.icon && (
+                                    <img
+                                        src={item.icon}
+                                        alt={item.iconLabel ?? ''}
+                                        title={item.iconLabel}
+                                    />
+                                )}
+                                <span>{item.label}</span>
+                                {value === item.value && <span aria-hidden>✓</span>}
+                            </li>
+                        ))}
+                    </ul>
+                    {!options.length && <p role="status">No matching {plural}</p>}
+                </div>
+            )}
+        </div>
+    );
+}

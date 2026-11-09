@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useId, useRef, useState } from 'react';
 import { selectEffectiveCredentialProfilePolicy } from '../credentialProfilePolicy';
 import type { CatalogDatasourceResponse } from '../types';
+import SearchablePicker from './SearchablePicker';
 import { IconGlyph } from './WorkbenchIcons';
 
 type CredentialProfilePolicyControlProps = {
@@ -34,6 +35,8 @@ const CredentialProfilePolicyControl = forwardRef<
     const [isPolicyExpanded, setIsPolicyExpanded] = useState(false);
     const policyDetailsId = useId();
     const policy = selectEffectiveCredentialProfilePolicy(datasource, requestedCredentialProfile);
+    const automaticProfile = datasource?.credentialProfilePolicies?.[0]?.credentialProfile;
+    const automaticLabel = automaticProfile ? `Auto (RBAC): ${automaticProfile}` : 'Auto (RBAC)';
     const requiresJustification = policy?.justificationMode === 'PROFILE_REQUIRED';
     const justificationInputRef = useRef<HTMLTextAreaElement | null>(null);
     const wasJustificationRequired = useRef(false);
@@ -78,23 +81,23 @@ const CredentialProfilePolicyControl = forwardRef<
             <div id={policyDetailsId} className="access-policy-details">
                 {isPolicyExpanded &&
                     (canOverride ? (
-                        <select
-                            aria-label="Credential Profile"
+                        <SearchablePicker
+                            noun="profile"
+                            placement="top"
+                            triggerLabel="Credential Profile"
                             value={requestedCredentialProfile}
-                            onChange={(event) => onProfileChange(event.target.value)}
+                            onChange={onProfileChange}
                             disabled={disabled}
+                            items={[
+                                { value: '', label: automaticLabel },
+                                ...(datasource?.credentialProfiles ?? []).map((profile) => ({
+                                    value: profile,
+                                    label: profile
+                                }))
+                            ]}
                         >
-                            <option value="">
-                                {datasource?.credentialProfilePolicies?.[0]?.credentialProfile
-                                    ? `Auto (RBAC): ${datasource.credentialProfilePolicies[0].credentialProfile}`
-                                    : 'Auto (RBAC)'}
-                            </option>
-                            {(datasource?.credentialProfiles ?? []).map((profile) => (
-                                <option key={profile} value={profile}>
-                                    {profile}
-                                </option>
-                            ))}
-                        </select>
+                            <span>{requestedCredentialProfile || automaticLabel}</span>
+                        </SearchablePicker>
                     ) : (
                         policy && <strong>{policy.credentialProfile}</strong>
                     ))}
