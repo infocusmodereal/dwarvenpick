@@ -76,6 +76,8 @@ Read-only access rules apply to **every** statement in a script.
 
 ## Execution and results
 
+Before the first execution, Results shows a single prompt. Result actions appear once an execution has started.
+
 The toolbar below the SQL editor contains **Run**, **Format SQL**, **Validate SQL**, and **Options**. Run executes the selected SQL, or the statement at
 the cursor when there is no selection. Its dropdown also offers selection-only
 execution and Run script. Use Ctrl/Cmd+Enter for the current statement/selection,

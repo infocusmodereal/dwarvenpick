@@ -50,6 +50,34 @@ const resultTab = {
 const copy = () => vi.fn().mockResolvedValue(undefined);
 
 describe('QueryResultsSection', () => {
+    it('keeps the initial view minimal and restores controls for an executed empty result', () => {
+        const workflow = view({
+            loadedRows: [],
+            visibleResultRows: { start: 0, end: 0, topSpacerPx: 0, bottomSpacerPx: 0, rows: [] }
+        });
+        const onCopyCell = copy();
+        const { rerender } = render(
+            <QueryResultsSection
+                tab={buildWorkspaceTab('empty', 'Query 1', '')}
+                view={workflow}
+                onCopyCell={onCopyCell}
+            />
+        );
+        expect(screen.getAllByText('Run a query to see results.')).toHaveLength(1);
+        expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Expand' })).not.toBeInTheDocument();
+        rerender(
+            <QueryResultsSection
+                tab={{ ...resultTab, resultRows: [], rowCount: 0 }}
+                view={workflow}
+                onCopyCell={onCopyCell}
+            />
+        );
+        expect(screen.getByText('No rows returned.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
+    });
+
     it('keeps query limit separate from pagination and omits redundant sort status', () => {
         const workflow = view();
         render(<QueryResultsSection tab={resultTab} view={workflow} onCopyCell={copy()} />);

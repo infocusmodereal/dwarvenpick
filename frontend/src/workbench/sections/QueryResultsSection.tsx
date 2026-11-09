@@ -88,6 +88,13 @@ export default function QueryResultsSection({
     const warning =
         ['CANCELED', 'CANCELLED', 'TIMED_OUT'].includes(tab.executionStatus) || tab.rowLimitReached;
     const failed = tab.executionStatus === 'FAILED' || !!tab.errorMessage;
+    const isEmpty =
+        !tab.executionId &&
+        !tab.isExecuting &&
+        !failed &&
+        !completed &&
+        !tab.resultColumns.length &&
+        !plan;
     const duration =
         tab.startedAt && tab.completedAt
             ? formatExecutionDuration(tab.startedAt, tab.completedAt)
@@ -219,7 +226,7 @@ export default function QueryResultsSection({
 
     return (
         <div
-            className={`execution-results density-${view.density}`}
+            className={`execution-results density-${view.density}${isEmpty ? ' is-empty' : ''}`}
             ref={root}
             onKeyDown={(event) => {
                 if (event.key === 'Escape' && (columnsOpen || moreOpen || exportOpen)) {
@@ -284,7 +291,7 @@ export default function QueryResultsSection({
                         </button>
                     ))}
                 </div>
-                <div className="result-view-controls">
+                <div className="result-view-controls" hidden={isEmpty && !expanded}>
                     {panel === 'results' && hasTable && (
                         <>
                             <input
@@ -567,7 +574,7 @@ export default function QueryResultsSection({
                     </div>
                 </div>
             </div>
-            <div className="result-meta-row">
+            <div className="result-meta-row" hidden={isEmpty}>
                 <div className="result-execution-summary" role="status">
                     {tab.executionId || tab.isExecuting || failed ? (
                         <>
@@ -1025,7 +1032,7 @@ export default function QueryResultsSection({
                                 ? 'Execution failed. Review the error above and available Stats.'
                                 : tab.executionId
                                   ? 'No result set available.'
-                                  : 'Execute a statement or script to inspect its results.'}
+                                  : 'Run a query to see results.'}
                     </div>
                 )}
             </div>

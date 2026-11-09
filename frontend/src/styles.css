@@ -7451,3 +7451,28 @@ select {
 .profile-popover input {
     font: inherit;
 }
+
+.policy-secondary {
+    font-family: 'JetBrains Mono Variable', monospace;
+}
+.execution-results.is-empty {
+    border-color: transparent;
+}
+.execution-results.is-empty .result-toolbar {
+    border-bottom: 1px solid var(--border);
+}
+.execution-results.is-empty .result-panel > .result-empty-state {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    min-height: 5rem;
+    text-align: center;
+    font:
+        0.8125rem 'JetBrains Mono Variable',
+        monospace;
+}
+
+.result-view-controls[hidden],
+.result-meta-row[hidden] {
+    display: none;
+}
