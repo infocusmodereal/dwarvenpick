@@ -5546,8 +5546,8 @@ select {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--border);
-    border-radius: 0.55rem;
+    border: 0;
+    border-radius: 0;
     background: var(--workbench-main-surface);
 }
 .result-toolbar {
@@ -5556,7 +5556,7 @@ select {
     justify-content: space-between;
     gap: 0.4rem;
     flex-wrap: wrap;
-    border-bottom: 0;
+    border-bottom: 1px solid var(--border);
     padding: 0.35rem 0.5rem 0;
 }
 .result-tabs,
@@ -7454,12 +7454,6 @@ select {
 
 .policy-secondary {
     font-family: 'JetBrains Mono Variable', monospace;
-}
-.execution-results.is-empty {
-    border-color: transparent;
-}
-.execution-results.is-empty .result-toolbar {
-    border-bottom: 1px solid var(--border);
 }
 .execution-results.is-empty .result-panel > .result-empty-state {
     display: grid;
