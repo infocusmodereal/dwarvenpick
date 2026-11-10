@@ -7455,6 +7455,68 @@ select {
 .policy-secondary {
     font-family: 'JetBrains Mono Variable', monospace;
 }
+/* Keep the Explorer type hierarchy while reducing each size by one point. */
+.schema-browser .schema-browser-header h3 {
+    font-size: calc(1.125rem - 1pt);
+}
+.schema-browser .explorer-toolbar-label-text,
+.schema-browser .connection-identity strong {
+    font-size: calc(0.875rem - 1pt);
+}
+.schema-browser .explorer-toolbar-fields input,
+.schema-browser .explorer-toolbar-fields select,
+.schema-browser .explorer-item-title,
+.schema-browser .access-policy-details select,
+.schema-browser .policy-reason,
+.schema-browser .policy-reason textarea,
+.schema-browser .policy-secondary summary,
+.schema-browser .access-policy-details .connection-trigger,
+.schema-browser .profile-popover {
+    font-size: calc(0.8125rem - 1pt);
+}
+.schema-browser .connection-popover li {
+    font-size: calc(0.8rem - 1pt);
+}
+.schema-browser .policy-limits dd {
+    font-size: calc(0.78rem - 1pt);
+}
+.schema-browser .schema-tree-heading,
+.schema-browser .system-group,
+.schema-browser .credential-profile-policy {
+    font-size: calc(0.76rem - 1pt);
+}
+.schema-browser .credential-profile-policy-title strong,
+.schema-browser .connection-popover p {
+    font-size: calc(0.75rem - 1pt);
+}
+.schema-browser .explorer-empty,
+.schema-browser .explorer-name-hover-text,
+.schema-browser .credential-profile-policy-title span,
+.schema-browser .credential-profile-policy h4 {
+    font-size: calc(0.72rem - 1pt);
+}
+.schema-browser .connection-identity small,
+.schema-browser .connection-popover small {
+    font-size: calc(0.68rem - 1pt);
+}
+.schema-browser .policy-limits dt {
+    font-size: calc(0.65rem - 1pt);
+}
+.schema-browser .explorer-name-copy,
+.schema-browser .explorer-item-type {
+    font-size: calc(0.64rem - 1pt);
+}
+.schema-browser .explorer-item-meta {
+    font-size: calc(0.63rem - 1pt);
+}
+.schema-browser .explorer-item-count {
+    font-size: calc(0.62rem - 1pt);
+}
+
+.policy-secondary[open] > summary {
+    margin-bottom: 0.4rem;
+}
+
 .execution-results.is-empty .result-panel > .result-empty-state {
     display: grid;
     place-items: center;
