@@ -2098,6 +2098,7 @@ button:disabled {
     --workbench-editor-min-height: 170px;
     --workbench-results-min-height: 220px;
     --workbench-results-resizer-height: 20px;
+    --workbench-divider-color: rgba(184, 162, 132, 0.75);
     --workbench-main-surface: var(--workbench-surface);
     min-width: 0;
     display: grid;
@@ -3263,7 +3264,8 @@ button:disabled {
     background: var(--workbench-main-surface);
     position: relative;
     z-index: 6;
-    padding: 0.48rem 0.85rem;
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--workbench-divider-color);
     margin-top: 0;
 }
 
@@ -3819,12 +3821,14 @@ button:disabled {
 .workbench-results-resizer::before {
     content: '';
     position: absolute;
-    inset: 50% 0 auto 0;
+    inset: auto 0 0;
     height: 1px;
-    background: rgba(184, 162, 132, 0.75);
+    background: var(--workbench-divider-color);
 }
 
 .workbench-results-resizer::after {
+    position: absolute;
+    bottom: 0;
     content: '';
     width: 54px;
     height: 4px;
