@@ -7650,9 +7650,12 @@ export default function WorkspacePage() {
                                             className="script-options-anchor"
                                             ref={scriptOptionsAnchorRef}
                                         >
-                                            <LabeledActionButton
-                                                icon="settings"
-                                                label="Options"
+                                            <button
+                                                type="button"
+                                                className="icon-button editor-options-trigger"
+                                                aria-label="Options"
+                                                aria-haspopup="dialog"
+                                                aria-expanded={showScriptOptions}
                                                 title="Script options"
                                                 onClick={() =>
                                                     setShowScriptOptions((current) => {
@@ -7666,7 +7669,11 @@ export default function WorkspacePage() {
                                                     })
                                                 }
                                                 disabled={!activeTab}
-                                            />
+                                            >
+                                                <span className="icon-button-glyph" aria-hidden>
+                                                    <IconGlyph icon="settings" />
+                                                </span>
+                                            </button>
                                         </div>
                                         {showScriptOptions && scriptOptionsPosition
                                             ? createPortal(
@@ -7946,20 +7953,15 @@ export default function WorkspacePage() {
                                     </div>
                                     <div className="editor-cursor-legend" aria-live="polite">
                                         <span>
-                                            Line {editorCursorLegend.line}, Col{' '}
-                                            {editorCursorLegend.column}, Pos{' '}
-                                            {editorCursorLegend.position}
+                                            Ln {editorCursorLegend.line} · Col{' '}
+                                            {editorCursorLegend.column}
                                         </span>
                                         {editorCursorLegend.selectedChars > 0 ? (
                                             <span>
                                                 {editorCursorLegend.selectedChars} chars,{' '}
                                                 {editorCursorLegend.selectedLines} lines selected
                                             </span>
-                                        ) : (
-                                            <span className="is-placeholder" aria-hidden="true">
-                                                000000 chars, 0000 lines selected
-                                            </span>
-                                        )}
+                                        ) : null}
                                     </div>
                                 </div>
                             </div>

@@ -3416,9 +3416,9 @@ button:disabled {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    align-items: flex-start;
-    align-content: flex-start;
-    gap: 0.85rem;
+    align-items: center;
+    align-content: center;
+    gap: 0.5rem;
     inline-size: clamp(14.5rem, 22vw, 18rem);
     min-width: 14.5rem;
     justify-self: end;
@@ -7513,4 +7513,53 @@ select {
 }
 .sql-format-feedback p {
     margin-bottom: 0;
+}
+
+/* Keep the editor toolbar quiet around its primary Run action. */
+.editor-action-row {
+    align-items: center;
+}
+.editor-primary-actions > .sql-validate-button,
+.editor-options-trigger,
+.editor-help-trigger {
+    min-height: 2.18rem;
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--muted);
+}
+.editor-primary-actions > .sql-validate-button {
+    font-weight: 500;
+}
+.editor-primary-actions > .sql-validate-button:hover:not(:disabled),
+.editor-options-trigger:hover:not(:disabled),
+.editor-help-trigger:hover:not(:disabled),
+.editor-options-trigger[aria-expanded='true'],
+.editor-help-trigger[aria-expanded='true'] {
+    background: var(--hover-tint);
+    color: var(--text);
+    border-color: transparent;
+    filter: none;
+}
+.editor-primary-actions > .script-options-wrapper {
+    border-left: 1px solid var(--border);
+    padding-left: 0.45rem;
+    margin-left: 0.1rem;
+}
+.editor-options-trigger {
+    width: 2.18rem;
+}
+.editor-cursor-legend {
+    min-width: 0;
+    flex-basis: auto;
+}
+.editor-cursor-legend span {
+    font-family: 'JetBrains Mono Variable', monospace;
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: var(--muted);
+}
+.editor-cursor-legend span:last-child {
+    font-weight: 400;
+    color: var(--muted);
 }

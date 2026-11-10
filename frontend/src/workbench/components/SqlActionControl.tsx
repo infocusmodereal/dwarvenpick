@@ -79,13 +79,14 @@ export default function SqlActionControl({
                         ? 'Format SQL (selection when available)'
                         : 'Validate the current statement or selection without executing it'
                 }
+                aria-label={isFormat ? 'Format SQL' : running ? 'Validating…' : 'Validate SQL'}
                 aria-expanded={!!result}
                 aria-controls={result ? feedbackId : undefined}
                 disabled={disabled || running}
                 onClick={onAction}
             >
                 <IconGlyph icon={isFormat ? 'align-start-horizontal' : 'shield-check'} />
-                <span>{isFormat ? 'Format SQL' : running ? 'Validating…' : 'Validate SQL'}</span>
+                <span>{isFormat ? 'Format' : running ? 'Validating…' : 'Validate'}</span>
             </button>
             {result &&
                 createPortal(
