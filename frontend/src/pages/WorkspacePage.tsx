@@ -3,7 +3,7 @@ import { useDeploymentBranding } from '../components/useDeploymentBranding';
 import DeploymentBanner from '../components/DeploymentBanner';
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
 import { runResourceSaveOnce } from '../workbench/resourceSaveGuard';
-import SqlValidationControl from '../workbench/components/SqlValidationControl';
+import SqlActionControl from '../workbench/components/SqlActionControl';
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import {
     FormEvent,
@@ -547,6 +547,8 @@ export default function WorkspacePage() {
     );
     const [validatingSql, setValidatingSql] = useState(false);
     const [sqlValidation, setSqlValidation] = useState<QueryValidationResponse | null>(null);
+    const [sqlFormatting, setSqlFormatting] = useState<QueryValidationResponse | null>(null);
+    const dismissSqlFormatting = useCallback(() => setSqlFormatting(null), []);
     const [workbenchResultsSizePx, setWorkbenchResultsSizePx] = useState<number | null>(() => {
         try {
             const raw = window.localStorage.getItem(workbenchResultsSizeStorageKey);
@@ -674,6 +676,9 @@ export default function WorkspacePage() {
     const resourceAutosaveSnapshotRef = useRef<Record<string, string>>({});
     const resourceSaveInFlightRef = useRef(new Set<string>());
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
+    useEffect(() => {
+        setSqlFormatting(null);
+    }, [activeTab?.id, activeSection]);
     const validationContext = JSON.stringify([
         activeSection,
         activeTab?.id,
@@ -4125,7 +4130,7 @@ export default function WorkspacePage() {
 
         const sourceSql = activeTab.queryText;
         if (!sourceSql.trim()) {
-            showWorkbenchNotice('Nothing to format.', 'info');
+            setSqlFormatting({ valid: false, message: 'Enter SQL to format.' });
             return;
         }
 
@@ -4155,12 +4160,13 @@ export default function WorkspacePage() {
                 }));
             }
 
-            showWorkbenchNotice('SQL formatted successfully.');
+            setSqlFormatting({ valid: true, message: 'Formatting applied to the editor.' });
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'SQL formatting failed.';
-            showWorkbenchNotice(message, 'error');
+            const message =
+                error instanceof Error ? error.message.split('\n')[0] : 'SQL formatting failed.';
+            setSqlFormatting({ valid: false, message });
         }
-    }, [activeTab, showWorkbenchNotice, updateWorkspaceTab]);
+    }, [activeTab, updateWorkspaceTab]);
 
     const applyValidationMarkers = useCallback((payload: QueryValidationResponse) => {
         const monaco = monacoRef.current;
@@ -7629,22 +7635,23 @@ export default function WorkspacePage() {
                                             if (activeTab) void handleCancelRun(activeTab.id);
                                         }}
                                     />
-                                    <LabeledActionButton
-                                        icon="align-start-horizontal"
-                                        label="Format SQL"
-                                        title="Format SQL (selection when available)"
-                                        onClick={handleFormatSql}
+                                    <SqlActionControl
+                                        action="format"
+                                        result={sqlFormatting}
+                                        running={false}
+                                        onAction={handleFormatSql}
+                                        onDismiss={dismissSqlFormatting}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !!activeTab.planExecution?.isExecuting
                                         }
                                     />
-                                    <SqlValidationControl
+                                    <SqlActionControl
                                         result={sqlValidation}
                                         running={validatingSql}
                                         disabled={!activeTab || !selectedDatasource}
-                                        onValidate={() => void handleValidateSql()}
+                                        onAction={() => void handleValidateSql()}
                                         onDismiss={dismissSqlValidation}
                                     />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
