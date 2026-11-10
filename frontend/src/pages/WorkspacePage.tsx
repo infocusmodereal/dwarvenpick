@@ -4023,24 +4023,10 @@ export default function WorkspacePage() {
         [showWorkbenchNotice, writeTextToClipboard]
     );
 
-    const renderExplorerNameHoverCard = useCallback(
-        (label: string): ReactNode => (
-            <span className="explorer-name-hover-card" role="tooltip">
-                <span className="explorer-name-hover-text">{label}</span>
-                <button
-                    type="button"
-                    className="explorer-name-copy"
-                    aria-label={`Copy ${label}`}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        void handleCopyExplorerName(label);
-                    }}
-                >
-                    Copy
-                </button>
-            </span>
-        ),
-        [handleCopyExplorerName]
+    const renderExplorerNameHoverCard = (label: string): ReactNode => (
+        <span className="explorer-name-hover-card" role="tooltip">
+            <span className="explorer-name-hover-text">{label}</span>
+        </span>
     );
 
     useEffect(() => {
@@ -7011,12 +6997,15 @@ export default function WorkspacePage() {
                                                                     <button
                                                                         type="button"
                                                                         className="explorer-item-main"
-                                                                        onClick={() =>
+                                                                        onClick={() => {
                                                                             setSelectedExplorerNode(
                                                                                 schemaKey
-                                                                            )
-                                                                        }
-                                                                        title={schemaEntry.schema}
+                                                                            );
+                                                                            void handleCopyExplorerName(
+                                                                                schemaEntry.schema
+                                                                            );
+                                                                        }}
+                                                                        aria-label={`Copy ${schemaEntry.schema}`}
                                                                     >
                                                                         <span className="explorer-item-icon">
                                                                             <ExplorerIcon glyph="schema" />
@@ -7131,14 +7120,15 @@ export default function WorkspacePage() {
                                                                                             <button
                                                                                                 type="button"
                                                                                                 className="explorer-item-main"
-                                                                                                onClick={() =>
+                                                                                                onClick={() => {
                                                                                                     setSelectedExplorerNode(
                                                                                                         tableKey
-                                                                                                    )
-                                                                                                }
-                                                                                                title={
-                                                                                                    tableEntry.table
-                                                                                                }
+                                                                                                    );
+                                                                                                    void handleCopyExplorerName(
+                                                                                                        tableEntry.table
+                                                                                                    );
+                                                                                                }}
+                                                                                                aria-label={`Copy ${tableEntry.table}`}
                                                                                             >
                                                                                                 <span className="explorer-item-icon">
                                                                                                     <ExplorerIcon glyph="table" />
@@ -7234,14 +7224,15 @@ export default function WorkspacePage() {
                                                                                                                     <button
                                                                                                                         type="button"
                                                                                                                         className="explorer-item-main"
-                                                                                                                        onClick={() =>
+                                                                                                                        onClick={() => {
                                                                                                                             setSelectedExplorerNode(
                                                                                                                                 columnKey
-                                                                                                                            )
-                                                                                                                        }
-                                                                                                                        title={
-                                                                                                                            columnEntry.name
-                                                                                                                        }
+                                                                                                                            );
+                                                                                                                            void handleCopyExplorerName(
+                                                                                                                                columnEntry.name
+                                                                                                                            );
+                                                                                                                        }}
+                                                                                                                        aria-label={`Copy ${columnEntry.name}`}
                                                                                                                     >
                                                                                                                         <span className="explorer-item-icon">
                                                                                                                             <ExplorerIcon glyph="column" />

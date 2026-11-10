@@ -2690,48 +2690,34 @@ button:disabled {
     left: 0.18rem;
     right: 0.18rem;
     z-index: 55;
-    display: none;
-    align-items: flex-start;
-    gap: 0.48rem;
+    display: flex;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
     padding: 0.46rem 0.5rem;
     border: 1px solid var(--border);
-    border-radius: 0.62rem;
+    border-radius: 0.45rem;
     background: var(--surface);
     color: var(--text);
     box-shadow: var(--shadow);
     white-space: normal;
+    transition:
+        opacity 100ms ease,
+        visibility 0s;
 }
 
-.explorer-item:hover .explorer-name-hover-card,
-.explorer-item:focus-within .explorer-name-hover-card {
-    display: flex;
+.explorer-item-main:hover + .explorer-name-hover-card {
+    visibility: visible;
+    opacity: 1;
+    transition-delay: 650ms;
 }
 
 .explorer-name-hover-text {
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 1;
     overflow-wrap: anywhere;
-    user-select: text;
     font-size: 0.72rem;
     line-height: 1.35;
-}
-
-.explorer-name-copy {
-    flex: 0 0 auto;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--surface-alt);
-    color: var(--accent-strong);
-    padding: 0.18rem 0.48rem;
-    font-size: 0.64rem;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
-}
-
-.explorer-name-copy:hover {
-    filter: none;
-    border-color: var(--accent);
-    background: var(--accent-soft);
 }
 
 .explorer-item-meta {
@@ -7491,7 +7477,6 @@ select {
 .schema-browser .policy-limits dt {
     font-size: calc(0.65rem - 1pt);
 }
-.schema-browser .explorer-name-copy,
 .schema-browser .explorer-item-type {
     font-size: calc(0.64rem - 1pt);
 }
