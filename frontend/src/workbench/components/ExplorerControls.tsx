@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import SearchablePicker from './SearchablePicker';
 import type { CatalogDatasourceResponse } from '../types';
 import { resolveDatasourceIcon } from '../icons';
@@ -16,6 +17,7 @@ const engineNames: Record<string, string> = {
 type ExplorerControlsProps = {
     activeDatasource?: CatalogDatasourceResponse;
     disabled: boolean;
+    collapseControl?: ReactNode;
     visibleDatasources: CatalogDatasourceResponse[];
     datasourceHealthTone: string;
     datasourceHealthLabel: string;
@@ -27,6 +29,7 @@ type ExplorerControlsProps = {
 export default function ExplorerControls({
     activeDatasource,
     disabled,
+    collapseControl,
     visibleDatasources,
     datasourceHealthTone,
     datasourceHealthLabel,
@@ -36,40 +39,45 @@ export default function ExplorerControls({
 }: ExplorerControlsProps) {
     return (
         <div className="explorer-toolbar-fields">
-            <SearchablePicker
-                noun="connection"
-                triggerLabel="Active tab connection"
-                value={activeDatasource?.id ?? ''}
-                disabled={disabled}
-                items={visibleDatasources.map((d) => ({
-                    value: d.id,
-                    label: d.name,
-                    iconLabel: engineNames[d.engine] ?? d.engine,
-                    icon: resolveDatasourceIcon(d.engine)
-                }))}
-                onChange={onDatasourceChange}
-            >
-                <img
-                    src={resolveDatasourceIcon(activeDatasource?.engine)}
-                    alt={
-                        activeDatasource
-                            ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
-                            : ''
-                    }
-                    title={
-                        activeDatasource
-                            ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
-                            : undefined
-                    }
-                />
-                <span className="connection-identity">
-                    <strong>{activeDatasource?.name ?? 'Select connection'}</strong>
-                    <small>
-                        <i className={'editor-connection-health tone-' + datasourceHealthTone} />
-                        {datasourceHealthLabel}
-                    </small>
-                </span>
-            </SearchablePicker>
+            <div className="explorer-connection-row">
+                <SearchablePicker
+                    noun="connection"
+                    triggerLabel="Active tab connection"
+                    value={activeDatasource?.id ?? ''}
+                    disabled={disabled}
+                    items={visibleDatasources.map((d) => ({
+                        value: d.id,
+                        label: d.name,
+                        iconLabel: engineNames[d.engine] ?? d.engine,
+                        icon: resolveDatasourceIcon(d.engine)
+                    }))}
+                    onChange={onDatasourceChange}
+                >
+                    <img
+                        src={resolveDatasourceIcon(activeDatasource?.engine)}
+                        alt={
+                            activeDatasource
+                                ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
+                                : ''
+                        }
+                        title={
+                            activeDatasource
+                                ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
+                                : undefined
+                        }
+                    />
+                    <span className="connection-identity">
+                        <strong>{activeDatasource?.name ?? 'Select connection'}</strong>
+                        <small>
+                            <i
+                                className={'editor-connection-health tone-' + datasourceHealthTone}
+                            />
+                            {datasourceHealthLabel}
+                        </small>
+                    </span>
+                </SearchablePicker>
+                {collapseControl}
+            </div>
             <div className="explorer-control-group">
                 <div className="explorer-toolbar-control-row">
                     <div className="explorer-search-wrap">

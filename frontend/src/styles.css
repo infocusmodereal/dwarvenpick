@@ -2,7 +2,7 @@
     color-scheme: light;
     --workspace-left-rail-width: 228px;
     --workspace-left-rail-collapsed-width: 52px;
-    --workbench-explorer-default-width: 260px;
+    --workbench-explorer-default-width: 300px;
     --workbench-explorer-width: var(--workbench-explorer-default-width);
     --workbench-explorer-max-resize-width: 560px;
     --workbench-editor-min-width: 520px;
@@ -2178,7 +2178,7 @@ button:disabled {
     border-radius: 0;
     padding: 0.72rem calc(20px - 0.6rem) 0.1rem;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     gap: 0.35rem;
     min-height: 0;
     height: 100%;
@@ -2200,15 +2200,6 @@ button:disabled {
     padding-bottom: 0.6rem;
     padding-inline: 0.24rem;
     position: relative;
-}
-
-.schema-browser-header::after {
-    content: '';
-    position: absolute;
-    left: 0.24rem;
-    right: 0.24rem;
-    bottom: 0;
-    border-bottom: 1px solid var(--border);
 }
 
 .schema-browser.is-collapsed .schema-browser-header {
@@ -2279,12 +2270,6 @@ button:disabled {
     box-shadow: 0 0 0 2px var(--hover-tint);
 }
 
-.schema-browser-header h3 {
-    margin-right: auto;
-    font-size: 1.125rem;
-    letter-spacing: -0.02em;
-}
-
 .explorer-body {
     display: flex;
     flex-direction: column;
@@ -2311,11 +2296,18 @@ button:disabled {
 .explorer-toolbar-fields {
     display: grid;
     gap: 0.65rem;
-    padding: 0.65rem 0.6rem 0;
+    padding: 0 0.6rem;
     flex-shrink: 0;
     border-bottom: 0;
     border-radius: 0;
     background: transparent;
+}
+
+.explorer-connection-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--workspace-collapse-control-size);
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .explorer-control-group {
@@ -7456,9 +7448,6 @@ select {
     font-family: 'JetBrains Mono Variable', monospace;
 }
 /* Keep the Explorer type hierarchy while reducing each size by one point. */
-.schema-browser .schema-browser-header h3 {
-    font-size: calc(1.125rem - 1pt);
-}
 .schema-browser .explorer-toolbar-label-text,
 .schema-browser .connection-identity strong {
     font-size: calc(0.875rem - 1pt);
