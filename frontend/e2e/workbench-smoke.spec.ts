@@ -216,8 +216,8 @@ test('governed workbench browser smoke', async ({ page }) => {
                 await expect(results.locator('td.result-row-index').first()).toHaveText('1');
             } else {
                 expect(observedRows).toBe(1);
-                await expect(nextPage).toBeDisabled();
-                await expect(previousPage).toBeDisabled();
+                await expect(nextPage).toHaveCount(0);
+                await expect(previousPage).toHaveCount(0);
             }
 
             const sortButton = results.getByRole('button', {

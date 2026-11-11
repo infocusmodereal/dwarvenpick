@@ -289,7 +289,7 @@ describe('useQueryResultsWorkflow', () => {
         expect(result.current.view.resultSortState).toEqual({ columnIndex: 0, direction: 'desc' });
         expect(result.current.view.visibleResultRows.rows[0]).toEqual(['100']);
 
-        act(() => result.current.view.onResultGridScroll(28 * 20));
+        act(() => result.current.view.onResultGridScroll(34 * 20));
         expect(result.current.view.visibleResultRows.start).toBe(12);
         expect(result.current.view.visibleResultRows.rows.length).toBeLessThan(100);
 
@@ -316,9 +316,9 @@ describe('useQueryResultsWorkflow', () => {
         expect(result.current.view.loadedRows.every((row) => row[1] === 'odd')).toBe(true);
         act(() => result.current.view.onDensityChange('comfortable'));
         act(() => result.current.view.onViewportHeightChange(760));
-        act(() => result.current.view.onResultGridScroll(38 * 20));
+        act(() => result.current.view.onResultGridScroll(44 * 20));
         expect(result.current.view.visibleResultRows.start).toBe(12);
-        expect(result.current.view.visibleResultRows.topSpacerPx).toBe(12 * 38);
+        expect(result.current.view.visibleResultRows.topSpacerPx).toBe(12 * 44);
         expect(result.current.view.visibleResultRows.rows.length).toBeGreaterThanOrEqual(20);
         expect(fetchMock).not.toHaveBeenCalled();
         act(() => result.current.view.onDensityChange('compact'));

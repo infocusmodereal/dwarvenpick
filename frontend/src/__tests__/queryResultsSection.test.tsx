@@ -82,11 +82,11 @@ describe('QueryResultsSection', () => {
         const workflow = view();
         render(<QueryResultsSection tab={resultTab} view={workflow} onCopyCell={copy()} />);
         expect(screen.getByText('Limit 5,000')).toBeInTheDocument();
-        expect(screen.getByText('Showing 1–2 of 2 rows')).toBeInTheDocument();
-        expect(screen.getByText('1 of 1')).toBeInTheDocument();
+        expect(screen.queryByText('Showing 1–2 of 2 rows')).not.toBeInTheDocument();
+        expect(screen.queryByText('1 of 1')).not.toBeInTheDocument();
         expect(screen.queryByText(/sort: none/)).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Previous Page' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Next Page' })).toBeDisabled();
+        expect(screen.queryByRole('button', { name: 'Previous Page' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Next Page' })).not.toBeInTheDocument();
         fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '250' } });
         expect(workflow.onResultsPageSizeChange).toHaveBeenCalledWith(250);
         fireEvent.click(screen.getByRole('button', { name: 'Sort current page by value' }));
@@ -275,7 +275,7 @@ describe('QueryResultsSection', () => {
         fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
         expect(screen.getByText('alpha')).toBeInTheDocument();
         expect(screen.queryByText('Seq Scan on orders')).not.toBeInTheDocument();
-        expect(screen.getByText('Showing 1–2 of 2 rows')).toBeInTheDocument();
+        expect(screen.queryByText('Showing 1–2 of 2 rows')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('tab', { name: 'Stats' }));
         expect(screen.getByText('Returned rows').nextSibling).toHaveTextContent('2');
         rerender(

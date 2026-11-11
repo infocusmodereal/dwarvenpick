@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ResultSortDirection, WorkspaceTab } from '../types';
 import type { QueryResultsView } from '../useQueryResultsWorkflow';
 import type { QueryCapabilities } from '../queryCapabilities';
 import { sortDownIcon, sortNeutralIcon, sortUpIcon } from '../icons';
 import { IconGlyph } from '../components/WorkbenchIcons';
+import { resultRowHeight } from '../constants';
 import ResultPopover from '../components/ResultPopover';
 import { csvExportAvailability } from '../queryResults';
 import { formatExecutionDuration, formatExecutionTimestamp } from '../utils';
@@ -104,6 +105,7 @@ export default function QueryResultsSection({
         .filter((column) => !hidden.includes(column.index));
     const page = tab.previousPageTokens.length + 1;
     const pages = Math.max(page, Math.ceil(tab.rowCount / resultsPageSize));
+    const hasOtherPages = Boolean(tab.nextPageToken || tab.previousPageTokens.length);
     const pageOffset = (page - 1) * resultsPageSize;
     const activeSort = resultSortState ? tab.resultColumns[resultSortState.columnIndex] : null;
     const exportAvailability = csvExportAvailability(tab);
@@ -227,6 +229,7 @@ export default function QueryResultsSection({
     return (
         <div
             className={`execution-results density-${view.density}${isEmpty ? ' is-empty' : ''}`}
+            style={{ '--result-row-height': `${resultRowHeight[view.density]}px` } as CSSProperties}
             ref={root}
             onKeyDown={(event) => {
                 if (event.key === 'Escape' && (columnsOpen || moreOpen || exportOpen)) {
@@ -643,7 +646,7 @@ export default function QueryResultsSection({
                 {panel === 'results' && hasTable && (
                     <div className="result-pagination">
                         <label>
-                            Show rows{' '}
+                            Rows per page{' '}
                             <select
                                 aria-label="Show rows"
                                 title="Rows displayed per page, independent of query limit"
@@ -659,27 +662,31 @@ export default function QueryResultsSection({
                                 ))}
                             </select>
                         </label>
-                        <button
-                            type="button"
-                            aria-label="Previous Page"
-                            title="Previous page"
-                            onClick={view.onLoadPreviousResults}
-                            disabled={!tab.previousPageTokens.length}
-                        >
-                            ‹
-                        </button>
-                        <span>
-                            {page} of {pages}
-                        </span>
-                        <button
-                            type="button"
-                            aria-label="Next Page"
-                            title="Next page"
-                            onClick={view.onLoadNextResults}
-                            disabled={!tab.nextPageToken}
-                        >
-                            ›
-                        </button>
+                        {hasOtherPages && (
+                            <>
+                                <button
+                                    type="button"
+                                    aria-label="Previous Page"
+                                    title="Previous page"
+                                    onClick={view.onLoadPreviousResults}
+                                    disabled={!tab.previousPageTokens.length}
+                                >
+                                    ‹
+                                </button>
+                                <span>
+                                    {page} of {pages}
+                                </span>
+                                <button
+                                    type="button"
+                                    aria-label="Next Page"
+                                    title="Next page"
+                                    onClick={view.onLoadNextResults}
+                                    disabled={!tab.nextPageToken}
+                                >
+                                    ›
+                                </button>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
@@ -1015,14 +1022,18 @@ export default function QueryResultsSection({
                                 </p>
                             )}
                         </div>
-                        <footer className="result-table-footer">
-                            <span>
-                                {view.search
-                                    ? `${loadedRows.length} matching rows on this page`
-                                    : `Showing ${tab.resultRows.length ? formatCount(pageOffset + 1) : '0'}–${formatCount(pageOffset + tab.resultRows.length)} of ${countLabel(tab.rowCount, 'row')}`}
-                            </span>
-                            <span>Search and sorting apply to the loaded page only</span>
-                        </footer>
+                        {(hasOtherPages || view.search) && (
+                            <footer className="result-table-footer">
+                                <span>
+                                    {view.search
+                                        ? `${loadedRows.length} matching rows on this page`
+                                        : `Showing ${tab.resultRows.length ? formatCount(pageOffset + 1) : '0'}–${formatCount(pageOffset + tab.resultRows.length)} of ${countLabel(tab.rowCount, 'row')}`}
+                                </span>
+                                {hasOtherPages && (
+                                    <span>Search and sorting apply to the loaded page only</span>
+                                )}
+                            </footer>
+                        )}
                     </div>
                 ) : (
                     <div className="result-empty-state">
