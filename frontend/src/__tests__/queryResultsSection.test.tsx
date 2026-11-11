@@ -64,6 +64,7 @@ describe('QueryResultsSection', () => {
             />
         );
         expect(screen.getAllByText('Run a query to see results.')).toHaveLength(1);
+        expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Expand' })).not.toBeInTheDocument();
         rerender(

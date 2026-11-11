@@ -219,9 +219,18 @@ export default function QueryResultsSection({
         </button>
     ) : null;
 
+    if (isEmpty) {
+        return (
+            <div className="execution-results is-empty" ref={root}>
+                {notice}
+                <div className="result-empty-state">Run a query to see results.</div>
+            </div>
+        );
+    }
+
     return (
         <div
-            className={`execution-results density-${view.density}${isEmpty ? ' is-empty' : ''}`}
+            className={`execution-results density-${view.density}`}
             style={{ '--result-row-height': `${resultRowHeight[view.density]}px` } as CSSProperties}
             ref={root}
             onKeyDown={(event) => {
@@ -287,7 +296,7 @@ export default function QueryResultsSection({
                         </button>
                     ))}
                 </div>
-                <div className="result-view-controls" hidden={isEmpty && !expanded}>
+                <div className="result-view-controls">
                     {panel === 'results' && hasTable && (
                         <>
                             <label className="result-search-field">
@@ -308,7 +317,7 @@ export default function QueryResultsSection({
                                     className="result-icon-control"
                                     type="button"
                                     aria-label="Show columns"
-                                    title="Show or hide columns for this result"
+                                    title="Columns"
                                     aria-expanded={columnsOpen}
                                     aria-haspopup="dialog"
                                     onClick={() => {
@@ -372,8 +381,10 @@ export default function QueryResultsSection({
                     <div className="result-popover-anchor">
                         <button
                             ref={exportTrigger}
+                            className="result-icon-control"
+                            aria-label="Export"
                             type="button"
-                            title="Export results"
+                            title="Export"
                             aria-expanded={exportOpen}
                             aria-haspopup="dialog"
                             onClick={() => {
@@ -383,7 +394,6 @@ export default function QueryResultsSection({
                             }}
                         >
                             <IconGlyph icon="download" />
-                            Export
                         </button>
                         {exportOpen && (
                             <ResultPopover
@@ -440,12 +450,9 @@ export default function QueryResultsSection({
                     </div>
                     <button
                         type="button"
-                        className="result-expand"
-                        title={
-                            expanded
-                                ? 'Restore editor (Esc)'
-                                : 'Expand results; temporarily hide SQL editor'
-                        }
+                        className="result-expand result-icon-control"
+                        aria-label={expanded ? 'Restore' : 'Expand'}
+                        title={expanded ? 'Restore editor (Esc)' : 'Expand'}
                         aria-pressed={expanded}
                         onClick={onToggleExpanded}
                     >
@@ -464,7 +471,6 @@ export default function QueryResultsSection({
                                 }
                             />
                         </svg>
-                        {expanded ? 'Restore' : 'Expand'}
                     </button>
                     <div className="result-popover-anchor">
                         <button
@@ -576,7 +582,7 @@ export default function QueryResultsSection({
                     </div>
                 </div>
             </div>
-            <div className="result-meta-row" hidden={isEmpty}>
+            <div className="result-meta-row">
                 <div className="result-execution-summary" role="status">
                     {tab.executionId || tab.isExecuting || failed ? (
                         <>

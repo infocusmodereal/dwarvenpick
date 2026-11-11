@@ -1519,6 +1519,7 @@ export default function WorkspacePage() {
 
     const executionCapabilities = queryCapabilities(selectedDatasource?.engine ?? '');
     const [resultsExpanded, setResultsExpanded] = useState(false);
+    useEffect(() => setResultsExpanded(false), [activeTab?.id]);
     useEffect(() => {
         const restore = (event: KeyboardEvent) => {
             if (event.key === 'Escape' && resultsExpanded) {
@@ -8000,7 +8001,8 @@ export default function WorkspacePage() {
                                                 )
                                             );
                                         }}
-                                        onClear={() =>
+                                        onClear={() => {
+                                            setResultsExpanded(false);
                                             updateWorkspaceTab(activeTab.id, (current) => ({
                                                 ...prepareTabForQueryExecution(
                                                     current,
@@ -8009,8 +8011,8 @@ export default function WorkspacePage() {
                                                 ),
                                                 isExecuting: false,
                                                 statusMessage: ''
-                                            }))
-                                        }
+                                            }));
+                                        }}
                                         notice={
                                             workbenchNotice ? (
                                                 <InlineNotice tone={workbenchNotice.tone}>
