@@ -202,7 +202,8 @@ test('governed workbench browser smoke', async ({ page }) => {
         await check('result paging and current-page sort', async () => {
             const results = page.locator('section.results');
             const pageSize = results.getByLabel('Show rows');
-            await pageSize.selectOption('10');
+            if (observedRows > 10) await pageSize.selectOption('10');
+            else await expect(pageSize).toHaveCount(0);
 
             const nextPage = results.getByRole('button', { name: 'Next Page' });
             const previousPage = results.getByRole('button', { name: 'Previous Page' });

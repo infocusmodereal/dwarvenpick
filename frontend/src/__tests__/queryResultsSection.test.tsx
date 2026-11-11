@@ -87,8 +87,7 @@ describe('QueryResultsSection', () => {
         expect(screen.queryByText(/sort: none/)).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Previous Page' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Next Page' })).not.toBeInTheDocument();
-        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '250' } });
-        expect(workflow.onResultsPageSizeChange).toHaveBeenCalledWith(250);
+        expect(screen.queryByLabelText('Show rows')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Sort current page by value' }));
         expect(workflow.onToggleResultSort).toHaveBeenCalledWith(0);
     });
@@ -208,7 +207,7 @@ describe('QueryResultsSection', () => {
         expect(onExplain).toHaveBeenCalledOnce();
         fireEvent.keyDown(screen.getByRole('tab', { name: 'Query Plan' }), { key: 'ArrowRight' });
         expect(screen.getByRole('tab', { name: 'Stats' })).toHaveFocus();
-        expect(screen.getByText('Returned rows')).toBeInTheDocument();
+        expect(screen.queryByText('Returned rows')).not.toBeInTheDocument();
         expect(screen.queryByText('CPU time')).not.toBeInTheDocument();
     });
     it('renders engine plans and gracefully handles unsupported connectors', () => {
@@ -277,7 +276,7 @@ describe('QueryResultsSection', () => {
         expect(screen.queryByText('Seq Scan on orders')).not.toBeInTheDocument();
         expect(screen.queryByText('Showing 1–2 of 2 rows')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('tab', { name: 'Stats' }));
-        expect(screen.getByText('Returned rows').nextSibling).toHaveTextContent('2');
+        expect(screen.getByLabelText('Returned rows')).toHaveTextContent('2');
         rerender(
             <QueryResultsSection
                 tab={{

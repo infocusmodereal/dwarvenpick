@@ -569,6 +569,9 @@ export type WorkspaceSection =
 export type AdminSubsection = 'users' | 'groups' | 'access';
 export type IconGlyph =
     | 'table'
+    | 'columns'
+    | 'compact'
+    | 'comfortable'
     | 'plan'
     | 'chart'
     | 'selection'
