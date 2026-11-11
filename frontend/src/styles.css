@@ -5584,17 +5584,52 @@ select {
     height: 1rem;
 }
 .result-view-controls > button,
-.result-popover-anchor > button {
-    border-color: var(--border);
+.result-view-controls > .result-popover-anchor > button,
+.result-view-controls .result-density select {
+    color: var(--muted);
+    font-weight: 500;
+    border-color: transparent;
+    background-color: transparent;
+    box-shadow: none;
+}
+.result-view-controls :is(button, select):enabled:hover {
+    background-color: var(--hover-tint);
+    color: var(--text);
+}
+.result-search-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    color: var(--muted);
+}
+.result-search-field > .icon-raw-glyph {
+    position: absolute;
+    left: 0.45rem;
+    pointer-events: none;
+}
+.result-search-field svg {
+    display: block;
+    width: 0.9rem;
+    height: 0.9rem;
 }
 .result-popover-anchor {
     position: relative;
 }
-.result-search {
-    width: clamp(130px, 15vw, 240px);
+.result-search-field .result-search {
+    width: clamp(9rem, 12vw, 12rem);
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
     min-height: 1.9rem;
     font-size: 0.74rem;
-    padding: 0.3rem 0.5rem;
+    padding: 0.3rem 0.5rem 0.3rem 1.75rem;
+}
+.result-search-field .result-search:is(:hover, :focus-visible) {
+    background-color: var(--hover-tint);
+}
+.result-view-controls :is(button, input, select):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
 }
 .result-density {
     display: flex;
@@ -6087,9 +6122,8 @@ select {
 .editor-help-trigger[aria-expanded='true'] {
     color: var(--accent);
 }
-.result-popover-anchor > button[aria-expanded='true'] {
-    background: var(--hover-tint-strong);
-    border-color: var(--accent);
+.result-view-controls > .result-popover-anchor > button[aria-expanded='true'] {
+    background: var(--hover-tint);
     color: var(--accent);
 }
 

@@ -294,19 +294,23 @@ export default function QueryResultsSection({
                 <div className="result-view-controls" hidden={isEmpty && !expanded}>
                     {panel === 'results' && hasTable && (
                         <>
-                            <input
-                                type="search"
-                                className="result-search"
-                                placeholder="Search results…"
-                                aria-label="Search results on loaded page"
-                                title={`Search only the ${formatCount(tab.resultRows.length)} loaded rows; does not run SQL`}
-                                value={view.search}
-                                onChange={(event) => view.onSearchChange(event.target.value)}
-                            />
+                            <label className="result-search-field">
+                                <IconGlyph icon="search" />
+                                <input
+                                    type="search"
+                                    className="result-search"
+                                    placeholder="Search results…"
+                                    aria-label="Search results on loaded page"
+                                    title={`Search only the ${formatCount(tab.resultRows.length)} loaded rows; does not run SQL`}
+                                    value={view.search}
+                                    onChange={(event) => view.onSearchChange(event.target.value)}
+                                />
+                            </label>
                             <div className="result-popover-anchor">
                                 <button
                                     ref={columnsTrigger}
                                     type="button"
+                                    aria-label="Show columns"
                                     title="Show or hide columns for this result"
                                     aria-expanded={columnsOpen}
                                     aria-haspopup="dialog"
@@ -316,7 +320,7 @@ export default function QueryResultsSection({
                                         setExportOpen(false);
                                     }}
                                 >
-                                    Show columns
+                                    Columns
                                 </button>
                                 {columnsOpen && (
                                     <ResultPopover
@@ -1007,7 +1011,7 @@ export default function QueryResultsSection({
                             )}
                             {!columns.length && (
                                 <p className="result-empty-state">
-                                    All columns are hidden. Restore them using Show columns.
+                                    All columns are hidden. Restore them using Columns.
                                 </p>
                             )}
                         </div>
