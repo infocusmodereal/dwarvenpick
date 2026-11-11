@@ -121,21 +121,27 @@ test('governed workbench browser smoke', async ({ page }) => {
                     response.request().method() === 'GET'
                 );
             });
-            await connection.selectOption({ label: config.datasource });
+            await connection.click();
+            const picker = page.getByRole('dialog', { name: 'Choose connection' });
+            await picker.getByRole('combobox').fill(config.datasource);
+            await picker.getByRole('option', { name: config.datasource, exact: true }).click();
             expect((await schemaResponsePromise).ok()).toBe(true);
-            await expect(connection).toHaveValue(config.datasource);
+            await expect(connection).toContainText(config.datasource);
 
             if (config.credentialProfile) {
-                await page
-                    .getByRole('button', { name: 'Show access and policy', exact: true })
-                    .click();
-                const profile = page.getByRole('combobox', {
+                const profile = page.getByRole('button', {
                     name: 'Credential Profile',
                     exact: true
                 });
+                if (!(await profile.isVisible())) {
+                    await page.getByRole('button', { name: 'Show access and policy' }).click();
+                }
                 await expect(profile).toBeVisible();
-                await profile.selectOption(config.credentialProfile);
-                await expect(profile).toHaveValue(config.credentialProfile);
+                await profile.click();
+                await page
+                    .getByRole('option', { name: config.credentialProfile, exact: true })
+                    .click();
+                await expect(profile).toContainText(config.credentialProfile);
             }
         });
 
@@ -155,7 +161,7 @@ test('governed workbench browser smoke', async ({ page }) => {
         });
 
         await check('safe query execution', async () => {
-            const justification = page.getByLabel('Justification', { exact: true });
+            const justification = page.getByRole('textbox', { name: 'Justification', exact: true });
             if ((await justification.count()) > 0) {
                 await expect(justification).toBeVisible();
                 await justification.fill('Automated browser smoke validation');
@@ -196,7 +202,8 @@ test('governed workbench browser smoke', async ({ page }) => {
         await check('result paging and current-page sort', async () => {
             const results = page.locator('section.results');
             const pageSize = results.getByLabel('Show rows');
-            await pageSize.selectOption('10');
+            if (observedRows > 10) await pageSize.selectOption('10');
+            else await expect(pageSize).toHaveCount(0);
 
             const nextPage = results.getByRole('button', { name: 'Next Page' });
             const previousPage = results.getByRole('button', { name: 'Previous Page' });
@@ -210,8 +217,8 @@ test('governed workbench browser smoke', async ({ page }) => {
                 await expect(results.locator('td.result-row-index').first()).toHaveText('1');
             } else {
                 expect(observedRows).toBe(1);
-                await expect(nextPage).toBeDisabled();
-                await expect(previousPage).toBeDisabled();
+                await expect(nextPage).toHaveCount(0);
+                await expect(previousPage).toHaveCount(0);
             }
 
             const sortButton = results.getByRole('button', {

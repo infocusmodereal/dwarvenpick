@@ -113,3 +113,5 @@ export const defaultPortByEngine: Record<DatasourceEngine, number> = {
     VERTICA: 5433,
     AEROSPIKE: 3000
 };
+
+export const resultRowHeight = { compact: 34, comfortable: 44 } as const;

@@ -3,19 +3,23 @@ import { createPortal } from 'react-dom';
 import type { QueryValidationResponse } from '../types';
 import { IconGlyph } from './WorkbenchIcons';
 
-export default function SqlValidationControl({
+export default function SqlActionControl({
+    action = 'validate',
     result,
     running,
     disabled,
-    onValidate,
+    onAction,
     onDismiss
 }: {
+    action?: 'validate' | 'format';
     result: QueryValidationResponse | null;
     running: boolean;
     disabled: boolean;
-    onValidate: () => void;
+    onAction: () => void;
     onDismiss: () => void;
 }) {
+    const isFormat = action === 'format';
+    const feedbackId = `sql-${action}-feedback`;
     const anchor = useRef<HTMLButtonElement>(null);
     const panel = useRef<HTMLDivElement>(null);
     const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -32,7 +36,10 @@ export default function SqlValidationControl({
                             window.innerHeight - (panel.current?.offsetHeight ?? 220) - 12
                         )
                     ),
-                    left: Math.max(12, Math.min(rect.left, window.innerWidth - 432))
+                    left: Math.max(
+                        12,
+                        Math.min(rect.left, window.innerWidth - (isFormat ? 312 : 432))
+                    )
                 });
         };
         const close = (event: MouseEvent) => {
@@ -60,36 +67,51 @@ export default function SqlValidationControl({
             document.removeEventListener('mousedown', close);
             document.removeEventListener('keydown', escape, true);
         };
-    }, [result, onDismiss]);
+    }, [result, onDismiss, isFormat]);
     return (
         <>
             <button
                 ref={anchor}
                 type="button"
                 className={`labeled-action-button sql-validate-button ${result ? (result.valid ? 'is-valid' : 'is-invalid') : ''}`}
-                title="Validate the current statement or selection without executing it"
+                title={
+                    isFormat
+                        ? 'Format SQL (selection when available)'
+                        : 'Validate the current statement or selection without executing it'
+                }
+                aria-label={isFormat ? 'Format SQL' : running ? 'Validating…' : 'Validate SQL'}
                 aria-expanded={!!result}
-                aria-controls={result ? 'sql-validation-feedback' : undefined}
+                aria-controls={result ? feedbackId : undefined}
                 disabled={disabled || running}
-                onClick={onValidate}
+                onClick={onAction}
             >
-                <IconGlyph icon="shield-check" />
-                <span>{running ? 'Validating…' : 'Validate SQL'}</span>
+                <IconGlyph icon={isFormat ? 'align-start-horizontal' : 'shield-check'} />
+                <span>{isFormat ? 'Format' : running ? 'Validating…' : 'Validate'}</span>
             </button>
             {result &&
                 createPortal(
                     <div
                         ref={panel}
-                        id="sql-validation-feedback"
-                        className={`sql-validation-feedback ${result.valid ? 'is-valid' : 'is-invalid'}`}
+                        id={feedbackId}
+                        className={`sql-validation-feedback ${isFormat ? 'sql-format-feedback' : ''} ${result.valid ? 'is-valid' : 'is-invalid'}`}
                         style={position}
                     >
                         <div className="sql-validation-heading">
                             <IconGlyph icon={result.valid ? 'shield-check' : 'close'} />
-                            <strong>{result.valid ? 'SQL is valid' : 'Validation failed'}</strong>
+                            <strong>
+                                {isFormat
+                                    ? result.valid
+                                        ? 'SQL formatted'
+                                        : 'Formatting failed'
+                                    : result.valid
+                                      ? 'SQL is valid'
+                                      : 'Validation failed'}
+                            </strong>
                             <button
                                 type="button"
-                                aria-label="Dismiss SQL validation"
+                                aria-label={
+                                    isFormat ? 'Dismiss SQL formatting' : 'Dismiss SQL validation'
+                                }
                                 title="Dismiss"
                                 onClick={onDismiss}
                             >
@@ -98,9 +120,11 @@ export default function SqlValidationControl({
                         </div>
                         <div role={result.valid ? 'status' : 'alert'}>
                             <p>
-                                {result.valid
-                                    ? 'Statement or selection passed validation.'
-                                    : result.message}
+                                {isFormat
+                                    ? result.message
+                                    : result.valid
+                                      ? 'Statement or selection passed validation.'
+                                      : result.message}
                             </p>
                             {!result.valid && result.line != null && (
                                 <span className="sql-validation-location">
@@ -109,7 +133,7 @@ export default function SqlValidationControl({
                                 </span>
                             )}
                         </div>
-                        <small>No query was executed.</small>
+                        {!isFormat && <small>No query was executed.</small>}
                     </div>,
                     document.body
                 )}

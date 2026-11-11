@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { firstPageToken, resultViewportHeightPx } from './constants';
+import { firstPageToken, resultRowHeight, resultViewportHeightPx } from './constants';
 import {
     buildCsvExportUrl,
     buildResultPageUrl,
@@ -84,7 +84,7 @@ export const useQueryResultsWorkflow = ({
         }
     });
     const [viewportHeight, setViewportHeight] = useState(resultViewportHeightPx);
-    const resultRowHeightPx = density === 'compact' ? 28 : 38;
+    const resultRowHeightPx = resultRowHeight[density];
     useEffect(() => {
         try {
             localStorage.setItem('dwarvenpick.results.density', density);

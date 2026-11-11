@@ -1,134 +1,83 @@
-import type { Ref } from 'react';
+import type { ReactNode } from 'react';
+import SearchablePicker from './SearchablePicker';
 import type { CatalogDatasourceResponse } from '../types';
-import { ExplorerIcon, IconGlyph, RailIcon } from './WorkbenchIcons';
-import CredentialProfilePolicyControl from './CredentialProfilePolicyControl';
+import { resolveDatasourceIcon } from '../icons';
+import { IconGlyph } from './WorkbenchIcons';
+
+const engineNames: Record<string, string> = {
+    POSTGRESQL: 'PostgreSQL',
+    MYSQL: 'MySQL',
+    MARIADB: 'MariaDB',
+    STARROCKS: 'StarRocks',
+    TRINO: 'Trino',
+    VERTICA: 'Vertica',
+    AEROSPIKE: 'Aerospike'
+};
 
 type ExplorerControlsProps = {
-    activeDatasourceId: string;
-    activeSchema: string;
-    requestedCredentialProfile: string;
-    queryJustification: string;
-    canOverrideCredentialProfile: boolean;
-    disabled: boolean;
-    visibleDatasources: CatalogDatasourceResponse[];
     activeDatasource?: CatalogDatasourceResponse;
-    availableSchemaNames: string[];
+    disabled: boolean;
+    collapseControl?: ReactNode;
+    visibleDatasources: CatalogDatasourceResponse[];
     datasourceHealthTone: string;
     datasourceHealthLabel: string;
-    datasourceIcon: string;
     searchQuery: string;
-    justificationInputRef: Ref<HTMLInputElement>;
-    onDatasourceChange: (datasourceId: string) => void;
-    onSchemaChange: (schema: string) => void;
-    onProfileChange: (credentialProfile: string) => void;
-    onJustificationChange: (justification: string) => void;
+    onDatasourceChange: (id: string) => void;
     onSearchQueryChange: (query: string) => void;
 };
 
 export default function ExplorerControls({
-    activeDatasourceId,
-    activeSchema,
-    requestedCredentialProfile,
-    queryJustification,
-    canOverrideCredentialProfile,
-    disabled,
-    visibleDatasources,
     activeDatasource,
-    availableSchemaNames,
+    disabled,
+    collapseControl,
+    visibleDatasources,
     datasourceHealthTone,
     datasourceHealthLabel,
-    datasourceIcon,
     searchQuery,
-    justificationInputRef,
     onDatasourceChange,
-    onSchemaChange,
-    onProfileChange,
-    onJustificationChange,
     onSearchQueryChange
 }: ExplorerControlsProps) {
     return (
         <div className="explorer-toolbar-fields">
-            <div className="explorer-control-group">
-                <div className="explorer-toolbar-label-row">
-                    <span className="tile-heading-icon" aria-hidden>
-                        <RailIcon glyph="connections" />
+            <div className="explorer-connection-row">
+                <SearchablePicker
+                    noun="connection"
+                    triggerLabel="Active tab connection"
+                    value={activeDatasource?.id ?? ''}
+                    disabled={disabled}
+                    items={visibleDatasources.map((d) => ({
+                        value: d.id,
+                        label: d.name,
+                        iconLabel: engineNames[d.engine] ?? d.engine,
+                        icon: resolveDatasourceIcon(d.engine)
+                    }))}
+                    onChange={onDatasourceChange}
+                >
+                    <img
+                        src={resolveDatasourceIcon(activeDatasource?.engine)}
+                        alt={
+                            activeDatasource
+                                ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
+                                : ''
+                        }
+                        title={
+                            activeDatasource
+                                ? (engineNames[activeDatasource.engine] ?? activeDatasource.engine)
+                                : undefined
+                        }
+                    />
+                    <span className="connection-identity">
+                        <strong>{activeDatasource?.name ?? 'Select connection'}</strong>
+                        <small>
+                            <i
+                                className={'editor-connection-health tone-' + datasourceHealthTone}
+                            />
+                            {datasourceHealthLabel}
+                        </small>
                     </span>
-                    <label htmlFor="tab-datasource" className="explorer-toolbar-label-text">
-                        Connection
-                    </label>
-                </div>
-                <div className="explorer-toolbar-control-row">
-                    <div className="editor-connection-picker">
-                        <span
-                            className={`editor-connection-health tone-${datasourceHealthTone}`}
-                            title={`Connection status: ${datasourceHealthLabel}`}
-                            aria-label={`Connection status ${datasourceHealthLabel}`}
-                        />
-                        <span className="editor-connection-icon" aria-hidden>
-                            <img src={datasourceIcon} alt="" width={16} height={16} />
-                        </span>
-                        <div className="select-wrap">
-                            <select
-                                id="tab-datasource"
-                                aria-label="Active tab connection"
-                                value={activeDatasourceId}
-                                onChange={(event) => onDatasourceChange(event.target.value)}
-                                disabled={disabled}
-                            >
-                                {visibleDatasources.map((datasource) => (
-                                    <option key={`tab-ds-${datasource.id}`} value={datasource.id}>
-                                        {datasource.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </div>
+                </SearchablePicker>
+                {collapseControl}
             </div>
-
-            <div className="explorer-control-group">
-                <div className="explorer-toolbar-label-row">
-                    <span className="tile-heading-icon" aria-hidden>
-                        <ExplorerIcon glyph="schema" />
-                    </span>
-                    <label htmlFor="tab-schema" className="explorer-toolbar-label-text">
-                        Default Schema
-                    </label>
-                </div>
-                <div className="explorer-toolbar-control-row">
-                    <div className="select-wrap">
-                        <select
-                            id="tab-schema"
-                            aria-label="Default schema"
-                            value={activeSchema}
-                            onChange={(event) => onSchemaChange(event.target.value)}
-                            disabled={!activeDatasourceId}
-                        >
-                            <option value="">None</option>
-                            {availableSchemaNames.map((schemaName) => (
-                                <option key={`schema-option-${schemaName}`} value={schemaName}>
-                                    {schemaName}
-                                </option>
-                            ))}
-                            {activeSchema && !availableSchemaNames.includes(activeSchema) ? (
-                                <option value={activeSchema}>{activeSchema}</option>
-                            ) : null}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <CredentialProfilePolicyControl
-                ref={justificationInputRef}
-                datasource={activeDatasource}
-                requestedCredentialProfile={requestedCredentialProfile}
-                queryJustification={queryJustification}
-                canOverride={canOverrideCredentialProfile}
-                disabled={disabled}
-                onProfileChange={onProfileChange}
-                onJustificationChange={onJustificationChange}
-            />
-
             <div className="explorer-control-group">
                 <div className="explorer-toolbar-control-row">
                     <div className="explorer-search-wrap">

@@ -31,6 +31,7 @@ data class QueryExecutionProperties(
     val remoteControlPollIntervalMs: Long = 1_000,
     val lifecycleMetricsRefreshIntervalMs: Long = 10_000,
     val poolMetricsStaleSeconds: Long = 120,
+    val requireAdminProfileJustification: Boolean = false,
     val requireWriteJustification: Boolean = false,
     val maxJustificationLength: Int = 1000,
 )

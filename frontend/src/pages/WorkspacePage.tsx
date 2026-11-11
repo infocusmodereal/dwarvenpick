@@ -1,6 +1,9 @@
+import SearchablePicker from '../workbench/components/SearchablePicker';
+import { useDeploymentBranding } from '../components/useDeploymentBranding';
+import DeploymentBanner from '../components/DeploymentBanner';
 import ConnectionsCatalog from '../workbench/sections/ConnectionsCatalog';
 import { runResourceSaveOnce } from '../workbench/resourceSaveGuard';
-import SqlValidationControl from '../workbench/components/SqlValidationControl';
+import SqlActionControl from '../workbench/components/SqlActionControl';
 import Editor, { BeforeMount, loader, OnMount } from '@monaco-editor/react';
 import {
     FormEvent,
@@ -24,6 +27,7 @@ import { useNavigate } from 'react-router';
 import AppShell from '../components/AppShell';
 import BrandMark from '../components/BrandMark';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
+import CredentialProfilePolicyControl from '../workbench/components/CredentialProfilePolicyControl';
 import ExplorerControls from '../workbench/components/ExplorerControls';
 import InlineNotice, { type InlineNoticeTone } from '../workbench/components/InlineNotice';
 import ObjectInspectorSectionContent from '../workbench/components/ObjectInspectorSectionContent';
@@ -400,6 +404,21 @@ const mavenDriverPresetDetails: Record<
     }
 };
 
+function systemSchemasForEngine(engine?: string): string[] {
+    switch (engine?.toUpperCase()) {
+        case 'MYSQL':
+        case 'MARIADB':
+            return ['information_schema', 'performance_schema', 'mysql', 'sys'];
+        case 'POSTGRESQL':
+            return ['information_schema', 'pg_catalog', 'pg_toast'];
+        case 'STARROCKS':
+            return ['information_schema', 'sys', '_statistics_'];
+        case 'TRINO':
+            return ['information_schema'];
+        default:
+            return [];
+    }
+}
 export default function WorkspacePage() {
     const navigate = useNavigate();
     const { theme, toggleTheme } = useTheme();
@@ -528,6 +547,8 @@ export default function WorkspacePage() {
     );
     const [validatingSql, setValidatingSql] = useState(false);
     const [sqlValidation, setSqlValidation] = useState<QueryValidationResponse | null>(null);
+    const [sqlFormatting, setSqlFormatting] = useState<QueryValidationResponse | null>(null);
+    const dismissSqlFormatting = useCallback(() => setSqlFormatting(null), []);
     const [workbenchResultsSizePx, setWorkbenchResultsSizePx] = useState<number | null>(() => {
         try {
             const raw = window.localStorage.getItem(workbenchResultsSizeStorageKey);
@@ -560,7 +581,7 @@ export default function WorkspacePage() {
     const editorSectionRef = useRef<HTMLElement | null>(null);
     const editorTabsRowRef = useRef<HTMLDivElement | null>(null);
     const editorActionRowRef = useRef<HTMLDivElement | null>(null);
-    const queryJustificationInputRef = useRef<HTMLInputElement | null>(null);
+    const queryJustificationInputRef = useRef<HTMLTextAreaElement | null>(null);
     const monacoHostRef = useRef<HTMLDivElement | null>(null);
     const resultsSectionRef = useRef<HTMLElement | null>(null);
     const resultsResizeStateRef = useRef<{
@@ -655,6 +676,9 @@ export default function WorkspacePage() {
     const resourceAutosaveSnapshotRef = useRef<Record<string, string>>({});
     const resourceSaveInFlightRef = useRef(new Set<string>());
     const [activeSection, setActiveSection] = useState<WorkspaceSection>('workbench');
+    useEffect(() => {
+        setSqlFormatting(null);
+    }, [activeTab?.id, activeSection]);
     const validationContext = JSON.stringify([
         activeSection,
         activeTab?.id,
@@ -676,6 +700,7 @@ export default function WorkspacePage() {
     const [userAdminMode, setUserAdminMode] = useState<UserAdminMode>('list');
     const [accessAdminMode, setAccessAdminMode] = useState<AccessAdminMode>('list');
     const [showSchemaBrowser, setShowSchemaBrowser] = useState(true);
+    const branding = useDeploymentBranding();
     const [leftRailCollapsed, setLeftRailCollapsed] = useState(true);
     const [showVersionInfo, setShowVersionInfo] = useState(false);
     const [collapsedAdminSubmenuOpen, setCollapsedAdminSubmenuOpen] = useState(false);
@@ -692,9 +717,7 @@ export default function WorkspacePage() {
         top: number;
         left: number;
     } | null>(null);
-    const [expandedExplorerDatasources, setExpandedExplorerDatasources] = useState<
-        Record<string, boolean>
-    >({});
+    const [expandedSystemGroups, setExpandedSystemGroups] = useState<Record<string, boolean>>({});
     const [expandedExplorerSchemas, setExpandedExplorerSchemas] = useState<Record<string, boolean>>(
         {}
     );
@@ -1496,6 +1519,7 @@ export default function WorkspacePage() {
 
     const executionCapabilities = queryCapabilities(selectedDatasource?.engine ?? '');
     const [resultsExpanded, setResultsExpanded] = useState(false);
+    useEffect(() => setResultsExpanded(false), [activeTab?.id]);
     useEffect(() => {
         const restore = (event: KeyboardEvent) => {
             if (event.key === 'Escape' && resultsExpanded) {
@@ -1507,10 +1531,6 @@ export default function WorkspacePage() {
         return () => window.removeEventListener('keydown', restore);
     }, [resultsExpanded]);
 
-    const selectedDatasourceIcon = useMemo(
-        () => resolveDatasourceIcon(selectedDatasource?.engine),
-        [selectedDatasource?.engine]
-    );
     const selectedDatasourceHealth = useMemo<DatasourceHealthState>(() => {
         const datasourceId = activeTab?.datasourceId ?? '';
         if (!datasourceId) {
@@ -3059,21 +3079,20 @@ export default function WorkspacePage() {
         }
 
         const datasourceKey = `datasource:${schemaBrowser.datasourceId}`;
-        setExpandedExplorerDatasources((current) =>
-            current[datasourceKey] === undefined
-                ? {
-                      ...current,
-                      [datasourceKey]: true
-                  }
-                : current
-        );
-
         setExpandedExplorerSchemas((current) => {
             const next = { ...current };
-            schemaBrowser.schemas.forEach((schemaEntry, index) => {
+            schemaBrowser.schemas.forEach((schemaEntry) => {
                 const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
                 if (next[schemaKey] === undefined) {
-                    next[schemaKey] = index === 0;
+                    next[schemaKey] =
+                        schemaEntry.schema ===
+                        (activeTab?.schema ||
+                            schemaBrowser.schemas.find(
+                                (entry) =>
+                                    !systemSchemasForEngine(selectedDatasource?.engine).includes(
+                                        entry.schema.toLowerCase()
+                                    )
+                            )?.schema);
                 }
             });
             return next;
@@ -3096,7 +3115,7 @@ export default function WorkspacePage() {
         setSelectedExplorerNode((current) =>
             current ? current : `datasource:${schemaBrowser.datasourceId}`
         );
-    }, [schemaBrowser]);
+    }, [schemaBrowser, activeTab?.schema, selectedDatasource?.engine]);
 
     useEffect(() => {
         if (!currentUser) {
@@ -3794,8 +3813,7 @@ export default function WorkspacePage() {
             ) {
                 updateWorkspaceTab(tabId, (currentTab) => ({
                     ...currentTab,
-                    errorMessage:
-                        'Justification is required for every run through this write-capable profile.',
+                    errorMessage: 'Enter a justification to run queries with this profile.',
                     statusMessage: ''
                 }));
                 requestAnimationFrame(() => queryJustificationInputRef.current?.focus());
@@ -4006,24 +4024,10 @@ export default function WorkspacePage() {
         [showWorkbenchNotice, writeTextToClipboard]
     );
 
-    const renderExplorerNameHoverCard = useCallback(
-        (label: string): ReactNode => (
-            <span className="explorer-name-hover-card" role="tooltip">
-                <span className="explorer-name-hover-text">{label}</span>
-                <button
-                    type="button"
-                    className="explorer-name-copy"
-                    aria-label={`Copy ${label}`}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        void handleCopyExplorerName(label);
-                    }}
-                >
-                    Copy
-                </button>
-            </span>
-        ),
-        [handleCopyExplorerName]
+    const renderExplorerNameHoverCard = (label: string): ReactNode => (
+        <span className="explorer-name-hover-card" role="tooltip">
+            <span className="explorer-name-hover-text">{label}</span>
+        </span>
     );
 
     useEffect(() => {
@@ -4113,7 +4117,7 @@ export default function WorkspacePage() {
 
         const sourceSql = activeTab.queryText;
         if (!sourceSql.trim()) {
-            showWorkbenchNotice('Nothing to format.', 'info');
+            setSqlFormatting({ valid: false, message: 'Enter SQL to format.' });
             return;
         }
 
@@ -4143,12 +4147,13 @@ export default function WorkspacePage() {
                 }));
             }
 
-            showWorkbenchNotice('SQL formatted successfully.');
+            setSqlFormatting({ valid: true, message: 'Formatting applied to the editor.' });
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'SQL formatting failed.';
-            showWorkbenchNotice(message, 'error');
+            const message =
+                error instanceof Error ? error.message.split('\n')[0] : 'SQL formatting failed.';
+            setSqlFormatting({ valid: false, message });
         }
-    }, [activeTab, showWorkbenchNotice, updateWorkspaceTab]);
+    }, [activeTab, updateWorkspaceTab]);
 
     const applyValidationMarkers = useCallback((payload: QueryValidationResponse) => {
         const monaco = monacoRef.current;
@@ -6699,8 +6704,17 @@ export default function WorkspacePage() {
                             </div>
                         ) : null}
                     </nav>
+                    {branding?.environment && (
+                        <span className="deployment-environment" title={branding.environment}>
+                            {leftRailCollapsed
+                                ? Array.from(branding.environment).slice(0, 2).join('')
+                                : branding.environment}
+                        </span>
+                    )}
 
                     <div className="workspace-left-footer">
+                        <DeploymentBanner branding={branding} collapsed={leftRailCollapsed} />
+                        <div className="workspace-left-rail-separator" aria-hidden />
                         {currentUser ? (
                             <div className="workspace-left-user" ref={leftRailUserMenuRef}>
                                 <button
@@ -6824,59 +6838,21 @@ export default function WorkspacePage() {
                                         : 'schema-browser is-collapsed'
                                 }
                             >
-                                <div className="row schema-browser-header">
-                                    {showSchemaBrowser ? <h3>Explorer</h3> : null}
-                                    {showSchemaBrowser ? (
+                                {!showSchemaBrowser ? (
+                                    <div className="row schema-browser-header">
                                         <button
                                             type="button"
                                             className="icon-button schema-browser-toggle"
-                                            title={
-                                                loadingSchemaBrowser
-                                                    ? 'Refreshing explorer metadata...'
-                                                    : 'Refresh explorer metadata'
-                                            }
-                                            aria-label={
-                                                loadingSchemaBrowser
-                                                    ? 'Refreshing explorer metadata...'
-                                                    : 'Refresh explorer metadata'
-                                            }
-                                            disabled={
-                                                !activeTab?.datasourceId || loadingSchemaBrowser
-                                            }
-                                            onClick={() =>
-                                                activeTab?.datasourceId
-                                                    ? void loadSchemaBrowser(
-                                                          activeTab.datasourceId,
-                                                          true
-                                                      )
-                                                    : undefined
-                                            }
+                                            onClick={() => setShowSchemaBrowser(true)}
+                                            title="Expand explorer"
+                                            aria-label="Expand explorer"
                                         >
-                                            <ExplorerRefreshIcon />
+                                            <span className="icon-button-glyph" aria-hidden>
+                                                <RailIcon glyph="menu" />
+                                            </span>
                                         </button>
-                                    ) : null}
-                                    <button
-                                        type="button"
-                                        className="icon-button schema-browser-toggle"
-                                        onClick={() => setShowSchemaBrowser((current) => !current)}
-                                        title={
-                                            showSchemaBrowser
-                                                ? 'Collapse explorer'
-                                                : 'Expand explorer'
-                                        }
-                                        aria-label={
-                                            showSchemaBrowser
-                                                ? 'Collapse explorer'
-                                                : 'Expand explorer'
-                                        }
-                                    >
-                                        <span className="icon-button-glyph" aria-hidden>
-                                            <RailIcon
-                                                glyph={showSchemaBrowser ? 'collapse' : 'menu'}
-                                            />
-                                        </span>
-                                    </button>
-                                </div>
+                                    </div>
+                                ) : null}
                                 <div
                                     className={
                                         showSchemaBrowser
@@ -6886,59 +6862,64 @@ export default function WorkspacePage() {
                                     aria-hidden={!showSchemaBrowser}
                                 >
                                     <ExplorerControls
-                                        activeDatasourceId={activeTab?.datasourceId ?? ''}
-                                        activeSchema={activeTab?.schema ?? ''}
-                                        requestedCredentialProfile={
-                                            activeTab?.requestedCredentialProfile ?? ''
+                                        collapseControl={
+                                            <button
+                                                type="button"
+                                                className="icon-button schema-browser-toggle"
+                                                onClick={() => setShowSchemaBrowser(false)}
+                                                title="Collapse explorer"
+                                                aria-label="Collapse explorer"
+                                            >
+                                                <span className="icon-button-glyph" aria-hidden>
+                                                    <RailIcon glyph="collapse" />
+                                                </span>
+                                            </button>
                                         }
-                                        queryJustification={activeTab?.queryJustification ?? ''}
-                                        canOverrideCredentialProfile={isSystemAdmin}
+                                        activeDatasource={selectedDatasource ?? undefined}
+                                        visibleDatasources={visibleDatasources}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !!activeTab.planExecution?.isExecuting
                                         }
-                                        visibleDatasources={visibleDatasources}
-                                        activeDatasource={visibleDatasources.find(
-                                            (datasource) =>
-                                                datasource.id === activeTab?.datasourceId
-                                        )}
-                                        availableSchemaNames={availableSchemaNames}
                                         datasourceHealthTone={selectedDatasourceHealth}
                                         datasourceHealthLabel={selectedDatasourceHealthLabel}
-                                        datasourceIcon={selectedDatasourceIcon}
                                         searchQuery={explorerSearchQuery}
-                                        justificationInputRef={queryJustificationInputRef}
                                         onDatasourceChange={handleDatasourceChangeForActiveTab}
-                                        onSchemaChange={(schema) => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                                ...currentTab,
-                                                schema
-                                            }));
-                                        }}
-                                        onProfileChange={(credentialProfile) => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                                ...currentTab,
-                                                requestedCredentialProfile: credentialProfile
-                                            }));
-                                        }}
-                                        onJustificationChange={(queryJustification) => {
-                                            if (!activeTab) {
-                                                return;
-                                            }
-                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
-                                                ...currentTab,
-                                                queryJustification
-                                            }));
-                                        }}
                                         onSearchQueryChange={setExplorerSearchQuery}
                                     />
+                                    <div className="schema-tree-heading">
+                                        Schemas{' '}
+                                        {showSchemaBrowser ? (
+                                            <button
+                                                type="button"
+                                                className="icon-button schema-browser-toggle"
+                                                title={
+                                                    loadingSchemaBrowser
+                                                        ? 'Refreshing explorer metadata...'
+                                                        : 'Refresh explorer metadata'
+                                                }
+                                                aria-label={
+                                                    loadingSchemaBrowser
+                                                        ? 'Refreshing explorer metadata...'
+                                                        : 'Refresh explorer metadata'
+                                                }
+                                                disabled={
+                                                    !activeTab?.datasourceId || loadingSchemaBrowser
+                                                }
+                                                onClick={() =>
+                                                    activeTab?.datasourceId
+                                                        ? void loadSchemaBrowser(
+                                                              activeTab.datasourceId,
+                                                              true
+                                                          )
+                                                        : undefined
+                                                }
+                                            >
+                                                <ExplorerRefreshIcon />
+                                            </button>
+                                        ) : null}
+                                    </div>
                                     {schemaBrowserError ? (
                                         <InlineNotice tone="error">
                                             {schemaBrowserError}
@@ -6958,193 +6939,253 @@ export default function WorkspacePage() {
                                                 const filterActive =
                                                     explorerSearchNormalized.length > 0;
                                                 const datasourceKey = `datasource:${browser.datasourceId}`;
-                                                const datasourceExpanded = filterActive
-                                                    ? true
-                                                    : (expandedExplorerDatasources[datasourceKey] ??
-                                                      true);
-                                                const activeDatasource =
-                                                    visibleDatasources.find(
-                                                        (datasource) =>
-                                                            datasource.id === browser.datasourceId
-                                                    ) ?? null;
-                                                const datasourceLabel =
-                                                    activeDatasource?.name ?? browser.datasourceId;
-                                                return (
-                                                    <li className="explorer-node explorer-depth-0">
-                                                        <div
-                                                            className={
-                                                                selectedExplorerNode ===
-                                                                datasourceKey
-                                                                    ? 'explorer-node-row selected'
-                                                                    : 'explorer-node-row'
-                                                            }
+                                                const systemNames = systemSchemasForEngine(
+                                                    selectedDatasource?.engine
+                                                );
+                                                const isSystem = (
+                                                    entry: (typeof browser.schemas)[number]
+                                                ) =>
+                                                    systemNames.includes(
+                                                        entry.schema.toLowerCase()
+                                                    );
+                                                const systemGroupOpen =
+                                                    filterActive ||
+                                                    !!expandedSystemGroups[datasourceKey];
+                                                const renderSchema = (
+                                                    schemaEntry: (typeof browser.schemas)[number]
+                                                ) => {
+                                                    const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
+                                                    const schemaExpanded = filterActive
+                                                        ? true
+                                                        : (expandedExplorerSchemas[schemaKey] ??
+                                                          false);
+                                                    return (
+                                                        <li
+                                                            key={schemaKey}
+                                                            className="explorer-node explorer-depth-1"
                                                         >
-                                                            <button
-                                                                type="button"
-                                                                className="explorer-toggle"
-                                                                onClick={() =>
-                                                                    setExpandedExplorerDatasources(
-                                                                        (current) => ({
-                                                                            ...current,
-                                                                            [datasourceKey]:
-                                                                                !datasourceExpanded
-                                                                        })
-                                                                    )
-                                                                }
-                                                                title={
-                                                                    datasourceExpanded
-                                                                        ? 'Collapse connection'
-                                                                        : 'Expand connection'
+                                                            <div
+                                                                className={
+                                                                    selectedExplorerNode ===
+                                                                    schemaKey
+                                                                        ? 'explorer-node-row selected'
+                                                                        : 'explorer-node-row'
                                                                 }
                                                             >
-                                                                <ChevronIcon
-                                                                    expanded={datasourceExpanded}
-                                                                />
-                                                            </button>
-                                                            <div className="explorer-item">
                                                                 <button
                                                                     type="button"
-                                                                    className="explorer-item-main"
+                                                                    className="explorer-toggle"
                                                                     onClick={() =>
-                                                                        setSelectedExplorerNode(
-                                                                            datasourceKey
+                                                                        setExpandedExplorerSchemas(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                [schemaKey]:
+                                                                                    !schemaExpanded
+                                                                            })
                                                                         )
                                                                     }
-                                                                    title={datasourceLabel}
+                                                                    title={
+                                                                        schemaExpanded
+                                                                            ? 'Collapse schema'
+                                                                            : 'Expand schema'
+                                                                    }
                                                                 >
-                                                                    <span className="explorer-item-icon">
-                                                                        <ExplorerIcon glyph="database" />
-                                                                    </span>
-                                                                    <span className="explorer-item-title">
-                                                                        {renderExplorerMatch(
-                                                                            datasourceLabel
-                                                                        )}
-                                                                    </span>
+                                                                    <ChevronIcon
+                                                                        expanded={schemaExpanded}
+                                                                    />
                                                                 </button>
-                                                                {renderExplorerNameHoverCard(
-                                                                    datasourceLabel
-                                                                )}
-                                                                <span className="explorer-item-tail">
-                                                                    {activeDatasource ? (
-                                                                        <span className="explorer-item-meta">
+                                                                <div className="explorer-item">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="explorer-item-main"
+                                                                        onClick={() => {
+                                                                            setSelectedExplorerNode(
+                                                                                schemaKey
+                                                                            );
+                                                                            void handleCopyExplorerName(
+                                                                                schemaEntry.schema
+                                                                            );
+                                                                        }}
+                                                                        aria-label={`Copy ${schemaEntry.schema}`}
+                                                                    >
+                                                                        <span className="explorer-item-icon">
+                                                                            <ExplorerIcon glyph="schema" />
+                                                                        </span>
+                                                                        <span className="explorer-item-title">
+                                                                            {renderExplorerMatch(
+                                                                                schemaEntry.schema
+                                                                            )}
+                                                                        </span>
+                                                                    </button>
+                                                                    {renderExplorerNameHoverCard(
+                                                                        schemaEntry.schema
+                                                                    )}
+                                                                    <span className="explorer-item-tail">
+                                                                        <span
+                                                                            className="explorer-item-count"
+                                                                            title="Table count"
+                                                                        >
                                                                             {
-                                                                                activeDatasource.engine
+                                                                                schemaEntry.tables
+                                                                                    .length
                                                                             }
                                                                         </span>
-                                                                    ) : null}
-                                                                    <span
-                                                                        className="explorer-item-count"
-                                                                        title="Schema count"
-                                                                    >
-                                                                        {browser.schemas.length}
+                                                                        <button
+                                                                            type="button"
+                                                                            className="explorer-insert-button"
+                                                                            title="Insert schema name into editor"
+                                                                            aria-label={`Insert schema ${schemaEntry.schema}`}
+                                                                            onClick={(event) => {
+                                                                                event.stopPropagation();
+                                                                                handleInsertTextIntoActiveQuery(
+                                                                                    schemaEntry.schema
+                                                                                );
+                                                                            }}
+                                                                        >
+                                                                            <ExplorerInsertIcon />
+                                                                        </button>
                                                                     </span>
-                                                                </span>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                        {datasourceExpanded ? (
-                                                            <ul className="explorer-children">
-                                                                {browser.schemas.length === 0 ? (
-                                                                    <li className="explorer-empty">
-                                                                        {filterActive
-                                                                            ? 'No matching objects.'
-                                                                            : 'No schemas discovered.'}
-                                                                    </li>
-                                                                ) : (
-                                                                    browser.schemas.map(
-                                                                        (schemaEntry) => {
-                                                                            const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
-                                                                            const schemaExpanded =
+                                                            {schemaExpanded ? (
+                                                                <ul className="explorer-children">
+                                                                    {schemaEntry.tables.map(
+                                                                        (tableEntry) => {
+                                                                            const tableKey = `${schemaKey}:table:${tableEntry.table}`;
+                                                                            const autoExpandTable =
+                                                                                filterActive &&
+                                                                                tableEntry.columns.some(
+                                                                                    (columnEntry) =>
+                                                                                        columnEntry.name
+                                                                                            .toLowerCase()
+                                                                                            .includes(
+                                                                                                explorerSearchNormalized
+                                                                                            )
+                                                                                );
+                                                                            const tableExpanded =
                                                                                 filterActive
-                                                                                    ? true
-                                                                                    : (expandedExplorerSchemas[
-                                                                                          schemaKey
+                                                                                    ? (expandedExplorerTables[
+                                                                                          tableKey
+                                                                                      ] ??
+                                                                                      autoExpandTable)
+                                                                                    : (expandedExplorerTables[
+                                                                                          tableKey
                                                                                       ] ?? false);
                                                                             return (
                                                                                 <li
-                                                                                    key={schemaKey}
-                                                                                    className="explorer-node explorer-depth-1"
+                                                                                    key={tableKey}
+                                                                                    className="explorer-node explorer-depth-2"
                                                                                 >
                                                                                     <div
                                                                                         className={
                                                                                             selectedExplorerNode ===
-                                                                                            schemaKey
+                                                                                            tableKey
                                                                                                 ? 'explorer-node-row selected'
                                                                                                 : 'explorer-node-row'
                                                                                         }
                                                                                     >
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            className="explorer-toggle"
-                                                                                            onClick={() =>
-                                                                                                setExpandedExplorerSchemas(
-                                                                                                    (
-                                                                                                        current
-                                                                                                    ) => ({
-                                                                                                        ...current,
-                                                                                                        [schemaKey]:
-                                                                                                            !schemaExpanded
-                                                                                                    })
-                                                                                                )
-                                                                                            }
-                                                                                            title={
-                                                                                                schemaExpanded
-                                                                                                    ? 'Collapse schema'
-                                                                                                    : 'Expand schema'
-                                                                                            }
-                                                                                        >
-                                                                                            <ChevronIcon
-                                                                                                expanded={
-                                                                                                    schemaExpanded
+                                                                                        {tableEntry
+                                                                                            .columns
+                                                                                            .length >
+                                                                                        0 ? (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                className="explorer-toggle"
+                                                                                                onClick={() =>
+                                                                                                    setExpandedExplorerTables(
+                                                                                                        (
+                                                                                                            current
+                                                                                                        ) => ({
+                                                                                                            ...current,
+                                                                                                            [tableKey]:
+                                                                                                                !tableExpanded
+                                                                                                        })
+                                                                                                    )
                                                                                                 }
-                                                                                            />
-                                                                                        </button>
+                                                                                                title={
+                                                                                                    tableExpanded
+                                                                                                        ? 'Collapse table columns'
+                                                                                                        : 'Expand table columns'
+                                                                                                }
+                                                                                            >
+                                                                                                <ChevronIcon
+                                                                                                    expanded={
+                                                                                                        tableExpanded
+                                                                                                    }
+                                                                                                />
+                                                                                            </button>
+                                                                                        ) : (
+                                                                                            <span className="explorer-toggle-spacer" />
+                                                                                        )}
                                                                                         <div className="explorer-item">
                                                                                             <button
                                                                                                 type="button"
                                                                                                 className="explorer-item-main"
-                                                                                                onClick={() =>
+                                                                                                onClick={() => {
                                                                                                     setSelectedExplorerNode(
-                                                                                                        schemaKey
-                                                                                                    )
-                                                                                                }
-                                                                                                title={
-                                                                                                    schemaEntry.schema
-                                                                                                }
+                                                                                                        tableKey
+                                                                                                    );
+                                                                                                    void handleCopyExplorerName(
+                                                                                                        tableEntry.table
+                                                                                                    );
+                                                                                                }}
+                                                                                                aria-label={`Copy ${tableEntry.table}`}
                                                                                             >
                                                                                                 <span className="explorer-item-icon">
-                                                                                                    <ExplorerIcon glyph="schema" />
+                                                                                                    <ExplorerIcon glyph="table" />
                                                                                                 </span>
                                                                                                 <span className="explorer-item-title">
                                                                                                     {renderExplorerMatch(
-                                                                                                        schemaEntry.schema
+                                                                                                        tableEntry.table
                                                                                                     )}
                                                                                                 </span>
                                                                                             </button>
                                                                                             {renderExplorerNameHoverCard(
-                                                                                                schemaEntry.schema
+                                                                                                tableEntry.table
                                                                                             )}
                                                                                             <span className="explorer-item-tail">
                                                                                                 <span
                                                                                                     className="explorer-item-count"
-                                                                                                    title="Table count"
+                                                                                                    title="Column count"
                                                                                                 >
                                                                                                     {
-                                                                                                        schemaEntry
-                                                                                                            .tables
+                                                                                                        tableEntry
+                                                                                                            .columns
                                                                                                             .length
                                                                                                     }
                                                                                                 </span>
                                                                                                 <button
                                                                                                     type="button"
+                                                                                                    className="explorer-inspect-button"
+                                                                                                    title="Inspect object details"
+                                                                                                    aria-label={`Inspect ${schemaEntry.schema}.${tableEntry.table}`}
+                                                                                                    onClick={(
+                                                                                                        event
+                                                                                                    ) => {
+                                                                                                        event.stopPropagation();
+                                                                                                        setSelectedExplorerNode(
+                                                                                                            tableKey
+                                                                                                        );
+                                                                                                        handleInspectExplorerObject(
+                                                                                                            schemaEntry.schema,
+                                                                                                            tableEntry.table,
+                                                                                                            tableEntry.type
+                                                                                                        );
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <ExplorerInspectIcon />
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    type="button"
                                                                                                     className="explorer-insert-button"
-                                                                                                    title="Insert schema name into editor"
-                                                                                                    aria-label={`Insert schema ${schemaEntry.schema}`}
+                                                                                                    title="Insert table reference into editor"
+                                                                                                    aria-label={`Insert table ${schemaEntry.schema}.${tableEntry.table}`}
                                                                                                     onClick={(
                                                                                                         event
                                                                                                     ) => {
                                                                                                         event.stopPropagation();
                                                                                                         handleInsertTextIntoActiveQuery(
-                                                                                                            schemaEntry.schema
+                                                                                                            `${schemaEntry.schema}.${tableEntry.table}`
                                                                                                         );
                                                                                                     }}
                                                                                                 >
@@ -7153,151 +7194,79 @@ export default function WorkspacePage() {
                                                                                             </span>
                                                                                         </div>
                                                                                     </div>
-                                                                                    {schemaExpanded ? (
+                                                                                    {tableExpanded &&
+                                                                                    tableEntry
+                                                                                        .columns
+                                                                                        .length >
+                                                                                        0 ? (
                                                                                         <ul className="explorer-children">
-                                                                                            {schemaEntry.tables.map(
+                                                                                            {tableEntry.columns.map(
                                                                                                 (
-                                                                                                    tableEntry
+                                                                                                    columnEntry
                                                                                                 ) => {
-                                                                                                    const tableKey = `${schemaKey}:table:${tableEntry.table}`;
-                                                                                                    const autoExpandTable =
-                                                                                                        filterActive &&
-                                                                                                        tableEntry.columns.some(
-                                                                                                            (
-                                                                                                                columnEntry
-                                                                                                            ) =>
-                                                                                                                columnEntry.name
-                                                                                                                    .toLowerCase()
-                                                                                                                    .includes(
-                                                                                                                        explorerSearchNormalized
-                                                                                                                    )
-                                                                                                        );
-                                                                                                    const tableExpanded =
-                                                                                                        filterActive
-                                                                                                            ? (expandedExplorerTables[
-                                                                                                                  tableKey
-                                                                                                              ] ??
-                                                                                                              autoExpandTable)
-                                                                                                            : (expandedExplorerTables[
-                                                                                                                  tableKey
-                                                                                                              ] ??
-                                                                                                              false);
+                                                                                                    const columnKey = `${tableKey}:column:${columnEntry.name}`;
                                                                                                     return (
                                                                                                         <li
                                                                                                             key={
-                                                                                                                tableKey
+                                                                                                                columnKey
                                                                                                             }
-                                                                                                            className="explorer-node explorer-depth-2"
+                                                                                                            className="explorer-node explorer-depth-3"
                                                                                                         >
                                                                                                             <div
                                                                                                                 className={
                                                                                                                     selectedExplorerNode ===
-                                                                                                                    tableKey
+                                                                                                                    columnKey
                                                                                                                         ? 'explorer-node-row selected'
                                                                                                                         : 'explorer-node-row'
                                                                                                                 }
                                                                                                             >
-                                                                                                                {tableEntry
-                                                                                                                    .columns
-                                                                                                                    .length >
-                                                                                                                0 ? (
-                                                                                                                    <button
-                                                                                                                        type="button"
-                                                                                                                        className="explorer-toggle"
-                                                                                                                        onClick={() =>
-                                                                                                                            setExpandedExplorerTables(
-                                                                                                                                (
-                                                                                                                                    current
-                                                                                                                                ) => ({
-                                                                                                                                    ...current,
-                                                                                                                                    [tableKey]:
-                                                                                                                                        !tableExpanded
-                                                                                                                                })
-                                                                                                                            )
-                                                                                                                        }
-                                                                                                                        title={
-                                                                                                                            tableExpanded
-                                                                                                                                ? 'Collapse table columns'
-                                                                                                                                : 'Expand table columns'
-                                                                                                                        }
-                                                                                                                    >
-                                                                                                                        <ChevronIcon
-                                                                                                                            expanded={
-                                                                                                                                tableExpanded
-                                                                                                                            }
-                                                                                                                        />
-                                                                                                                    </button>
-                                                                                                                ) : (
-                                                                                                                    <span className="explorer-toggle-spacer" />
-                                                                                                                )}
+                                                                                                                <span className="explorer-toggle-spacer" />
                                                                                                                 <div className="explorer-item">
                                                                                                                     <button
                                                                                                                         type="button"
                                                                                                                         className="explorer-item-main"
-                                                                                                                        onClick={() =>
+                                                                                                                        onClick={() => {
                                                                                                                             setSelectedExplorerNode(
-                                                                                                                                tableKey
-                                                                                                                            )
-                                                                                                                        }
-                                                                                                                        title={
-                                                                                                                            tableEntry.table
-                                                                                                                        }
+                                                                                                                                columnKey
+                                                                                                                            );
+                                                                                                                            void handleCopyExplorerName(
+                                                                                                                                columnEntry.name
+                                                                                                                            );
+                                                                                                                        }}
+                                                                                                                        aria-label={`Copy ${columnEntry.name}`}
                                                                                                                     >
                                                                                                                         <span className="explorer-item-icon">
-                                                                                                                            <ExplorerIcon glyph="table" />
+                                                                                                                            <ExplorerIcon glyph="column" />
                                                                                                                         </span>
                                                                                                                         <span className="explorer-item-title">
                                                                                                                             {renderExplorerMatch(
-                                                                                                                                tableEntry.table
+                                                                                                                                columnEntry.name
                                                                                                                             )}
                                                                                                                         </span>
                                                                                                                     </button>
                                                                                                                     {renderExplorerNameHoverCard(
-                                                                                                                        tableEntry.table
+                                                                                                                        columnEntry.name
                                                                                                                     )}
                                                                                                                     <span className="explorer-item-tail">
-                                                                                                                        <span
-                                                                                                                            className="explorer-item-count"
-                                                                                                                            title="Column count"
-                                                                                                                        >
+                                                                                                                        <span className="explorer-item-type">
+                                                                                                                            (
                                                                                                                             {
-                                                                                                                                tableEntry
-                                                                                                                                    .columns
-                                                                                                                                    .length
+                                                                                                                                columnEntry.jdbcType
                                                                                                                             }
+
+                                                                                                                            )
                                                                                                                         </span>
                                                                                                                         <button
                                                                                                                             type="button"
-                                                                                                                            className="explorer-inspect-button"
-                                                                                                                            title="Inspect object details"
-                                                                                                                            aria-label={`Inspect ${schemaEntry.schema}.${tableEntry.table}`}
-                                                                                                                            onClick={(
-                                                                                                                                event
-                                                                                                                            ) => {
-                                                                                                                                event.stopPropagation();
-                                                                                                                                setSelectedExplorerNode(
-                                                                                                                                    tableKey
-                                                                                                                                );
-                                                                                                                                handleInspectExplorerObject(
-                                                                                                                                    schemaEntry.schema,
-                                                                                                                                    tableEntry.table,
-                                                                                                                                    tableEntry.type
-                                                                                                                                );
-                                                                                                                            }}
-                                                                                                                        >
-                                                                                                                            <ExplorerInspectIcon />
-                                                                                                                        </button>
-                                                                                                                        <button
-                                                                                                                            type="button"
                                                                                                                             className="explorer-insert-button"
-                                                                                                                            title="Insert table reference into editor"
-                                                                                                                            aria-label={`Insert table ${schemaEntry.schema}.${tableEntry.table}`}
+                                                                                                                            title="Insert column name into editor"
+                                                                                                                            aria-label={`Insert column ${columnEntry.name}`}
                                                                                                                             onClick={(
                                                                                                                                 event
                                                                                                                             ) => {
                                                                                                                                 event.stopPropagation();
                                                                                                                                 handleInsertTextIntoActiveQuery(
-                                                                                                                                    `${schemaEntry.schema}.${tableEntry.table}`
+                                                                                                                                    columnEntry.name
                                                                                                                                 );
                                                                                                                             }}
                                                                                                                         >
@@ -7306,92 +7275,6 @@ export default function WorkspacePage() {
                                                                                                                     </span>
                                                                                                                 </div>
                                                                                                             </div>
-                                                                                                            {tableExpanded &&
-                                                                                                            tableEntry
-                                                                                                                .columns
-                                                                                                                .length >
-                                                                                                                0 ? (
-                                                                                                                <ul className="explorer-children">
-                                                                                                                    {tableEntry.columns.map(
-                                                                                                                        (
-                                                                                                                            columnEntry
-                                                                                                                        ) => {
-                                                                                                                            const columnKey = `${tableKey}:column:${columnEntry.name}`;
-                                                                                                                            return (
-                                                                                                                                <li
-                                                                                                                                    key={
-                                                                                                                                        columnKey
-                                                                                                                                    }
-                                                                                                                                    className="explorer-node explorer-depth-3"
-                                                                                                                                >
-                                                                                                                                    <div
-                                                                                                                                        className={
-                                                                                                                                            selectedExplorerNode ===
-                                                                                                                                            columnKey
-                                                                                                                                                ? 'explorer-node-row selected'
-                                                                                                                                                : 'explorer-node-row'
-                                                                                                                                        }
-                                                                                                                                    >
-                                                                                                                                        <span className="explorer-toggle-spacer" />
-                                                                                                                                        <div className="explorer-item">
-                                                                                                                                            <button
-                                                                                                                                                type="button"
-                                                                                                                                                className="explorer-item-main"
-                                                                                                                                                onClick={() =>
-                                                                                                                                                    setSelectedExplorerNode(
-                                                                                                                                                        columnKey
-                                                                                                                                                    )
-                                                                                                                                                }
-                                                                                                                                                title={
-                                                                                                                                                    columnEntry.name
-                                                                                                                                                }
-                                                                                                                                            >
-                                                                                                                                                <span className="explorer-item-icon">
-                                                                                                                                                    <ExplorerIcon glyph="column" />
-                                                                                                                                                </span>
-                                                                                                                                                <span className="explorer-item-title">
-                                                                                                                                                    {renderExplorerMatch(
-                                                                                                                                                        columnEntry.name
-                                                                                                                                                    )}
-                                                                                                                                                </span>
-                                                                                                                                            </button>
-                                                                                                                                            {renderExplorerNameHoverCard(
-                                                                                                                                                columnEntry.name
-                                                                                                                                            )}
-                                                                                                                                            <span className="explorer-item-tail">
-                                                                                                                                                <span className="explorer-item-type">
-                                                                                                                                                    (
-                                                                                                                                                    {
-                                                                                                                                                        columnEntry.jdbcType
-                                                                                                                                                    }
-
-                                                                                                                                                    )
-                                                                                                                                                </span>
-                                                                                                                                                <button
-                                                                                                                                                    type="button"
-                                                                                                                                                    className="explorer-insert-button"
-                                                                                                                                                    title="Insert column name into editor"
-                                                                                                                                                    aria-label={`Insert column ${columnEntry.name}`}
-                                                                                                                                                    onClick={(
-                                                                                                                                                        event
-                                                                                                                                                    ) => {
-                                                                                                                                                        event.stopPropagation();
-                                                                                                                                                        handleInsertTextIntoActiveQuery(
-                                                                                                                                                            columnEntry.name
-                                                                                                                                                        );
-                                                                                                                                                    }}
-                                                                                                                                                >
-                                                                                                                                                    <ExplorerInsertIcon />
-                                                                                                                                                </button>
-                                                                                                                                            </span>
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                </li>
-                                                                                                                            );
-                                                                                                                        }
-                                                                                                                    )}
-                                                                                                                </ul>
-                                                                                                            ) : null}
                                                                                                         </li>
                                                                                                     );
                                                                                                 }
@@ -7401,11 +7284,60 @@ export default function WorkspacePage() {
                                                                                 </li>
                                                                             );
                                                                         }
-                                                                    )
+                                                                    )}
+                                                                </ul>
+                                                            ) : null}
+                                                        </li>
+                                                    );
+                                                };
+                                                const systemSchemas =
+                                                    browser.schemas.filter(isSystem);
+                                                return (
+                                                    <>
+                                                        {browser.schemas.length === 0 && (
+                                                            <li className="explorer-empty">
+                                                                {filterActive
+                                                                    ? 'No matching objects.'
+                                                                    : 'No schemas discovered.'}
+                                                            </li>
+                                                        )}
+                                                        {browser.schemas
+                                                            .filter((entry) => !isSystem(entry))
+                                                            .map(renderSchema)}
+                                                        {systemSchemas.length > 0 && (
+                                                            <li>
+                                                                <button
+                                                                    type="button"
+                                                                    className="system-group"
+                                                                    aria-expanded={systemGroupOpen}
+                                                                    onClick={() =>
+                                                                        setExpandedSystemGroups(
+                                                                            (prev) => ({
+                                                                                ...prev,
+                                                                                [datasourceKey]:
+                                                                                    !systemGroupOpen
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <ChevronIcon
+                                                                        expanded={systemGroupOpen}
+                                                                    />
+                                                                    System schemas{' '}
+                                                                    <span>
+                                                                        {systemSchemas.length}
+                                                                    </span>
+                                                                </button>
+                                                                {systemGroupOpen && (
+                                                                    <ul>
+                                                                        {systemSchemas.map(
+                                                                            renderSchema
+                                                                        )}
+                                                                    </ul>
                                                                 )}
-                                                            </ul>
-                                                        ) : null}
-                                                    </li>
+                                                            </li>
+                                                        )}
+                                                    </>
                                                 );
                                             })()}
                                         </ul>
@@ -7414,6 +7346,38 @@ export default function WorkspacePage() {
                                             Select a connection to browse schemas and tables.
                                         </p>
                                     )}
+                                    <CredentialProfilePolicyControl
+                                        datasource={selectedDatasource ?? undefined}
+                                        ref={queryJustificationInputRef}
+                                        requestedCredentialProfile={
+                                            activeTab?.requestedCredentialProfile ?? ''
+                                        }
+                                        queryJustification={activeTab?.queryJustification ?? ''}
+                                        canOverride={isSystemAdmin}
+                                        disabled={
+                                            !activeTab ||
+                                            activeTab.isExecuting ||
+                                            !!activeTab.planExecution?.isExecuting
+                                        }
+                                        onProfileChange={(credentialProfile) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                requestedCredentialProfile: credentialProfile
+                                            }));
+                                        }}
+                                        onJustificationChange={(queryJustification) => {
+                                            if (!activeTab) {
+                                                return;
+                                            }
+                                            updateWorkspaceTab(activeTab.id, (currentTab) => ({
+                                                ...currentTab,
+                                                queryJustification
+                                            }));
+                                        }}
+                                    />
                                 </div>
                             </section>
                             {showSchemaBrowser ? (
@@ -7449,6 +7413,35 @@ export default function WorkspacePage() {
                                     onRenameTab={handleRenameTab}
                                     onDuplicateTab={handleDuplicateTab}
                                 />
+                                <div className="editor-schema">
+                                    <SearchablePicker
+                                        key={activeTabId}
+                                        noun="schema"
+                                        triggerLabel="Default schema"
+                                        value={activeTab?.schema ?? ''}
+                                        disabled={!activeTab?.datasourceId}
+                                        items={[
+                                            ...new Set([
+                                                '',
+                                                ...availableSchemaNames,
+                                                activeTab?.schema ?? ''
+                                            ])
+                                        ].map((value) => ({ value, label: value || 'None' }))}
+                                        onChange={(schema) => {
+                                            if (activeTab)
+                                                updateWorkspaceTab(activeTab.id, (current) => ({
+                                                    ...current,
+                                                    schema
+                                                }));
+                                        }}
+                                    >
+                                        <ExplorerIcon glyph="schema" />
+                                        <span className="schema-label">Schema</span>
+                                        <span className="schema-value">
+                                            {activeTab?.schema || 'None'}
+                                        </span>
+                                    </SearchablePicker>
+                                </div>
                             </div>
 
                             <div className="monaco-host" ref={monacoHostRef}>
@@ -7634,22 +7627,23 @@ export default function WorkspacePage() {
                                             if (activeTab) void handleCancelRun(activeTab.id);
                                         }}
                                     />
-                                    <LabeledActionButton
-                                        icon="align-start-horizontal"
-                                        label="Format SQL"
-                                        title="Format SQL (selection when available)"
-                                        onClick={handleFormatSql}
+                                    <SqlActionControl
+                                        action="format"
+                                        result={sqlFormatting}
+                                        running={false}
+                                        onAction={handleFormatSql}
+                                        onDismiss={dismissSqlFormatting}
                                         disabled={
                                             !activeTab ||
                                             activeTab.isExecuting ||
                                             !!activeTab.planExecution?.isExecuting
                                         }
                                     />
-                                    <SqlValidationControl
+                                    <SqlActionControl
                                         result={sqlValidation}
                                         running={validatingSql}
                                         disabled={!activeTab || !selectedDatasource}
-                                        onValidate={() => void handleValidateSql()}
+                                        onAction={() => void handleValidateSql()}
                                         onDismiss={dismissSqlValidation}
                                     />
                                     <div className="script-options-wrapper" ref={scriptOptionsRef}>
@@ -7657,9 +7651,12 @@ export default function WorkspacePage() {
                                             className="script-options-anchor"
                                             ref={scriptOptionsAnchorRef}
                                         >
-                                            <LabeledActionButton
-                                                icon="settings"
-                                                label="Options"
+                                            <button
+                                                type="button"
+                                                className="icon-button editor-options-trigger"
+                                                aria-label="Options"
+                                                aria-haspopup="dialog"
+                                                aria-expanded={showScriptOptions}
                                                 title="Script options"
                                                 onClick={() =>
                                                     setShowScriptOptions((current) => {
@@ -7673,7 +7670,11 @@ export default function WorkspacePage() {
                                                     })
                                                 }
                                                 disabled={!activeTab}
-                                            />
+                                            >
+                                                <span className="icon-button-glyph" aria-hidden>
+                                                    <IconGlyph icon="settings" />
+                                                </span>
+                                            </button>
                                         </div>
                                         {showScriptOptions && scriptOptionsPosition
                                             ? createPortal(
@@ -7953,20 +7954,15 @@ export default function WorkspacePage() {
                                     </div>
                                     <div className="editor-cursor-legend" aria-live="polite">
                                         <span>
-                                            Line {editorCursorLegend.line}, Col{' '}
-                                            {editorCursorLegend.column}, Pos{' '}
-                                            {editorCursorLegend.position}
+                                            Ln {editorCursorLegend.line} · Col{' '}
+                                            {editorCursorLegend.column}
                                         </span>
                                         {editorCursorLegend.selectedChars > 0 ? (
                                             <span>
                                                 {editorCursorLegend.selectedChars} chars,{' '}
                                                 {editorCursorLegend.selectedLines} lines selected
                                             </span>
-                                        ) : (
-                                            <span className="is-placeholder" aria-hidden="true">
-                                                000000 chars, 0000 lines selected
-                                            </span>
-                                        )}
+                                        ) : null}
                                     </div>
                                 </div>
                             </div>
@@ -8005,7 +8001,8 @@ export default function WorkspacePage() {
                                                 )
                                             );
                                         }}
-                                        onClear={() =>
+                                        onClear={() => {
+                                            setResultsExpanded(false);
                                             updateWorkspaceTab(activeTab.id, (current) => ({
                                                 ...prepareTabForQueryExecution(
                                                     current,
@@ -8014,8 +8011,8 @@ export default function WorkspacePage() {
                                                 ),
                                                 isExecuting: false,
                                                 statusMessage: ''
-                                            }))
-                                        }
+                                            }));
+                                        }}
                                         notice={
                                             workbenchNotice ? (
                                                 <InlineNotice tone={workbenchNotice.tone}>

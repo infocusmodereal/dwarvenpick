@@ -30,7 +30,18 @@ import {
 } from '../icons';
 
 export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
-    if (['table', 'plan', 'chart', 'selection', 'script'].includes(icon)) {
+    if (
+        [
+            'table',
+            'plan',
+            'chart',
+            'selection',
+            'script',
+            'columns',
+            'compact',
+            'comfortable'
+        ].includes(icon)
+    ) {
         return (
             <svg
                 viewBox="0 0 24 24"
@@ -41,6 +52,14 @@ export const IconGlyph = ({ icon }: { icon: IconGlyphType }) => {
                 strokeLinejoin="round"
                 aria-hidden
             >
+                {icon === 'columns' && (
+                    <>
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="M9 4v16M15 4v16" />
+                    </>
+                )}
+                {icon === 'compact' && <path d="M4 5h16M4 10h16M4 14h16M4 19h16" />}
+                {icon === 'comfortable' && <path d="M4 4h16M4 12h16M4 20h16" />}
                 {icon === 'table' && (
                     <>
                         <rect x="3" y="4" width="18" height="16" rx="2" />

@@ -50,17 +50,45 @@ const resultTab = {
 const copy = () => vi.fn().mockResolvedValue(undefined);
 
 describe('QueryResultsSection', () => {
+    it('keeps the initial view minimal and restores controls for an executed empty result', () => {
+        const workflow = view({
+            loadedRows: [],
+            visibleResultRows: { start: 0, end: 0, topSpacerPx: 0, bottomSpacerPx: 0, rows: [] }
+        });
+        const onCopyCell = copy();
+        const { rerender } = render(
+            <QueryResultsSection
+                tab={buildWorkspaceTab('empty', 'Query 1', '')}
+                view={workflow}
+                onCopyCell={onCopyCell}
+            />
+        );
+        expect(screen.getAllByText('Run a query to see results.')).toHaveLength(1);
+        expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Expand' })).not.toBeInTheDocument();
+        rerender(
+            <QueryResultsSection
+                tab={{ ...resultTab, resultRows: [], rowCount: 0 }}
+                view={workflow}
+                onCopyCell={onCopyCell}
+            />
+        );
+        expect(screen.getByText('No rows returned.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
+    });
+
     it('keeps query limit separate from pagination and omits redundant sort status', () => {
         const workflow = view();
         render(<QueryResultsSection tab={resultTab} view={workflow} onCopyCell={copy()} />);
         expect(screen.getByText('Limit 5,000')).toBeInTheDocument();
-        expect(screen.getByText('Showing 1–2 of 2 rows')).toBeInTheDocument();
-        expect(screen.getByText('1 of 1')).toBeInTheDocument();
+        expect(screen.queryByText('Showing 1–2 of 2 rows')).not.toBeInTheDocument();
+        expect(screen.queryByText('1 of 1')).not.toBeInTheDocument();
         expect(screen.queryByText(/sort: none/)).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Previous Page' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Next Page' })).toBeDisabled();
-        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '250' } });
-        expect(workflow.onResultsPageSizeChange).toHaveBeenCalledWith(250);
+        expect(screen.queryByRole('button', { name: 'Previous Page' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Next Page' })).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Show rows')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Sort current page by value' }));
         expect(workflow.onToggleResultSort).toHaveBeenCalledWith(0);
     });
@@ -180,7 +208,7 @@ describe('QueryResultsSection', () => {
         expect(onExplain).toHaveBeenCalledOnce();
         fireEvent.keyDown(screen.getByRole('tab', { name: 'Query Plan' }), { key: 'ArrowRight' });
         expect(screen.getByRole('tab', { name: 'Stats' })).toHaveFocus();
-        expect(screen.getByText('Returned rows')).toBeInTheDocument();
+        expect(screen.queryByText('Returned rows')).not.toBeInTheDocument();
         expect(screen.queryByText('CPU time')).not.toBeInTheDocument();
     });
     it('renders engine plans and gracefully handles unsupported connectors', () => {
@@ -247,9 +275,9 @@ describe('QueryResultsSection', () => {
         fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
         expect(screen.getByText('alpha')).toBeInTheDocument();
         expect(screen.queryByText('Seq Scan on orders')).not.toBeInTheDocument();
-        expect(screen.getByText('Showing 1–2 of 2 rows')).toBeInTheDocument();
+        expect(screen.queryByText('Showing 1–2 of 2 rows')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('tab', { name: 'Stats' }));
-        expect(screen.getByText('Returned rows').nextSibling).toHaveTextContent('2');
+        expect(screen.getByLabelText('Returned rows')).toHaveTextContent('2');
         rerender(
             <QueryResultsSection
                 tab={{

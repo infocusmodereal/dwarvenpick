@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ResultSortDirection, WorkspaceTab } from '../types';
 import type { QueryResultsView } from '../useQueryResultsWorkflow';
 import type { QueryCapabilities } from '../queryCapabilities';
 import { sortDownIcon, sortNeutralIcon, sortUpIcon } from '../icons';
 import { IconGlyph } from '../components/WorkbenchIcons';
+import { resultRowHeight } from '../constants';
 import ResultPopover from '../components/ResultPopover';
 import { csvExportAvailability } from '../queryResults';
 import { formatExecutionDuration, formatExecutionTimestamp } from '../utils';
@@ -21,6 +22,8 @@ type Props = {
     canExport?: boolean;
     notice?: ReactNode;
 };
+const pageSizes = [10, 100, 250, 500, 1000];
+
 const ResultSortIcon = ({ direction }: { direction: ResultSortDirection | null }) => (
     <span
         className={`result-sort-icon ${direction ? `is-${direction}` : 'is-none'}`}
@@ -88,6 +91,13 @@ export default function QueryResultsSection({
     const warning =
         ['CANCELED', 'CANCELLED', 'TIMED_OUT'].includes(tab.executionStatus) || tab.rowLimitReached;
     const failed = tab.executionStatus === 'FAILED' || !!tab.errorMessage;
+    const isEmpty =
+        !tab.executionId &&
+        !tab.isExecuting &&
+        !failed &&
+        !completed &&
+        !tab.resultColumns.length &&
+        !plan;
     const duration =
         tab.startedAt && tab.completedAt
             ? formatExecutionDuration(tab.startedAt, tab.completedAt)
@@ -97,6 +107,7 @@ export default function QueryResultsSection({
         .filter((column) => !hidden.includes(column.index));
     const page = tab.previousPageTokens.length + 1;
     const pages = Math.max(page, Math.ceil(tab.rowCount / resultsPageSize));
+    const hasOtherPages = Boolean(tab.nextPageToken || tab.previousPageTokens.length);
     const pageOffset = (page - 1) * resultsPageSize;
     const activeSort = resultSortState ? tab.resultColumns[resultSortState.columnIndex] : null;
     const exportAvailability = csvExportAvailability(tab);
@@ -188,15 +199,6 @@ export default function QueryResultsSection({
         setExportOpen(false);
     };
     const stats: Array<[string, string]> = [];
-    if (duration) stats.push(['Execution duration', duration]);
-    if (completed && !updateCount)
-        stats.push(
-            ['Returned rows', formatCount(tab.rowCount)],
-            ['Returned columns', formatCount(tab.columnCount)]
-        );
-    if (Number.isFinite(affectedRows) && affectedRows >= 0)
-        stats.push(['Affected rows', formatCount(affectedRows)]);
-    if (tab.maxRowsPerQuery > 0) stats.push(['Query row limit', formatCount(tab.maxRowsPerQuery)]);
     if (tab.maxRuntimeSeconds > 0) stats.push(['Runtime limit', `${tab.maxRuntimeSeconds}s`]);
     if (tab.submittedAt && tab.startedAt) {
         const queued = Date.parse(tab.startedAt) - Date.parse(tab.submittedAt);
@@ -217,9 +219,19 @@ export default function QueryResultsSection({
         </button>
     ) : null;
 
+    if (isEmpty) {
+        return (
+            <div className="execution-results is-empty" ref={root}>
+                {notice}
+                <div className="result-empty-state">Run a query to see results.</div>
+            </div>
+        );
+    }
+
     return (
         <div
             className={`execution-results density-${view.density}`}
+            style={{ '--result-row-height': `${resultRowHeight[view.density]}px` } as CSSProperties}
             ref={root}
             onKeyDown={(event) => {
                 if (event.key === 'Escape' && (columnsOpen || moreOpen || exportOpen)) {
@@ -287,20 +299,25 @@ export default function QueryResultsSection({
                 <div className="result-view-controls">
                     {panel === 'results' && hasTable && (
                         <>
-                            <input
-                                type="search"
-                                className="result-search"
-                                placeholder="Search results…"
-                                aria-label="Search results on loaded page"
-                                title={`Search only the ${formatCount(tab.resultRows.length)} loaded rows; does not run SQL`}
-                                value={view.search}
-                                onChange={(event) => view.onSearchChange(event.target.value)}
-                            />
+                            <label className="result-search-field">
+                                <IconGlyph icon="search" />
+                                <input
+                                    type="search"
+                                    className="result-search"
+                                    placeholder="Search results…"
+                                    aria-label="Search results on loaded page"
+                                    title={`Search only the ${formatCount(tab.resultRows.length)} loaded rows; does not run SQL`}
+                                    value={view.search}
+                                    onChange={(event) => view.onSearchChange(event.target.value)}
+                                />
+                            </label>
                             <div className="result-popover-anchor">
                                 <button
                                     ref={columnsTrigger}
+                                    className="result-icon-control"
                                     type="button"
-                                    title="Show or hide columns for this result"
+                                    aria-label="Show columns"
+                                    title="Columns"
                                     aria-expanded={columnsOpen}
                                     aria-haspopup="dialog"
                                     onClick={() => {
@@ -309,7 +326,7 @@ export default function QueryResultsSection({
                                         setExportOpen(false);
                                     }}
                                 >
-                                    Show columns
+                                    <IconGlyph icon="columns" />
                                 </button>
                                 {columnsOpen && (
                                     <ResultPopover
@@ -342,9 +359,10 @@ export default function QueryResultsSection({
                                 )}
                             </div>
                             <label
-                                className="result-density"
-                                title="Change row height and vertical padding"
+                                className="result-density result-icon-control"
+                                title={`Row density: ${view.density === 'compact' ? 'Compact' : 'Comfortable'}`}
                             >
+                                <IconGlyph icon={view.density} />
                                 <select
                                     aria-label="Density"
                                     value={view.density}
@@ -363,8 +381,10 @@ export default function QueryResultsSection({
                     <div className="result-popover-anchor">
                         <button
                             ref={exportTrigger}
+                            className="result-icon-control"
+                            aria-label="Export"
                             type="button"
-                            title="Export results"
+                            title="Export"
                             aria-expanded={exportOpen}
                             aria-haspopup="dialog"
                             onClick={() => {
@@ -374,7 +394,6 @@ export default function QueryResultsSection({
                             }}
                         >
                             <IconGlyph icon="download" />
-                            Export
                         </button>
                         {exportOpen && (
                             <ResultPopover
@@ -431,12 +450,9 @@ export default function QueryResultsSection({
                     </div>
                     <button
                         type="button"
-                        className="result-expand"
-                        title={
-                            expanded
-                                ? 'Restore editor (Esc)'
-                                : 'Expand results; temporarily hide SQL editor'
-                        }
+                        className="result-expand result-icon-control"
+                        aria-label={expanded ? 'Restore' : 'Expand'}
+                        title={expanded ? 'Restore editor (Esc)' : 'Expand'}
                         aria-pressed={expanded}
                         onClick={onToggleExpanded}
                     >
@@ -455,7 +471,6 @@ export default function QueryResultsSection({
                                 }
                             />
                         </svg>
-                        {expanded ? 'Restore' : 'Expand'}
                     </button>
                     <div className="result-popover-anchor">
                         <button
@@ -629,48 +644,54 @@ export default function QueryResultsSection({
                         <span>Run a query to see results</span>
                     )}
                 </div>
-                {panel === 'results' && hasTable && (
-                    <div className="result-pagination">
-                        <label>
-                            Show rows{' '}
-                            <select
-                                aria-label="Show rows"
-                                title="Rows displayed per page, independent of query limit"
-                                value={resultsPageSize}
-                                onChange={(event) =>
-                                    view.onResultsPageSizeChange(Number(event.target.value))
-                                }
-                            >
-                                {[10, 100, 250, 500, 1000].map((size) => (
-                                    <option key={size} value={size}>
-                                        {size}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        <button
-                            type="button"
-                            aria-label="Previous Page"
-                            title="Previous page"
-                            onClick={view.onLoadPreviousResults}
-                            disabled={!tab.previousPageTokens.length}
-                        >
-                            ‹
-                        </button>
-                        <span>
-                            {page} of {pages}
-                        </span>
-                        <button
-                            type="button"
-                            aria-label="Next Page"
-                            title="Next page"
-                            onClick={view.onLoadNextResults}
-                            disabled={!tab.nextPageToken}
-                        >
-                            ›
-                        </button>
-                    </div>
-                )}
+                {panel === 'results' &&
+                    hasTable &&
+                    (hasOtherPages || tab.rowCount > pageSizes[0]) && (
+                        <div className="result-pagination">
+                            <label>
+                                Rows per page{' '}
+                                <select
+                                    aria-label="Show rows"
+                                    title="Rows displayed per page, independent of query limit"
+                                    value={resultsPageSize}
+                                    onChange={(event) =>
+                                        view.onResultsPageSizeChange(Number(event.target.value))
+                                    }
+                                >
+                                    {pageSizes.map((size) => (
+                                        <option key={size} value={size}>
+                                            {size}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            {hasOtherPages && (
+                                <>
+                                    <button
+                                        type="button"
+                                        aria-label="Previous Page"
+                                        title="Previous page"
+                                        onClick={view.onLoadPreviousResults}
+                                        disabled={!tab.previousPageTokens.length}
+                                    >
+                                        ‹
+                                    </button>
+                                    <span>
+                                        {page} of {pages}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        aria-label="Next Page"
+                                        title="Next page"
+                                        onClick={view.onLoadNextResults}
+                                        disabled={!tab.nextPageToken}
+                                    >
+                                        ›
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
             </div>
             {tab.errorMessage && (
                 <div className="result-error" role="alert">
@@ -771,38 +792,46 @@ export default function QueryResultsSection({
                     </div>
                 ) : panel === 'stats' ? (
                     <div className="result-stats-panel">
-                        {stats.length ? (
-                            <dl>
-                                {stats.map(([label, value]) => (
-                                    <div key={label}>
-                                        <dt>{label}</dt>
-                                        <dd>{value}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        ) : (
-                            <p>Execution metrics will appear when available.</p>
+                        {(tab.submittedAt || tab.startedAt || tab.completedAt) && (
+                            <section>
+                                <h4>Timeline</h4>
+                                <dl>
+                                    {[
+                                        ['Submitted', tab.submittedAt],
+                                        ['Started', tab.startedAt],
+                                        ['Completed', tab.completedAt]
+                                    ].map(
+                                        ([label, timestamp]) =>
+                                            timestamp && (
+                                                <div key={label}>
+                                                    <dt>{label}</dt>
+                                                    <dd>{formatExecutionTimestamp(timestamp)}</dd>
+                                                </div>
+                                            )
+                                    )}
+                                </dl>
+                            </section>
                         )}
-                        {(tab.submittedAt || tab.completedAt) && (
-                            <dl className="result-stats-timeline">
-                                {tab.submittedAt && (
-                                    <div>
-                                        <dt>Submitted</dt>
-                                        <dd>{formatExecutionTimestamp(tab.submittedAt)}</dd>
-                                    </div>
-                                )}
-                                {tab.completedAt && (
-                                    <div>
-                                        <dt>Completed</dt>
-                                        <dd>{formatExecutionTimestamp(tab.completedAt)}</dd>
-                                    </div>
-                                )}
-                            </dl>
+                        {stats.length > 0 && (
+                            <section>
+                                <h4>Execution details</h4>
+                                <dl>
+                                    {stats.map(([label, value]) => (
+                                        <div key={label}>
+                                            <dt>{label}</dt>
+                                            <dd>{value}</dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </section>
                         )}
-                        <p className="result-stats-note">
-                            <IconGlyph icon="info" />
-                            Additional engine metrics were not reported for this execution.
-                        </p>
+                        {!stats.length &&
+                            !tab.submittedAt &&
+                            !tab.startedAt &&
+                            !tab.completedAt &&
+                            !tab.scriptSummary && (
+                                <p>Execution details will appear when available.</p>
+                            )}
                         {tab.scriptSummary && (
                             <details className="script-summary">
                                 <summary>
@@ -1000,18 +1029,22 @@ export default function QueryResultsSection({
                             )}
                             {!columns.length && (
                                 <p className="result-empty-state">
-                                    All columns are hidden. Restore them using Show columns.
+                                    All columns are hidden. Restore them using Columns.
                                 </p>
                             )}
                         </div>
-                        <footer className="result-table-footer">
-                            <span>
-                                {view.search
-                                    ? `${loadedRows.length} matching rows on this page`
-                                    : `Showing ${tab.resultRows.length ? formatCount(pageOffset + 1) : '0'}–${formatCount(pageOffset + tab.resultRows.length)} of ${countLabel(tab.rowCount, 'row')}`}
-                            </span>
-                            <span>Search and sorting apply to the loaded page only</span>
-                        </footer>
+                        {(hasOtherPages || view.search) && (
+                            <footer className="result-table-footer">
+                                <span>
+                                    {view.search
+                                        ? `${loadedRows.length} matching rows on this page`
+                                        : `Showing ${tab.resultRows.length ? formatCount(pageOffset + 1) : '0'}–${formatCount(pageOffset + tab.resultRows.length)} of ${countLabel(tab.rowCount, 'row')}`}
+                                </span>
+                                {hasOtherPages && (
+                                    <span>Search and sorting apply to the loaded page only</span>
+                                )}
+                            </footer>
+                        )}
                     </div>
                 ) : (
                     <div className="result-empty-state">
@@ -1025,7 +1058,7 @@ export default function QueryResultsSection({
                                 ? 'Execution failed. Review the error above and available Stats.'
                                 : tab.executionId
                                   ? 'No result set available.'
-                                  : 'Execute a statement or script to inspect its results.'}
+                                  : 'Run a query to see results.'}
                     </div>
                 )}
             </div>

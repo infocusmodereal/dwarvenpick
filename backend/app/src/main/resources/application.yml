@@ -71,6 +71,7 @@ dwarvenpick:
     retention-cleanup-interval-ms: 3600000
     active-execution-stale-seconds: ${DWARVENPICK_QUERY_ACTIVE_EXECUTION_STALE_SECONDS:120}
     pool-metrics-stale-seconds: 120
+    require-admin-profile-justification: ${DWARVENPICK_QUERY_REQUIRE_ADMIN_PROFILE_JUSTIFICATION:false}
     require-write-justification: ${DWARVENPICK_QUERY_REQUIRE_WRITE_JUSTIFICATION:false}
     max-justification-length: ${DWARVENPICK_QUERY_MAX_JUSTIFICATION_LENGTH:1000}
   resources:
