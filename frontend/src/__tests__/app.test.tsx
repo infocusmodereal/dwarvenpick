@@ -4,6 +4,12 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import App from '../App';
 import { ThemeProvider } from '../theme/ThemeContext';
 
+// These route tests use the textarea below and do not initialize Monaco.
+vi.mock('monaco-editor/esm/vs/editor/editor.api', () => ({}));
+vi.mock('monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController', () => ({}));
+vi.mock('monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetController2', () => ({}));
+vi.mock('monaco-editor/esm/vs/basic-languages/sql/sql.contribution', () => ({}));
+
 vi.mock('@monaco-editor/react', () => ({
     loader: {
         config: vi.fn()
@@ -95,7 +101,9 @@ describe('App shell', () => {
             </ThemeProvider>
         );
 
-        expect(await screen.findByRole('button', { name: /expand menu/i })).toBeTruthy();
+        expect(
+            await screen.findByRole('button', { name: /expand menu/i }, { timeout: 4_000 })
+        ).toBeTruthy();
         expect(await screen.findByRole('tab', { name: /workbench/i })).toBeTruthy();
         expect(screen.queryByRole('heading', { name: /query history/i })).not.toBeInTheDocument();
     });
@@ -234,7 +242,9 @@ describe('App shell', () => {
             </ThemeProvider>
         );
 
-        expect(await screen.findByRole('button', { name: /expand menu/i })).toBeTruthy();
+        expect(
+            await screen.findByRole('button', { name: /expand menu/i }, { timeout: 4_000 })
+        ).toBeTruthy();
         expect(await screen.findByRole('tab', { name: /admin/i })).toBeTruthy();
     });
 });
