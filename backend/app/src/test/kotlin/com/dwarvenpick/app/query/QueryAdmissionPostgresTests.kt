@@ -475,6 +475,42 @@ class QueryAdmissionPostgresTests {
         }
     }
 
+    @Test
+    fun `postgres read with generate series returns real rows and expression values`() {
+        val actor = "postgres-cursor-user"
+        val manager =
+            newManager(
+                "postgres-cursor-worker",
+                properties = queryExecutionProperties.copy(simulateFixtureQueries = false),
+            )
+        try {
+            val submitted =
+                manager.submitQuery(
+                    actor,
+                    null,
+                    QueryExecutionRequest(
+                        datasourceId = registerPostgresDatasource(),
+                        sql = "select n, current_setting('transaction_read_only') from generate_series(1,1001) n",
+                    ),
+                    defaultPolicy().copy(maxRowsPerQuery = 1100),
+                )
+            waitForTerminalStatus(manager, actor, submitted.executionId)
+            val firstPage = manager.getQueryResults(actor, false, submitted.executionId, QueryResultsRequest(pageSize = 1000))
+            val lastPage =
+                manager.getQueryResults(
+                    actor,
+                    false,
+                    submitted.executionId,
+                    QueryResultsRequest(pageToken = firstPage.nextPageToken),
+                )
+            assertThat(firstPage.rows).hasSize(1000)
+            assertThat(firstPage.rows.first()).containsExactly("1", "on")
+            assertThat(lastPage.rows).containsExactly(listOf("1001", "on"))
+        } finally {
+            manager.shutdownGracefully()
+        }
+    }
+
     private fun heldActorLock(actor: String): Connection {
         val connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
         connection.autoCommit = false
@@ -530,13 +566,14 @@ class QueryAdmissionPostgresTests {
     private fun newManager(
         instanceValue: String,
         auditLogger: AuthAuditLogger = authAuditLogger,
+        properties: QueryExecutionProperties = queryExecutionProperties,
     ): QueryExecutionManager {
         val requesterInstanceId = mock(ApplicationInstanceId::class.java)
         `when`(requesterInstanceId.value).thenReturn(instanceValue)
         return QueryExecutionManager(
             datasourcePoolManager = datasourcePoolManager,
             authAuditLogger = auditLogger,
-            queryExecutionProperties = queryExecutionProperties,
+            queryExecutionProperties = properties,
             queryJustificationPolicy = queryJustificationPolicy,
             queryExecutionLimitPolicy = queryExecutionLimitPolicy,
             queryHistoryRepository = queryHistoryRepository,

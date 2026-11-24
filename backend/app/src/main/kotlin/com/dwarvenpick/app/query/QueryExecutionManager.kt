@@ -994,7 +994,7 @@ class QueryExecutionManager(
     }
 
     private fun executeSql(record: QueryExecutionRecord) {
-        if (shouldUseSimulation(record.sql)) {
+        if (queryExecutionProperties.simulateFixtureQueries && shouldUseSimulation(record.sql)) {
             executeSqlInSimulation(record)
             return
         }

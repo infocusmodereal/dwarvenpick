@@ -34,4 +34,5 @@ data class QueryExecutionProperties(
     val requireAdminProfileJustification: Boolean = false,
     val requireWriteJustification: Boolean = false,
     val maxJustificationLength: Int = 1000,
+    val simulateFixtureQueries: Boolean = false,
 )
