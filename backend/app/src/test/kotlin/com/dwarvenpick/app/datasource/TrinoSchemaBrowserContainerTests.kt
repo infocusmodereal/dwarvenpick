@@ -76,6 +76,22 @@ class TrinoSchemaBrowserContainerTests {
         val queriesBeforeCacheHit = optimizedQueries.size
         assertThat(optimized.fetchSchema("trino", "reader", false).cached).isTrue()
         assertThat(optimizedQueries.size).isEqualTo(queriesBeforeCacheHit)
+        optimizedQueries.clear()
+        val inventory = optimized.fetchSchema("trino", "reader", true, selection = SchemaBrowserSelection(includeColumns = false))
+        assertThat(optimizedQueries.size).isEqualTo(1 + inventory.schemas.size)
+        assertThat(inventory.schemas.flatMap { it.tables }.flatMap { it.columns }).isEmpty()
+
+        val selection = SchemaBrowserSelection(table = SchemaBrowserTable("tiny", "orders"))
+        optimizedQueries.clear()
+        val table =
+            optimized
+                .fetchSchema("trino", "reader", false, selection = selection)
+                .schemas
+                .single()
+                .tables
+                .single()
+        assertThat(table.columns.map { it.name }).contains("orderkey")
+        assertThat(optimizedQueries).hasSize(1)
         println("TRINO_METADATA medianLegacyMs=${legacyTimes.sorted()[1]} medianOptimizedMs=${optimizedTimes.sorted()[1]}")
     }
 

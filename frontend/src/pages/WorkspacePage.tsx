@@ -29,6 +29,7 @@ import BrandMark from '../components/BrandMark';
 import WorkspaceLoadingScreen from '../components/WorkspaceLoadingScreen';
 import CredentialProfilePolicyControl from '../workbench/components/CredentialProfilePolicyControl';
 import ExplorerControls from '../workbench/components/ExplorerControls';
+import ExplorerTree from '../workbench/sections/ExplorerTree';
 import InlineNotice, { type InlineNoticeTone } from '../workbench/components/InlineNotice';
 import ObjectInspectorSectionContent from '../workbench/components/ObjectInspectorSectionContent';
 import QueryTabsBar from '../workbench/components/QueryTabsBar';
@@ -46,7 +47,6 @@ import type {
     AdminUserResponse,
     ApiErrorResponse,
     AuthMethodsResponse,
-    AutocompleteDiagnostics,
     CatalogDatasourceResponse,
     ConnectionAuthentication,
     ConnectionEditorMode,
@@ -94,8 +94,7 @@ import {
     firstPageToken,
     protectedGroupIds,
     queryStatusPollingIntervalMs,
-    queryStatusPollingMaxAttempts,
-    sqlKeywordSuggestions
+    queryStatusPollingMaxAttempts
 } from '../workbench/constants';
 import {
     adminIdentifierPattern,
@@ -119,13 +118,12 @@ import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useAuditEvents } from '../workbench/useAuditEvents';
 import { useSchemaBrowser } from '../workbench/useSchemaBrowser';
 import { useQueryHistory } from '../workbench/useQueryHistory';
+import { useSqlAutocomplete } from '../workbench/useSqlAutocomplete';
 import { useHistoryEntryActions } from '../workbench/useHistoryEntryActions';
 import { useQueryResultsWorkflow } from '../workbench/useQueryResultsWorkflow';
 import { buildWorkspaceTab, useWorkspaceTabs } from '../workbench/useWorkspaceTabs';
 import {
     ExplorerIcon,
-    ExplorerInspectIcon,
-    ExplorerInsertIcon,
     ExplorerRefreshIcon,
     IconButton,
     IconGlyph,
@@ -186,23 +184,6 @@ const parsePxValue = (rawValue: string, fallback: number): number => {
     const parsed = Number(match ? match[1] : trimmed);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
-
-const buildInitialAutocompleteDiagnostics = (): AutocompleteDiagnostics => ({
-    enabled: false,
-    monacoReady: false,
-    editorMounted: false,
-    modelLanguageId: '',
-    availableLanguageIds: [],
-    registeredLanguageIds: [],
-    suggestionSeedCount: 0,
-    triggerCount: 0,
-    providerInvocationCount: 0,
-    lastSuggestionCount: 0,
-    lastTriggerSource: '',
-    lastTriggerAt: '',
-    lastInvocationAt: '',
-    lastError: ''
-});
 
 const buildBlankDatasourceForm = (
     engine: DatasourceEngine = 'POSTGRESQL'
@@ -358,16 +339,6 @@ const DetailsSummary = ({ children }: { children: ReactNode }) => (
     </summary>
 );
 
-const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
-    <span
-        className="explorer-icon-glyph"
-        aria-hidden
-        dangerouslySetInnerHTML={{
-            __html: expanded ? chevronDownIcon : chevronRightIcon
-        }}
-    />
-);
-
 const mavenDriverPresetDetails: Record<
     MavenDriverPreset,
     { groupId: string; artifactId: string; driverClass: string }
@@ -404,21 +375,6 @@ const mavenDriverPresetDetails: Record<
     }
 };
 
-function systemSchemasForEngine(engine?: string): string[] {
-    switch (engine?.toUpperCase()) {
-        case 'MYSQL':
-        case 'MARIADB':
-            return ['information_schema', 'performance_schema', 'mysql', 'sys'];
-        case 'POSTGRESQL':
-            return ['information_schema', 'pg_catalog', 'pg_toast'];
-        case 'STARROCKS':
-            return ['information_schema', 'sys', '_statistics_'];
-        case 'TRINO':
-            return ['information_schema'];
-        default:
-            return [];
-    }
-}
 export default function WorkspacePage() {
     const navigate = useNavigate();
     const { theme, toggleTheme } = useTheme();
@@ -442,7 +398,6 @@ export default function WorkspacePage() {
     } = useWorkspaceTabs(visibleDatasources);
     const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
-    const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const queryStatusPollingTimersRef = useRef<
         Record<string, ReturnType<typeof setTimeout> | undefined>
     >({});
@@ -717,14 +672,6 @@ export default function WorkspacePage() {
         top: number;
         left: number;
     } | null>(null);
-    const [expandedSystemGroups, setExpandedSystemGroups] = useState<Record<string, boolean>>({});
-    const [expandedExplorerSchemas, setExpandedExplorerSchemas] = useState<Record<string, boolean>>(
-        {}
-    );
-    const [expandedExplorerTables, setExpandedExplorerTables] = useState<Record<string, boolean>>(
-        {}
-    );
-    const [selectedExplorerNode, setSelectedExplorerNode] = useState('');
     const [explorerSearchQuery, setExplorerSearchQuery] = useState('');
     const [objectInspectorTarget, setObjectInspectorTarget] = useState<{
         datasourceId: string;
@@ -740,9 +687,6 @@ export default function WorkspacePage() {
     const [objectInspectorActiveSectionId, setObjectInspectorActiveSectionId] = useState('ddl');
     const [monacoReady, setMonacoReady] = useState(false);
     const [monacoLoadTimedOut, setMonacoLoadTimedOut] = useState(false);
-    const [autocompleteDiagnostics, setAutocompleteDiagnostics] = useState<AutocompleteDiagnostics>(
-        () => buildInitialAutocompleteDiagnostics()
-    );
     const [editorRenderKey, setEditorRenderKey] = useState(0);
     const [showEditorShortcuts, setShowEditorShortcuts] = useState(false);
     const editorShortcutsPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -762,12 +706,23 @@ export default function WorkspacePage() {
         selectedLines: 0
     });
 
+    const explorerMetadata = useSchemaBrowser({
+        datasourceId: activeTab?.datasourceId ?? '',
+        searchActive: explorerSearchQuery.trim().length > 0,
+        readFriendlyError,
+        setDatasourceHealthById
+    });
     const { schemaBrowser, loadingSchemaBrowser, schemaBrowserError, loadSchemaBrowser } =
-        useSchemaBrowser({
-            datasourceId: activeTab?.datasourceId ?? '',
-            readFriendlyError,
-            setDatasourceHealthById
-        });
+        explorerMetadata;
+
+    const { autocompleteDiagnostics, setAutocompleteDiagnostics } = useSqlAutocomplete({
+        datasourceId: activeTab?.datasourceId,
+        editorRef,
+        monacoRef,
+        monacoReady,
+        schemaBrowser,
+        visibleDatasources
+    });
 
     const isSystemAdmin = currentUser?.roles.includes('SYSTEM_ADMIN') ?? false;
     const localAuthEnabled = authMethods.includes('local');
@@ -1213,7 +1168,7 @@ export default function WorkspacePage() {
                 }));
             }
         },
-        []
+        [setAutocompleteDiagnostics]
     );
 
     useEffect(() => {
@@ -1562,97 +1517,6 @@ export default function WorkspacePage() {
 
         return Array.from(uniqueSchemas).sort((left, right) => left.localeCompare(right));
     }, [schemaBrowser]);
-    const explorerSearchNormalized = useMemo(
-        () => explorerSearchQuery.trim().toLowerCase(),
-        [explorerSearchQuery]
-    );
-    const filteredSchemaBrowser = useMemo(() => {
-        if (!schemaBrowser || !explorerSearchNormalized) {
-            return schemaBrowser;
-        }
-
-        const filteredSchemas = schemaBrowser.schemas.flatMap((schemaEntry) => {
-            const schemaName = schemaEntry.schema ?? '';
-            const schemaMatches = schemaName.toLowerCase().includes(explorerSearchNormalized);
-            if (schemaMatches) {
-                return [
-                    {
-                        ...schemaEntry
-                    }
-                ];
-            }
-
-            const filteredTables = schemaEntry.tables.flatMap((tableEntry) => {
-                const tableMatches = tableEntry.table
-                    .toLowerCase()
-                    .includes(explorerSearchNormalized);
-
-                if (tableMatches) {
-                    return [
-                        {
-                            ...tableEntry
-                        }
-                    ];
-                }
-
-                const filteredColumns = tableEntry.columns.filter((column) =>
-                    column.name.toLowerCase().includes(explorerSearchNormalized)
-                );
-                if (filteredColumns.length === 0) {
-                    return [];
-                }
-
-                return [
-                    {
-                        ...tableEntry,
-                        columns: filteredColumns
-                    }
-                ];
-            });
-
-            if (filteredTables.length === 0) {
-                return [];
-            }
-
-            return [
-                {
-                    ...schemaEntry,
-                    tables: filteredTables
-                }
-            ];
-        });
-
-        return {
-            ...schemaBrowser,
-            schemas: filteredSchemas
-        };
-    }, [explorerSearchNormalized, schemaBrowser]);
-    const renderExplorerMatch = useCallback(
-        (label: string): ReactNode => {
-            if (!explorerSearchNormalized) {
-                return label;
-            }
-
-            const normalizedLabel = label.toLowerCase();
-            const matchIndex = normalizedLabel.indexOf(explorerSearchNormalized);
-            if (matchIndex < 0) {
-                return label;
-            }
-
-            const before = label.slice(0, matchIndex);
-            const match = label.slice(matchIndex, matchIndex + explorerSearchNormalized.length);
-            const after = label.slice(matchIndex + explorerSearchNormalized.length);
-
-            return (
-                <>
-                    {before}
-                    <span className="explorer-highlight">{match}</span>
-                    {after}
-                </>
-            );
-        },
-        [explorerSearchNormalized]
-    );
     const appVersionLabel = useMemo(() => {
         const normalized = appVersion.trim();
         if (!normalized || normalized === 'unknown') {
@@ -3074,50 +2938,6 @@ export default function WorkspacePage() {
     }, [adminSuccess, isSystemAdmin, loadAuditEvents]);
 
     useEffect(() => {
-        if (!schemaBrowser) {
-            return;
-        }
-
-        const datasourceKey = `datasource:${schemaBrowser.datasourceId}`;
-        setExpandedExplorerSchemas((current) => {
-            const next = { ...current };
-            schemaBrowser.schemas.forEach((schemaEntry) => {
-                const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
-                if (next[schemaKey] === undefined) {
-                    next[schemaKey] =
-                        schemaEntry.schema ===
-                        (activeTab?.schema ||
-                            schemaBrowser.schemas.find(
-                                (entry) =>
-                                    !systemSchemasForEngine(selectedDatasource?.engine).includes(
-                                        entry.schema.toLowerCase()
-                                    )
-                            )?.schema);
-                }
-            });
-            return next;
-        });
-
-        setExpandedExplorerTables((current) => {
-            const next = { ...current };
-            schemaBrowser.schemas.forEach((schemaEntry) => {
-                const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
-                schemaEntry.tables.forEach((tableEntry) => {
-                    const tableKey = `${schemaKey}:table:${tableEntry.table}`;
-                    if (next[tableKey] === undefined) {
-                        next[tableKey] = false;
-                    }
-                });
-            });
-            return next;
-        });
-
-        setSelectedExplorerNode((current) =>
-            current ? current : `datasource:${schemaBrowser.datasourceId}`
-        );
-    }, [schemaBrowser, activeTab?.schema, selectedDatasource?.engine]);
-
-    useEffect(() => {
         if (!currentUser) {
             return;
         }
@@ -3134,268 +2954,6 @@ export default function WorkspacePage() {
 
         void loadResourceVersions(editingResourceId);
     }, [currentUser, editingResourceId, loadResourceVersions, resourceEditorMode]);
-
-    useEffect(() => {
-        completionProviderRef.current?.dispose();
-        completionProviderRef.current = null;
-
-        const monaco = monacoRef.current;
-        const activeModelLanguageId = editorRef.current?.getModel()?.getLanguageId() ?? '';
-        if (!monaco || !monacoReady) {
-            setAutocompleteDiagnostics((current) => ({
-                ...current,
-                enabled: false,
-                monacoReady,
-                editorMounted: Boolean(editorRef.current),
-                modelLanguageId: activeModelLanguageId,
-                availableLanguageIds: [],
-                registeredLanguageIds: [],
-                suggestionSeedCount: 0,
-                lastSuggestionCount: 0,
-                lastError: monacoReady
-                    ? 'Monaco API is not initialized for autocomplete registration.'
-                    : 'Monaco editor is still loading.'
-            }));
-            return;
-        }
-
-        type CompletionSeed = Omit<MonacoModule.languages.CompletionItem, 'range'>;
-        const suggestions = new Map<string, CompletionSeed>();
-        const putSuggestion = (item: CompletionSeed) => {
-            const normalizedInsertText =
-                typeof item.insertText === 'string' ? item.insertText : String(item.label);
-            const key = `${String(item.label)}::${item.kind}::${normalizedInsertText}`;
-            if (!suggestions.has(key)) {
-                suggestions.set(key, item);
-            }
-        };
-
-        sqlKeywordSuggestions.forEach((keyword) => {
-            putSuggestion({
-                label: keyword,
-                insertText: keyword,
-                kind: monaco.languages.CompletionItemKind.Keyword,
-                detail: 'SQL keyword',
-                sortText: `0-${keyword}`
-            });
-        });
-
-        visibleDatasources.forEach((datasource) => {
-            putSuggestion({
-                label: datasource.name,
-                insertText: datasource.id,
-                kind: monaco.languages.CompletionItemKind.Module,
-                detail: `Connection (${datasource.engine})`,
-                sortText: `3-${datasource.name.toLowerCase()}`
-            });
-        });
-
-        if (schemaBrowser && schemaBrowser.datasourceId === activeTab?.datasourceId) {
-            schemaBrowser.schemas.forEach((schemaEntry) => {
-                putSuggestion({
-                    label: schemaEntry.schema,
-                    insertText: schemaEntry.schema,
-                    kind: monaco.languages.CompletionItemKind.Module,
-                    detail: 'Schema',
-                    sortText: `1-${schemaEntry.schema.toLowerCase()}`
-                });
-
-                schemaEntry.tables.forEach((tableEntry) => {
-                    const qualifiedTableName = `${schemaEntry.schema}.${tableEntry.table}`;
-                    putSuggestion({
-                        label: qualifiedTableName,
-                        insertText: qualifiedTableName,
-                        kind: monaco.languages.CompletionItemKind.Class,
-                        detail: `${tableEntry.type} table`,
-                        sortText: `1-${qualifiedTableName.toLowerCase()}`
-                    });
-                    putSuggestion({
-                        label: tableEntry.table,
-                        insertText: tableEntry.table,
-                        kind: monaco.languages.CompletionItemKind.Class,
-                        detail: `${tableEntry.type} table in ${schemaEntry.schema}`,
-                        sortText: `1-${tableEntry.table.toLowerCase()}`
-                    });
-
-                    tableEntry.columns.forEach((columnEntry) => {
-                        const tableColumnName = `${tableEntry.table}.${columnEntry.name}`;
-                        const qualifiedColumnName = `${qualifiedTableName}.${columnEntry.name}`;
-                        putSuggestion({
-                            label: columnEntry.name,
-                            insertText: columnEntry.name,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            detail: `${schemaEntry.schema}.${tableEntry.table} (${columnEntry.jdbcType})`,
-                            sortText: `2-${columnEntry.name.toLowerCase()}`
-                        });
-                        putSuggestion({
-                            label: tableColumnName,
-                            insertText: tableColumnName,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            detail: `${tableEntry.type} column`,
-                            sortText: `2-${tableColumnName.toLowerCase()}`
-                        });
-                        putSuggestion({
-                            label: qualifiedColumnName,
-                            insertText: qualifiedColumnName,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            detail: columnEntry.jdbcType,
-                            sortText: `2-${qualifiedColumnName.toLowerCase()}`
-                        });
-                    });
-                });
-            });
-        }
-
-        const completionItems = Array.from(suggestions.values());
-        const labelToString = (label: CompletionSeed['label']): string =>
-            typeof label === 'string' ? label : label.label;
-        completionItems.sort((left, right) => {
-            const leftSortKey = left.sortText ?? '';
-            const rightSortKey = right.sortText ?? '';
-            if (leftSortKey !== rightSortKey) {
-                return leftSortKey.localeCompare(rightSortKey);
-            }
-
-            return labelToString(left.label)
-                .toLowerCase()
-                .localeCompare(labelToString(right.label).toLowerCase());
-        });
-        const availableLanguageIds = new Set(
-            monaco.languages.getLanguages().map((language) => language.id)
-        );
-        const preferredLanguageIds = [
-            activeModelLanguageId,
-            'sql',
-            'plaintext',
-            'mysql',
-            'mariadb',
-            'pgsql',
-            'postgres',
-            'postgresql',
-            'trino',
-            'starrocks',
-            'vertica'
-        ].filter((languageId): languageId is string => Boolean(languageId));
-        const completionLanguageIds = Array.from(new Set(preferredLanguageIds));
-        if (completionLanguageIds.length === 0) {
-            completionLanguageIds.push(activeModelLanguageId || 'sql');
-        }
-
-        const providerErrors: string[] = [];
-        const registeredLanguageIds: string[] = [];
-        const providerDisposables = completionLanguageIds
-            .map((languageId) => {
-                try {
-                    const provider = monaco.languages.registerCompletionItemProvider(languageId, {
-                        triggerCharacters: ['.', '(', ',', '_'],
-                        provideCompletionItems(model, position) {
-                            const word = model.getWordUntilPosition(position);
-                            const range = {
-                                startLineNumber: position.lineNumber,
-                                endLineNumber: position.lineNumber,
-                                startColumn: word.startColumn,
-                                endColumn: word.endColumn
-                            };
-                            const normalizedWord = word.word.trim().toLowerCase();
-
-                            const linePrefix = model.getValueInRange({
-                                startLineNumber: position.lineNumber,
-                                startColumn: 1,
-                                endLineNumber: position.lineNumber,
-                                endColumn: position.column
-                            });
-                            const lastTypedChar = linePrefix.slice(-1);
-                            const inDotContext = lastTypedChar === '.';
-                            const inFromContext = /\b(from|join)\s+$/i.test(linePrefix);
-
-                            const contextualPool =
-                                inDotContext || inFromContext
-                                    ? completionItems.filter((candidate) => {
-                                          const sortKey = candidate.sortText ?? '';
-                                          if (inDotContext) {
-                                              return (
-                                                  sortKey.startsWith('1-') ||
-                                                  sortKey.startsWith('2-')
-                                              );
-                                          }
-
-                                          return sortKey.startsWith('1-');
-                                      })
-                                    : completionItems;
-
-                            const candidates = normalizedWord
-                                ? contextualPool.filter((candidate) =>
-                                      labelToString(candidate.label)
-                                          .toLowerCase()
-                                          .includes(normalizedWord)
-                                  )
-                                : contextualPool;
-                            const filteredSuggestions = candidates.slice(0, 500);
-                            const occurredAt = new Date().toISOString();
-                            setAutocompleteDiagnostics((current) => ({
-                                ...current,
-                                providerInvocationCount: current.providerInvocationCount + 1,
-                                lastInvocationAt: occurredAt,
-                                lastSuggestionCount: filteredSuggestions.length,
-                                lastError: ''
-                            }));
-
-                            return {
-                                suggestions: filteredSuggestions.map((suggestion) => ({
-                                    ...suggestion,
-                                    range
-                                }))
-                            };
-                        }
-                    });
-                    registeredLanguageIds.push(languageId);
-                    return provider;
-                } catch (error) {
-                    const message =
-                        error instanceof Error ? error.message : 'Unknown Monaco provider error.';
-                    providerErrors.push(
-                        `Provider registration failed for language "${languageId}": ${message}`
-                    );
-                    return null;
-                }
-            })
-            .filter(
-                (
-                    provider
-                ): provider is {
-                    dispose: () => void;
-                } => provider !== null
-            );
-
-        completionProviderRef.current = {
-            dispose: () => {
-                providerDisposables.forEach((provider) => provider.dispose());
-            }
-        };
-
-        const providerErrorMessage = providerErrors.join(' ');
-        setAutocompleteDiagnostics((current) => ({
-            ...current,
-            enabled: providerDisposables.length > 0,
-            monacoReady,
-            editorMounted: Boolean(editorRef.current),
-            modelLanguageId: activeModelLanguageId,
-            availableLanguageIds: Array.from(availableLanguageIds).sort(),
-            registeredLanguageIds,
-            suggestionSeedCount: completionItems.length,
-            lastSuggestionCount: completionItems.length,
-            lastError:
-                providerErrorMessage ||
-                (providerDisposables.length === 0
-                    ? 'No autocomplete providers were registered.'
-                    : '')
-        }));
-
-        return () => {
-            completionProviderRef.current?.dispose();
-            completionProviderRef.current = null;
-        };
-    }, [activeTab?.datasourceId, monacoReady, schemaBrowser, visibleDatasources]);
 
     const handleOpenNewTabForDatasource = useCallback(
         (datasourceId: string, initialSql = 'SELECT 1;') => {
@@ -4022,12 +3580,6 @@ export default function WorkspacePage() {
             }
         },
         [showWorkbenchNotice, writeTextToClipboard]
-    );
-
-    const renderExplorerNameHoverCard = (label: string): ReactNode => (
-        <span className="explorer-name-hover-card" role="tooltip">
-            <span className="explorer-name-hover-text">{label}</span>
-        </span>
     );
 
     useEffect(() => {
@@ -5169,8 +4721,6 @@ export default function WorkspacePage() {
             queryStatusPollingTimersRef.current = {};
             queryEventsRef.current?.close();
             queryEventsRef.current = null;
-            completionProviderRef.current?.dispose();
-            completionProviderRef.current = null;
             monacoRef.current = null;
         },
         []
@@ -6928,424 +6478,16 @@ export default function WorkspacePage() {
                                     {loadingSchemaBrowser && !schemaBrowser ? (
                                         <p className="explorer-empty">Loading explorer...</p>
                                     ) : null}
-                                    {filteredSchemaBrowser ? (
-                                        <ul className="explorer-tree explorer-root" role="tree">
-                                            {(() => {
-                                                const browser = filteredSchemaBrowser;
-                                                if (!browser) {
-                                                    return null;
-                                                }
-
-                                                const filterActive =
-                                                    explorerSearchNormalized.length > 0;
-                                                const datasourceKey = `datasource:${browser.datasourceId}`;
-                                                const systemNames = systemSchemasForEngine(
-                                                    selectedDatasource?.engine
-                                                );
-                                                const isSystem = (
-                                                    entry: (typeof browser.schemas)[number]
-                                                ) =>
-                                                    systemNames.includes(
-                                                        entry.schema.toLowerCase()
-                                                    );
-                                                const systemGroupOpen =
-                                                    filterActive ||
-                                                    !!expandedSystemGroups[datasourceKey];
-                                                const renderSchema = (
-                                                    schemaEntry: (typeof browser.schemas)[number]
-                                                ) => {
-                                                    const schemaKey = `${datasourceKey}:schema:${schemaEntry.schema}`;
-                                                    const schemaExpanded = filterActive
-                                                        ? true
-                                                        : (expandedExplorerSchemas[schemaKey] ??
-                                                          false);
-                                                    return (
-                                                        <li
-                                                            key={schemaKey}
-                                                            className="explorer-node explorer-depth-1"
-                                                        >
-                                                            <div
-                                                                className={
-                                                                    selectedExplorerNode ===
-                                                                    schemaKey
-                                                                        ? 'explorer-node-row selected'
-                                                                        : 'explorer-node-row'
-                                                                }
-                                                            >
-                                                                <button
-                                                                    type="button"
-                                                                    className="explorer-toggle"
-                                                                    onClick={() =>
-                                                                        setExpandedExplorerSchemas(
-                                                                            (current) => ({
-                                                                                ...current,
-                                                                                [schemaKey]:
-                                                                                    !schemaExpanded
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                    title={
-                                                                        schemaExpanded
-                                                                            ? 'Collapse schema'
-                                                                            : 'Expand schema'
-                                                                    }
-                                                                >
-                                                                    <ChevronIcon
-                                                                        expanded={schemaExpanded}
-                                                                    />
-                                                                </button>
-                                                                <div className="explorer-item">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="explorer-item-main"
-                                                                        onClick={() => {
-                                                                            setSelectedExplorerNode(
-                                                                                schemaKey
-                                                                            );
-                                                                            void handleCopyExplorerName(
-                                                                                schemaEntry.schema
-                                                                            );
-                                                                        }}
-                                                                        aria-label={`Copy ${schemaEntry.schema}`}
-                                                                    >
-                                                                        <span className="explorer-item-icon">
-                                                                            <ExplorerIcon glyph="schema" />
-                                                                        </span>
-                                                                        <span className="explorer-item-title">
-                                                                            {renderExplorerMatch(
-                                                                                schemaEntry.schema
-                                                                            )}
-                                                                        </span>
-                                                                    </button>
-                                                                    {renderExplorerNameHoverCard(
-                                                                        schemaEntry.schema
-                                                                    )}
-                                                                    <span className="explorer-item-tail">
-                                                                        <span
-                                                                            className="explorer-item-count"
-                                                                            title="Table count"
-                                                                        >
-                                                                            {
-                                                                                schemaEntry.tables
-                                                                                    .length
-                                                                            }
-                                                                        </span>
-                                                                        <button
-                                                                            type="button"
-                                                                            className="explorer-insert-button"
-                                                                            title="Insert schema name into editor"
-                                                                            aria-label={`Insert schema ${schemaEntry.schema}`}
-                                                                            onClick={(event) => {
-                                                                                event.stopPropagation();
-                                                                                handleInsertTextIntoActiveQuery(
-                                                                                    schemaEntry.schema
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            <ExplorerInsertIcon />
-                                                                        </button>
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                            {schemaExpanded ? (
-                                                                <ul className="explorer-children">
-                                                                    {schemaEntry.tables.map(
-                                                                        (tableEntry) => {
-                                                                            const tableKey = `${schemaKey}:table:${tableEntry.table}`;
-                                                                            const autoExpandTable =
-                                                                                filterActive &&
-                                                                                tableEntry.columns.some(
-                                                                                    (columnEntry) =>
-                                                                                        columnEntry.name
-                                                                                            .toLowerCase()
-                                                                                            .includes(
-                                                                                                explorerSearchNormalized
-                                                                                            )
-                                                                                );
-                                                                            const tableExpanded =
-                                                                                filterActive
-                                                                                    ? (expandedExplorerTables[
-                                                                                          tableKey
-                                                                                      ] ??
-                                                                                      autoExpandTable)
-                                                                                    : (expandedExplorerTables[
-                                                                                          tableKey
-                                                                                      ] ?? false);
-                                                                            return (
-                                                                                <li
-                                                                                    key={tableKey}
-                                                                                    className="explorer-node explorer-depth-2"
-                                                                                >
-                                                                                    <div
-                                                                                        className={
-                                                                                            selectedExplorerNode ===
-                                                                                            tableKey
-                                                                                                ? 'explorer-node-row selected'
-                                                                                                : 'explorer-node-row'
-                                                                                        }
-                                                                                    >
-                                                                                        {tableEntry
-                                                                                            .columns
-                                                                                            .length >
-                                                                                        0 ? (
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                className="explorer-toggle"
-                                                                                                onClick={() =>
-                                                                                                    setExpandedExplorerTables(
-                                                                                                        (
-                                                                                                            current
-                                                                                                        ) => ({
-                                                                                                            ...current,
-                                                                                                            [tableKey]:
-                                                                                                                !tableExpanded
-                                                                                                        })
-                                                                                                    )
-                                                                                                }
-                                                                                                title={
-                                                                                                    tableExpanded
-                                                                                                        ? 'Collapse table columns'
-                                                                                                        : 'Expand table columns'
-                                                                                                }
-                                                                                            >
-                                                                                                <ChevronIcon
-                                                                                                    expanded={
-                                                                                                        tableExpanded
-                                                                                                    }
-                                                                                                />
-                                                                                            </button>
-                                                                                        ) : (
-                                                                                            <span className="explorer-toggle-spacer" />
-                                                                                        )}
-                                                                                        <div className="explorer-item">
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                className="explorer-item-main"
-                                                                                                onClick={() => {
-                                                                                                    setSelectedExplorerNode(
-                                                                                                        tableKey
-                                                                                                    );
-                                                                                                    void handleCopyExplorerName(
-                                                                                                        tableEntry.table
-                                                                                                    );
-                                                                                                }}
-                                                                                                aria-label={`Copy ${tableEntry.table}`}
-                                                                                            >
-                                                                                                <span className="explorer-item-icon">
-                                                                                                    <ExplorerIcon glyph="table" />
-                                                                                                </span>
-                                                                                                <span className="explorer-item-title">
-                                                                                                    {renderExplorerMatch(
-                                                                                                        tableEntry.table
-                                                                                                    )}
-                                                                                                </span>
-                                                                                            </button>
-                                                                                            {renderExplorerNameHoverCard(
-                                                                                                tableEntry.table
-                                                                                            )}
-                                                                                            <span className="explorer-item-tail">
-                                                                                                <span
-                                                                                                    className="explorer-item-count"
-                                                                                                    title="Column count"
-                                                                                                >
-                                                                                                    {
-                                                                                                        tableEntry
-                                                                                                            .columns
-                                                                                                            .length
-                                                                                                    }
-                                                                                                </span>
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    className="explorer-inspect-button"
-                                                                                                    title="Inspect object details"
-                                                                                                    aria-label={`Inspect ${schemaEntry.schema}.${tableEntry.table}`}
-                                                                                                    onClick={(
-                                                                                                        event
-                                                                                                    ) => {
-                                                                                                        event.stopPropagation();
-                                                                                                        setSelectedExplorerNode(
-                                                                                                            tableKey
-                                                                                                        );
-                                                                                                        handleInspectExplorerObject(
-                                                                                                            schemaEntry.schema,
-                                                                                                            tableEntry.table,
-                                                                                                            tableEntry.type
-                                                                                                        );
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <ExplorerInspectIcon />
-                                                                                                </button>
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    className="explorer-insert-button"
-                                                                                                    title="Insert table reference into editor"
-                                                                                                    aria-label={`Insert table ${schemaEntry.schema}.${tableEntry.table}`}
-                                                                                                    onClick={(
-                                                                                                        event
-                                                                                                    ) => {
-                                                                                                        event.stopPropagation();
-                                                                                                        handleInsertTextIntoActiveQuery(
-                                                                                                            `${schemaEntry.schema}.${tableEntry.table}`
-                                                                                                        );
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <ExplorerInsertIcon />
-                                                                                                </button>
-                                                                                            </span>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    {tableExpanded &&
-                                                                                    tableEntry
-                                                                                        .columns
-                                                                                        .length >
-                                                                                        0 ? (
-                                                                                        <ul className="explorer-children">
-                                                                                            {tableEntry.columns.map(
-                                                                                                (
-                                                                                                    columnEntry
-                                                                                                ) => {
-                                                                                                    const columnKey = `${tableKey}:column:${columnEntry.name}`;
-                                                                                                    return (
-                                                                                                        <li
-                                                                                                            key={
-                                                                                                                columnKey
-                                                                                                            }
-                                                                                                            className="explorer-node explorer-depth-3"
-                                                                                                        >
-                                                                                                            <div
-                                                                                                                className={
-                                                                                                                    selectedExplorerNode ===
-                                                                                                                    columnKey
-                                                                                                                        ? 'explorer-node-row selected'
-                                                                                                                        : 'explorer-node-row'
-                                                                                                                }
-                                                                                                            >
-                                                                                                                <span className="explorer-toggle-spacer" />
-                                                                                                                <div className="explorer-item">
-                                                                                                                    <button
-                                                                                                                        type="button"
-                                                                                                                        className="explorer-item-main"
-                                                                                                                        onClick={() => {
-                                                                                                                            setSelectedExplorerNode(
-                                                                                                                                columnKey
-                                                                                                                            );
-                                                                                                                            void handleCopyExplorerName(
-                                                                                                                                columnEntry.name
-                                                                                                                            );
-                                                                                                                        }}
-                                                                                                                        aria-label={`Copy ${columnEntry.name}`}
-                                                                                                                    >
-                                                                                                                        <span className="explorer-item-icon">
-                                                                                                                            <ExplorerIcon glyph="column" />
-                                                                                                                        </span>
-                                                                                                                        <span className="explorer-item-title">
-                                                                                                                            {renderExplorerMatch(
-                                                                                                                                columnEntry.name
-                                                                                                                            )}
-                                                                                                                        </span>
-                                                                                                                    </button>
-                                                                                                                    {renderExplorerNameHoverCard(
-                                                                                                                        columnEntry.name
-                                                                                                                    )}
-                                                                                                                    <span className="explorer-item-tail">
-                                                                                                                        <span className="explorer-item-type">
-                                                                                                                            (
-                                                                                                                            {
-                                                                                                                                columnEntry.jdbcType
-                                                                                                                            }
-
-                                                                                                                            )
-                                                                                                                        </span>
-                                                                                                                        <button
-                                                                                                                            type="button"
-                                                                                                                            className="explorer-insert-button"
-                                                                                                                            title="Insert column name into editor"
-                                                                                                                            aria-label={`Insert column ${columnEntry.name}`}
-                                                                                                                            onClick={(
-                                                                                                                                event
-                                                                                                                            ) => {
-                                                                                                                                event.stopPropagation();
-                                                                                                                                handleInsertTextIntoActiveQuery(
-                                                                                                                                    columnEntry.name
-                                                                                                                                );
-                                                                                                                            }}
-                                                                                                                        >
-                                                                                                                            <ExplorerInsertIcon />
-                                                                                                                        </button>
-                                                                                                                    </span>
-                                                                                                                </div>
-                                                                                                            </div>
-                                                                                                        </li>
-                                                                                                    );
-                                                                                                }
-                                                                                            )}
-                                                                                        </ul>
-                                                                                    ) : null}
-                                                                                </li>
-                                                                            );
-                                                                        }
-                                                                    )}
-                                                                </ul>
-                                                            ) : null}
-                                                        </li>
-                                                    );
-                                                };
-                                                const systemSchemas =
-                                                    browser.schemas.filter(isSystem);
-                                                return (
-                                                    <>
-                                                        {browser.schemas.length === 0 && (
-                                                            <li className="explorer-empty">
-                                                                {filterActive
-                                                                    ? 'No matching objects.'
-                                                                    : 'No schemas discovered.'}
-                                                            </li>
-                                                        )}
-                                                        {browser.schemas
-                                                            .filter((entry) => !isSystem(entry))
-                                                            .map(renderSchema)}
-                                                        {systemSchemas.length > 0 && (
-                                                            <li>
-                                                                <button
-                                                                    type="button"
-                                                                    className="system-group"
-                                                                    aria-expanded={systemGroupOpen}
-                                                                    onClick={() =>
-                                                                        setExpandedSystemGroups(
-                                                                            (prev) => ({
-                                                                                ...prev,
-                                                                                [datasourceKey]:
-                                                                                    !systemGroupOpen
-                                                                            })
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <ChevronIcon
-                                                                        expanded={systemGroupOpen}
-                                                                    />
-                                                                    System schemas{' '}
-                                                                    <span>
-                                                                        {systemSchemas.length}
-                                                                    </span>
-                                                                </button>
-                                                                {systemGroupOpen && (
-                                                                    <ul>
-                                                                        {systemSchemas.map(
-                                                                            renderSchema
-                                                                        )}
-                                                                    </ul>
-                                                                )}
-                                                            </li>
-                                                        )}
-                                                    </>
-                                                );
-                                            })()}
-                                        </ul>
-                                    ) : (
-                                        <p className="explorer-empty">
-                                            Select a connection to browse schemas and tables.
-                                        </p>
-                                    )}
+                                    <ExplorerTree
+                                        key={activeTab?.datasourceId}
+                                        {...explorerMetadata}
+                                        engine={selectedDatasource?.engine}
+                                        activeSchema={activeTab?.schema}
+                                        search={explorerSearchQuery}
+                                        onCopy={handleCopyExplorerName}
+                                        onInsert={handleInsertTextIntoActiveQuery}
+                                        onInspect={handleInspectExplorerObject}
+                                    />
                                     <CredentialProfilePolicyControl
                                         datasource={selectedDatasource ?? undefined}
                                         ref={queryJustificationInputRef}

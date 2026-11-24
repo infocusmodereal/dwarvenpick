@@ -2,8 +2,10 @@ package com.dwarvenpick.app.rbac
 
 import com.dwarvenpick.app.auth.AuthenticatedPrincipalResolver
 import com.dwarvenpick.app.auth.ErrorResponse
+import com.dwarvenpick.app.datasource.SchemaBrowserSelection
 import com.dwarvenpick.app.datasource.SchemaBrowserService
 import com.dwarvenpick.app.datasource.SchemaBrowserStreamService
+import com.dwarvenpick.app.datasource.SchemaBrowserTable
 import com.dwarvenpick.app.datasource.SchemaBrowserUnavailableException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -35,6 +37,9 @@ class DatasourceController(
     fun streamSchemaBrowser(
         @PathVariable datasourceId: String,
         @RequestParam(required = false, defaultValue = "false") refresh: Boolean,
+        @RequestParam(defaultValue = "true") includeColumns: Boolean,
+        @RequestParam(required = false) schema: String?,
+        @RequestParam(required = false) table: String?,
         authentication: Authentication,
     ): ResponseEntity<StreamingResponseBody> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
@@ -49,18 +54,27 @@ class DatasourceController(
             } catch (ex: QueryAccessDeniedException) {
                 throw ResponseStatusException(HttpStatus.FORBIDDEN, "Datasource access denied for schema browser.")
             }
+        val selection =
+            try {
+                schemaSelection(includeColumns, schema, table)
+            } catch (exception: IllegalArgumentException) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, exception.message)
+            }
         return ResponseEntity
             .ok()
             .header("Content-Type", "application/json")
             .header("Cache-Control", "no-store")
             .header("X-Accel-Buffering", "no")
-            .body(schemaBrowserStreamService.stream(datasourceId, policy.credentialProfile, refresh))
+            .body(schemaBrowserStreamService.stream(datasourceId, policy.credentialProfile, refresh, selection))
     }
 
     @GetMapping("/{datasourceId}/schema-browser", params = ["stream!=true"])
     fun schemaBrowser(
         @PathVariable datasourceId: String,
         @RequestParam(required = false, defaultValue = "false") refresh: Boolean,
+        @RequestParam(defaultValue = "true") includeColumns: Boolean,
+        @RequestParam(required = false) schema: String?,
+        @RequestParam(required = false) table: String?,
         authentication: Authentication,
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
@@ -75,6 +89,7 @@ class DatasourceController(
                     datasourceId = datasourceId,
                     credentialProfile = policy.credentialProfile,
                     refresh = refresh,
+                    selection = schemaSelection(includeColumns, schema, table),
                 )
             ResponseEntity.ok(response)
         } catch (ex: DatasourceNotFoundException) {
@@ -100,5 +115,14 @@ class DatasourceController(
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse("Unable to load schema browser data right now."))
         }
+    }
+
+    private fun schemaSelection(
+        includeColumns: Boolean,
+        schema: String?,
+        table: String?,
+    ): SchemaBrowserSelection {
+        require((schema == null) == (table == null)) { "Schema and table must be provided together." }
+        return SchemaBrowserSelection(includeColumns, schema?.let { SchemaBrowserTable(it, requireNotNull(table)) })
     }
 }

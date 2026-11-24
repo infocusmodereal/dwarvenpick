@@ -118,6 +118,43 @@ describe('schema browser cancellation edge cases', () => {
         expect(result.current.schemaBrowser?.datasourceId).toBe('postgres');
     });
 
+    it('requests a single table and discards its columns on connection switch', async () => {
+        const { result, rerender, requests, fetchMock } = setup();
+        const responseWithColumns = (
+            columns: { name: string; jdbcType: string; nullable: boolean }[]
+        ) =>
+            ({
+                ok: true,
+                json: async () => ({
+                    datasourceId: 'trino',
+                    schemas: [
+                        {
+                            schema: 'sales',
+                            tables: [{ table: 'line_items', type: 'TABLE', columns }]
+                        }
+                    ]
+                })
+            }) as Response;
+        expect(fetchMock.mock.calls[0][0]).toContain('includeColumns=false');
+        await act(async () => requests[0].resolve(responseWithColumns([])));
+        act(() => {
+            void result.current.loadTableColumns('sales', 'line_items');
+            void result.current.loadTableColumns('sales', 'line_items');
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[1][0]).toContain('schema=sales&table=line_items');
+        rerender({ datasourceId: 'postgres' });
+        await act(async () => requests[2].resolve(response('postgres')));
+        await act(async () =>
+            requests[1].resolve(
+                responseWithColumns([{ name: 'id', jdbcType: 'bigint', nullable: false }])
+            )
+        );
+        expect(result.current.schemaBrowser?.datasourceId).toBe('postgres');
+        expect(result.current.columnStates).toEqual({});
+        expect(fetchMock.mock.calls[1][1]?.signal?.aborted).toBe(true);
+    });
+
     it('shows streamed server errors instead of treating them as metadata', async () => {
         const { result, requests } = setup();
         await act(async () =>

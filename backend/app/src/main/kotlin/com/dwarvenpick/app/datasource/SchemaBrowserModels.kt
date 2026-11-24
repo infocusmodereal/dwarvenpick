@@ -23,3 +23,18 @@ data class DatasourceColumnEntryResponse(
     val jdbcType: String,
     val nullable: Boolean,
 )
+
+data class SchemaBrowserTable(
+    val schema: String,
+    val table: String,
+) {
+    init {
+        require(schema.isNotBlank() && table.isNotBlank()) { "Schema and table names are required." }
+        require(listOf(schema, table).all { it.length <= 512 && it.none(Char::isISOControl) }) { "Invalid schema or table name." }
+    }
+}
+
+data class SchemaBrowserSelection(
+    val includeColumns: Boolean = true,
+    val table: SchemaBrowserTable? = null,
+)
