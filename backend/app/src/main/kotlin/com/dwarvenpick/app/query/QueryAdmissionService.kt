@@ -21,7 +21,8 @@ class QueryAdmissionService(
     fun reserve(
         record: PersistedQueryRuntimeRecord,
         actorLimit: Int,
-    ) {
+        allowReplay: Boolean = false,
+    ): PersistedQueryRuntimeMetadataRecord? {
         val limits =
             QueryAdmissionLimits(
                 actor = actorLimit,
@@ -32,8 +33,9 @@ class QueryAdmissionService(
         repeat(attempts) { attempt ->
             val staleCutoff =
                 Instant.now().minusSeconds(queryExecutionProperties.activeExecutionStaleSeconds.coerceAtLeast(60))
-            when (val decision = queryAdmissionRepository.tryReserve(record, limits, staleCutoff)) {
-                QueryAdmissionDecision.Admitted -> return
+            when (val decision = queryAdmissionRepository.tryReserve(record, limits, staleCutoff, allowReplay)) {
+                QueryAdmissionDecision.Admitted -> return null
+                is QueryAdmissionDecision.Replayed -> return decision.execution
                 QueryAdmissionDecision.Contended -> {
                     if (attempt < attempts - 1) {
                         sleepBeforeRetry(attempt)

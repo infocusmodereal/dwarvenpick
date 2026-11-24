@@ -90,3 +90,6 @@ data class QueryLifecycleSnapshot(
                 ?: 0
     }
 }
+
+internal const val LOST_QUERY_OUTCOME_MESSAGE =
+    "The backend stopped heartbeating. Verify the query outcome before retrying."

@@ -142,10 +142,11 @@ export const useQueryResultsWorkflow = ({
             compareResultValues(
                 left[resultSortState.columnIndex] ?? null,
                 right[resultSortState.columnIndex] ?? null,
-                resultSortState.direction
+                resultSortState.direction,
+                activeTab?.resultColumns[resultSortState.columnIndex]?.jdbcType ?? ''
             )
         );
-    }, [activeTab?.resultRows, resultSortState, search]);
+    }, [activeTab?.resultRows, activeTab?.resultColumns, resultSortState, search]);
 
     const visibleResultRows = useMemo<VisibleResultRows>(() => {
         if (sortedResultRows.length === 0) {

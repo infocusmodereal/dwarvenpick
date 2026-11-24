@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditEventStore
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.datasource.CreateDatasourceRequest
@@ -452,6 +453,28 @@ class QueryAdmissionPostgresTests {
         assertThat((transactionManager as DataSourceTransactionManager).dataSource).isSameAs(dataSource)
     }
 
+    @Test
+    fun `a failed queued audit releases the reservation and a retry can run`() {
+        val actor = "audit-outage"
+        val auditUnavailable =
+            object : AuthAuditLogger {
+                override fun log(event: AuthAuditEvent) {
+                    error("Audit unavailable")
+                }
+            }
+        val admission = newManager("audit-outage-worker", auditUnavailable)
+        val request = QueryExecutionRequest(datasourceId = "unused-during-queue", sql = "select 1")
+        try {
+            // Admission succeeds but auditing blocks submission before any JDBC operation.
+            assertThatThrownBy { admission.submitQuery(actor, null, request, defaultPolicy()) }
+                .hasMessage("Audit unavailable")
+            assertThat(activeExecutions(actor)).isEmpty()
+            assertThat(queryAdmissionService.reserve(runtimeRecord("after-audit-outage", actor), actorLimit = 1)).isNull()
+        } finally {
+            admission.shutdownGracefully()
+        }
+    }
+
     private fun heldActorLock(actor: String): Connection {
         val connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
         connection.autoCommit = false
@@ -504,12 +527,15 @@ class QueryAdmissionPostgresTests {
             sortOrder = QueryHistorySortOrder.NEWEST,
         )
 
-    private fun newManager(instanceValue: String): QueryExecutionManager {
+    private fun newManager(
+        instanceValue: String,
+        auditLogger: AuthAuditLogger = authAuditLogger,
+    ): QueryExecutionManager {
         val requesterInstanceId = mock(ApplicationInstanceId::class.java)
         `when`(requesterInstanceId.value).thenReturn(instanceValue)
         return QueryExecutionManager(
             datasourcePoolManager = datasourcePoolManager,
-            authAuditLogger = authAuditLogger,
+            authAuditLogger = auditLogger,
             queryExecutionProperties = queryExecutionProperties,
             queryJustificationPolicy = queryJustificationPolicy,
             queryExecutionLimitPolicy = queryExecutionLimitPolicy,

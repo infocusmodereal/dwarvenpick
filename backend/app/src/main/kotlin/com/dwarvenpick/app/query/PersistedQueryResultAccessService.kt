@@ -1,7 +1,6 @@
 package com.dwarvenpick.app.query
 
 import org.springframework.stereotype.Service
-import java.time.Instant
 
 /** Operates on metadata only after the caller has enforced execution access. */
 @Service
@@ -30,13 +29,17 @@ class PersistedQueryResultAccessService(
         }
         val resolvedPageSize =
             request.pageSize?.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
-                ?: queryExecutionProperties.defaultPageSize.coerceAtLeast(1)
+                ?: queryExecutionProperties.defaultPageSize.coerceIn(1, queryExecutionProperties.maxPageSize.coerceAtLeast(1))
         val startOffset = request.pageToken?.let { pageTokenCodec.parse(metadata.executionId, it) } ?: 0
         if (startOffset > metadata.rowCount) {
             throw QueryInvalidPageTokenException("pageToken offset is outside of available result rows.")
         }
         beginResultAccess(metadata.executionId)
         val rows = queryRuntimeRepository.fetchRows(metadata.executionId, startOffset, resolvedPageSize)
+        val expectedRows = minOf(resolvedPageSize, metadata.rowCount - startOffset)
+        if (rows.size != expectedRows) {
+            throw QueryResultsExpiredException("Stored results are no longer complete. Re-run the query.")
+        }
         val endOffset = startOffset + rows.size
         val nextPageToken =
             if (endOffset < metadata.rowCount) {
@@ -44,7 +47,6 @@ class PersistedQueryResultAccessService(
             } else {
                 null
             }
-        queryRuntimeRepository.updateLastAccessed(metadata.executionId, Instant.now())
         return QueryResultsResponse(
             executionId = metadata.executionId,
             status = metadata.status.name,
@@ -82,7 +84,6 @@ class PersistedQueryResultAccessService(
             )
         }
         beginResultAccess(metadata.executionId)
-        queryRuntimeRepository.updateLastAccessed(metadata.executionId, Instant.now())
         return QueryCsvExportPayload(
             executionId = metadata.executionId,
             datasourceId = metadata.datasourceId,

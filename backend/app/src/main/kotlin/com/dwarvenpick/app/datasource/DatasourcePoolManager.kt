@@ -5,6 +5,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.sql.Connection
@@ -31,8 +32,16 @@ class DatasourcePoolManager(
     private val poolMetricsSnapshotRepository: PoolMetricsSnapshotRepository,
     private val applicationInstanceId: ApplicationInstanceId,
     private val meterRegistry: MeterRegistry,
+    @Value("\${dwarvenpick.datasource.max-pool-connections-per-target:0}")
+    private val maxPoolConnectionsPerTarget: Int = 0,
 ) {
-    private val pools = ConcurrentHashMap<String, HikariDataSource>()
+    private data class ManagedPool(
+        val dataSource: HikariDataSource,
+        val target: Pair<String, Int>?,
+    )
+
+    private val pools = ConcurrentHashMap<String, ManagedPool>()
+    private val poolCapacityLock = Any()
 
     fun testConnection(
         datasourceId: String,
@@ -64,7 +73,8 @@ class DatasourcePoolManager(
 
     fun listPoolMetrics(): List<PoolMetricsResponse> =
         pools.entries
-            .map { (key, dataSource) ->
+            .map { (key, managedPool) ->
+                val dataSource = managedPool.dataSource
                 val keyParts = key.split("::", limit = 2)
                 val poolBean = dataSource.hikariPoolMXBean
                 val configBean = dataSource.hikariConfigMXBean
@@ -107,14 +117,14 @@ class DatasourcePoolManager(
     fun evictPoolsForDatasource(datasourceId: String) {
         val keysToRemove = pools.keys.filter { key -> key.startsWith("$datasourceId::") }
         keysToRemove.forEach { key ->
-            pools.remove(key)?.close()
+            closePool(key)
         }
     }
 
     fun evictAllPools() {
         val keys = pools.keys.toList()
         keys.forEach { key ->
-            pools.remove(key)?.close()
+            closePool(key)
         }
     }
 
@@ -132,10 +142,41 @@ class DatasourcePoolManager(
 
     private fun getOrCreatePool(spec: ConnectionSpec): HikariDataSource {
         val key = poolKey(spec.datasourceId, spec.credentialProfile)
-        return pools.computeIfAbsent(key) {
-            val pool = createPool(spec)
-            registerPoolMetrics(pool, spec, key)
-            pool
+        pools[key]?.let { return it.dataSource }
+
+        if (maxPoolConnectionsPerTarget <= 0) {
+            return getOrCreatePool(key, spec)
+        }
+
+        return synchronized(poolCapacityLock) {
+            pools[key]?.dataSource ?: run {
+                val target = requireNotNull(spec.target)
+                val reservedConnections =
+                    pools.values.filter { it.target == target }.sumOf { it.dataSource.maximumPoolSize.toLong() }
+                check(reservedConnections + spec.pool.maximumPoolSize <= maxPoolConnectionsPerTarget) {
+                    "Connection pool capacity for this database target is exhausted on this backend."
+                }
+                getOrCreatePool(key, spec)
+            }
+        }
+    }
+
+    private fun getOrCreatePool(
+        key: String,
+        spec: ConnectionSpec,
+    ): HikariDataSource =
+        pools
+            .computeIfAbsent(key) {
+                val pool = createPool(spec)
+                registerPoolMetrics(pool, spec, key)
+                ManagedPool(pool, spec.target)
+            }.dataSource
+
+    private fun closePool(key: String) {
+        if (maxPoolConnectionsPerTarget > 0) {
+            synchronized(poolCapacityLock) { pools.remove(key)?.dataSource?.close() }
+        } else {
+            pools.remove(key)?.dataSource?.close()
         }
     }
 

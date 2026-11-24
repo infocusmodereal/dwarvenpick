@@ -184,3 +184,10 @@ System Health separates **Engine health**, **Query activity**, and **Connection 
 History pagination shows the current page and total pages for the server-filtered, authorized history. The existing `GET /api/queries/history` array response is unchanged; clients can opt into `includeTotal=true` to receive the matching `X-Total-Count` response header. Audit pagination totals refer only to its loaded event batch. Both views use a compact shared pager and an outer search focus outline.
 
 Connections uses a compact table with local search and engine filtering. Endpoint, database and profile counts are visible without opening the editor; credential values remain in the existing protected editor flow. Maintenance groups credential re-encryption separately from normal create/edit actions. System Health uses a bounded content width so metrics remain easy to scan on wide displays.
+
+
+## Retrying a query submission
+
+API clients can send an `Idempotency-Key` header with `POST /api/queries`. Generate a fresh key for each intended execution and reuse it when retrying the same request after a transport error. The server returns the existing execution ID and state while its runtime record is retained. Changing the query, connection, profile, default schema, justification or execution options with the same key returns HTTP 409.
+
+Check the execution state and reconcile any writes in the target database before retrying after runtime retention has elapsed. Status and error messages report when a write may already have committed.

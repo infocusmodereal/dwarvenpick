@@ -5,8 +5,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.never
+import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import java.time.Instant
@@ -54,7 +54,7 @@ class PersistedQueryResultAccessServiceTests {
         assertThat(secondPage.pageSize).isEqualTo(3)
         assertThat(secondPage.rows).containsExactly(row("three"), row("four"), row("five"))
         assertThat(secondPage.nextPageToken).isNull()
-        assertLastAccessedWasUpdated(metadata.executionId)
+        verify(queryRuntimeRepository, times(2)).beginResultAccess(metadata.executionId)
     }
 
     @Test
@@ -128,7 +128,7 @@ class PersistedQueryResultAccessServiceTests {
         assertThrows<QueryExportLimitExceededException> {
             service.prepareCsvExport(metadata.copy(rowCount = 3), includeHeaders = true, maxExportRows = 2)
         }
-        assertLastAccessedWasUpdated(metadata.executionId)
+        verify(queryRuntimeRepository).beginResultAccess(metadata.executionId)
     }
 
     @Test
@@ -188,13 +188,4 @@ class PersistedQueryResultAccessServiceTests {
     }
 
     private fun row(value: String): List<String?> = listOf(value)
-
-    private fun assertLastAccessedWasUpdated(executionId: String) {
-        val touchedExecutionIds =
-            mockingDetails(queryRuntimeRepository)
-                .invocations
-                .filter { invocation -> invocation.method.name == "updateLastAccessed" }
-                .map { invocation -> invocation.arguments[0] }
-        assertThat(touchedExecutionIds).contains(executionId)
-    }
 }

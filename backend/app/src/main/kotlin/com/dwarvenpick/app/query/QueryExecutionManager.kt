@@ -2,6 +2,7 @@ package com.dwarvenpick.app.query
 
 import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditLogger
+import com.dwarvenpick.app.datasource.DatasourceEngine
 import com.dwarvenpick.app.datasource.DatasourcePoolManager
 import com.dwarvenpick.app.datasource.ForbiddenNetworkTargetException
 import com.dwarvenpick.app.datasource.QueryConnectionHandle
@@ -17,15 +18,12 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import java.io.InputStream
-import java.io.Reader
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
 import java.sql.Statement
-import java.sql.Types
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
@@ -34,8 +32,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+
+class QueryIdempotencyConflictException : RuntimeException("Idempotency-Key is already bound to a different query request.")
 
 class QueryExecutionNotFoundException(
     override val message: String,
@@ -83,15 +82,6 @@ private class QueryRuntimeLimitException(
     override val message: String,
 ) : RuntimeException(message)
 
-private const val RESULT_TRUNCATION_SUFFIX = "..."
-private val HEX_DIGITS = "0123456789abcdef".toCharArray()
-
-private data class BufferedCellValue(
-    val value: String?,
-    val byteSize: Long,
-    val truncated: Boolean,
-)
-
 private enum class BufferLimitReason {
     QUERY,
     INSTANCE,
@@ -113,6 +103,8 @@ private data class QueryExecutionRecord(
     val defaultSchema: String?,
     val sql: String,
     val queryHash: String,
+    val cursorEligible: Boolean,
+    val hasWriteIntent: Boolean,
     val maxRowsPerQuery: Int,
     val maxBufferedBytes: Long,
     val maxCellBytes: Int,
@@ -138,10 +130,10 @@ private data class QueryExecutionRecord(
     @Volatile var activeConnectionHandle: QueryConnectionHandle?,
     @Volatile var activeConnectionRequiresEviction: Boolean,
     @Volatile var activeConnection: Connection?,
+    @Volatile var writeMayHaveRun: Boolean = false,
     @Volatile var executionFuture: Future<*>?,
     val legacyCancelCheckGate: LegacyCancelCheckGate,
     val lifecycleLock: Any = Any(),
-    val activeExportCount: AtomicInteger = AtomicInteger(0),
 )
 
 @Service
@@ -162,6 +154,7 @@ class QueryExecutionManager(
     private val virtualExecutor = Executors.newVirtualThreadPerTaskExecutor()
     private val executions = ConcurrentHashMap<String, QueryExecutionRecord>()
     private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>>()
+    private val activeExports = ConcurrentHashMap<String, Int>()
     private val eventCounter = AtomicLong(0)
     private val instanceBufferedResultBytes = AtomicLong(0)
     private val logger = LoggerFactory.getLogger(QueryExecutionManager::class.java)
@@ -187,6 +180,8 @@ class QueryExecutionManager(
         ipAddress: String?,
         request: QueryExecutionRequest,
         policy: QueryAccessPolicy,
+        idempotencyKey: String? = null,
+        actorId: String? = null,
     ): QueryExecutionResponse {
         val normalizedSql = request.sql.trim()
         val statementSegments =
@@ -227,7 +222,18 @@ class QueryExecutionManager(
             justification = justification,
         )
         val queryHash = sha256Hex(normalizedSql)
-        val executionId = UUID.randomUUID().toString()
+        val executionId =
+            idempotencyKey?.let { key ->
+                require(key.length in 1..128 && key.all { it in '!'..'~' }) {
+                    "Idempotency-Key must contain 1 to 128 visible ASCII characters."
+                }
+                requireNotNull(actorId) { "Idempotency-Key requires a persistent user identity." }
+                val fingerprint = sha256Hex("query-idempotency:$actorId:$key")
+                UUID(
+                    fingerprint.take(16).toULong(16).toLong(),
+                    fingerprint.substring(16, 32).toULong(16).toLong(),
+                ).toString()
+            } ?: UUID.randomUUID().toString()
 
         val effectiveLimits = queryExecutionLimitPolicy.resolve(policy)
         val maxRows = effectiveLimits.maxRowsPerQuery
@@ -247,6 +253,8 @@ class QueryExecutionManager(
                 defaultSchema = defaultSchema,
                 sql = normalizedSql,
                 queryHash = queryHash,
+                hasWriteIntent = hasWriteIntent,
+                cursorEligible = policy.readOnly && !hasWriteIntent && statementSegments.size == 1,
                 maxRowsPerQuery = maxRows,
                 maxBufferedBytes = maxBufferedBytes,
                 maxCellBytes = maxCellBytes,
@@ -276,50 +284,77 @@ class QueryExecutionManager(
                 legacyCancelCheckGate =
                     LegacyCancelCheckGate(queryExecutionProperties.remoteControlPollIntervalMs),
             )
-        queryAdmissionService.reserve(
-            record = record.toPersistedRuntimeRecord(),
-            actorLimit = concurrencyLimit,
-        )
+        val replay =
+            queryAdmissionService.reserve(
+                record = record.toPersistedRuntimeRecord(),
+                actorLimit = concurrencyLimit,
+                allowReplay = idempotencyKey != null,
+            )
+        if (replay != null) {
+            if (replay.actor != actor ||
+                replay.datasourceId != record.datasourceId ||
+                replay.credentialProfile != record.credentialProfile ||
+                replay.queryHash != queryHash ||
+                replay.defaultSchema != defaultSchema ||
+                replay.justification != justification ||
+                replay.scriptStopOnError != request.stopOnError ||
+                replay.scriptTransactionMode != request.transactionMode
+            ) {
+                throw QueryIdempotencyConflictException()
+            }
+            return QueryExecutionResponse(executionId, replay.datasourceId, replay.status.name, replay.message, queryHash)
+        }
 
         executions[executionId] = record
-        syncHistoryOnly(record)
-        publishEvent(record, "Query queued.")
-        logger.info(
-            "query_execution queued executionId={} actor={} datasourceId={} queryHash={}",
-            executionId,
-            actor,
-            record.datasourceId,
-            queryHash,
-        )
-        auditExecution(
-            record = record,
-            type = "query.execute",
-            outcome = "queued",
-            details =
-                mapOf(
-                    "datasourceId" to record.datasourceId,
-                    "executionId" to executionId,
-                    "queryHash" to queryHash,
-                    "authorization" to policy.authorization,
-                    "credentialProfile" to policy.credentialProfile,
-                    "readOnly" to policy.readOnly,
-                    "maxRowsPerQuery" to maxRows,
-                    "maxRuntimeSeconds" to maxRuntimeSeconds,
-                    "concurrencyLimit" to concurrencyLimit,
-                    "justificationMode" to justificationMode.name,
-                ),
-        )
-        meterRegistry
-            .counter(
-                "dwarvenpick.query.execute.attempts",
-                "outcome",
-                "queued",
-                "datasourceId",
+        try {
+            syncHistoryOnly(record)
+            publishEvent(record, "Query queued.")
+            logger.info(
+                "query_execution queued executionId={} actor={} datasourceId={} queryHash={}",
+                executionId,
+                actor,
                 record.datasourceId,
-            ).increment()
+                queryHash,
+            )
+            auditExecution(
+                record = record,
+                type = "query.execute",
+                outcome = "queued",
+                details =
+                    mapOf(
+                        "datasourceId" to record.datasourceId,
+                        "executionId" to executionId,
+                        "queryHash" to queryHash,
+                        "authorization" to policy.authorization,
+                        "credentialProfile" to policy.credentialProfile,
+                        "readOnly" to policy.readOnly,
+                        "maxRowsPerQuery" to maxRows,
+                        "maxRuntimeSeconds" to maxRuntimeSeconds,
+                        "concurrencyLimit" to concurrencyLimit,
+                        "justificationMode" to justificationMode.name,
+                    ),
+            )
+            meterRegistry
+                .counter(
+                    "dwarvenpick.query.execute.attempts",
+                    "outcome",
+                    "queued",
+                    "datasourceId",
+                    record.datasourceId,
+                ).increment()
 
-        val future = virtualExecutor.submit { executeQueuedQuery(record) }
-        record.executionFuture = future
+            val future = virtualExecutor.submit { executeQueuedQuery(record) }
+            record.executionFuture = future
+        } catch (exception: Exception) {
+            try {
+                markFailed(record, "Query could not be queued.")
+            } catch (cleanupFailure: Exception) {
+                exception.addSuppressed(cleanupFailure)
+                // The durable reservation can expire if the metadata store is unavailable.
+                removeExecution(executionId)
+            }
+            throw exception
+        }
 
         return QueryExecutionResponse(
             executionId = executionId,
@@ -541,20 +576,11 @@ class QueryExecutionManager(
         isSystemAdmin: Boolean,
         executionId: String,
         request: QueryResultsRequest,
+        authorize: (PersistedQueryRuntimeMetadataRecord) -> Unit = {},
     ): QueryResultsResponse {
-        val record = executions[executionId]
-        if (record == null) {
-            val persisted =
-                queryRuntimeRepository.findMetadata(executionId)
-                    ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
-            enforceExecutionAccess(actor, isSystemAdmin, persisted)
-            return persistedQueryResultAccessService.getResults(persisted, request)
-        }
-        enforceExecutionAccess(actor, isSystemAdmin, record)
-        val persisted =
-            queryRuntimeRepository.findMetadata(executionId)
-                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
-        return persistedQueryResultAccessService.getResults(persisted, request)
+        val metadata = authorizedResultMetadata(actor, isSystemAdmin, executionId)
+        authorize(metadata)
+        return persistedQueryResultAccessService.getResults(metadata, request)
     }
 
     fun prepareCsvExport(
@@ -564,27 +590,38 @@ class QueryExecutionManager(
         includeHeaders: Boolean,
         maxExportRows: Int,
     ): QueryCsvExportPayload {
-        val record = executions[executionId]
-        if (record == null) {
-            val persisted =
-                queryRuntimeRepository.findMetadata(executionId)
-                    ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
-            enforceExecutionAccess(actor, isSystemAdmin, persisted)
-            return persistedQueryResultAccessService.prepareCsvExport(persisted, includeHeaders, maxExportRows)
+        val metadata = authorizedResultMetadata(actor, isSystemAdmin, executionId)
+        return persistedQueryResultAccessService.prepareCsvExport(metadata, includeHeaders, maxExportRows)
+    }
+
+    fun startCsvExport(executionId: String) {
+        if (!queryRuntimeRepository.touchResultAccess(executionId, Instant.now())) {
+            throw QueryResultsExpiredException("Result session expired before export. Re-run the query.")
         }
-        enforceExecutionAccess(actor, isSystemAdmin, record)
-        val persisted =
-            queryRuntimeRepository.findMetadata(executionId)
-                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
-        return persistedQueryResultAccessService.prepareCsvExport(persisted, includeHeaders, maxExportRows).also {
-            record.activeExportCount.incrementAndGet()
-        }
+        activeExports.merge(executionId, 1, Int::plus)
     }
 
     fun completeCsvExport(executionId: String) {
-        executions[executionId]
-            ?.activeExportCount
-            ?.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+        activeExports.computeIfPresent(executionId) { _, count -> (count - 1).takeIf { it > 0 } }
+    }
+
+    private fun authorizedResultMetadata(
+        actor: String,
+        isSystemAdmin: Boolean,
+        executionId: String,
+    ): PersistedQueryRuntimeMetadataRecord {
+        val metadata =
+            queryRuntimeRepository.findMetadata(executionId)
+                ?: throw QueryExecutionNotFoundException("Query execution '$executionId' was not found.")
+        enforceExecutionAccess(actor, isSystemAdmin, metadata)
+        return metadata
+    }
+
+    private fun refreshExportAccess(now: Instant) {
+        activeExports.keys.forEach { executionId ->
+            runCatching { queryRuntimeRepository.touchResultAccess(executionId, now) }
+                .onFailure { logger.warn("CSV export heartbeat failed for executionId={}", executionId, it) }
+        }
     }
 
     fun listHistory(
@@ -702,6 +739,23 @@ class QueryExecutionManager(
         }
     }
 
+    @Scheduled(
+        fixedDelayString = "\${dwarvenpick.query.heartbeat-interval-ms:10000}",
+        scheduler = "queryHeartbeatTaskScheduler",
+    )
+    fun refreshExecutionHeartbeats() {
+        val now = Instant.now()
+        executions.forEach { (executionId, record) ->
+            if (record.status in terminalStatuses() || record.executionFuture?.isDone != false) {
+                return@forEach
+            }
+            runCatching {
+                queryRuntimeRepository.updateHeartbeat(executionId, applicationInstanceId.value, now)
+            }.onFailure { logger.warn("Query heartbeat failed for executionId={}", executionId, it) }
+        }
+        refreshExportAccess(now)
+    }
+
     @Scheduled(fixedDelayString = "\${dwarvenpick.query.cleanup-interval-ms:30000}")
     fun cleanupExpiredSessions() {
         val now = Instant.now()
@@ -711,24 +765,16 @@ class QueryExecutionManager(
 
         val removableExecutionIds = mutableListOf<String>()
         executions.forEach { (executionId, record) ->
-            if (record.status !in terminalStatuses()) {
-                queryRuntimeRepository.updateHeartbeat(
-                    executionId = executionId,
-                    ownerInstanceId = applicationInstanceId.value,
-                    heartbeatAt = now,
-                )
-            }
             if (record.status == QueryExecutionStatus.RUNNING) {
                 val startedAt = record.startedAt
                 if (startedAt != null) {
                     val runningForSeconds = Duration.between(startedAt, now).seconds
-                    if (runningForSeconds > record.maxRuntimeSeconds + 10L) {
-                        runCatching {
-                            cancelQuery(
-                                actor = record.actor,
-                                isSystemAdmin = true,
-                                executionId = executionId,
-                            )
+                    if (runningForSeconds > record.maxRuntimeSeconds + 10L && !record.cancelRequested) {
+                        record.cancelRequested = true
+                        virtualExecutor.submit {
+                            runCatching {
+                                cancelQuery(record.actor, isSystemAdmin = true, executionId)
+                            }.onFailure { logger.warn("Timed-out query cancellation failed for executionId={}", executionId, it) }
                         }
                     }
                 }
@@ -738,9 +784,8 @@ class QueryExecutionManager(
                 return@forEach
             }
 
-            if (record.activeExportCount.get() > 0) {
-                record.lastAccessedAt = now
-                queryRuntimeRepository.touchResultAccess(record.executionId, now)
+            if (activeExports.containsKey(executionId)) {
+                queryRuntimeRepository.touchResultAccess(executionId, now)
                 return@forEach
             }
 
@@ -770,7 +815,7 @@ class QueryExecutionManager(
         }
         queryRuntimeRepository.markStaleActiveExecutions(
             staleCutoff,
-            "Query state was lost after its backend stopped heartbeating.",
+            LOST_QUERY_OUTCOME_MESSAGE,
         )
         queryRuntimeRepository.pruneOlderThan(now.minusSeconds(retentionSeconds))
     }
@@ -823,24 +868,23 @@ class QueryExecutionManager(
     }
 
     private fun executeQueuedQuery(record: QueryExecutionRecord) {
-        if (record.cancelRequested) {
-            markCanceled(record, "Query canceled before execution started.")
-            return
-        }
-
-        markRunning(record)
-        auditExecution(
-            record = record,
-            type = "query.execute",
-            outcome = "running",
-            details =
-                mapOf(
-                    "executionId" to record.executionId,
-                    "datasourceId" to record.datasourceId,
-                ),
-        )
-
         try {
+            if (record.cancelRequested) {
+                markCanceled(record, "Query canceled before execution started.")
+                return
+            }
+
+            markRunning(record)
+            auditExecution(
+                record = record,
+                type = "query.execute",
+                outcome = "running",
+                details =
+                    mapOf(
+                        "executionId" to record.executionId,
+                        "datasourceId" to record.datasourceId,
+                    ),
+            )
             executeSql(record)
             runCatching { claimRemoteControlRequest(record) }
             throwIfCanceled(record)
@@ -919,6 +963,10 @@ class QueryExecutionManager(
                     ),
             )
         } catch (ex: Throwable) {
+            if (record.status == QueryExecutionStatus.SUCCEEDED) {
+                logger.warn("Post-completion processing failed for executionId={}", record.executionId, ex)
+                return
+            }
             if (record.cancelRequested || Thread.currentThread().isInterrupted) {
                 markCanceled(record, "Query canceled.")
                 auditExecution(
@@ -1002,7 +1050,12 @@ class QueryExecutionManager(
             val cancelOnEarlyResultLimit = shouldStreamMysqlResults(handle)
 
             if (!isScript) {
-                executeStatementAndBuffer(record, statement, statementSegments[0].sql, cancelOnEarlyResultLimit)
+                val sql = statementSegments[0].sql
+                if (handle.spec.engine == DatasourceEngine.POSTGRESQL && record.cursorEligible && statement.fetchSize > 0) {
+                    executePostgresRead(record, handle.connection, statement, sql)
+                } else {
+                    executeStatementAndBuffer(record, statement, sql, cancelOnEarlyResultLimit)
+                }
                 return
             }
 
@@ -1011,6 +1064,31 @@ class QueryExecutionManager(
             defaultSchemaScope.close()
             if (defaultSchemaScope.evictConnectionOnClose) {
                 record.activeConnectionRequiresEviction = true
+            }
+        }
+    }
+
+    private fun executePostgresRead(
+        record: QueryExecutionRecord,
+        connection: Connection,
+        statement: Statement,
+        sql: String,
+    ) {
+        val originalReadOnly = connection.isReadOnly
+        try {
+            connection.isReadOnly = true
+            connection.autoCommit = false
+            executeStatementAndBuffer(record, statement, sql, cancelOnEarlyResultLimit = false)
+        } finally {
+            runCatching {
+                if (!connection.autoCommit) {
+                    connection.rollback()
+                    connection.autoCommit = true
+                }
+                connection.isReadOnly = originalReadOnly
+            }.onFailure {
+                record.activeConnectionRequiresEviction = true
+                logger.warn("Could not reset PostgreSQL cursor connection for executionId={}", record.executionId, it)
             }
         }
     }
@@ -1110,6 +1188,7 @@ class QueryExecutionManager(
         bufferResults: Boolean,
         cancelOnEarlyResultLimit: Boolean,
     ) {
+        if (record.hasWriteIntent) record.writeMayHaveRun = true
         if (!bufferResults) {
             val hasResultSet = statement.execute(sql)
             if (hasResultSet) {
@@ -1207,7 +1286,7 @@ class QueryExecutionManager(
                 minOf(record.maxCellBytes.toLong(), capacity.bytes)
                     .coerceAtMost(Int.MAX_VALUE.toLong())
                     .toInt()
-            val cell = readBufferedCellValue(resultSet, metadata, index, cellLimit)
+            val cell = QueryResultCells.read(resultSet, metadata, index, cellLimit)
             if (cell.truncated && cellLimit < record.maxCellBytes) {
                 markBufferLimit(record, capacity)
                 return null
@@ -1226,7 +1305,7 @@ class QueryExecutionManager(
     ): Boolean =
         appendBufferedCells(
             record,
-            values.map { value -> toBufferedCellValue(value, record.maxCellBytes) },
+            values.map { value -> QueryResultCells.encode(value, record.maxCellBytes) },
         )
 
     private fun appendBufferedCells(
@@ -1274,178 +1353,6 @@ class QueryExecutionManager(
 
         return true
     }
-
-    private fun readBufferedCellValue(
-        resultSet: ResultSet,
-        metadata: ResultSetMetaData,
-        index: Int,
-        maxCellBytes: Int,
-    ): BufferedCellValue {
-        val jdbcType = runCatching { metadata.getColumnType(index) }.getOrDefault(Types.OTHER)
-        val jdbcTypeName =
-            runCatching { metadata.getColumnTypeName(index) }
-                .getOrNull()
-                ?.lowercase(Locale.ROOT)
-                .orEmpty()
-
-        if (isCharacterLikeColumn(jdbcType, jdbcTypeName)) {
-            val reader =
-                runCatching {
-                    if (
-                        jdbcType == Types.NCLOB ||
-                        jdbcType == Types.NCHAR ||
-                        jdbcType == Types.NVARCHAR ||
-                        jdbcType == Types.LONGNVARCHAR
-                    ) {
-                        resultSet.getNCharacterStream(index)
-                    } else {
-                        resultSet.getCharacterStream(index)
-                    }
-                }.getOrNull()
-            if (reader != null) {
-                return reader.use { toBufferedCellValue(it, maxCellBytes) }
-            }
-            if (resultSet.wasNull()) {
-                return nullBufferedCellValue()
-            }
-        }
-
-        if (isBinaryLikeColumn(jdbcType)) {
-            val stream = runCatching { resultSet.getBinaryStream(index) }.getOrNull()
-            if (stream != null) {
-                return stream.use { toBufferedBinaryCellValue(it, maxCellBytes) }
-            }
-            if (resultSet.wasNull()) {
-                return nullBufferedCellValue()
-            }
-        }
-
-        return toBufferedCellValue(resultSet.getObject(index), maxCellBytes)
-    }
-
-    private fun toBufferedCellValue(
-        value: Any?,
-        maxCellBytes: Int,
-    ): BufferedCellValue =
-        when (value) {
-            null -> nullBufferedCellValue()
-            is ByteArray -> value.inputStream().use { stream -> toBufferedBinaryCellValue(stream, maxCellBytes) }
-            is java.sql.Clob -> value.characterStream.use { reader -> toBufferedCellValue(reader, maxCellBytes) }
-            is java.sql.NClob -> value.characterStream.use { reader -> toBufferedCellValue(reader, maxCellBytes) }
-            is java.sql.SQLXML -> value.characterStream.use { reader -> toBufferedCellValue(reader, maxCellBytes) }
-            else -> toBufferedTextCellValue(value.toString(), maxCellBytes)
-        }
-
-    private fun toBufferedCellValue(
-        reader: Reader,
-        maxCellBytes: Int,
-    ): BufferedCellValue {
-        val bufferedReader = reader.buffered()
-        val suffix = RESULT_TRUNCATION_SUFFIX.take(maxCellBytes)
-        val suffixBytes = suffix.toByteArray(StandardCharsets.UTF_8).size
-        val valueBudget = (maxCellBytes - suffixBytes).coerceAtLeast(0)
-        val builder = StringBuilder()
-        var usedBytes = 0
-        var truncated = false
-
-        while (true) {
-            val next = bufferedReader.read()
-            if (next == -1) {
-                break
-            }
-
-            val character = next.toChar()
-            val characterBytes = character.toString().toByteArray(StandardCharsets.UTF_8).size
-            if (usedBytes + characterBytes > valueBudget) {
-                truncated = true
-                break
-            }
-
-            builder.append(character)
-            usedBytes += characterBytes
-        }
-
-        val result =
-            if (truncated) {
-                builder.append(suffix).toString()
-            } else {
-                builder.toString()
-            }
-
-        return BufferedCellValue(
-            value = result,
-            byteSize = result.toByteArray(StandardCharsets.UTF_8).size.toLong(),
-            truncated = truncated,
-        )
-    }
-
-    private fun toBufferedTextCellValue(
-        text: String,
-        maxCellBytes: Int,
-    ): BufferedCellValue = text.reader().use { reader -> toBufferedCellValue(reader, maxCellBytes) }
-
-    private fun toBufferedBinaryCellValue(
-        inputStream: InputStream,
-        maxCellBytes: Int,
-    ): BufferedCellValue {
-        val suffix = RESULT_TRUNCATION_SUFFIX.take(maxCellBytes)
-        val suffixBytes = suffix.toByteArray(StandardCharsets.UTF_8).size
-        val valueBudget = (maxCellBytes - suffixBytes).coerceAtLeast(0)
-        val visibleByteBudget = valueBudget / 2
-        val bytes =
-            if (visibleByteBudget > 0) {
-                inputStream.readNBytes(visibleByteBudget + 1)
-            } else {
-                inputStream.readNBytes(1)
-            }
-        val truncated = bytes.size > visibleByteBudget
-        val visibleLength = bytes.size.coerceAtMost(visibleByteBudget)
-        val builderCapacity =
-            ((visibleLength.toLong() * 2L) + if (truncated) suffix.length.toLong() else 0L)
-                .coerceAtMost(Int.MAX_VALUE.toLong())
-                .toInt()
-        val builder = StringBuilder(builderCapacity)
-        for (index in 0 until visibleLength) {
-            val value = bytes[index].toInt() and 0xff
-            builder.append(HEX_DIGITS[value ushr 4])
-            builder.append(HEX_DIGITS[value and 0x0f])
-        }
-        if (truncated) {
-            builder.append(suffix)
-        }
-        val result = builder.toString()
-
-        return BufferedCellValue(
-            value = result,
-            byteSize = result.toByteArray(StandardCharsets.UTF_8).size.toLong(),
-            truncated = truncated,
-        )
-    }
-
-    private fun nullBufferedCellValue(): BufferedCellValue = BufferedCellValue(value = null, byteSize = 0, truncated = false)
-
-    private fun isCharacterLikeColumn(
-        jdbcType: Int,
-        jdbcTypeName: String,
-    ): Boolean =
-        jdbcType in
-            setOf(
-                Types.CHAR,
-                Types.VARCHAR,
-                Types.LONGVARCHAR,
-                Types.NCHAR,
-                Types.NVARCHAR,
-                Types.LONGNVARCHAR,
-                Types.CLOB,
-                Types.NCLOB,
-                Types.SQLXML,
-            ) ||
-            jdbcTypeName.contains("text") ||
-            jdbcTypeName.contains("json") ||
-            jdbcTypeName.contains("xml")
-
-    private fun isBinaryLikeColumn(jdbcType: Int): Boolean =
-        jdbcType in setOf(Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB)
 
     private fun jdbcFieldSizeLimit(maxCellBytes: Int): Int =
         (maxCellBytes.toLong() + MAX_FIELD_SIZE_DETECTION_BYTES)
@@ -1684,6 +1591,9 @@ class QueryExecutionManager(
 
     private fun markRunning(record: QueryExecutionRecord) {
         synchronized(record.lifecycleLock) {
+            if (record.cancelRequested || record.status != QueryExecutionStatus.QUEUED) {
+                throw QueryCanceledException("Query canceled before execution started.")
+            }
             record.status = QueryExecutionStatus.RUNNING
             record.startedAt = Instant.now()
             record.message = "Query is running."
@@ -1755,19 +1665,20 @@ class QueryExecutionManager(
         message: String,
     ) {
         synchronized(record.lifecycleLock) {
-            if (record.status == QueryExecutionStatus.CANCELED) {
+            if (record.status in terminalStatuses()) {
                 return
             }
 
             record.status = QueryExecutionStatus.FAILED
-            record.errorSummary = message
+            record.errorSummary =
+                if (record.writeMayHaveRun) "$message Verify whether any writes committed before retrying." else message
             record.message = "Query failed."
             record.completedAt = Instant.now()
             clearBufferedResults(record)
             queryRuntimeRepository.finalizeWithoutResults(record.toRuntimeUpdate())
             syncHistoryOnly(record)
         }
-        publishEvent(record, message)
+        publishEvent(record, record.errorSummary ?: record.message)
         recordExecutionOutcomeMetric(record, "failed")
         logger.warn(
             "query_execution failed executionId={} actor={} datasourceId={} errorSummary={}",
@@ -1783,19 +1694,20 @@ class QueryExecutionManager(
         message: String,
     ) {
         synchronized(record.lifecycleLock) {
-            if (record.status == QueryExecutionStatus.CANCELED) {
+            if (record.status in terminalStatuses()) {
                 return
             }
             record.status = QueryExecutionStatus.CANCELED
             record.cancelRequested = true
             record.errorSummary = null
-            record.message = message
+            record.message =
+                if (record.writeMayHaveRun) "$message Verify whether any writes committed before retrying." else message
             record.completedAt = Instant.now()
             clearBufferedResults(record)
             queryRuntimeRepository.finalizeWithoutResults(record.toRuntimeUpdate())
             syncHistoryOnly(record)
         }
-        publishEvent(record, message)
+        publishEvent(record, record.message)
         recordExecutionOutcomeMetric(record, "canceled")
         logger.info(
             "query_execution canceled executionId={} actor={} datasourceId={} reason={}",

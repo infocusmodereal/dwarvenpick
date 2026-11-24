@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
@@ -92,7 +93,7 @@ class SchemaBrowserCancellationTests {
         val streamsStarted = CountDownLatch(5)
         try {
             val requests =
-                (1..5).map {
+                (1..5).map { index ->
                     executor.submit {
                         val output =
                             object : ByteArrayOutputStream() {
@@ -105,7 +106,7 @@ class SchemaBrowserCancellationTests {
                                     }
                                 }
                             }
-                        fixture.stream.stream("trino", "reader", false).writeTo(output)
+                        fixture.stream.stream("trino-$index", "reader", false).writeTo(output)
                     }
                 }
             assertThat(streamsStarted.await(5, TimeUnit.SECONDS)).isTrue()
@@ -127,7 +128,7 @@ class SchemaBrowserCancellationTests {
         val pool = mock(DatasourcePoolManager::class.java)
         val started = CountDownLatch(expectedStarts)
         val finished = CountDownLatch(1)
-        `when`(pool.openConnection("trino", "reader")).thenReturn(handle(connection))
+        `when`(pool.openConnection(anyString(), anyString())).thenAnswer { handle(connection) }
         `when`(connection.metaData).thenReturn(metadata)
         `when`(metadata.databaseProductName).thenReturn("Trino")
         `when`(metadata.schemas).thenAnswer {

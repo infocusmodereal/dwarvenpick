@@ -17,7 +17,9 @@ import java.sql.SQLException
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CancellationException
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 
 private data class SchemaCacheSnapshot(
     val response: DatasourceSchemaBrowserResponse,
@@ -29,7 +31,21 @@ class SchemaBrowserService(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val schemaBrowserProperties: SchemaBrowserProperties,
 ) {
-    private val cache = ConcurrentHashMap<String, SchemaCacheSnapshot>()
+    private data class Key(
+        val datasourceId: String,
+        val credentialProfile: String,
+    )
+
+    private val cacheLock = Any()
+    private val snapshots = LinkedHashMap<Key, SchemaCacheSnapshot>(16, 0.75f, true)
+    private val inFlight = mutableMapOf<Key, CompletableFuture<DatasourceSchemaBrowserResponse>>()
+
+    fun invalidate(datasourceId: String? = null) {
+        synchronized(cacheLock) {
+            snapshots.keys.removeIf { datasourceId == null || it.datasourceId == datasourceId }
+            inFlight.keys.removeIf { datasourceId == null || it.datasourceId == datasourceId }
+        }
+    }
 
     fun fetchSchema(
         datasourceId: String,
@@ -37,27 +53,59 @@ class SchemaBrowserService(
         refresh: Boolean,
         load: SchemaBrowserLoad = SchemaBrowserLoad(),
     ): DatasourceSchemaBrowserResponse {
-        load.checkActive()
-        val cacheKey = "$datasourceId::$credentialProfile"
-        val now = Instant.now()
-        val cachedSnapshot = cache[cacheKey]
-        val cacheTtl = schemaBrowserProperties.cacheTtlSeconds.coerceAtLeast(1)
+        val key = Key(datasourceId, credentialProfile)
+        var forceRefresh = refresh
+        while (true) {
+            load.checkActive()
+            val candidate = CompletableFuture<DatasourceSchemaBrowserResponse>()
+            val pending =
+                synchronized(cacheLock) {
+                    val snapshot = snapshots[key]
+                    val cacheTtl = schemaBrowserProperties.cacheTtlSeconds.coerceAtLeast(1)
+                    if (!forceRefresh && snapshot != null && Duration.between(snapshot.fetchedAt, Instant.now()).seconds < cacheTtl) {
+                        return snapshot.response.copy(cached = true)
+                    }
+                    inFlight.getOrPut(key) { candidate }
+                }
 
-        if (!refresh && cachedSnapshot != null) {
-            val ageSeconds = Duration.between(cachedSnapshot.fetchedAt, now).seconds
-            if (ageSeconds <= cacheTtl) {
-                return cachedSnapshot.response.copy(cached = true)
+            if (pending === candidate) {
+                try {
+                    val response = loadSchema(datasourceId, credentialProfile, Instant.now(), load)
+                    load.checkActive()
+                    synchronized(cacheLock) {
+                        if (inFlight[key] !== candidate) {
+                            throw CancellationException("Connection configuration changed during schema load.")
+                        }
+                        snapshots[key] = SchemaCacheSnapshot(response, Instant.now())
+                        if (snapshots.size > schemaBrowserProperties.maxCacheEntries.coerceAtLeast(1)) {
+                            snapshots.remove(snapshots.keys.first())
+                        }
+                        inFlight.remove(key)
+                    }
+                    candidate.complete(response)
+                    return response
+                } catch (exception: Throwable) {
+                    synchronized(cacheLock) { inFlight.remove(key, candidate) }
+                    if (exception is CancellationException || Thread.currentThread().isInterrupted) {
+                        candidate.cancel(false)
+                    } else {
+                        candidate.completeExceptionally(exception)
+                    }
+                    throw exception
+                }
+            }
+
+            try {
+                val response = pending.get()
+                load.checkActive()
+                return response
+            } catch (exception: ExecutionException) {
+                throw exception.cause ?: exception
+            } catch (_: CancellationException) {
+                // A different browser disconnected. This caller can still load the schema.
+                forceRefresh = false
             }
         }
-
-        val freshResponse = loadSchema(datasourceId, credentialProfile, now, load)
-        load.checkActive()
-        cache[cacheKey] =
-            SchemaCacheSnapshot(
-                response = freshResponse,
-                fetchedAt = now,
-            )
-        return freshResponse
     }
 
     private fun loadSchema(
@@ -175,12 +223,19 @@ class SchemaBrowserService(
 
                     val schemaResponses =
                         schemaNames
-                            .distinctBy { schema -> schema.lowercase(Locale.getDefault()) }
+                            .distinct()
                             .sortedBy { schema -> schema.lowercase(Locale.getDefault()) }
                             .map { schemaName ->
                                 load.checkActive()
                                 val resolvedCatalog = if (schemaUsesCatalogFallback) schemaName else catalog
-                                val resolvedSchemaPattern = if (schemaUsesCatalogFallback) null else schemaName
+                                val resolvedSchemaPattern =
+                                    if (schemaUsesCatalogFallback) {
+                                        null
+                                    } else {
+                                        metadata.literalSearchPattern(
+                                            schemaName,
+                                        )
+                                    }
                                 val tables = mutableListOf<DatasourceTableEntryResponse>()
                                 metadata
                                     .getTables(
@@ -202,10 +257,11 @@ class SchemaBrowserService(
                                                 .getColumns(
                                                     resolvedCatalog,
                                                     resolvedSchemaPattern,
-                                                    tableName,
+                                                    metadata.literalSearchPattern(tableName),
                                                     "%",
                                                 ).use { columnRs ->
                                                     while (columnRs.next() && columns.size < maxColumnsPerTable) {
+                                                        if (columnRs.getString("TABLE_NAME") != tableName) continue
                                                         val columnName =
                                                             columnRs.getString("COLUMN_NAME")
                                                                 ?: columnRs.getString(4)

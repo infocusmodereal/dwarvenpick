@@ -265,6 +265,23 @@ class RbacService(
         }
     }
 
+    fun canReadQueryResults(
+        principal: AuthenticatedUserPrincipal,
+        datasourceId: String,
+        credentialProfile: String,
+    ): Boolean =
+        try {
+            // Use the profile that produced the results, including for automatic RBAC selection.
+            resolveQueryAccessPolicy(principal, datasourceId, credentialProfile)
+            true
+        } catch (_: QueryAccessDeniedException) {
+            false
+        } catch (_: DatasourceNotFoundException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+
     fun canUserExport(
         principal: AuthenticatedUserPrincipal,
         datasourceId: String,

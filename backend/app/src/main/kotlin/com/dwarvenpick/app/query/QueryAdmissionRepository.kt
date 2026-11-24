@@ -38,6 +38,10 @@ sealed interface QueryAdmissionDecision {
 
     data object Contended : QueryAdmissionDecision
 
+    data class Replayed(
+        val execution: PersistedQueryRuntimeMetadataRecord,
+    ) : QueryAdmissionDecision
+
     data class Limited(
         val scope: QueryAdmissionScope,
         val limit: Int,
@@ -75,12 +79,13 @@ class QueryAdmissionRepository(
         record: PersistedQueryRuntimeRecord,
         limits: QueryAdmissionLimits,
         staleCutoff: Instant,
+        allowReplay: Boolean = false,
     ): QueryAdmissionDecision =
         if (dialect == QueryAdmissionDialect.POSTGRESQL) {
-            executeTransaction(record, limits, staleCutoff, acquireDatabaseLocks = true)
+            executeTransaction(record, limits, staleCutoff, allowReplay, acquireDatabaseLocks = true)
         } else {
             synchronized(h2AdmissionMonitor) {
-                executeTransaction(record, limits, staleCutoff, acquireDatabaseLocks = false)
+                executeTransaction(record, limits, staleCutoff, allowReplay, acquireDatabaseLocks = false)
             }
         }
 
@@ -90,6 +95,7 @@ class QueryAdmissionRepository(
         record: PersistedQueryRuntimeRecord,
         limits: QueryAdmissionLimits,
         staleCutoff: Instant,
+        allowReplay: Boolean,
         acquireDatabaseLocks: Boolean,
     ): QueryAdmissionDecision =
         requireNotNull(
@@ -97,10 +103,20 @@ class QueryAdmissionRepository(
                 check(TransactionSynchronizationManager.isActualTransactionActive()) {
                     "Query admission requires an active metadata database transaction."
                 }
+                queryRuntimeRepository.markStaleActiveExecutions(
+                    staleCutoff,
+                    LOST_QUERY_OUTCOME_MESSAGE,
+                    maxRows = ADMISSION_STALE_CLEANUP_LIMIT,
+                )
                 if (acquireDatabaseLocks && !tryAcquirePostgresLocks(record.actor)) {
                     return@execute QueryAdmissionDecision.Contended
                 }
-                reserveWithinTransaction(record, limits, staleCutoff)
+                if (allowReplay) {
+                    queryRuntimeRepository.findMetadata(record.executionId)?.let {
+                        return@execute QueryAdmissionDecision.Replayed(it)
+                    }
+                }
+                reserveWithinTransaction(record, limits)
             },
         )
 
@@ -127,14 +143,7 @@ class QueryAdmissionRepository(
     private fun reserveWithinTransaction(
         record: PersistedQueryRuntimeRecord,
         limits: QueryAdmissionLimits,
-        staleCutoff: Instant,
     ): QueryAdmissionDecision {
-        queryRuntimeRepository.markStaleActiveExecutions(
-            staleCutoff,
-            "Query state was lost after its backend stopped heartbeating.",
-            maxRows = ADMISSION_STALE_CLEANUP_LIMIT,
-        )
-
         val activeStatuses = listOf(QueryExecutionStatus.QUEUED.name, QueryExecutionStatus.RUNNING.name)
         if (countActive("actor = :actor", mapOf("actor" to record.actor), activeStatuses) >= limits.actor) {
             return QueryAdmissionDecision.Limited(QueryAdmissionScope.ACTOR, limits.actor)

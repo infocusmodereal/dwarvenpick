@@ -373,9 +373,9 @@ class QueryRuntimeRepository(
         namedParameterJdbcTemplate.update(
             """
             UPDATE query_runtime_executions
-            SET owner_instance_id = :ownerInstanceId,
-                heartbeat_at = :heartbeatAt
+            SET heartbeat_at = :heartbeatAt
             WHERE execution_id = :executionId
+              AND owner_instance_id = :ownerInstanceId
               AND status IN ('QUEUED', 'RUNNING')
             """.trimIndent(),
             mapOf(
