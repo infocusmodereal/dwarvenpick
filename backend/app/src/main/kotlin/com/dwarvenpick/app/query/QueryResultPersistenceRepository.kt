@@ -222,7 +222,7 @@ class QueryResultPersistenceRepository(
                 SET status = 'CANCELED',
                     completed_at = :completedAt,
                     cancel_requested = TRUE,
-                    message = :message,
+                    message = CASE WHEN write_started THEN :writeMessage ELSE :message END,
                     rows_json = '[]',
                     columns_json = '[]',
                     row_count = 0,
@@ -233,6 +233,7 @@ class QueryResultPersistenceRepository(
                     "executionId" to executionId,
                     "completedAt" to Instant.now().toTimestamp(),
                     "message" to message,
+                    "writeMessage" to UNCERTAIN_WRITE_OUTCOME_MESSAGE,
                 ),
             )
             deleteResultPages(executionId)

@@ -10,4 +10,6 @@ data class SchemaBrowserProperties(
     val maxSchemas: Int = 100,
     val maxTablesPerSchema: Int = 100,
     val maxColumnsPerTable: Int = 200,
+    val maxSearchTables: Int = 250,
+    val maxSearchMatches: Int = 250,
 )

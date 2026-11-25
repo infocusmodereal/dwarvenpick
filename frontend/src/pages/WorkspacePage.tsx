@@ -67,7 +67,6 @@ import type {
     ManagedDatasourceResponse,
     MavenDriverPreset,
     ObjectInspectorResponse,
-    QueryExecutionResponse,
     QueryExecutionStatusResponse,
     QueryRunMode,
     QueryValidationResponse,
@@ -113,7 +112,7 @@ import {
     updateExecutionForId
 } from '../workbench/queryExecutionState';
 import { buildQueryExecutionPayload, buildQueryValidationPayload } from '../workbench/queryPayload';
-import { readGovernedQueryError } from '../workbench/queryPolicyError';
+import { submitWorkbenchQuery } from '../workbench/submitQuery';
 import { useControlPlaneState } from '../workbench/useControlPlaneState';
 import { useAuditEvents } from '../workbench/useAuditEvents';
 import { useSchemaBrowser } from '../workbench/useSchemaBrowser';
@@ -708,7 +707,7 @@ export default function WorkspacePage() {
 
     const explorerMetadata = useSchemaBrowser({
         datasourceId: activeTab?.datasourceId ?? '',
-        searchActive: explorerSearchQuery.trim().length > 0,
+        search: explorerSearchQuery,
         readFriendlyError,
         setDatasourceHealthById
     });
@@ -3062,9 +3061,9 @@ export default function WorkspacePage() {
                         executionDatasourceId: payload.datasourceId,
                         executionStatus: payload.status,
                         queryHash: payload.queryHash,
-                        statusMessage: payload.message,
+                        statusMessage: payload.writeOutcomeUncertain ? '' : payload.message,
                         errorMessage:
-                            payload.status === 'FAILED'
+                            payload.status === 'FAILED' || payload.writeOutcomeUncertain
                                 ? (payload.errorSummary ?? payload.message)
                                 : '',
                         rowLimitReached: payload.rowLimitReached,
@@ -3410,32 +3409,18 @@ export default function WorkspacePage() {
                         scriptTransactionMode
                     }
                 );
-                const response = await fetch('/api/queries', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [csrfToken.headerName]: csrfToken.token
-                    },
-                    body: JSON.stringify(requestPayload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(
-                        response.status === 403
-                            ? await readGovernedQueryError(response)
-                            : await readFriendlyError(response)
-                    );
-                }
-
-                const payload = (await response.json()) as QueryExecutionResponse;
+                const payload = await submitWorkbenchQuery(
+                    requestPayload,
+                    csrfToken,
+                    readFriendlyError
+                );
                 updateRun((currentTab) => ({
                     ...currentTab,
                     executionId: payload.executionId,
                     executionStatus: payload.status,
                     queryHash: payload.queryHash,
-                    statusMessage: `Query queued on ${payload.datasourceId}.`,
-                    errorMessage: ''
+                    statusMessage: payload.writeOutcomeUncertain ? '' : payload.message,
+                    errorMessage: payload.writeOutcomeUncertain ? payload.message : ''
                 }));
                 startQueryStatusPolling(tabId, payload.executionId);
             } catch (error) {

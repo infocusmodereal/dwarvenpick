@@ -81,6 +81,37 @@ class TrinoSchemaBrowserContainerTests {
         assertThat(optimizedQueries.size).isEqualTo(1 + inventory.schemas.size)
         assertThat(inventory.schemas.flatMap { it.tables }.flatMap { it.columns }).isEmpty()
 
+        optimizedQueries.clear()
+        val schemas = optimized.fetchSchema("trino", "reader", false, selection = SchemaBrowserSelection(schemasOnly = true))
+        assertThat(schemas.schemas.map { it.schema }).contains("tiny")
+        assertThat(schemas.schemas.flatMap { it.tables }).isEmpty()
+        assertThat(optimizedQueries).hasSize(1)
+        optimizedQueries.clear()
+        val tables = optimized.fetchSchema("trino", "reader", false, selection = SchemaBrowserSelection(schema = "tiny"))
+        assertThat(
+            tables.schemas
+                .single()
+                .tables
+                .map { it.table },
+        ).contains("orders")
+        assertThat(
+            tables.schemas
+                .single()
+                .tables
+                .flatMap { it.columns },
+        ).isEmpty()
+        assertThat(optimizedQueries).hasSize(1)
+
+        val matches = optimized.fetchSchema("trino", "reader", false, selection = SchemaBrowserSelection(search = "orderkey"))
+        val orderColumns =
+            matches.schemas
+                .single { it.schema == "tiny" }
+                .tables
+                .single { it.table == "orders" }
+                .columns
+        assertThat(orderColumns.map { it.name }).containsExactly("orderkey")
+        assertThat(matches.schemas.flatMap { it.tables }.flatMap { it.columns }).allMatch { it.name.contains("orderkey") }
+
         val selection = SchemaBrowserSelection(table = SchemaBrowserTable("tiny", "orders"))
         optimizedQueries.clear()
         val table =

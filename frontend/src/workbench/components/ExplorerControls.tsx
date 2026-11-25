@@ -88,6 +88,7 @@ export default function ExplorerControls({
                             id="explorer-search"
                             aria-label="Search explorer objects"
                             placeholder="Search objects"
+                            maxLength={128}
                             value={searchQuery}
                             onChange={(event) => onSearchQueryChange(event.target.value)}
                         />

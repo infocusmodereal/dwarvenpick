@@ -123,6 +123,39 @@ class QueryAdmissionPostgresTests {
     }
 
     @Test
+    fun `lost write is reported across replicas and its receipt survives runtime cleanup`() {
+        val actor = "write-receipt-test"
+        val record = runtimeRecord(UUID.randomUUID().toString(), actor)
+        assertThat(queryAdmissionService.reserve(record, actorLimit = 1, allowReplay = true)).isNull()
+        assertThat(queryAdmissionService.reserve(record, actorLimit = 1, allowReplay = true)?.executionId)
+            .isEqualTo(record.executionId)
+
+        jdbcTemplate.update(
+            "UPDATE query_runtime_executions SET status = 'RUNNING' WHERE execution_id = ?",
+            record.executionId,
+        )
+        assertThat(queryRuntimeRepository.markWriteStarted(record.executionId, "another-replica")).isFalse()
+        assertThat(queryRuntimeRepository.markWriteStarted(record.executionId, record.ownerInstanceId)).isTrue()
+        val cutoff = Instant.now().plusSeconds(2)
+        queryRuntimeRepository.markStaleActiveExecutions(cutoff, LOST_QUERY_OUTCOME_MESSAGE)
+        val status = queryExecutionManager.getExecutionStatus(actor, false, record.executionId)
+        assertThat(status.status).isEqualTo("CANCELED")
+        assertThat(status.writeOutcomeUncertain).isTrue()
+        assertThat(status.message).contains("Verify whether any writes committed")
+
+        queryRuntimeRepository.pruneOlderThan(cutoff)
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)).isNull()
+        assertThatThrownBy { queryAdmissionService.reserve(record, actorLimit = 1, allowReplay = true) }
+            .isInstanceOf(QueryIdempotencyConflictException::class.java)
+            .hasMessageContaining(record.executionId)
+        assertThatThrownBy {
+            queryAdmissionService.reserve(record.copy(queryHash = "different"), actorLimit = 1, allowReplay = true)
+        }.isInstanceOf(QueryIdempotencyConflictException::class.java)
+            .hasMessageContaining("different query request")
+        assertThat(activeExecutions(actor)).isEmpty()
+    }
+
+    @Test
     fun `postgres metadata admission is atomic across concurrent sessions`() {
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)

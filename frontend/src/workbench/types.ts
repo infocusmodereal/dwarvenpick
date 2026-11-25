@@ -131,6 +131,7 @@ export type QueryExecutionResponse = {
     status: string;
     message: string;
     queryHash: string;
+    writeOutcomeUncertain?: boolean;
 };
 
 export type QueryExecutionStatusResponse = {
@@ -152,6 +153,7 @@ export type QueryExecutionStatusResponse = {
     credentialProfile: string;
     justification?: string;
     scriptSummary?: QueryScriptSummary | null;
+    writeOutcomeUncertain?: boolean;
 };
 
 export type QueryResultColumn = {
@@ -335,6 +337,7 @@ export type DatasourceSchemaBrowserResponse = {
     cached: boolean;
     fetchedAt: string;
     schemas: DatasourceSchemaEntryResponse[];
+    searchTruncated?: boolean;
 };
 
 export type InspectedObjectType = 'TABLE' | 'VIEW';

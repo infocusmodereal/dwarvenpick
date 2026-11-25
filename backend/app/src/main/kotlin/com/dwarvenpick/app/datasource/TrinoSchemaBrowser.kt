@@ -29,14 +29,17 @@ internal class TrinoSchemaBrowser(
             )
         }
         val schemas =
-            query(
+            selection.schema?.let { listOf(it) } ?: query(
                 connection,
                 "SELECT schema_name FROM $informationSchema.schemata ORDER BY schema_name LIMIT ${properties.maxSchemas.coerceAtLeast(1)}",
                 load,
             ) { result -> result.getString("schema_name") }
 
+        val search = selection.search?.let { SchemaBrowserSearch(it, properties) }
         val entries =
-            schemas.map { schema ->
+            schemas.mapNotNull { schema ->
+                if (search?.hasCapacity() == false) return@mapNotNull null
+                if (selection.schemasOnly) return@mapNotNull DatasourceSchemaEntryResponse(schema, emptyList())
                 val tables =
                     query(
                         connection,
@@ -54,18 +57,21 @@ internal class TrinoSchemaBrowser(
                             columns = emptyList(),
                         )
                     }
+                val entry = DatasourceSchemaEntryResponse(schema, tables.sortedBy { it.table })
+                if (search != null) {
+                    return@mapNotNull search.filter(entry) { candidates ->
+                        loadColumns(connection, informationSchema, schema, candidates, load, search)
+                    }
+                }
                 val columnsByTable =
-                    if (selection.includeColumns) {
+                    if (selection.includeColumns && selection.schema == null) {
                         loadColumns(connection, informationSchema, schema, tables.map { it.table }, load)
                     } else {
                         emptyMap()
                     }
-                DatasourceSchemaEntryResponse(
-                    schema = schema,
-                    tables = tables.map { it.copy(columns = columnsByTable[it.table].orEmpty()) }.sortedBy { it.table },
-                )
+                entry.copy(tables = entry.tables.map { it.copy(columns = columnsByTable[it.table].orEmpty()) })
             }
-        return DatasourceSchemaBrowserResponse(datasourceId, false, fetchedAt.toString(), entries)
+        return DatasourceSchemaBrowserResponse(datasourceId, false, fetchedAt.toString(), entries, search?.truncated == true)
     }
 
     private fun loadColumns(
@@ -74,12 +80,14 @@ internal class TrinoSchemaBrowser(
         schema: String,
         tables: List<String>,
         load: SchemaBrowserLoad,
+        search: SchemaBrowserSearch? = null,
     ): Map<String, List<DatasourceColumnEntryResponse>> {
         val columnsByTable = mutableMapOf<String, MutableList<DatasourceColumnEntryResponse>>()
         // Keep exact table predicates small. Broad getColumns("%") or a multi-name
         // filter on system.jdbc.columns can enumerate an entire connector schema.
         tables.chunked(COLUMN_BATCH_SIZE).forEach { batch ->
             val placeholders = batch.joinToString(", ") { "?" }
+            val searchPredicate = if (search == null) "" else "AND strpos(lower(column_name), ?) > 0"
             readRows(
                 connection,
                 """
@@ -87,12 +95,14 @@ internal class TrinoSchemaBrowser(
                 FROM $informationSchema.columns
                 WHERE table_schema = ? AND table_name IN ($placeholders)
                   AND ordinal_position <= ${properties.maxColumnsPerTable.coerceAtLeast(1)}
+                  $searchPredicate
                 ORDER BY table_name, ordinal_position
                 """.trimIndent(),
                 load,
                 bind = {
                     setString(1, schema)
                     batch.forEachIndexed { index, table -> setString(index + 2, table) }
+                    if (search != null) setString(batch.size + 2, search.term)
                 },
             ) { result ->
                 columnsByTable.getOrPut(result.getString("table_name")) { mutableListOf() }.add(

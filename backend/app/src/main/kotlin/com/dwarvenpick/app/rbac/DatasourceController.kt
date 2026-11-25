@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
+import java.util.Locale
 
 @RestController
 @RequestMapping("/api/datasources")
@@ -40,6 +41,8 @@ class DatasourceController(
         @RequestParam(defaultValue = "true") includeColumns: Boolean,
         @RequestParam(required = false) schema: String?,
         @RequestParam(required = false) table: String?,
+        @RequestParam(defaultValue = "false") schemasOnly: Boolean,
+        @RequestParam(required = false) search: String?,
         authentication: Authentication,
     ): ResponseEntity<StreamingResponseBody> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
@@ -56,7 +59,7 @@ class DatasourceController(
             }
         val selection =
             try {
-                schemaSelection(includeColumns, schema, table)
+                schemaSelection(includeColumns, schema, table, schemasOnly, search)
             } catch (exception: IllegalArgumentException) {
                 throw ResponseStatusException(HttpStatus.BAD_REQUEST, exception.message)
             }
@@ -75,6 +78,8 @@ class DatasourceController(
         @RequestParam(defaultValue = "true") includeColumns: Boolean,
         @RequestParam(required = false) schema: String?,
         @RequestParam(required = false) table: String?,
+        @RequestParam(defaultValue = "false") schemasOnly: Boolean,
+        @RequestParam(required = false) search: String?,
         authentication: Authentication,
     ): ResponseEntity<Any> {
         val principal = authenticatedPrincipalResolver.resolve(authentication)
@@ -89,7 +94,7 @@ class DatasourceController(
                     datasourceId = datasourceId,
                     credentialProfile = policy.credentialProfile,
                     refresh = refresh,
-                    selection = schemaSelection(includeColumns, schema, table),
+                    selection = schemaSelection(includeColumns, schema, table, schemasOnly, search),
                 )
             ResponseEntity.ok(response)
         } catch (ex: DatasourceNotFoundException) {
@@ -121,8 +126,14 @@ class DatasourceController(
         includeColumns: Boolean,
         schema: String?,
         table: String?,
-    ): SchemaBrowserSelection {
-        require((schema == null) == (table == null)) { "Schema and table must be provided together." }
-        return SchemaBrowserSelection(includeColumns, schema?.let { SchemaBrowserTable(it, requireNotNull(table)) })
-    }
+        schemasOnly: Boolean,
+        search: String?,
+    ): SchemaBrowserSelection =
+        SchemaBrowserSelection(
+            includeColumns = includeColumns,
+            table = table?.let { SchemaBrowserTable(requireNotNull(schema) { "A table requires a schema." }, it) },
+            schema = schema.takeIf { table == null },
+            schemasOnly = schemasOnly,
+            search = search?.trim()?.lowercase(Locale.ROOT),
+        )
 }

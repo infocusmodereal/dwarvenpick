@@ -111,14 +111,50 @@ class QueryAdmissionRepository(
                 if (acquireDatabaseLocks && !tryAcquirePostgresLocks(record.actor)) {
                     return@execute QueryAdmissionDecision.Contended
                 }
-                if (allowReplay) {
-                    queryRuntimeRepository.findMetadata(record.executionId)?.let {
-                        return@execute QueryAdmissionDecision.Replayed(it)
+                if (!allowReplay) return@execute reserveWithinTransaction(record, limits)
+
+                val executionId = record.executionId
+                val fingerprint = QuerySubmissionIdentity.fingerprint(record)
+                val receipt = findReceipt(executionId)
+                if (receipt != null && receipt != fingerprint) throw QueryIdempotencyConflictException()
+                queryRuntimeRepository.findMetadata(executionId)?.let { existing ->
+                    if (receipt == null) {
+                        if (QuerySubmissionIdentity.fingerprint(existing) != fingerprint) {
+                            throw QueryIdempotencyConflictException()
+                        }
+                        insertReceipt(executionId, fingerprint)
                     }
+                    return@execute QueryAdmissionDecision.Replayed(existing)
                 }
-                reserveWithinTransaction(record, limits)
+                if (receipt != null) {
+                    throw QueryIdempotencyConflictException(
+                        "Execution '$executionId' was already submitted and its live status has expired. " +
+                            "Check Query History and verify any writes before starting a new execution.",
+                    )
+                }
+                reserveWithinTransaction(record, limits).also { decision ->
+                    if (decision == QueryAdmissionDecision.Admitted) insertReceipt(executionId, fingerprint)
+                }
             },
         )
+
+    private fun findReceipt(executionId: String): String? =
+        namedParameterJdbcTemplate
+            .queryForList(
+                "SELECT request_fingerprint FROM query_execution_receipts WHERE execution_id = :executionId",
+                mapOf("executionId" to executionId),
+                String::class.java,
+            ).firstOrNull()
+
+    private fun insertReceipt(
+        executionId: String,
+        fingerprint: String,
+    ) {
+        namedParameterJdbcTemplate.update(
+            "INSERT INTO query_execution_receipts (execution_id, request_fingerprint) VALUES (:executionId, :fingerprint)",
+            mapOf("executionId" to executionId, "fingerprint" to fingerprint),
+        )
+    }
 
     private fun tryAcquirePostgresLocks(actor: String): Boolean {
         if (!tryAcquirePostgresLock(QueryAdmissionLockKey.GLOBAL_NAMESPACE, QueryAdmissionLockKey.GLOBAL_RESOURCE)) {

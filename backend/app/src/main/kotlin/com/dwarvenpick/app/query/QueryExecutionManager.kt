@@ -18,8 +18,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
@@ -27,14 +25,11 @@ import java.sql.Statement
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicLong
-
-class QueryIdempotencyConflictException : RuntimeException("Idempotency-Key is already bound to a different query request.")
 
 class QueryExecutionNotFoundException(
     override val message: String,
@@ -222,18 +217,7 @@ class QueryExecutionManager(
             justification = justification,
         )
         val queryHash = sha256Hex(normalizedSql)
-        val executionId =
-            idempotencyKey?.let { key ->
-                require(key.length in 1..128 && key.all { it in '!'..'~' }) {
-                    "Idempotency-Key must contain 1 to 128 visible ASCII characters."
-                }
-                requireNotNull(actorId) { "Idempotency-Key requires a persistent user identity." }
-                val fingerprint = sha256Hex("query-idempotency:$actorId:$key")
-                UUID(
-                    fingerprint.take(16).toULong(16).toLong(),
-                    fingerprint.substring(16, 32).toULong(16).toLong(),
-                ).toString()
-            } ?: UUID.randomUUID().toString()
+        val executionId = QuerySubmissionIdentity.executionId(idempotencyKey, actorId)
 
         val effectiveLimits = queryExecutionLimitPolicy.resolve(policy)
         val maxRows = effectiveLimits.maxRowsPerQuery
@@ -291,18 +275,14 @@ class QueryExecutionManager(
                 allowReplay = idempotencyKey != null,
             )
         if (replay != null) {
-            if (replay.actor != actor ||
-                replay.datasourceId != record.datasourceId ||
-                replay.credentialProfile != record.credentialProfile ||
-                replay.queryHash != queryHash ||
-                replay.defaultSchema != defaultSchema ||
-                replay.justification != justification ||
-                replay.scriptStopOnError != request.stopOnError ||
-                replay.scriptTransactionMode != request.transactionMode
-            ) {
-                throw QueryIdempotencyConflictException()
-            }
-            return QueryExecutionResponse(executionId, replay.datasourceId, replay.status.name, replay.message, queryHash)
+            return QueryExecutionResponse(
+                executionId,
+                replay.datasourceId,
+                replay.status.name,
+                replay.errorSummary ?: replay.message,
+                queryHash,
+                replay.status.hasUncertainWriteOutcome(replay.writeStarted),
+            )
         }
 
         executions[executionId] = record
@@ -1188,7 +1168,14 @@ class QueryExecutionManager(
         bufferResults: Boolean,
         cancelOnEarlyResultLimit: Boolean,
     ) {
-        if (record.hasWriteIntent) record.writeMayHaveRun = true
+        if (record.hasWriteIntent && !record.writeMayHaveRun) {
+            // Persist the marker before crossing the JDBC boundary so another replica
+            // can report a possible write even if this process stops mid-execution.
+            if (!queryRuntimeRepository.markWriteStarted(record.executionId, applicationInstanceId.value)) {
+                throw QueryCanceledException("Query ownership was lost before executing a write.")
+            }
+            record.writeMayHaveRun = true
+        }
         if (!bufferResults) {
             val hasResultSet = statement.execute(sql)
             if (hasResultSet) {
@@ -1671,7 +1658,7 @@ class QueryExecutionManager(
 
             record.status = QueryExecutionStatus.FAILED
             record.errorSummary =
-                if (record.writeMayHaveRun) "$message Verify whether any writes committed before retrying." else message
+                if (record.writeMayHaveRun) "$message $UNCERTAIN_WRITE_OUTCOME_MESSAGE" else message
             record.message = "Query failed."
             record.completedAt = Instant.now()
             clearBufferedResults(record)
@@ -1701,7 +1688,7 @@ class QueryExecutionManager(
             record.cancelRequested = true
             record.errorSummary = null
             record.message =
-                if (record.writeMayHaveRun) "$message Verify whether any writes committed before retrying." else message
+                if (record.writeMayHaveRun) "$message $UNCERTAIN_WRITE_OUTCOME_MESSAGE" else message
             record.completedAt = Instant.now()
             clearBufferedResults(record)
             queryRuntimeRepository.finalizeWithoutResults(record.toRuntimeUpdate())
@@ -2140,12 +2127,6 @@ class QueryExecutionManager(
         )
     }
 
-    private fun sha256Hex(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(input.toByteArray(StandardCharsets.UTF_8))
-        return hashBytes.joinToString("") { byte -> "%02x".format(byte) }
-    }
-
     private fun sanitizeErrorMessage(message: String): String =
         message
             .replace(Regex("password\\s*=\\s*[^;\\s]+", RegexOption.IGNORE_CASE), "password=***")
@@ -2214,6 +2195,7 @@ class QueryExecutionManager(
         QueryExecutionStatusResponse(
             executionId = executionId,
             datasourceId = datasourceId,
+            writeOutcomeUncertain = status.hasUncertainWriteOutcome(writeMayHaveRun),
             status = status.name,
             message = message,
             submittedAt = submittedAt.toString(),
@@ -2246,6 +2228,7 @@ class QueryExecutionManager(
         QueryExecutionStatusResponse(
             executionId = executionId,
             datasourceId = datasourceId,
+            writeOutcomeUncertain = status.hasUncertainWriteOutcome(writeStarted),
             status = status.name,
             message = message,
             submittedAt = submittedAt.toString(),
@@ -2278,6 +2261,7 @@ class QueryExecutionManager(
         QueryExecutionStatusResponse(
             executionId = executionId,
             datasourceId = datasourceId,
+            writeOutcomeUncertain = status.hasUncertainWriteOutcome(writeStarted),
             status = status.name,
             message = message,
             submittedAt = submittedAt.toString(),

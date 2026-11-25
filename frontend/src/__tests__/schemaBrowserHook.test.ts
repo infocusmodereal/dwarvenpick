@@ -14,7 +14,10 @@ const deferred = <T>() => {
 const response = (datasourceId: string) =>
     ({ ok: true, json: async () => ({ datasourceId, schemas: [] }) }) as Response;
 const readFriendlyError = async () => 'Metadata failed';
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+});
 
 describe('schema browser request ownership', () => {
     it('keeps the new connection when slow Trino finishes last', async () => {
@@ -135,7 +138,7 @@ describe('schema browser cancellation edge cases', () => {
                     ]
                 })
             }) as Response;
-        expect(fetchMock.mock.calls[0][0]).toContain('includeColumns=false');
+        expect(fetchMock.mock.calls[0][0]).toContain('schemasOnly=true');
         await act(async () => requests[0].resolve(responseWithColumns([])));
         act(() => {
             void result.current.loadTableColumns('sales', 'line_items');
@@ -153,6 +156,58 @@ describe('schema browser cancellation edge cases', () => {
         expect(result.current.schemaBrowser?.datasourceId).toBe('postgres');
         expect(result.current.columnStates).toEqual({});
         expect(fetchMock.mock.calls[1][1]?.signal?.aborted).toBe(true);
+    });
+
+    it('requests an opened schema and debounces search without replacing the browse inventory', async () => {
+        vi.useFakeTimers();
+        const requests: ReturnType<typeof deferred<Response>>[] = [];
+        const fetchMock = vi.fn<typeof fetch>(() => {
+            const request = deferred<Response>();
+            requests.push(request);
+            return request.promise;
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const setDatasourceHealthById = vi.fn();
+        const { result, rerender } = renderHook(
+            ({ search }) =>
+                useSchemaBrowser({
+                    datasourceId: 'trino',
+                    search,
+                    readFriendlyError,
+                    setDatasourceHealthById
+                }),
+            { initialProps: { search: '' } }
+        );
+        const metadata = (schemas: unknown[]) =>
+            ({
+                ok: true,
+                json: async () => ({ datasourceId: 'trino', schemas })
+            }) as Response;
+        await act(async () => requests[0].resolve(metadata([{ schema: 'sales', tables: [] }])));
+        act(() => {
+            void result.current.loadSchemaTables('sales');
+            void result.current.loadSchemaTables('sales');
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[1][0]).toContain('stream=true&schema=sales');
+        await act(async () =>
+            requests[1].resolve(
+                metadata([
+                    {
+                        schema: 'sales',
+                        tables: [{ table: 'orders', type: 'TABLE', columns: [] }]
+                    }
+                ])
+            )
+        );
+        rerender({ search: 'customer' });
+        rerender({ search: 'customer_id' });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        await act(async () => vi.advanceTimersByTimeAsync(250));
+        expect(fetchMock.mock.calls[2][0]).toContain('search=customer_id');
+        await act(async () => requests[2].resolve(metadata([{ schema: 'archive', tables: [] }])));
+        expect(result.current.searchBrowser?.schemas[0].schema).toBe('archive');
+        expect(result.current.schemaBrowser?.schemas[0].tables[0].table).toBe('orders');
     });
 
     it('shows streamed server errors instead of treating them as metadata', async () => {

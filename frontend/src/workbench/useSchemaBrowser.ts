@@ -9,11 +9,11 @@ import {
 } from 'react';
 import type { DatasourceColumnEntryResponse, DatasourceSchemaBrowserResponse } from './types';
 
-type ColumnState =
-    | { status: 'loading' }
-    | { status: 'ready'; columns: DatasourceColumnEntryResponse[] }
-    | { status: 'error'; message: string };
+type LoadState<T> =
+    { status: 'loading' } | { status: 'ready'; value: T } | { status: 'error'; message: string };
+type SchemaTables = DatasourceSchemaBrowserResponse['schemas'][number]['tables'];
 
+export const explorerSchemaKey = (schema: string) => JSON.stringify([schema]);
 export const explorerTableKey = (schema: string, table: string) => JSON.stringify([schema, table]);
 
 async function fetchMetadata(
@@ -35,7 +35,7 @@ async function fetchMetadata(
 
 type Options = {
     datasourceId: string;
-    searchActive?: boolean;
+    search?: string;
     readFriendlyError: (response: Response) => Promise<string>;
     setDatasourceHealthById: Dispatch<
         SetStateAction<Record<string, 'active' | 'inactive' | 'unknown'>>
@@ -44,17 +44,22 @@ type Options = {
 
 export const useSchemaBrowser = ({
     datasourceId,
-    searchActive = false,
+    search = '',
     readFriendlyError,
     setDatasourceHealthById
 }: Options) => {
     const [inventory, setSchemaBrowser] = useState<DatasourceSchemaBrowserResponse | null>(null);
     const [loadingSchemaBrowser, setLoadingSchemaBrowser] = useState(false);
     const [schemaBrowserError, setSchemaBrowserError] = useState('');
-    const [columnStates, setColumnStates] = useState<Record<string, ColumnState>>({});
-    const [fullMetadata, setFullMetadata] = useState<DatasourceSchemaBrowserResponse | null>(null);
-    const [searchError, setSearchError] = useState('');
-    const [searchLoading, setSearchLoading] = useState(false);
+    const [columnStates, setColumnStates] = useState<
+        Record<string, LoadState<DatasourceColumnEntryResponse[]>>
+    >({});
+    const [tableStates, setTableStates] = useState<Record<string, LoadState<SchemaTables>>>({});
+    const [searchState, setSearchState] = useState<{
+        term: string;
+        result: LoadState<DatasourceSchemaBrowserResponse>;
+    } | null>(null);
+    const term = search.trim().toLowerCase();
     const detailRequests = useRef(new Map<string, AbortController>());
     const activeRequest = useRef<AbortController | null>(null);
     const cancel = useCallback(() => {
@@ -68,9 +73,8 @@ export const useSchemaBrowser = ({
         async (datasourceId: string, refresh = false) => {
             cancel();
             setColumnStates({});
-            setFullMetadata(null);
-            setSearchError('');
-            setSearchLoading(false);
+            setTableStates({});
+            setSearchState(null);
             const controller = new AbortController();
             activeRequest.current = controller;
             const isCurrent = () =>
@@ -96,8 +100,8 @@ export const useSchemaBrowser = ({
             setSchemaBrowserError('');
             try {
                 const params: Record<string, string> = refresh
-                    ? { includeColumns: 'false', refresh: 'true' }
-                    : { includeColumns: 'false' };
+                    ? { schemasOnly: 'true', refresh: 'true' }
+                    : { schemasOnly: 'true' };
                 const payload = await fetchMetadata(
                     normalizedDatasourceId,
                     params,
@@ -136,124 +140,141 @@ export const useSchemaBrowser = ({
         return cancel;
     }, [datasourceId, loadSchemaBrowser, cancel]);
 
-    const loadTableColumns = useCallback(
-        async (schema: string, table: string) => {
-            const key = explorerTableKey(schema, table);
+    const loadDetail = useCallback(
+        async <T>(
+            key: string,
+            params: Record<string, string>,
+            setState: Dispatch<SetStateAction<Record<string, LoadState<T>>>>,
+            extract: (response: DatasourceSchemaBrowserResponse) => T
+        ) => {
             if (
-                !inventory ||
-                inventory.datasourceId !== datasourceId ||
-                fullMetadata ||
-                loadingSchemaBrowser
+                inventory?.datasourceId !== datasourceId ||
+                loadingSchemaBrowser ||
+                detailRequests.current.has(key)
             )
                 return;
-            if (columnStates[key]?.status === 'ready' || detailRequests.current.has(key)) return;
             const controller = new AbortController();
             detailRequests.current.set(key, controller);
-            setColumnStates((current) => ({ ...current, [key]: { status: 'loading' } }));
+            setState((current) => ({ ...current, [key]: { status: 'loading' } }));
             try {
                 const response = await fetchMetadata(
                     datasourceId,
-                    { schema, table },
+                    params,
                     controller.signal,
                     readFriendlyError
                 );
                 if (controller.signal.aborted) return;
-                const columns = response.schemas
-                    .find((entry) => entry.schema === schema)
-                    ?.tables.find((entry) => entry.table === table)?.columns;
-                if (!columns) throw new Error('The table is no longer available.');
-                setColumnStates((current) => ({ ...current, [key]: { status: 'ready', columns } }));
+                const value = extract(response);
+                setState((current) => ({ ...current, [key]: { status: 'ready', value } }));
             } catch (error) {
                 if (controller.signal.aborted) return;
-                const message = error instanceof Error ? error.message : 'Unable to load columns.';
-                setColumnStates((current) => ({ ...current, [key]: { status: 'error', message } }));
+                const message = error instanceof Error ? error.message : 'Unable to load metadata.';
+                setState((current) => ({ ...current, [key]: { status: 'error', message } }));
             } finally {
                 if (detailRequests.current.get(key) === controller)
                     detailRequests.current.delete(key);
             }
         },
-        [
-            columnStates,
-            datasourceId,
-            fullMetadata,
-            inventory,
-            loadingSchemaBrowser,
-            readFriendlyError
-        ]
+        [datasourceId, inventory, loadingSchemaBrowser, readFriendlyError]
+    );
+
+    const loadSchemaTables = useCallback(
+        (schema: string) => {
+            const key = explorerSchemaKey(schema);
+            if (tableStates[key]?.status === 'ready') return;
+            return loadDetail(
+                key,
+                { schema },
+                setTableStates,
+                (response) =>
+                    response.schemas.find((entry) => entry.schema === schema)?.tables ?? []
+            );
+        },
+        [loadDetail, tableStates]
+    );
+
+    const loadTableColumns = useCallback(
+        (schema: string, table: string) => {
+            const key = explorerTableKey(schema, table);
+            if (columnStates[key]?.status === 'ready') return;
+            return loadDetail(key, { schema, table }, setColumnStates, (response) => {
+                const columns = response.schemas
+                    .find((entry) => entry.schema === schema)
+                    ?.tables.find((entry) => entry.table === table)?.columns;
+                if (!columns) throw new Error('The table is no longer available.');
+                return columns;
+            });
+        },
+        [columnStates, loadDetail]
     );
 
     useEffect(() => {
-        if (
-            !searchActive ||
-            !inventory ||
-            inventory.datasourceId !== datasourceId ||
-            loadingSchemaBrowser ||
-            fullMetadata
-        )
-            return;
+        if (!term || inventory?.datasourceId !== datasourceId || loadingSchemaBrowser) return;
         const controller = new AbortController();
-        setSearchError('');
-        setSearchLoading(true);
         const requests = detailRequests.current;
+        setSearchState({ term, result: { status: 'loading' } });
+        requests.set('search', controller);
         const timer = window.setTimeout(async () => {
-            requests.set('search', controller);
             try {
-                const response = await fetchMetadata(
+                const value = await fetchMetadata(
                     datasourceId,
-                    {},
+                    { search: term },
                     controller.signal,
                     readFriendlyError
                 );
-                if (!controller.signal.aborted) setFullMetadata(response);
-            } catch (error) {
                 if (!controller.signal.aborted)
-                    setSearchError(
-                        error instanceof Error ? error.message : 'Unable to search columns.'
-                    );
+                    setSearchState({ term, result: { status: 'ready', value } });
+            } catch (error) {
+                if (!controller.signal.aborted) {
+                    const message =
+                        error instanceof Error ? error.message : 'Unable to search objects.';
+                    setSearchState({ term, result: { status: 'error', message } });
+                }
             } finally {
                 if (requests.get('search') === controller) requests.delete('search');
-                if (!controller.signal.aborted) setSearchLoading(false);
             }
         }, 250);
         return () => {
             window.clearTimeout(timer);
             controller.abort();
             if (requests.get('search') === controller) requests.delete('search');
-            setSearchLoading(false);
         };
-    }, [
-        datasourceId,
-        fullMetadata,
-        inventory,
-        loadingSchemaBrowser,
-        readFriendlyError,
-        searchActive
-    ]);
+    }, [datasourceId, inventory, loadingSchemaBrowser, readFriendlyError, term]);
 
     const schemaBrowser = useMemo(() => {
         if (!inventory || inventory.datasourceId !== datasourceId) return null;
-        if (fullMetadata) return fullMetadata;
         return {
             ...inventory,
-            schemas: inventory.schemas.map((schema) => ({
-                ...schema,
-                tables: schema.tables.map((table) => {
-                    const state = columnStates[explorerTableKey(schema.schema, table.table)];
-                    return state?.status === 'ready' ? { ...table, columns: state.columns } : table;
-                })
-            }))
+            schemas: inventory.schemas.map((schema) => {
+                const tableState = tableStates[explorerSchemaKey(schema.schema)];
+                const tables = tableState?.status === 'ready' ? tableState.value : schema.tables;
+                return {
+                    ...schema,
+                    tables: tables.map((table) => {
+                        const state = columnStates[explorerTableKey(schema.schema, table.table)];
+                        return state?.status === 'ready'
+                            ? { ...table, columns: state.value }
+                            : table;
+                    })
+                };
+            })
         };
-    }, [columnStates, datasourceId, fullMetadata, inventory]);
+    }, [columnStates, datasourceId, inventory, tableStates]);
 
+    const searchResult = searchState?.term === term ? searchState.result : null;
     return {
         schemaBrowser,
         loadingSchemaBrowser,
         schemaBrowserError,
         loadSchemaBrowser,
+        tableStates,
+        loadSchemaTables,
         columnStates,
         loadTableColumns,
-        allColumnsLoaded: fullMetadata !== null,
-        searchLoading,
-        searchError
+        searchBrowser: searchResult?.status === 'ready' ? searchResult.value : null,
+        searchLoading: Boolean(
+            term && schemaBrowser && (!searchResult || searchResult.status === 'loading')
+        ),
+        searchError: searchResult?.status === 'error' ? searchResult.message : ''
     };
 };

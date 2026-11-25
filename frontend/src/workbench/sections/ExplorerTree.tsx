@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ExplorerIcon,
     ExplorerInsertIcon,
     ExplorerInspectIcon
 } from '../components/WorkbenchIcons';
 import { chevronDownIcon, chevronRightIcon } from '../icons';
-import type { DatasourceSchemaBrowserResponse } from '../types';
-import { explorerTableKey, type useSchemaBrowser } from '../useSchemaBrowser';
+import { explorerSchemaKey, explorerTableKey, type useSchemaBrowser } from '../useSchemaBrowser';
 
 type ExplorerTreeProps = Pick<
     ReturnType<typeof useSchemaBrowser>,
-    | 'allColumnsLoaded'
+    | 'loadSchemaTables'
+    | 'tableStates'
+    | 'searchBrowser'
     | 'columnStates'
     | 'loadTableColumns'
     | 'schemaBrowser'
@@ -32,20 +33,6 @@ const systemSchemasByEngine: Record<string, string[]> = {
     STARROCKS: ['information_schema', 'sys', '_statistics_'],
     TRINO: ['information_schema']
 };
-
-function filterSchemas(schemas: DatasourceSchemaBrowserResponse['schemas'], search: string) {
-    if (!search) return schemas;
-    const matches = (value: string) => value.toLowerCase().includes(search);
-    return schemas.flatMap((schema) => {
-        if (matches(schema.schema)) return [schema];
-        const tables = schema.tables.flatMap((table) => {
-            if (matches(table.table)) return [table];
-            const columns = table.columns.filter((column) => matches(column.name));
-            return columns.length ? [{ ...table, columns }] : [];
-        });
-        return tables.length ? [{ ...schema, tables }] : [];
-    });
-}
 
 function TreeChevron({ open }: { open: boolean }) {
     return (
@@ -152,7 +139,9 @@ export default function ExplorerTree({
     search,
     columnStates,
     loadTableColumns,
-    allColumnsLoaded,
+    loadSchemaTables,
+    tableStates,
+    searchBrowser,
     searchError,
     searchLoading,
     onCopy,
@@ -164,37 +153,53 @@ export default function ExplorerTree({
     const [systemExpanded, setSystemExpanded] = useState(false);
     const [selected, setSelected] = useState('');
     const normalizedSearch = search.trim().toLowerCase();
-    const schemas = useMemo(
-        () => filterSchemas(schemaBrowser?.schemas ?? [], normalizedSearch),
-        [normalizedSearch, schemaBrowser]
-    );
+    const schemas = (normalizedSearch ? searchBrowser : schemaBrowser)?.schemas;
     const isSystem = (schema: string) =>
         systemSchemasByEngine[engine ?? '']?.includes(schema.toLowerCase()) ?? false;
-    const defaultSchema = activeSchema || schemas.find(({ schema }) => !isSystem(schema))?.schema;
+    const defaultSchema = activeSchema || schemas?.find(({ schema }) => !isSystem(schema))?.schema;
     const systemsOpen = Boolean(normalizedSearch) || systemExpanded;
     const columnsSupported = engine !== 'AEROSPIKE';
 
     useEffect(() => {
-        if (allColumnsLoaded || !columnsSupported) return;
-        for (const schema of schemas) {
+        for (const schema of schemas ?? []) {
+            const key = explorerSchemaKey(schema.schema);
+            if (
+                systemSchemasByEngine[engine ?? '']?.includes(schema.schema.toLowerCase()) &&
+                !systemsOpen
+            )
+                continue;
+            const open =
+                Boolean(normalizedSearch) ||
+                (expandedSchemas[key] ?? schema.schema === defaultSchema);
+            if (!open) continue;
+            if (!normalizedSearch && !tableStates[key]) void loadSchemaTables(schema.schema);
+            if (!columnsSupported) continue;
             for (const table of schema.tables) {
-                const key = explorerTableKey(schema.schema, table.table);
-                if (expandedTables[key] && !columnStates[key] && table.columns.length === 0) {
+                const tableKey = explorerTableKey(schema.schema, table.table);
+                if (
+                    expandedTables[tableKey] &&
+                    !columnStates[tableKey] &&
+                    table.columns.length === 0
+                )
                     void loadTableColumns(schema.schema, table.table);
-                }
             }
         }
     }, [
-        allColumnsLoaded,
         columnStates,
         columnsSupported,
+        defaultSchema,
+        engine,
+        expandedSchemas,
         expandedTables,
+        loadSchemaTables,
         loadTableColumns,
-        schemas
+        normalizedSearch,
+        schemas,
+        systemsOpen,
+        tableStates
     ]);
 
-    if (!schemaBrowser)
-        return <p className="explorer-empty">Select a connection to browse schemas and tables.</p>;
+    if (!schemaBrowser) return null;
 
     const copy = (key: string, name: string) => {
         setSelected(key);
@@ -203,9 +208,10 @@ export default function ExplorerTree({
     const rowClass = (key: string) =>
         selected === key ? 'explorer-node-row selected' : 'explorer-node-row';
 
-    const renderSchema = (entry: (typeof schemas)[number]) => {
+    const renderSchema = (entry: NonNullable<typeof schemas>[number]) => {
         const schema = entry.schema;
-        const schemaKey = JSON.stringify([schema]);
+        const schemaKey = explorerSchemaKey(schema);
+        const tableState = tableStates[schemaKey];
         const open =
             Boolean(normalizedSearch) || (expandedSchemas[schemaKey] ?? schema === defaultSchema);
         return (
@@ -226,22 +232,45 @@ export default function ExplorerTree({
                             onClick={() => copy(schemaKey, schema)}
                         />
                         <span className="explorer-item-tail">
-                            <span className="explorer-item-count" title="Table count">
-                                {entry.tables.length}
-                            </span>
+                            {(normalizedSearch ||
+                                tableState?.status === 'ready' ||
+                                entry.tables.length > 0) && (
+                                <span className="explorer-item-count" title="Table count">
+                                    {entry.tables.length}
+                                </span>
+                            )}
                             <InsertObject kind="schema" name={schema} onInsert={onInsert} />
                         </span>
                     </div>
                 </div>
                 {open && (
                     <ul className="explorer-children">
+                        {!normalizedSearch && (!tableState || tableState.status === 'loading') && (
+                            <li className="explorer-empty" role="status">
+                                Loading tables...
+                            </li>
+                        )}
+                        {!normalizedSearch && tableState?.status === 'error' && (
+                            <li className="explorer-empty">
+                                <span role="alert">{tableState.message}</span>{' '}
+                                <button type="button" onClick={() => void loadSchemaTables(schema)}>
+                                    Retry tables
+                                </button>
+                            </li>
+                        )}
+                        {!normalizedSearch &&
+                            tableState?.status === 'ready' &&
+                            entry.tables.length === 0 && (
+                                <li className="explorer-empty">No tables found.</li>
+                            )}
                         {entry.tables.map((table) => {
                             const key = explorerTableKey(schema, table.table);
                             const status = columnStates[key];
-                            const known =
-                                allColumnsLoaded ||
-                                status?.status === 'ready' ||
-                                table.columns.length > 0;
+                            const columns =
+                                table.columns.length > 0 || status?.status !== 'ready'
+                                    ? table.columns
+                                    : status.value;
+                            const known = status?.status === 'ready' || columns.length > 0;
                             const autoExpand =
                                 Boolean(normalizedSearch) &&
                                 table.columns.some((column) =>
@@ -253,7 +282,7 @@ export default function ExplorerTree({
                                 <li key={key} className="explorer-node explorer-depth-2">
                                     <div className={rowClass(key)}>
                                         {columnsSupported &&
-                                        (expanded || !known || table.columns.length > 0) ? (
+                                        (expanded || !known || columns.length > 0) ? (
                                             <TreeToggle
                                                 open={expanded}
                                                 label={
@@ -284,7 +313,7 @@ export default function ExplorerTree({
                                                         className="explorer-item-count"
                                                         title="Column count"
                                                     >
-                                                        {table.columns.length}
+                                                        {columns.length}
                                                     </span>
                                                 )}
                                                 <button
@@ -330,12 +359,12 @@ export default function ExplorerTree({
                                                     </button>
                                                 </li>
                                             )}
-                                            {known && table.columns.length === 0 && (
+                                            {known && columns.length === 0 && (
                                                 <li className="explorer-empty">
                                                     No columns found.
                                                 </li>
                                             )}
-                                            {table.columns.map((column) => {
+                                            {columns.map((column) => {
                                                 const columnKey = JSON.stringify([
                                                     schema,
                                                     table.table,
@@ -383,12 +412,12 @@ export default function ExplorerTree({
         );
     };
 
-    const systems = schemas.filter((entry) => isSystem(entry.schema));
+    const systems = schemas?.filter((entry) => isSystem(entry.schema)) ?? [];
     return (
         <ul className="explorer-tree explorer-root" role="tree">
             {searchLoading && (
                 <li className="explorer-empty" role="status">
-                    Searching columns...
+                    Searching objects...
                 </li>
             )}
             {normalizedSearch && searchError && (
@@ -396,12 +425,20 @@ export default function ExplorerTree({
                     {searchError}
                 </li>
             )}
-            {!searchLoading && schemas.length === 0 && (
-                <li className="explorer-empty">
-                    {normalizedSearch ? 'No matching objects.' : 'No schemas discovered.'}
+            {normalizedSearch && searchBrowser?.searchTruncated && (
+                <li className="explorer-empty" role="status">
+                    Search reached the metadata limit. Browse a schema to see more.
                 </li>
             )}
-            {schemas.filter((entry) => !isSystem(entry.schema)).map(renderSchema)}
+            {!searchLoading &&
+                !searchError &&
+                !searchBrowser?.searchTruncated &&
+                schemas?.length === 0 && (
+                    <li className="explorer-empty">
+                        {normalizedSearch ? 'No matching objects.' : 'No schemas discovered.'}
+                    </li>
+                )}
+            {schemas?.filter((entry) => !isSystem(entry.schema)).map(renderSchema)}
             {systems.length > 0 && (
                 <li>
                     <button

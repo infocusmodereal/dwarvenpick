@@ -64,6 +64,7 @@ data class QueryExecutionResponse(
     val status: String,
     val message: String,
     val queryHash: String,
+    val writeOutcomeUncertain: Boolean = false,
 )
 
 data class QueryCancelResponse(
@@ -99,6 +100,7 @@ data class QueryExecutionStatusResponse(
     val credentialProfile: String,
     val justification: String? = null,
     val scriptSummary: QueryScriptSummary? = null,
+    val writeOutcomeUncertain: Boolean = false,
 )
 
 data class ActiveQueryExecutionResponse(

@@ -5,6 +5,7 @@ data class DatasourceSchemaBrowserResponse(
     val cached: Boolean,
     val fetchedAt: String,
     val schemas: List<DatasourceSchemaEntryResponse>,
+    val searchTruncated: Boolean = false,
 )
 
 data class DatasourceSchemaEntryResponse(
@@ -37,4 +38,19 @@ data class SchemaBrowserTable(
 data class SchemaBrowserSelection(
     val includeColumns: Boolean = true,
     val table: SchemaBrowserTable? = null,
-)
+    val schema: String? = null,
+    val schemasOnly: Boolean = false,
+    val search: String? = null,
+) {
+    init {
+        require(schema == null || (schema.isNotBlank() && schema.length <= 512 && schema.none(Char::isISOControl))) {
+            "Invalid schema name."
+        }
+        require(search == null || (search.isNotBlank() && search.length <= 128 && search.none(Char::isISOControl))) {
+            "Search must contain 1 to 128 characters."
+        }
+        require(listOf(table != null, schema != null, schemasOnly, search != null).count { it } <= 1) {
+            "Choose one metadata scope."
+        }
+    }
+}

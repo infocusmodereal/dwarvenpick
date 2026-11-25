@@ -188,6 +188,8 @@ Connections uses a compact table with local search and engine filtering. Endpoin
 
 ## Retrying a query submission
 
-API clients can send an `Idempotency-Key` header with `POST /api/queries`. Generate a fresh key for each intended execution and reuse it when retrying the same request after a transport error. The server returns the existing execution ID and state while its runtime record is retained. Changing the query, connection, profile, default schema, justification or execution options with the same key returns HTTP 409.
+API clients can send an `Idempotency-Key` header with `POST /api/queries`. Generate a fresh key for each intended execution and reuse it when retrying the same request after a transport error. The Workbench reuses its key once if the submission response is lost. The server returns the original execution ID and state while its runtime record is retained. After that record expires, the same key returns HTTP 409 with the original execution ID. Changing the query, connection, profile, default schema, justification or execution options with the same key returns HTTP 409.
+
+An execution status with `writeOutcomeUncertain: true` means Dwarvenpick did not finish confirming a write that might have reached the database. Find the original execution in Query History and verify what committed on the target before starting another execution.
 
 Check the execution state and reconcile any writes in the target database before retrying after runtime retention has elapsed. Status and error messages report when a write may already have committed.
