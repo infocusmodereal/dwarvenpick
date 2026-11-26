@@ -7434,6 +7434,11 @@ select {
 .history-panel {
     container-type: inline-size;
     padding: 1.15rem clamp(0.75rem, 2vw, 1.65rem) 0.8rem;
+    gap: 0;
+}
+
+.history-panel > :is(.inspection-heading, .query-history-toolbar, .inline-notice) {
+    margin-bottom: 0.9rem;
 }
 
 .history-panel .inspection-heading h2 {
@@ -7452,21 +7457,53 @@ select {
     min-width: min(12rem, 100%);
 }
 
-.query-history-toolbar .select-wrap {
-    max-width: 15rem;
-    min-width: 0;
+.history-panel .connection-switch {
+    max-width: min(15rem, 100%);
 }
 
-.query-history-toolbar .select-wrap select,
+.history-panel .connection-trigger,
 .history-disclosure > summary {
     min-height: 2.1rem;
-    padding-block: 0.38rem;
+    padding: 0.38rem 0.65rem;
     border-radius: 0.4rem;
+    background: var(--control-bg);
     font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.25;
 }
 
-.query-history-toolbar .select-wrap select {
-    width: 100%;
+.history-panel .connection-trigger {
+    justify-content: space-between;
+}
+
+.history-panel .picker-current-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-panel .connection-trigger > span:last-child {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--muted);
+}
+
+.history-panel .connection-trigger svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.query-history-toolbar .connection-popover {
+    min-width: 10rem;
+}
+
+.history-panel .connection-popover ul[tabindex] {
+    margin-top: 0;
+    outline: none;
+}
+
+.history-panel .connection-popover.profile-popover {
+    font: inherit;
 }
 
 .history-toolbar-actions,
@@ -7517,7 +7554,8 @@ select {
     border-color: var(--border-hover);
 }
 
-.history-panel :is(summary, .history-sort, .history-query-preview):focus-visible {
+.history-panel
+    :is(summary, .connection-trigger, .history-sort, .history-query-preview):focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
@@ -7568,8 +7606,9 @@ select {
 .query-history-split {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    flex: 1 1 auto;
-    min-height: 12rem;
+    grid-template-rows: minmax(0, 1fr);
+    flex: 0 1 auto;
+    min-height: 0;
 }
 
 .query-history-split.has-selection {
@@ -7759,6 +7798,16 @@ select {
 .history-detail-limits .history-detail-fields {
     border: 0;
     padding-top: 0.55rem;
+}
+
+.history-page-size-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.query-history-footer .connection-trigger {
+    min-width: 5.6rem;
+    font-variant-numeric: tabular-nums;
 }
 
 .query-history-footer {

@@ -270,11 +270,19 @@ describe('QueryHistorySection', () => {
             onPageSizeChange
         });
 
-        fireEvent.change(screen.getByLabelText('Status'), {
-            target: { value: 'FAILED' }
-        });
+        const status = screen.getByRole('button', { name: 'Status' });
+        fireEvent.click(status);
+        const statuses = screen.getByRole('listbox', { name: 'statuses' });
+        expect(statuses).toHaveFocus();
+        fireEvent.keyDown(statuses, { key: 'End' });
+        fireEvent.keyDown(statuses, { key: 'ArrowUp' });
+        fireEvent.keyDown(statuses, { key: 'Enter' });
+        expect(status).toHaveFocus();
+
         fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
-        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '10' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Show rows' }));
+        expect(screen.getByRole('option', { name: '100', selected: true })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('option', { name: '10' }));
 
         expect(onStatusFilterChange).toHaveBeenCalledWith('FAILED');
         expect(onPageIndexChange).toHaveBeenCalledWith(1);

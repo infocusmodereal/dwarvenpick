@@ -3,6 +3,7 @@ import CompactPagination from '../components/CompactPagination';
 import HistoryDisclosure from '../components/HistoryDisclosure';
 import InlineNotice from '../components/InlineNotice';
 import QueryHistoryDetails, { QueryHistoryStatus } from '../components/QueryHistoryDetails';
+import SearchablePicker from '../components/SearchablePicker';
 import { IconButton, IconGlyph, LabeledActionButton } from '../components/WorkbenchIcons';
 import { downloadCsv, toCsv } from '../csvDownload';
 import { historyQueryText } from '../historyQueryText';
@@ -35,6 +36,19 @@ type QueryHistorySectionProps = {
     onPageSizeChange: (value: number) => void;
     onOpenEntry: (entry: QueryHistoryEntryResponse, rerun: boolean) => void;
 };
+
+const statusOptions = [
+    { value: '', label: 'All statuses' },
+    { value: 'QUEUED', label: 'Queued' },
+    { value: 'RUNNING', label: 'Running' },
+    { value: 'SUCCEEDED', label: 'Succeeded' },
+    { value: 'FAILED', label: 'Failed' },
+    { value: 'CANCELED', label: 'Canceled' }
+];
+const pageSizeOptions = [10, 100, 250, 500, 1000].map((size) => ({
+    value: String(size),
+    label: String(size)
+}));
 
 const submittedFormat = new Intl.DateTimeFormat(undefined, {
     month: 'short',
@@ -179,34 +193,25 @@ export default function QueryHistorySection({
                         />
                     </label>
                 </HistoryDisclosure>
-                <div className="select-wrap">
-                    <select
-                        aria-label="Connection"
-                        value={datasourceFilter}
-                        onChange={(event) => onDatasourceFilterChange(event.target.value)}
-                    >
-                        <option value="">All connections</option>
-                        {visibleDatasources.map((datasource) => (
-                            <option key={datasource.id} value={datasource.id}>
-                                {datasource.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                <div className="select-wrap">
-                    <select
-                        aria-label="Status"
-                        value={statusFilter}
-                        onChange={(event) => onStatusFilterChange(event.target.value)}
-                    >
-                        <option value="">All statuses</option>
-                        <option value="QUEUED">Queued</option>
-                        <option value="RUNNING">Running</option>
-                        <option value="SUCCEEDED">Succeeded</option>
-                        <option value="FAILED">Failed</option>
-                        <option value="CANCELED">Canceled</option>
-                    </select>
-                </div>
+                <SearchablePicker
+                    noun="connection"
+                    triggerLabel="Connection"
+                    value={datasourceFilter}
+                    onChange={onDatasourceFilterChange}
+                    searchable={visibleDatasources.length > 8}
+                    items={[
+                        { value: '', label: 'All connections' },
+                        ...visibleDatasources.map(({ id, name }) => ({ value: id, label: name }))
+                    ]}
+                />
+                <SearchablePicker
+                    noun="status"
+                    triggerLabel="Status"
+                    value={statusFilter}
+                    onChange={onStatusFilterChange}
+                    searchable={false}
+                    items={statusOptions}
+                />
                 {hasFilters && (
                     <button
                         type="button"
@@ -399,20 +404,18 @@ export default function QueryHistorySection({
                 )}
                 {(pageIndex > 0 || hasNextPage || entries.length > 10) && (
                     <div className="result-page-size-inline">
-                        <label htmlFor="history-page-size">Show rows</label>
-                        <div className="select-wrap">
-                            <select
-                                id="history-page-size"
-                                value={pageSize}
-                                onChange={(event) => onPageSizeChange(Number(event.target.value))}
-                            >
-                                {[10, 100, 250, 500, 1000].map((size) => (
-                                    <option key={size} value={size}>
-                                        {size}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <span className="history-page-size-label" aria-hidden>
+                            Show rows
+                        </span>
+                        <SearchablePicker
+                            noun="page size"
+                            triggerLabel="Show rows"
+                            placement="top"
+                            value={String(pageSize)}
+                            onChange={(size) => onPageSizeChange(Number(size))}
+                            searchable={false}
+                            items={pageSizeOptions}
+                        />
                     </div>
                 )}
             </footer>
