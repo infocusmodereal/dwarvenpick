@@ -15,7 +15,7 @@ The Workbench is the main SQL editor and results viewer.
 ## Editor
 
 - Choose or search for a connection at the top of Explorer by name or engine. Hover over its icon to see the database engine. At the right of the SQL tabs, open **Schema** and type to filter. Use the arrow keys and Enter to set the default for the active tab, or choose **None** to clear it. Search includes objects inside the collapsed **System schemas** group. Open **Access & policy** at the foot of Explorer to select a profile from its searchable menu. Use arrow keys and Enter to select, or Escape to close. Auto (RBAC) shows the profile it will use. When that profile requires justification, enter a change ticket or reason below the selector. Expand **Permissions & limits** for policy details.
-- Query History shows the submitting user in every row and includes it in current-page search and CSV export. Long connection names and usernames are truncated with their full value available on hover. Use the labeled icon actions to inspect details, open SQL or rerun it.
+- Query History shows the submitting user in every row and includes it in current-page search and CSV export. Long connection names and usernames are truncated with their full value available on hover. Select a query to inspect its execution details in the side panel.
 
 - Create tabs for multiple queries.
 - Run selection or run the full query.
@@ -177,7 +177,7 @@ SQL validation feedback appears beside **Validate SQL**, separately from query r
 
 Audit Events keeps server filters for action, actor, outcome and time range together. **Search loaded events** searches only the loaded batch (up to the latest 200 matching events), including detail values. Expand **View details** for structured fields. Pagination and CSV export operate on the current loaded view; CSV exports the current page. Sorting changes the order of loaded events.
 
-Query History groups connection/status/time filters above the table. Search applies only to the current page, excludes redacted SQL, and clears when changing pages or server filters. **Details** expands execution metadata, justification, error diagnostics and SQL without executing it. Open and Rerun retain their existing behavior. Export includes only visible rows on the current page.
+Query History groups date, connection, status and current-page search in one toolbar. Search excludes redacted SQL and clears when changing pages or server filters. Select a query to see its SQL, profile, diagnostics and execution metadata next to the table. **Open in editor** loads the SQL without executing it. **Rerun** is available under the query actions for entries with visible SQL. **Export CSV** includes the matching rows on the current page.
 
 System Health separates **Engine health**, **Query activity**, and **Connection pools**. Node details and recent errors expand on demand. Connection-wide pause/resume/cancel/kill controls are grouped under **Manage connection**; existing authorization and confirmation flows remain in place. Engine checks and query activity retain their separate update timestamps. Auto Refresh applies to query activity, while the header Refresh requests both engine health and query activity.
 

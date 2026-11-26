@@ -142,7 +142,7 @@ describe('QueryResultsSection', () => {
         expect(screen.queryByRole('dialog', { name: 'Export results' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Copy selected cells' })).toBeDisabled();
     });
-    it('keeps alternating row shading stable when the virtual window starts on an odd row', () => {
+    it('keeps absolute row labels when the virtual window starts past the first row', () => {
         render(
             <QueryResultsSection
                 tab={resultTab}
@@ -158,7 +158,7 @@ describe('QueryResultsSection', () => {
                 onCopyCell={copy()}
             />
         );
-        expect(screen.getByText('alpha').closest('tr')).toHaveClass('result-row-alt');
+        expect(screen.getByRole('checkbox', { name: 'Select row 2' })).toBeInTheDocument();
     });
 
     it('hides/restores columns without changing SQL or loaded results', () => {
