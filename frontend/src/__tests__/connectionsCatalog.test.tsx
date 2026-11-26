@@ -47,9 +47,11 @@ describe('Connections catalog', () => {
                 onReencrypt={vi.fn()}
             />
         );
-        fireEvent.change(screen.getByLabelText('Filter connections by engine'), {
-            target: { value: 'POSTGRESQL' }
-        });
+        const engine = screen.getByRole('button', { name: 'Filter connections by engine' });
+        fireEvent.click(engine);
+        expect(screen.getByRole('listbox', { name: 'engines' })).toHaveFocus();
+        fireEvent.click(screen.getByRole('option', { name: 'PostgreSQL' }));
+        expect(engine).toHaveFocus();
         expect(screen.queryByText('lake')).not.toBeInTheDocument();
         fireEvent.change(screen.getByLabelText('Search connections'), {
             target: { value: 'no match' }

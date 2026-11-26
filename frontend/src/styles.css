@@ -6792,9 +6792,8 @@ select {
     font-size: 0.75rem;
     color: var(--muted);
 }
-.connections-engine-filter select {
-    font-size: 0.78rem;
-    min-width: 160px;
+.connections-engine-filter .compact-picker {
+    min-width: 10rem;
 }
 .connections-maintenance {
     position: relative;
@@ -7457,11 +7456,11 @@ select {
     min-width: min(12rem, 100%);
 }
 
-.history-panel .connection-switch {
+.compact-picker {
     max-width: min(15rem, 100%);
 }
 
-.history-panel .connection-trigger,
+.compact-picker .connection-trigger,
 .history-disclosure > summary {
     min-height: 2.1rem;
     padding: 0.38rem 0.65rem;
@@ -7472,23 +7471,23 @@ select {
     line-height: 1.25;
 }
 
-.history-panel .connection-trigger {
+.compact-picker .connection-trigger {
     justify-content: space-between;
 }
 
-.history-panel .picker-current-label {
+.compact-picker .picker-current-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.history-panel .connection-trigger > span:last-child {
+.compact-picker .connection-trigger > span:last-child {
     display: inline-flex;
     flex: 0 0 auto;
     color: var(--muted);
 }
 
-.history-panel .connection-trigger svg {
+.compact-picker .connection-trigger svg {
     width: 1rem;
     height: 1rem;
 }
@@ -7497,7 +7496,7 @@ select {
     min-width: 10rem;
 }
 
-.history-panel .connection-popover ul[tabindex] {
+.compact-picker .connection-popover ul[tabindex] {
     margin-top: 0;
     outline: none;
 }

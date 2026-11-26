@@ -11,7 +11,7 @@ import { IconGlyph } from './WorkbenchIcons';
 
 type PickerItem = { value: string; label: string; iconLabel?: string; icon?: string };
 type Props = {
-    noun: 'connection' | 'schema' | 'profile' | 'status' | 'page size';
+    noun: 'connection' | 'schema' | 'profile' | 'status' | 'page size' | 'engine';
     searchable?: boolean;
     placement?: 'bottom' | 'top';
     triggerLabel: string;
@@ -44,6 +44,7 @@ export default function SearchablePicker({
         schema: 'schemas',
         profile: 'profiles',
         status: 'statuses',
+        engine: 'engines',
         'page size': 'page sizes'
     }[noun];
     const selected = items.find((item) => item.value === value);
@@ -130,7 +131,7 @@ export default function SearchablePicker({
 
     return (
         <div
-            className="connection-switch"
+            className={children == null ? 'connection-switch compact-picker' : 'connection-switch'}
             onBlur={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
             }}

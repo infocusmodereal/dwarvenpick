@@ -1,5 +1,15 @@
 import type { DatasourceEngine, PoolSettings, TlsSettings } from './types';
 
+export const engineNames: Partial<Record<string, string>> = {
+    POSTGRESQL: 'PostgreSQL',
+    MYSQL: 'MySQL',
+    MARIADB: 'MariaDB',
+    STARROCKS: 'StarRocks',
+    TRINO: 'Trino',
+    VERTICA: 'Vertica',
+    AEROSPIKE: 'Aerospike'
+};
+
 export const defaultPoolSettings: PoolSettings = {
     maximumPoolSize: 5,
     minimumIdle: 1,

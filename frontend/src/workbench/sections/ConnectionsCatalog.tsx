@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { ManagedDatasourceResponse } from '../types';
 import { IconButton, IconGlyph, LabeledActionButton } from '../components/WorkbenchIcons';
+import SearchablePicker from '../components/SearchablePicker';
+import { engineNames } from '../constants';
 import { resolveDatasourceIcon } from '../icons';
 
 type Props = {
@@ -65,21 +67,23 @@ export default function ConnectionsCatalog({
                         onChange={(event) => setSearch(event.target.value)}
                     />
                 </label>
-                <label className="connections-engine-filter">
-                    <span>Engine</span>
-                    <select
-                        aria-label="Filter connections by engine"
+                <div className="connections-engine-filter">
+                    <span aria-hidden>Engine</span>
+                    <SearchablePicker
+                        noun="engine"
+                        triggerLabel="Filter connections by engine"
                         value={engine}
-                        onChange={(event) => setEngine(event.target.value)}
-                    >
-                        <option value="">All engines</option>
-                        {engines.map((value) => (
-                            <option key={value} value={value}>
-                                {value}
-                            </option>
-                        ))}
-                    </select>
-                </label>
+                        searchable={false}
+                        items={[
+                            { value: '', label: 'All engines' },
+                            ...engines.map((value) => ({
+                                value,
+                                label: engineNames[value] ?? value
+                            }))
+                        ]}
+                        onChange={setEngine}
+                    />
+                </div>
                 <span className="inspection-count">
                     {filtered.length} of {connections.length} connections
                 </span>

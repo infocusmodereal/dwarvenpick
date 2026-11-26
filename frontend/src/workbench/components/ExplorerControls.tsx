@@ -1,18 +1,9 @@
 import type { ReactNode } from 'react';
 import SearchablePicker from './SearchablePicker';
 import type { CatalogDatasourceResponse } from '../types';
+import { engineNames } from '../constants';
 import { resolveDatasourceIcon } from '../icons';
 import { IconGlyph } from './WorkbenchIcons';
-
-const engineNames: Record<string, string> = {
-    POSTGRESQL: 'PostgreSQL',
-    MYSQL: 'MySQL',
-    MARIADB: 'MariaDB',
-    STARROCKS: 'StarRocks',
-    TRINO: 'Trino',
-    VERTICA: 'Vertica',
-    AEROSPIKE: 'Aerospike'
-};
 
 type ExplorerControlsProps = {
     activeDatasource?: CatalogDatasourceResponse;
