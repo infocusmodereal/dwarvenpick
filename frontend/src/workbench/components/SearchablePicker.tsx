@@ -49,18 +49,30 @@ export default function SearchablePicker({
     const selected = items.find((item) => item.value === value);
     useLayoutEffect(() => {
         if (!open || disabled || !popover.current || !trigger.current) return;
+        const popup = popover.current;
         if (placement === 'top') {
             const bounds = trigger.current.getBoundingClientRect();
-            Object.assign(popover.current.style, {
+            Object.assign(popup.style, {
                 left: `${bounds.left}px`,
                 bottom: `${window.innerHeight - bounds.top + 4}px`,
                 width: `${bounds.width}px`,
                 maxHeight: `${Math.max(0, bounds.top - 8)}px`
             });
-            popover.current.showPopover?.();
+            popup.showPopover?.();
         }
-        if (searchable) popover.current.querySelector('input')?.focus();
+        if (searchable) popup.querySelector('input')?.focus();
         else list.current?.focus();
+
+        if (placement === 'top') return;
+        const fitViewport = () => {
+            popup.style.translate = '';
+            const edge = document.documentElement.clientWidth - 8;
+            const overflow = popup.getBoundingClientRect().right - edge;
+            if (overflow > 0 && edge > 0) popup.style.translate = `-${overflow}px`;
+        };
+        fitViewport();
+        window.addEventListener('resize', fitViewport);
+        return () => window.removeEventListener('resize', fitViewport);
     }, [open, disabled, placement, searchable]);
     useEffect(() => {
         if (!open || placement !== 'top') return;
