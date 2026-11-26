@@ -38,6 +38,10 @@ sealed interface QueryAdmissionDecision {
 
     data object Contended : QueryAdmissionDecision
 
+    data class Replayed(
+        val execution: PersistedQueryRuntimeMetadataRecord,
+    ) : QueryAdmissionDecision
+
     data class Limited(
         val scope: QueryAdmissionScope,
         val limit: Int,
@@ -75,12 +79,13 @@ class QueryAdmissionRepository(
         record: PersistedQueryRuntimeRecord,
         limits: QueryAdmissionLimits,
         staleCutoff: Instant,
+        allowReplay: Boolean = false,
     ): QueryAdmissionDecision =
         if (dialect == QueryAdmissionDialect.POSTGRESQL) {
-            executeTransaction(record, limits, staleCutoff, acquireDatabaseLocks = true)
+            executeTransaction(record, limits, staleCutoff, allowReplay, acquireDatabaseLocks = true)
         } else {
             synchronized(h2AdmissionMonitor) {
-                executeTransaction(record, limits, staleCutoff, acquireDatabaseLocks = false)
+                executeTransaction(record, limits, staleCutoff, allowReplay, acquireDatabaseLocks = false)
             }
         }
 
@@ -90,6 +95,7 @@ class QueryAdmissionRepository(
         record: PersistedQueryRuntimeRecord,
         limits: QueryAdmissionLimits,
         staleCutoff: Instant,
+        allowReplay: Boolean,
         acquireDatabaseLocks: Boolean,
     ): QueryAdmissionDecision =
         requireNotNull(
@@ -97,12 +103,58 @@ class QueryAdmissionRepository(
                 check(TransactionSynchronizationManager.isActualTransactionActive()) {
                     "Query admission requires an active metadata database transaction."
                 }
+                queryRuntimeRepository.markStaleActiveExecutions(
+                    staleCutoff,
+                    LOST_QUERY_OUTCOME_MESSAGE,
+                    maxRows = ADMISSION_STALE_CLEANUP_LIMIT,
+                )
                 if (acquireDatabaseLocks && !tryAcquirePostgresLocks(record.actor)) {
                     return@execute QueryAdmissionDecision.Contended
                 }
-                reserveWithinTransaction(record, limits, staleCutoff)
+                if (!allowReplay) return@execute reserveWithinTransaction(record, limits)
+
+                val executionId = record.executionId
+                val fingerprint = QuerySubmissionIdentity.fingerprint(record)
+                val receipt = findReceipt(executionId)
+                if (receipt != null && receipt != fingerprint) throw QueryIdempotencyConflictException()
+                queryRuntimeRepository.findMetadata(executionId)?.let { existing ->
+                    if (receipt == null) {
+                        if (QuerySubmissionIdentity.fingerprint(existing) != fingerprint) {
+                            throw QueryIdempotencyConflictException()
+                        }
+                        insertReceipt(executionId, fingerprint)
+                    }
+                    return@execute QueryAdmissionDecision.Replayed(existing)
+                }
+                if (receipt != null) {
+                    throw QueryIdempotencyConflictException(
+                        "Execution '$executionId' was already submitted and its live status has expired. " +
+                            "Check Query History and verify any writes before starting a new execution.",
+                    )
+                }
+                reserveWithinTransaction(record, limits).also { decision ->
+                    if (decision == QueryAdmissionDecision.Admitted) insertReceipt(executionId, fingerprint)
+                }
             },
         )
+
+    private fun findReceipt(executionId: String): String? =
+        namedParameterJdbcTemplate
+            .queryForList(
+                "SELECT request_fingerprint FROM query_execution_receipts WHERE execution_id = :executionId",
+                mapOf("executionId" to executionId),
+                String::class.java,
+            ).firstOrNull()
+
+    private fun insertReceipt(
+        executionId: String,
+        fingerprint: String,
+    ) {
+        namedParameterJdbcTemplate.update(
+            "INSERT INTO query_execution_receipts (execution_id, request_fingerprint) VALUES (:executionId, :fingerprint)",
+            mapOf("executionId" to executionId, "fingerprint" to fingerprint),
+        )
+    }
 
     private fun tryAcquirePostgresLocks(actor: String): Boolean {
         if (!tryAcquirePostgresLock(QueryAdmissionLockKey.GLOBAL_NAMESPACE, QueryAdmissionLockKey.GLOBAL_RESOURCE)) {
@@ -127,14 +179,7 @@ class QueryAdmissionRepository(
     private fun reserveWithinTransaction(
         record: PersistedQueryRuntimeRecord,
         limits: QueryAdmissionLimits,
-        staleCutoff: Instant,
     ): QueryAdmissionDecision {
-        queryRuntimeRepository.markStaleActiveExecutions(
-            staleCutoff,
-            "Query state was lost after its backend stopped heartbeating.",
-            maxRows = ADMISSION_STALE_CLEANUP_LIMIT,
-        )
-
         val activeStatuses = listOf(QueryExecutionStatus.QUEUED.name, QueryExecutionStatus.RUNNING.name)
         if (countActive("actor = :actor", mapOf("actor" to record.actor), activeStatuses) >= limits.actor) {
             return QueryAdmissionDecision.Limited(QueryAdmissionScope.ACTOR, limits.actor)

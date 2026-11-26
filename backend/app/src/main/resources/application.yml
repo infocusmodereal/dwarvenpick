@@ -96,6 +96,7 @@ dwarvenpick:
       repository-url: ${DWARVENPICK_DRIVERS_MAVEN_REPOSITORY_URL:https://repo1.maven.org/maven2/}
       max-jar-size-mb: ${DWARVENPICK_DRIVERS_MAVEN_MAX_JAR_SIZE_MB:50}
   datasource:
+    max-pool-connections-per-target: ${DWARVENPICK_DATASOURCE_MAX_POOL_CONNECTIONS_PER_TARGET:0}
     network-guard:
       enabled: true
       allow-private-networks: true

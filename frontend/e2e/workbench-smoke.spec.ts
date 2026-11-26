@@ -272,7 +272,7 @@ test('governed workbench browser smoke', async ({ page }) => {
             await expect(
                 history
                     .locator('.query-history-table tbody')
-                    .getByText('SUCCEEDED', { exact: true })
+                    .getByText(/^succeeded$/i)
                     .first()
             ).toBeVisible();
         });

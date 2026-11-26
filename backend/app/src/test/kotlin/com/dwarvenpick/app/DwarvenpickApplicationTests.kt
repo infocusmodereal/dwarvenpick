@@ -861,6 +861,7 @@ class DwarvenpickApplicationTests {
                 includeHeaders = true,
                 maxExportRows = 5000,
             )
+        queryExecutionManager.startCsvExport(executionId)
         ageLiveExecution(executionId, Instant.now().minusSeconds(3_600))
         queryExecutionManager.cleanupExpiredSessions()
 

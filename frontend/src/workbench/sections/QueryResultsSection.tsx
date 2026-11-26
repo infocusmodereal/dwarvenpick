@@ -926,14 +926,7 @@ export default function QueryResultsSection({
                                     {visibleResultRows.rows.map((row, relativeIndex) => {
                                         const index = visibleResultRows.start + relativeIndex;
                                         return (
-                                            <tr
-                                                key={index}
-                                                className={
-                                                    (pageOffset + index) % 2
-                                                        ? 'result-row-alt'
-                                                        : undefined
-                                                }
-                                            >
+                                            <tr key={index}>
                                                 <td className="result-row-index">
                                                     <label title="Select row to copy">
                                                         <input

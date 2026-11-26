@@ -12,6 +12,9 @@ class QueryLifecycleSchedulingConfiguration {
     @Bean(name = ["queryLifecycleTaskScheduler"])
     fun queryLifecycleTaskScheduler(): ThreadPoolTaskScheduler = scheduler(poolSize = 2, threadNamePrefix = "dwarvenpick-query-lifecycle-")
 
+    @Bean(name = ["queryHeartbeatTaskScheduler"])
+    fun queryHeartbeatTaskScheduler(): ThreadPoolTaskScheduler = scheduler(poolSize = 1, threadNamePrefix = "dwarvenpick-heartbeat-")
+
     private fun scheduler(
         poolSize: Int,
         threadNamePrefix: String,

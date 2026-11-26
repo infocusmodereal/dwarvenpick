@@ -33,6 +33,7 @@ data class ConnectionSpec(
     val username: String,
     val password: String,
     val pool: PoolSettings,
+    val target: Pair<String, Int>? = null,
 )
 
 data class CredentialProfileRecord(
@@ -622,6 +623,11 @@ class DatasourceRegistryService(
             username = credential.username,
             password = password,
             pool = datasource.pool,
+            target =
+                datasource.host
+                    .trim()
+                    .trimEnd('.')
+                    .lowercase(Locale.ROOT) to datasource.port,
         )
     }
 

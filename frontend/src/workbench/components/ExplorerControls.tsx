@@ -1,18 +1,9 @@
 import type { ReactNode } from 'react';
 import SearchablePicker from './SearchablePicker';
 import type { CatalogDatasourceResponse } from '../types';
+import { engineNames } from '../constants';
 import { resolveDatasourceIcon } from '../icons';
 import { IconGlyph } from './WorkbenchIcons';
-
-const engineNames: Record<string, string> = {
-    POSTGRESQL: 'PostgreSQL',
-    MYSQL: 'MySQL',
-    MARIADB: 'MariaDB',
-    STARROCKS: 'StarRocks',
-    TRINO: 'Trino',
-    VERTICA: 'Vertica',
-    AEROSPIKE: 'Aerospike'
-};
 
 type ExplorerControlsProps = {
     activeDatasource?: CatalogDatasourceResponse;
@@ -88,6 +79,7 @@ export default function ExplorerControls({
                             id="explorer-search"
                             aria-label="Search explorer objects"
                             placeholder="Search objects"
+                            maxLength={128}
                             value={searchQuery}
                             onChange={(event) => onSearchQueryChange(event.target.value)}
                         />

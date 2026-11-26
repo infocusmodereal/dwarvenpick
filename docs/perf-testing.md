@@ -225,3 +225,24 @@ runs the actual Trino JDBC driver against a local protocol fixture.
 These tests use synthetic TPCH and Memory connector metadata. They do not measure
 production connector latency or change cluster configuration. Connections without
 an explicit catalog continue using the generic JDBC path.
+
+## PostgreSQL driver memory comparison
+
+These local measurements compare v0.50.0 with the v0.51.0 cursor implementation. Both backends ran separately on the same Docker host, used PostgreSQL 15, and had JVM limits of 256 MiB initial heap and 768 MiB maximum heap. A new JVM ran each trial and executed a warm-up query before sampling. The query used a read-only profile with a 5,000-row cap and a fetch size of 500.
+
+```sql
+SELECT n, repeat('x', 8192) AS payload
+FROM pg_catalog.generate_series (1, 16384) n;
+```
+
+Each query returned 5,000 rows through Dwarvenpick. Its full result at the database contained 16,384 rows with an 8 KiB payload per row. The space before the function's opening parenthesis allowed the v0.50.0 query to reach PostgreSQL despite its fixture matching logic.
+
+| Concurrent queries | v0.50.0 sampled peak heap | v0.51.0 sampled peak heap |
+| --- | ---: | ---: |
+| 1 query, one trial | 302 MiB | 208 MiB |
+| 3 queries, median of three trial peaks | 715 MiB | 265 MiB |
+| 3 queries, range of trial peaks | 676–733 MiB | 249–294 MiB |
+
+The three-query trials showed a 63% reduction in median sampled peak heap. The median time from submission to terminal status across the nine concurrent queries per version was 1.54 s and 1.09 s, respectively.
+
+To repeat, use separate local backend processes with the same JVM, PostgreSQL version, connection policy and query limits. After warm-up, submit the query one or three times concurrently and poll for terminal status. Scrape the local Prometheus endpoint roughly every 120 ms while queries run and sum `jvm_memory_used_bytes` across the heap pools. Verify the final row count before comparing runs. These are sampled JVM heap peaks for this synthetic workload. Container RSS, larger concurrency levels and production workloads need separate measurements.

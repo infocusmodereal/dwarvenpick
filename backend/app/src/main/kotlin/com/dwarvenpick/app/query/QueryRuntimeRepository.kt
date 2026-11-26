@@ -46,6 +46,7 @@ data class PersistedQueryRuntimeRecord(
     val cancelRequested: Boolean,
     val ownerInstanceId: String,
     val heartbeatAt: Instant,
+    val writeStarted: Boolean = false,
 )
 
 data class PersistedQueryRuntimeMetadataRecord(
@@ -81,6 +82,7 @@ data class PersistedQueryRuntimeMetadataRecord(
     val cancelRequested: Boolean,
     val ownerInstanceId: String,
     val heartbeatAt: Instant,
+    val writeStarted: Boolean = false,
 )
 
 private data class ExistingQueryRuntimeState(
@@ -142,6 +144,22 @@ class QueryRuntimeRepository(
     fun insertInitial(record: PersistedQueryRuntimeRecord) {
         namedParameterJdbcTemplate.update(insertSql, record.toParameters())
     }
+
+    fun markWriteStarted(
+        executionId: String,
+        ownerInstanceId: String,
+    ): Boolean =
+        namedParameterJdbcTemplate.update(
+            """
+            UPDATE query_runtime_executions
+            SET write_started = TRUE
+            WHERE execution_id = :executionId
+              AND owner_instance_id = :ownerInstanceId
+              AND status = 'RUNNING'
+              AND cancel_requested = FALSE
+            """.trimIndent(),
+            mapOf("executionId" to executionId, "ownerInstanceId" to ownerInstanceId),
+        ) == 1
 
     fun updateExecution(update: QueryRuntimeExecutionUpdate) = queryResultPersistenceRepository.updateExecution(update)
 
@@ -373,9 +391,9 @@ class QueryRuntimeRepository(
         namedParameterJdbcTemplate.update(
             """
             UPDATE query_runtime_executions
-            SET owner_instance_id = :ownerInstanceId,
-                heartbeat_at = :heartbeatAt
+            SET heartbeat_at = :heartbeatAt
             WHERE execution_id = :executionId
+              AND owner_instance_id = :ownerInstanceId
               AND status IN ('QUEUED', 'RUNNING')
             """.trimIndent(),
             mapOf(
@@ -714,6 +732,7 @@ class QueryRuntimeRepository(
             .addValue("cancelRequested", cancelRequested)
             .addValue("ownerInstanceId", ownerInstanceId)
             .addValue("heartbeatAt", heartbeatAt.toTimestamp())
+            .addValue("writeStarted", writeStarted)
 
     private fun ResultSet.toRecord(): PersistedQueryRuntimeRecord {
         val executionId = getString("execution_id")
@@ -750,6 +769,7 @@ class QueryRuntimeRepository(
             cancelRequested = getBoolean("cancel_requested"),
             ownerInstanceId = getString("owner_instance_id"),
             heartbeatAt = getRequiredInstant("heartbeat_at"),
+            writeStarted = getBoolean("write_started"),
         )
     }
 
@@ -787,6 +807,7 @@ class QueryRuntimeRepository(
             cancelRequested = getBoolean("cancel_requested"),
             ownerInstanceId = getString("owner_instance_id"),
             heartbeatAt = getRequiredInstant("heartbeat_at"),
+            writeStarted = getBoolean("write_started"),
         )
 
     private fun selectSql(whereClause: String): String =
@@ -796,7 +817,7 @@ class QueryRuntimeRepository(
                max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
                script_stop_on_error, script_transaction_mode, script_statements_json, columns_json, rows_json,
                submitted_at, started_at, completed_at, last_accessed_at, results_expired, cancel_requested,
-               owner_instance_id, heartbeat_at
+               owner_instance_id, heartbeat_at, write_started
         FROM query_runtime_executions
         $whereClause
         ORDER BY submitted_at ASC, execution_id ASC
@@ -809,7 +830,7 @@ class QueryRuntimeRepository(
                max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
                script_stop_on_error, script_transaction_mode, script_statements_json, columns_json,
                submitted_at, started_at, completed_at, last_accessed_at, results_expired, cancel_requested,
-               owner_instance_id, heartbeat_at
+               owner_instance_id, heartbeat_at, write_started
         FROM query_runtime_executions
         $whereClause
         ORDER BY submitted_at ASC, execution_id ASC
@@ -880,14 +901,14 @@ class QueryRuntimeRepository(
               max_rows_per_query, max_runtime_seconds, concurrency_limit, script_statement_count,
               script_stop_on_error, script_transaction_mode, script_statements_json, columns_json, rows_json,
               submitted_at, started_at, completed_at, last_accessed_at, results_expired, cancel_requested,
-              owner_instance_id, heartbeat_at
+              owner_instance_id, heartbeat_at, write_started
             ) VALUES (
               :executionId, :actor, :ipAddress, :datasourceId, :credentialProfile, :defaultSchema, :justification, :queryHash, :sqlText,
               :sqlTextRedacted, :status, :message, :errorSummary, :rowCount, :columnCount, :rowLimitReached,
               :maxRowsPerQuery, :maxRuntimeSeconds, :concurrencyLimit, :scriptStatementCount,
               :scriptStopOnError, :scriptTransactionMode, :scriptStatementsJson, :columnsJson, :rowsJson,
               :submittedAt, :startedAt, :completedAt, :lastAccessedAt, :resultsExpired, :cancelRequested,
-              :ownerInstanceId, :heartbeatAt
+              :ownerInstanceId, :heartbeatAt, :writeStarted
             )
             """.trimIndent()
     }

@@ -90,3 +90,12 @@ data class QueryLifecycleSnapshot(
                 ?: 0
     }
 }
+
+internal const val LOST_QUERY_OUTCOME_MESSAGE =
+    "The backend stopped heartbeating. Verify the query outcome before retrying."
+
+internal const val UNCERTAIN_WRITE_OUTCOME_MESSAGE =
+    "Write outcome is uncertain. Verify whether any writes committed before retrying."
+
+internal fun QueryExecutionStatus.hasUncertainWriteOutcome(writeStarted: Boolean): Boolean =
+    writeStarted && (this == QueryExecutionStatus.FAILED || this == QueryExecutionStatus.CANCELED)

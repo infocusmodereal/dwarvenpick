@@ -269,6 +269,7 @@ describe('useQueryResultsWorkflow', () => {
     it('cycles result sorting and computes a bounded virtual row window', () => {
         const activeTab = {
             ...tab('tab-a'),
+            resultColumns: [{ name: 'value', jdbcType: 'INTEGER' }],
             resultRows: Array.from({ length: 100 }, (_, index) => [String(100 - index)])
         };
         const { result } = renderHook(() =>

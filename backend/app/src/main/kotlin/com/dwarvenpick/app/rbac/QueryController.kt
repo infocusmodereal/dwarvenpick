@@ -18,6 +18,7 @@ import com.dwarvenpick.app.query.QueryExecutionRequest
 import com.dwarvenpick.app.query.QueryExecutionStatus
 import com.dwarvenpick.app.query.QueryExportLimitExceededException
 import com.dwarvenpick.app.query.QueryHistorySortOrder
+import com.dwarvenpick.app.query.QueryIdempotencyConflictException
 import com.dwarvenpick.app.query.QueryInvalidPageTokenException
 import com.dwarvenpick.app.query.QueryJustificationRequiredException
 import com.dwarvenpick.app.query.QueryReadOnlyViolationException
@@ -29,6 +30,7 @@ import com.dwarvenpick.app.query.QueryValidationService
 import io.micrometer.core.instrument.MeterRegistry
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -45,7 +47,6 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import java.time.Instant
-import java.util.concurrent.atomic.AtomicBoolean
 
 @RestController
 @Validated
@@ -86,6 +87,8 @@ class QueryController(
                     ipAddress = httpServletRequest.remoteAddr,
                     request = request,
                     policy = accessPolicy,
+                    idempotencyKey = httpServletRequest.getHeader("Idempotency-Key"),
+                    actorId = principal.userId,
                 )
             ResponseEntity.ok(response)
         } catch (ex: QueryAccessDeniedException) {
@@ -97,6 +100,8 @@ class QueryController(
             ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(ex.message))
         } catch (ex: DatasourceNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(ex.message))
+        } catch (ex: QueryIdempotencyConflictException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse(ex.message ?: "Idempotency key conflict."))
         } catch (ex: QueryConcurrencyLimitException) {
             ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ErrorResponse(ex.message))
         } catch (ex: QueryAdmissionUnavailableException) {
@@ -202,7 +207,11 @@ class QueryController(
                             pageToken = pageToken,
                             pageSize = pageSize,
                         ),
-                )
+                ) { execution ->
+                    if (!rbacService.canReadQueryResults(principal, execution.datasourceId, execution.credentialProfile)) {
+                        throw QueryAccessDeniedException("Datasource access denied for query results.")
+                    }
+                }
             ResponseEntity.ok(response)
         }
     }
@@ -269,49 +278,49 @@ class QueryController(
                     maxExportRows = queryExecutionProperties.maxExportRows,
                 )
 
-            val exportLease = CsvExportLease(exportPayload.executionId, queryExecutionManager)
-            try {
-                authAuditLogger.log(
-                    AuthAuditEvent(
-                        type = "query.export",
-                        actor = principal.username,
-                        outcome = "success",
-                        ipAddress = httpServletRequest.remoteAddr,
-                        details =
-                            mapOf(
-                                "executionId" to executionId,
-                                "datasourceId" to exportPayload.datasourceId,
-                                "credentialProfile" to status.credentialProfile,
-                                "rowCount" to exportPayload.rowCount,
-                                "headers" to headers,
-                            ),
-                    ),
+            val started =
+                AuthAuditEvent(
+                    type = "query.export",
+                    actor = principal.username,
+                    outcome = "started",
+                    ipAddress = httpServletRequest.remoteAddr,
+                    details =
+                        mapOf(
+                            "executionId" to executionId,
+                            "datasourceId" to exportPayload.datasourceId,
+                            "credentialProfile" to status.credentialProfile,
+                            "rowCount" to exportPayload.rowCount,
+                            "headers" to headers,
+                        ),
                 )
-                recordExportMetric(outcome = "success", datasourceId = exportPayload.datasourceId)
+            authAuditLogger.log(started)
 
-                val responseBody =
-                    StreamingResponseBody { outputStream ->
-                        try {
-                            QueryCsvWriter.writeCsv(
-                                outputStream = outputStream,
-                                columns = exportPayload.columns,
-                                rows = exportPayload.rows,
-                                includeHeaders = exportPayload.includeHeaders,
-                            )
-                        } finally {
-                            exportLease.release()
-                        }
+            val responseBody =
+                StreamingResponseBody { outputStream ->
+                    queryExecutionManager.startCsvExport(executionId)
+                    try {
+                        QueryCsvWriter.writeCsv(
+                            outputStream = outputStream,
+                            columns = exportPayload.columns,
+                            rows = exportPayload.rows,
+                            includeHeaders = exportPayload.includeHeaders,
+                        )
+                        recordExportMetric(outcome = "success", datasourceId = exportPayload.datasourceId)
+                        runCatching { authAuditLogger.log(started.copy(outcome = "success")) }
+                            .onFailure { logger.warn("Completed CSV export audit failed for executionId={}", executionId, it) }
+                    } catch (exception: Exception) {
+                        recordExportMetric(outcome = "failure", datasourceId = exportPayload.datasourceId)
+                        throw exception
+                    } finally {
+                        queryExecutionManager.completeCsvExport(executionId)
                     }
+                }
 
-                ResponseEntity
-                    .ok()
-                    .contentType(MediaType.parseMediaType("text/csv"))
-                    .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
-                    .body(responseBody)
-            } catch (ex: Throwable) {
-                exportLease.release()
-                throw ex
-            }
+            ResponseEntity
+                .ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header("Content-Disposition", "attachment; filename=\"query-$executionId.csv\"")
+                .body(responseBody)
         } catch (ex: QueryExecutionNotFoundException) {
             throw QueryCsvExportResponseException(HttpStatus.NOT_FOUND, ex.message)
         } catch (ex: QueryExecutionForbiddenException) {
@@ -443,6 +452,8 @@ class QueryController(
         )
     }
 
+    private val logger = LoggerFactory.getLogger(QueryController::class.java)
+
     private fun recordExportMetric(
         outcome: String,
         datasourceId: String,
@@ -488,16 +499,3 @@ private class QueryCsvExportResponseException(
     val status: HttpStatus,
     val responseMessage: String?,
 ) : RuntimeException(responseMessage)
-
-private class CsvExportLease(
-    private val executionId: String,
-    private val queryExecutionManager: QueryExecutionManager,
-) {
-    private val released = AtomicBoolean(false)
-
-    fun release() {
-        if (released.compareAndSet(false, true)) {
-            queryExecutionManager.completeCsvExport(executionId)
-        }
-    }
-}

@@ -83,13 +83,13 @@ describe('QueryHistorySection', () => {
             target: { value: 'analyst' }
         });
         expect(screen.getByText('1 of 1 loaded queries')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute('title');
+        expect(screen.getByRole('button', { name: /^Inspect query:/ })).toBeVisible();
     });
 
     it('renders governed query justification in history rows', () => {
         renderQueryHistorySection();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Inspect query:/ }));
         expect(screen.getByText('Justification')).toBeInTheDocument();
         expect(screen.getByText('TOPS-123 maintenance window')).toBeInTheDocument();
     });
@@ -116,29 +116,28 @@ describe('QueryHistorySection', () => {
         expect(screen.getByText('1 of 2 loaded queries')).toBeInTheDocument();
     });
 
-    it('renders query hover card outside the scrollable table wrapper', () => {
-        const { container } = renderQueryHistorySection();
-        const preview = container.querySelector<HTMLElement>('.history-query-preview');
-        const wrapper = container.querySelector<HTMLElement>('.history-table-wrap');
+    it('inspects SQL beside the table and returns focus to the query on close', () => {
+        renderQueryHistorySection();
+        const query = screen.getByRole('button', { name: /^Inspect query:/ });
+        fireEvent.click(query);
 
-        expect(preview).toBeInTheDocument();
-        expect(wrapper).toBeInTheDocument();
+        const details = screen.getByRole('complementary', { name: 'Execution details' });
+        expect(details.querySelector('pre')?.textContent).toBe(longQuery);
+        expect(details.closest('.history-table-wrap')).toBeNull();
+        expect(details).toHaveFocus();
 
-        fireEvent.mouseEnter(preview!);
-
-        const tooltip = screen.getByRole('tooltip');
-        expect(tooltip.querySelector('.history-query-full')?.textContent).toBe(longQuery);
-        expect(tooltip.closest('.history-table-wrap')).toBeNull();
-
-        fireEvent.scroll(wrapper!);
-        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+        fireEvent.keyDown(details, { key: 'Escape' });
+        expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+        expect(query).toHaveFocus();
     });
 
     it('dispatches open and rerun while keeping redacted SQL unavailable', () => {
         const onOpenEntry = vi.fn();
         const { rerender } = renderQueryHistorySection({ onOpenEntry });
 
-        fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Inspect query:/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Open in editor' }));
+        fireEvent.click(screen.getByLabelText('More query actions'));
         fireEvent.click(screen.getByRole('button', { name: 'Rerun' }));
         expect(onOpenEntry).toHaveBeenNthCalledWith(1, historyEntry, false);
         expect(onOpenEntry).toHaveBeenNthCalledWith(2, historyEntry, true);
@@ -171,11 +170,12 @@ describe('QueryHistorySection', () => {
             />
         );
 
-        expect(screen.getByText('[REDACTED]')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Rerun' })).toBeDisabled();
-        fireEvent.mouseEnter(screen.getByText('[REDACTED]'));
-        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+        const details = screen.getByRole('complementary');
+        expect(details.querySelector('pre')?.textContent).toBe('[REDACTED]');
+        expect(screen.getByRole('button', { name: 'Open in editor' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Copy SQL' })).toBeDisabled();
+        expect(screen.queryByLabelText('More query actions')).not.toBeInTheDocument();
+        expect(details).not.toHaveTextContent(longQuery);
     });
 
     it('renders distinct loading, empty, and error states', () => {
@@ -222,10 +222,10 @@ describe('QueryHistorySection', () => {
     it('reports successful and failed query copy attempts', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
         vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-        const { container, unmount } = renderQueryHistorySection();
+        const { unmount } = renderQueryHistorySection();
 
-        fireEvent.mouseEnter(container.querySelector('.history-query-preview')!);
-        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Inspect query:/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Copy SQL' }));
         await waitFor(() =>
             expect(screen.getByRole('status')).toHaveTextContent('Query text copied to clipboard.')
         );
@@ -234,9 +234,9 @@ describe('QueryHistorySection', () => {
 
         const rejectedWrite = vi.fn().mockRejectedValue(new Error('denied'));
         vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: rejectedWrite } });
-        const failed = renderQueryHistorySection();
-        fireEvent.mouseEnter(failed.container.querySelector('.history-query-preview')!);
-        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+        renderQueryHistorySection();
+        fireEvent.click(screen.getByRole('button', { name: /^Inspect query:/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Copy SQL' }));
         await waitFor(() =>
             expect(screen.getByRole('alert')).toHaveTextContent('Unable to copy query text.')
         );
@@ -248,10 +248,10 @@ describe('QueryHistorySection', () => {
             configurable: true,
             value: vi.fn().mockReturnValue(false)
         });
-        const { container } = renderQueryHistorySection();
+        renderQueryHistorySection();
 
-        fireEvent.mouseEnter(container.querySelector('.history-query-preview')!);
-        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Inspect query:/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Copy SQL' }));
 
         await waitFor(() =>
             expect(screen.getByRole('alert')).toHaveTextContent('Unable to copy query text.')
@@ -270,11 +270,19 @@ describe('QueryHistorySection', () => {
             onPageSizeChange
         });
 
-        fireEvent.change(screen.getByLabelText('Status'), {
-            target: { value: 'FAILED' }
-        });
+        const status = screen.getByRole('button', { name: 'Status' });
+        fireEvent.click(status);
+        const statuses = screen.getByRole('listbox', { name: 'statuses' });
+        expect(statuses).toHaveFocus();
+        fireEvent.keyDown(statuses, { key: 'End' });
+        fireEvent.keyDown(statuses, { key: 'ArrowUp' });
+        fireEvent.keyDown(statuses, { key: 'Enter' });
+        expect(status).toHaveFocus();
+
         fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
-        fireEvent.change(screen.getByLabelText('Show rows'), { target: { value: '10' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Show rows' }));
+        expect(screen.getByRole('option', { name: '100', selected: true })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('option', { name: '10' }));
 
         expect(onStatusFilterChange).toHaveBeenCalledWith('FAILED');
         expect(onPageIndexChange).toHaveBeenCalledWith(1);

@@ -15,17 +15,31 @@ internal class TrinoSchemaBrowser(
         datasourceId: String,
         fetchedAt: Instant,
         load: SchemaBrowserLoad,
+        selection: SchemaBrowserSelection = SchemaBrowserSelection(),
     ): DatasourceSchemaBrowserResponse {
         val informationSchema = "\"${catalog.replace("\"", "\"\"")}\".information_schema"
+        selection.table?.let { target ->
+            val columns = loadColumns(connection, informationSchema, target.schema, listOf(target.table), load)
+            val table = DatasourceTableEntryResponse(target.table, "TABLE", columns[target.table].orEmpty())
+            return DatasourceSchemaBrowserResponse(
+                datasourceId,
+                false,
+                fetchedAt.toString(),
+                listOf(DatasourceSchemaEntryResponse(target.schema, listOf(table))),
+            )
+        }
         val schemas =
-            query(
+            selection.schema?.let { listOf(it) } ?: query(
                 connection,
                 "SELECT schema_name FROM $informationSchema.schemata ORDER BY schema_name LIMIT ${properties.maxSchemas.coerceAtLeast(1)}",
                 load,
             ) { result -> result.getString("schema_name") }
 
+        val search = selection.search?.let { SchemaBrowserSearch(it, properties) }
         val entries =
-            schemas.map { schema ->
+            schemas.mapNotNull { schema ->
+                if (search?.hasCapacity() == false) return@mapNotNull null
+                if (selection.schemasOnly) return@mapNotNull DatasourceSchemaEntryResponse(schema, emptyList())
                 val tables =
                     query(
                         connection,
@@ -43,41 +57,64 @@ internal class TrinoSchemaBrowser(
                             columns = emptyList(),
                         )
                     }
-                val columnsByTable = mutableMapOf<String, MutableList<DatasourceColumnEntryResponse>>()
-                // Keep exact table predicates small. Broad getColumns("%") or a multi-name
-                // filter on system.jdbc.columns can enumerate an entire connector schema.
-                tables.chunked(COLUMN_BATCH_SIZE).forEach { batch ->
-                    val placeholders = batch.joinToString(", ") { "?" }
-                    readRows(
-                        connection,
-                        """
-                        SELECT table_name, column_name, data_type, is_nullable
-                        FROM $informationSchema.columns
-                        WHERE table_schema = ? AND table_name IN ($placeholders)
-                          AND ordinal_position <= ${properties.maxColumnsPerTable.coerceAtLeast(1)}
-                        ORDER BY table_name, ordinal_position
-                        """.trimIndent(),
-                        load,
-                        bind = {
-                            setString(1, schema)
-                            batch.forEachIndexed { index, table -> setString(index + 2, table.table) }
-                        },
-                    ) { result ->
-                        columnsByTable.getOrPut(result.getString("table_name")) { mutableListOf() }.add(
-                            DatasourceColumnEntryResponse(
-                                name = result.getString("column_name"),
-                                jdbcType = result.getString("data_type"),
-                                nullable = result.getString("is_nullable") != "NO",
-                            ),
-                        )
+                val entry = DatasourceSchemaEntryResponse(schema, tables.sortedBy { it.table })
+                if (search != null) {
+                    return@mapNotNull search.filter(entry) { candidates ->
+                        loadColumns(connection, informationSchema, schema, candidates, load, search)
                     }
                 }
-                DatasourceSchemaEntryResponse(
-                    schema = schema,
-                    tables = tables.map { it.copy(columns = columnsByTable[it.table].orEmpty()) }.sortedBy { it.table },
+                val columnsByTable =
+                    if (selection.includeColumns && selection.schema == null) {
+                        loadColumns(connection, informationSchema, schema, tables.map { it.table }, load)
+                    } else {
+                        emptyMap()
+                    }
+                entry.copy(tables = entry.tables.map { it.copy(columns = columnsByTable[it.table].orEmpty()) })
+            }
+        return DatasourceSchemaBrowserResponse(datasourceId, false, fetchedAt.toString(), entries, search?.truncated == true)
+    }
+
+    private fun loadColumns(
+        connection: Connection,
+        informationSchema: String,
+        schema: String,
+        tables: List<String>,
+        load: SchemaBrowserLoad,
+        search: SchemaBrowserSearch? = null,
+    ): Map<String, List<DatasourceColumnEntryResponse>> {
+        val columnsByTable = mutableMapOf<String, MutableList<DatasourceColumnEntryResponse>>()
+        // Keep exact table predicates small. Broad getColumns("%") or a multi-name
+        // filter on system.jdbc.columns can enumerate an entire connector schema.
+        tables.chunked(COLUMN_BATCH_SIZE).forEach { batch ->
+            val placeholders = batch.joinToString(", ") { "?" }
+            val searchPredicate = if (search == null) "" else "AND strpos(lower(column_name), ?) > 0"
+            readRows(
+                connection,
+                """
+                SELECT table_name, column_name, data_type, is_nullable
+                FROM $informationSchema.columns
+                WHERE table_schema = ? AND table_name IN ($placeholders)
+                  AND ordinal_position <= ${properties.maxColumnsPerTable.coerceAtLeast(1)}
+                  $searchPredicate
+                ORDER BY table_name, ordinal_position
+                """.trimIndent(),
+                load,
+                bind = {
+                    setString(1, schema)
+                    batch.forEachIndexed { index, table -> setString(index + 2, table) }
+                    if (search != null) setString(batch.size + 2, search.term)
+                },
+            ) { result ->
+                columnsByTable.getOrPut(result.getString("table_name")) { mutableListOf() }.add(
+                    DatasourceColumnEntryResponse(
+                        name = result.getString("column_name"),
+                        jdbcType = result.getString("data_type"),
+                        nullable = result.getString("is_nullable") != "NO",
+                    ),
                 )
             }
-        return DatasourceSchemaBrowserResponse(datasourceId, false, fetchedAt.toString(), entries)
+        }
+        return columnsByTable
     }
 
     private fun <T> query(

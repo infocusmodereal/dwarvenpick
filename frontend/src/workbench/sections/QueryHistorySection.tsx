@@ -1,12 +1,14 @@
+import { useEffect, useRef, useState } from 'react';
 import CompactPagination from '../components/CompactPagination';
-import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
-import { toStatusToneClass } from '../utils';
-import { IconButton, IconGlyph, LabeledActionButton } from '../components/WorkbenchIcons';
-import HistoryQueryHoverCard from '../components/HistoryQueryHoverCard';
+import HistoryDisclosure from '../components/HistoryDisclosure';
 import InlineNotice from '../components/InlineNotice';
-import { copyQueryText, getQueryHoverCard, type QueryHoverCard } from '../historyQueryPreview';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from 'react';
+import QueryHistoryDetails, { QueryHistoryStatus } from '../components/QueryHistoryDetails';
+import SearchablePicker from '../components/SearchablePicker';
+import { IconButton, IconGlyph, LabeledActionButton } from '../components/WorkbenchIcons';
+import { downloadCsv, toCsv } from '../csvDownload';
+import { historyQueryText } from '../historyQueryText';
+import { sortDownIcon, sortUpIcon } from '../icons';
+import type { CatalogDatasourceResponse, QueryHistoryEntryResponse } from '../types';
 
 type QueryHistorySectionProps = {
     hidden: boolean;
@@ -35,39 +37,61 @@ type QueryHistorySectionProps = {
     onOpenEntry: (entry: QueryHistoryEntryResponse, rerun: boolean) => void;
 };
 
-const formatCsvCell = (value: string | null | undefined): string => {
-    if (value === null || value === undefined) {
-        return '';
-    }
+const statusOptions = [
+    { value: '', label: 'All statuses' },
+    { value: 'QUEUED', label: 'Queued' },
+    { value: 'RUNNING', label: 'Running' },
+    { value: 'SUCCEEDED', label: 'Succeeded' },
+    { value: 'FAILED', label: 'Failed' },
+    { value: 'CANCELED', label: 'Canceled' }
+];
+const pageSizeOptions = [10, 100, 250, 500, 1000].map((size) => ({
+    value: String(size),
+    label: String(size)
+}));
 
-    const raw = String(value);
-    const requiresQuotes =
-        raw.includes(',') || raw.includes('"') || raw.includes('\n') || raw.includes('\r');
+const submittedFormat = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+});
+const statementKeyword =
+    /^(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|SHOW|EXPLAIN|DESCRIBE|SET|USE|CALL)\b/i;
 
-    if (!requiresQuotes) {
-        return raw;
-    }
+function formatSubmitted(value: string): string {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : submittedFormat.format(date);
+}
 
-    return `"${raw.replace(/"/g, '""')}"`;
-};
-
-const toCsv = (headers: string[], rows: Array<Array<string | null | undefined>>): string => {
-    const headerRow = headers.map((value) => formatCsvCell(value)).join(',') + '\n';
-    const bodyRows = rows.map((row) => row.map((value) => formatCsvCell(value)).join(',') + '\n');
-    return headerRow + bodyRows.join('');
-};
-
-const downloadCsv = (fileName: string, csv: string) => {
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const objectUrl = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(objectUrl);
-};
+function exportHistory(entries: QueryHistoryEntryResponse[], pageIndex: number) {
+    const rows = entries.map((entry) => [
+        entry.submittedAt,
+        entry.status,
+        entry.datasourceId,
+        entry.actor,
+        entry.justification ?? '',
+        typeof entry.durationMs === 'number' ? entry.durationMs.toString() : '',
+        entry.rowCount.toString(),
+        historyQueryText(entry)
+    ]);
+    downloadCsv(
+        `query-history-page-${pageIndex + 1}.csv`,
+        toCsv(
+            [
+                'Submitted',
+                'Status',
+                'Connection',
+                'User',
+                'Justification',
+                'DurationMs',
+                'Rows',
+                'Query'
+            ],
+            rows
+        )
+    );
+}
 
 export default function QueryHistorySection({
     hidden,
@@ -96,7 +120,9 @@ export default function QueryHistorySection({
     onOpenEntry
 }: QueryHistorySectionProps) {
     const [search, setSearch] = useState('');
-    const [expandedId, setExpandedId] = useState('');
+    const [selectedId, setSelectedId] = useState('');
+    const selectedTrigger = useRef<HTMLButtonElement | null>(null);
+    const term = search.trim().toLowerCase();
     const filteredEntries = entries.filter((entry) =>
         [
             entry.datasourceId,
@@ -107,474 +133,292 @@ export default function QueryHistorySection({
         ]
             .join(' ')
             .toLowerCase()
-            .includes(search.trim().toLowerCase())
+            .includes(term)
     );
+    const selected = filteredEntries.find((entry) => entry.executionId === selectedId);
+    const dateFiltered = Boolean(fromFilter || toFilter);
+    const hasFilters = Boolean(term || datasourceFilter || statusFilter || dateFiltered);
+
     useEffect(() => {
         setSearch('');
-        setExpandedId('');
+        setSelectedId('');
     }, [pageIndex, pageSize, datasourceFilter, statusFilter, fromFilter, toFilter]);
-    const [copiedExecutionId, setCopiedExecutionId] = useState('');
-    const [copyError, setCopyError] = useState('');
-    const [hoveredQuery, setHoveredQuery] = useState<QueryHoverCard | null>(null);
-    const hoverHideTimeoutRef = useRef<number | null>(null);
 
-    const clearHoverHideTimeout = useCallback(() => {
-        if (hoverHideTimeoutRef.current === null) {
-            return;
-        }
-
-        window.clearTimeout(hoverHideTimeoutRef.current);
-        hoverHideTimeoutRef.current = null;
-    }, []);
-
-    const showQueryHoverCard = useCallback(
-        (trigger: HTMLElement, executionId: string, queryText: string) => {
-            clearHoverHideTimeout();
-            setHoveredQuery(getQueryHoverCard(trigger, executionId, queryText));
-        },
-        [clearHoverHideTimeout]
-    );
-
-    const scheduleQueryHoverCardHide = useCallback(() => {
-        clearHoverHideTimeout();
-        hoverHideTimeoutRef.current = window.setTimeout(() => {
-            setHoveredQuery(null);
-            hoverHideTimeoutRef.current = null;
-        }, 160);
-    }, [clearHoverHideTimeout]);
-
-    const handleCopyQuery = useCallback(async (executionId: string, queryText: string) => {
-        try {
-            await copyQueryText(queryText);
-            setCopyError('');
-            setCopiedExecutionId(executionId);
-        } catch {
-            setCopiedExecutionId('');
-            setCopyError('Unable to copy query text.');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!copiedExecutionId) {
-            return undefined;
-        }
-
-        const timeout = window.setTimeout(() => setCopiedExecutionId(''), 1800);
-        return () => window.clearTimeout(timeout);
-    }, [copiedExecutionId]);
-
-    useEffect(() => {
-        if (!copyError) {
-            return undefined;
-        }
-
-        const timeout = window.setTimeout(() => setCopyError(''), 3000);
-        return () => window.clearTimeout(timeout);
-    }, [copyError]);
-
-    useEffect(() => {
-        return () => clearHoverHideTimeout();
-    }, [clearHoverHideTimeout]);
-
-    useEffect(() => {
-        if (hidden) {
-            setHoveredQuery(null);
-        }
-    }, [hidden]);
-
-    useEffect(() => {
-        setHoveredQuery(null);
-    }, [entries, search]);
+    const closeDetails = () => {
+        setSelectedId('');
+        selectedTrigger.current?.focus();
+    };
 
     return (
         <section className="panel history-panel" hidden={hidden} aria-label="Query history">
             <header className="inspection-heading">
-                <div>
-                    <h2>Query History</h2>
-                    <p>Find, inspect and reuse previous queries</p>
-                </div>
-                <IconButton
-                    icon="refresh"
-                    title={loadingQueryHistory ? 'Refreshing history...' : 'Refresh history'}
-                    onClick={onRefresh}
-                    disabled={loadingQueryHistory}
-                />
+                <h2>Query History</h2>
             </header>
-            <div className="history-filters">
-                <div className="filter-field">
-                    <label htmlFor="history-datasource-filter">Connection</label>
-                    <div className="select-wrap">
-                        <select
-                            id="history-datasource-filter"
-                            value={datasourceFilter}
-                            onChange={(event) => onDatasourceFilterChange(event.target.value)}
-                        >
-                            <option value="">All connections</option>
-                            {visibleDatasources.map((datasource) => (
-                                <option key={`history-${datasource.id}`} value={datasource.id}>
-                                    {datasource.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-
-                <div className="filter-field">
-                    <label htmlFor="history-status-filter">Status</label>
-                    <div className="select-wrap">
-                        <select
-                            id="history-status-filter"
-                            value={statusFilter}
-                            onChange={(event) => onStatusFilterChange(event.target.value)}
-                        >
-                            <option value="">All statuses</option>
-                            <option value="QUEUED">QUEUED</option>
-                            <option value="RUNNING">RUNNING</option>
-                            <option value="SUCCEEDED">SUCCEEDED</option>
-                            <option value="FAILED">FAILED</option>
-                            <option value="CANCELED">CANCELED</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div className="filter-field">
-                    <label htmlFor="history-from-filter">From</label>
-                    <input
-                        id="history-from-filter"
-                        type="datetime-local"
-                        value={fromFilter}
-                        onChange={(event) => onFromFilterChange(event.target.value)}
-                    />
-                </div>
-
-                <div className="filter-field">
-                    <label htmlFor="history-to-filter">To</label>
-                    <input
-                        id="history-to-filter"
-                        type="datetime-local"
-                        value={toFilter}
-                        onChange={(event) => onToFilterChange(event.target.value)}
-                    />
-                </div>
-            </div>
-
-            <div className="row toolbar-actions">
+            <div className="query-history-toolbar">
                 <label className="inspection-search">
                     <IconGlyph icon="search" />
                     <input
                         aria-label="Search current history page"
-                        placeholder="Search current page"
+                        placeholder="Search this page"
                         value={search}
-                        onChange={(event) => setSearch(event.target.value)}
+                        onChange={(event) => {
+                            setSearch(event.target.value);
+                            setSelectedId('');
+                        }}
                     />
                 </label>
-                <span className="inspection-count">
-                    {filteredEntries.length} of {entries.length} loaded queries
-                </span>
-                <LabeledActionButton
-                    label="Export"
-                    icon="download"
-                    title={
-                        filteredEntries.length > 0
-                            ? 'Export visible history as CSV'
-                            : 'No rows to export'
+                <HistoryDisclosure
+                    label="Date range"
+                    trigger={
+                        <>
+                            {dateFiltered ? 'Date range set' : 'All dates'}{' '}
+                            <IconGlyph icon="chevron-down" />
+                        </>
                     }
-                    onClick={() => {
-                        if (filteredEntries.length === 0) {
-                            return;
-                        }
-
-                        const rows = filteredEntries.map((entry) => [
-                            entry.submittedAt,
-                            entry.status,
-                            entry.datasourceId,
-                            entry.actor,
-                            entry.justification ?? '',
-                            typeof entry.durationMs === 'number' ? entry.durationMs.toString() : '',
-                            entry.rowCount.toString(),
-                            entry.queryTextRedacted ? '[REDACTED]' : (entry.queryText ?? '[empty]')
-                        ]);
-
-                        downloadCsv(
-                            `query-history-page-${pageIndex + 1}.csv`,
-                            toCsv(
-                                [
-                                    'Submitted',
-                                    'Status',
-                                    'Connection',
-                                    'User',
-                                    'Justification',
-                                    'DurationMs',
-                                    'Rows',
-                                    'Query'
-                                ],
-                                rows
-                            )
-                        );
-                    }}
-                    disabled={filteredEntries.length === 0}
-                />
-                <button type="button" className="chip" onClick={onToggleSortOrder}>
-                    {sortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
-                </button>
-                <button
-                    type="button"
-                    className="chip"
-                    onClick={() => {
-                        setSearch('');
-                        onClearFilters();
-                    }}
                 >
-                    Clear Filters
-                </button>
+                    <label>
+                        From{' '}
+                        <input
+                            type="datetime-local"
+                            value={fromFilter}
+                            onChange={(event) => onFromFilterChange(event.target.value)}
+                        />
+                    </label>
+                    <label>
+                        To{' '}
+                        <input
+                            type="datetime-local"
+                            value={toFilter}
+                            onChange={(event) => onToFilterChange(event.target.value)}
+                        />
+                    </label>
+                </HistoryDisclosure>
+                <SearchablePicker
+                    noun="connection"
+                    triggerLabel="Connection"
+                    value={datasourceFilter}
+                    onChange={onDatasourceFilterChange}
+                    searchable={visibleDatasources.length > 8}
+                    items={[
+                        { value: '', label: 'All connections' },
+                        ...visibleDatasources.map(({ id, name }) => ({ value: id, label: name }))
+                    ]}
+                />
+                <SearchablePicker
+                    noun="status"
+                    triggerLabel="Status"
+                    value={statusFilter}
+                    onChange={onStatusFilterChange}
+                    searchable={false}
+                    items={statusOptions}
+                />
+                {hasFilters && (
+                    <button
+                        type="button"
+                        className="history-clear"
+                        onClick={() => {
+                            setSearch('');
+                            setSelectedId('');
+                            onClearFilters();
+                        }}
+                    >
+                        Clear filters
+                    </button>
+                )}
+                <div className="history-toolbar-actions">
+                    <IconButton
+                        icon="refresh"
+                        title={loadingQueryHistory ? 'Refreshing history...' : 'Refresh history'}
+                        onClick={onRefresh}
+                        disabled={loadingQueryHistory}
+                    />
+                    <LabeledActionButton
+                        icon="download"
+                        label="Export CSV"
+                        title="Export visible history as CSV"
+                        onClick={() => exportHistory(filteredEntries, pageIndex)}
+                        disabled={filteredEntries.length === 0}
+                    />
+                </div>
             </div>
-
-            {errorMessage ? <InlineNotice tone="error">{errorMessage}</InlineNotice> : null}
-            {copyError ? <InlineNotice tone="error">{copyError}</InlineNotice> : null}
-            {copiedExecutionId ? (
-                <InlineNotice tone="success">Query text copied to clipboard.</InlineNotice>
-            ) : null}
-
-            <div className="history-table-wrap" onScroll={() => setHoveredQuery(null)}>
-                <table className="result-table history-table query-history-table">
-                    <thead>
-                        <tr>
-                            <th>Submitted</th>
-                            <th>Status</th>
-                            <th>Connection</th>
-                            <th>User</th>
-                            <th>Duration</th>
-                            <th>Rows</th>
-                            <th>Query</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loadingQueryHistory && entries.length === 0 ? (
+            {errorMessage && <InlineNotice tone="error">{errorMessage}</InlineNotice>}
+            <div className={`query-history-split${selected ? ' has-selection' : ''}`}>
+                <div className="history-table-wrap">
+                    <table className="result-table history-table query-history-table">
+                        <thead>
                             <tr>
-                                <td colSpan={8}>Loading query history...</td>
+                                <th scope="col" className="history-query-column">
+                                    Query
+                                </th>
+                                <th scope="col" className="history-connection-column">
+                                    Connection
+                                </th>
+                                <th scope="col" className="history-user-column">
+                                    User
+                                </th>
+                                <th scope="col" className="history-status-column">
+                                    Status
+                                </th>
+                                <th
+                                    scope="col"
+                                    className="history-submitted-column"
+                                    aria-sort={sortOrder === 'newest' ? 'descending' : 'ascending'}
+                                >
+                                    <button
+                                        type="button"
+                                        className="history-sort"
+                                        onClick={onToggleSortOrder}
+                                        title={
+                                            sortOrder === 'newest'
+                                                ? 'Show oldest first'
+                                                : 'Show newest first'
+                                        }
+                                    >
+                                        Submitted
+                                        <span
+                                            aria-hidden
+                                            dangerouslySetInnerHTML={{
+                                                __html:
+                                                    sortOrder === 'newest'
+                                                        ? sortDownIcon
+                                                        : sortUpIcon
+                                            }}
+                                        />
+                                    </button>
+                                </th>
                             </tr>
-                        ) : filteredEntries.length === 0 ? (
-                            <tr>
-                                <td colSpan={8}>No history entries found for current filters.</td>
-                            </tr>
-                        ) : (
-                            filteredEntries.map((entry) => {
-                                const queryPreview = entry.queryTextRedacted
-                                    ? '[REDACTED]'
-                                    : (entry.queryText ?? '[empty]');
-                                const justificationPreview = entry.justification?.trim() || '-';
-                                const canUseQuery = Boolean(
-                                    entry.queryText && !entry.queryTextRedacted
-                                );
-
+                        </thead>
+                        <tbody>
+                            {filteredEntries.map((entry) => {
+                                const current = selectedId === entry.executionId;
+                                const text = historyQueryText(entry).trimStart();
+                                const preview = text.slice(0, 320).replace(/\s+/g, ' ').trimEnd();
+                                const sql = text.length > 320 ? `${preview}…` : preview;
+                                const keyword = sql.match(statementKeyword)?.[0] ?? '';
+                                const select = (trigger: HTMLButtonElement | null) => {
+                                    if (!trigger) return;
+                                    selectedTrigger.current = trigger;
+                                    setSelectedId(entry.executionId);
+                                };
                                 return (
-                                    <Fragment key={`history-${entry.executionId}`}>
-                                        <tr>
-                                            <td>{new Date(entry.submittedAt).toLocaleString()}</td>
-                                            <td>
-                                                <span className={toStatusToneClass(entry.status)}>
-                                                    {entry.status}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span
-                                                    className="history-cell-text"
-                                                    title={entry.datasourceId}
-                                                >
-                                                    {entry.datasourceId}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span
-                                                    className="history-cell-text"
-                                                    title={entry.actor}
-                                                >
-                                                    {entry.actor}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {typeof entry.durationMs === 'number'
-                                                    ? `${entry.durationMs} ms`
-                                                    : '-'}
-                                            </td>
-                                            <td>{entry.rowCount.toLocaleString()}</td>
-                                            <td className="history-query-cell">
-                                                <span
-                                                    className="history-query-preview"
-                                                    title={queryPreview}
-                                                    tabIndex={canUseQuery ? 0 : undefined}
-                                                    aria-describedby={
-                                                        canUseQuery
-                                                            ? `history-query-hover-${entry.executionId}`
-                                                            : undefined
-                                                    }
-                                                    onMouseEnter={(
-                                                        event: ReactMouseEvent<HTMLSpanElement>
-                                                    ) => {
-                                                        if (canUseQuery) {
-                                                            showQueryHoverCard(
-                                                                event.currentTarget,
-                                                                entry.executionId,
-                                                                queryPreview
-                                                            );
-                                                        }
-                                                    }}
-                                                    onMouseLeave={scheduleQueryHoverCardHide}
-                                                    onFocus={(
-                                                        event: ReactFocusEvent<HTMLSpanElement>
-                                                    ) => {
-                                                        if (canUseQuery) {
-                                                            showQueryHoverCard(
-                                                                event.currentTarget,
-                                                                entry.executionId,
-                                                                queryPreview
-                                                            );
-                                                        }
-                                                    }}
-                                                    onBlur={scheduleQueryHoverCardHide}
-                                                >
-                                                    {queryPreview}
-                                                </span>
-                                            </td>
-                                            <td className="history-actions">
-                                                <button
-                                                    type="button"
-                                                    className="icon-button"
-                                                    aria-label="Details"
-                                                    aria-expanded={expandedId === entry.executionId}
-                                                    onClick={() =>
-                                                        setExpandedId(
-                                                            expandedId === entry.executionId
-                                                                ? ''
-                                                                : entry.executionId
-                                                        )
-                                                    }
-                                                    title="Inspect execution details"
-                                                >
-                                                    <span aria-hidden>
-                                                        <IconGlyph icon="info" />
-                                                    </span>
-                                                </button>
-                                                <IconButton
-                                                    icon="script"
-                                                    title="Open"
-                                                    disabled={
-                                                        !entry.queryText || entry.queryTextRedacted
-                                                    }
-                                                    onClick={() => onOpenEntry(entry, false)}
-                                                />
-                                                <IconButton
-                                                    icon="play"
-                                                    title="Rerun"
-                                                    disabled={
-                                                        !entry.queryText || entry.queryTextRedacted
-                                                    }
-                                                    onClick={() => onOpenEntry(entry, true)}
-                                                />
-                                            </td>
-                                        </tr>
-                                        {expandedId === entry.executionId && (
-                                            <tr className="inspection-detail-row">
-                                                <td colSpan={8}>
-                                                    <dl className="inspection-detail-fields">
-                                                        <div>
-                                                            <dt>Execution ID</dt>
-                                                            <dd>{entry.executionId}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Actor</dt>
-                                                            <dd>{entry.actor}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Credential profile</dt>
-                                                            <dd>{entry.credentialProfile}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Justification</dt>
-                                                            <dd>{justificationPreview}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Query limit</dt>
-                                                            <dd>
-                                                                {entry.maxRowsPerQuery.toLocaleString()}
-                                                            </dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt>Runtime limit</dt>
-                                                            <dd>{entry.maxRuntimeSeconds} s</dd>
-                                                        </div>
-                                                    </dl>
-                                                    {entry.errorSummary && (
-                                                        <InlineNotice tone="error">
-                                                            {entry.errorSummary}
-                                                        </InlineNotice>
-                                                    )}
-                                                    {entry.rowLimitReached && (
-                                                        <InlineNotice tone="warning">
-                                                            Query row limit reached. Results may be
-                                                            partial.
-                                                        </InlineNotice>
-                                                    )}
-                                                    <pre className="history-detail-sql">
-                                                        {queryPreview}
-                                                    </pre>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </Fragment>
+                                    <tr
+                                        key={entry.executionId}
+                                        className={
+                                            current
+                                                ? 'query-history-row is-selected'
+                                                : 'query-history-row'
+                                        }
+                                        onClick={(event) =>
+                                            select(event.currentTarget.querySelector('button'))
+                                        }
+                                    >
+                                        <td>
+                                            <button
+                                                type="button"
+                                                className="history-query-preview"
+                                                aria-label={`Inspect query: ${sql}`}
+                                                aria-expanded={current}
+                                                aria-controls={
+                                                    current ? 'query-history-details' : undefined
+                                                }
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    select(event.currentTarget);
+                                                }}
+                                            >
+                                                {keyword && <span>{keyword}</span>}
+                                                {sql.slice(keyword.length)}
+                                            </button>
+                                        </td>
+                                        <td>
+                                            <span
+                                                className="history-cell-text"
+                                                title={entry.datasourceId}
+                                            >
+                                                {entry.datasourceId}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span className="history-cell-text" title={entry.actor}>
+                                                {entry.actor}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <QueryHistoryStatus status={entry.status} />
+                                        </td>
+                                        <td>
+                                            <time
+                                                dateTime={entry.submittedAt}
+                                                title={new Date(entry.submittedAt).toLocaleString()}
+                                            >
+                                                {formatSubmitted(entry.submittedAt)}
+                                            </time>
+                                        </td>
+                                    </tr>
                                 );
-                            })
-                        )}
-                    </tbody>
-                </table>
+                            })}
+                            {filteredEntries.length === 0 && (
+                                <tr>
+                                    <td colSpan={5}>
+                                        {loadingQueryHistory && entries.length === 0
+                                            ? 'Loading query history...'
+                                            : 'No history entries found for current filters.'}
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                {selected && (
+                    <QueryHistoryDetails
+                        key={selected.executionId}
+                        entry={selected}
+                        onClose={closeDetails}
+                        onOpenEntry={onOpenEntry}
+                    />
+                )}
             </div>
-            <footer className="inspection-footer">
+            <footer className="inspection-footer query-history-footer">
                 <span>
-                    {search
-                        ? `${filteredEntries.length} matching queries on this page`
+                    {term
+                        ? `${filteredEntries.length} of ${entries.length} loaded queries`
                         : entries.length
                           ? `Showing ${pageIndex * pageSize + 1}–${pageIndex * pageSize + entries.length}${totalCount !== null ? ` of ${totalCount}` : hasNextPage ? ' · More available' : ''}`
                           : '0 queries'}
                 </span>
-                <CompactPagination
-                    label="Query history pages"
-                    pageIndex={pageIndex}
-                    totalPages={
-                        totalCount !== null
-                            ? Math.max(1, Math.ceil(totalCount / pageSize))
-                            : !hasNextPage
-                              ? pageIndex + 1
-                              : null
-                    }
-                    hasNextPage={hasNextPage}
-                    disabled={loadingQueryHistory}
-                    onPageChange={onPageIndexChange}
-                />
-                <div className="result-page-size-inline">
-                    <label htmlFor="history-page-size">Show rows</label>
-                    <div className="select-wrap">
-                        <select
-                            id="history-page-size"
-                            value={pageSize}
-                            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-                        >
-                            <option value={10}>10</option>
-                            <option value={100}>100</option>
-                            <option value={250}>250</option>
-                            <option value={500}>500</option>
-                            <option value={1000}>1000</option>
-                        </select>
+                {(pageIndex > 0 || hasNextPage) && (
+                    <CompactPagination
+                        label="Query history pages"
+                        pageIndex={pageIndex}
+                        totalPages={
+                            totalCount !== null
+                                ? Math.max(1, Math.ceil(totalCount / pageSize))
+                                : !hasNextPage
+                                  ? pageIndex + 1
+                                  : null
+                        }
+                        hasNextPage={hasNextPage}
+                        disabled={loadingQueryHistory}
+                        onPageChange={onPageIndexChange}
+                    />
+                )}
+                {(pageIndex > 0 || hasNextPage || entries.length > 10) && (
+                    <div className="result-page-size-inline">
+                        <span className="history-page-size-label" aria-hidden>
+                            Show rows
+                        </span>
+                        <SearchablePicker
+                            noun="page size"
+                            triggerLabel="Show rows"
+                            placement="top"
+                            value={String(pageSize)}
+                            onChange={(size) => onPageSizeChange(Number(size))}
+                            searchable={false}
+                            items={pageSizeOptions}
+                        />
                     </div>
-                </div>
+                )}
             </footer>
-            <HistoryQueryHoverCard
-                copiedExecutionId={copiedExecutionId}
-                hoveredQuery={hoveredQuery}
-                onCopy={handleCopyQuery}
-                onMouseEnter={clearHoverHideTimeout}
-                onMouseLeave={scheduleQueryHoverCardHide}
-            />
         </section>
     );
 }

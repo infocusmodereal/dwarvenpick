@@ -76,6 +76,53 @@ class TrinoSchemaBrowserContainerTests {
         val queriesBeforeCacheHit = optimizedQueries.size
         assertThat(optimized.fetchSchema("trino", "reader", false).cached).isTrue()
         assertThat(optimizedQueries.size).isEqualTo(queriesBeforeCacheHit)
+        optimizedQueries.clear()
+        val inventory = optimized.fetchSchema("trino", "reader", true, selection = SchemaBrowserSelection(includeColumns = false))
+        assertThat(optimizedQueries.size).isEqualTo(1 + inventory.schemas.size)
+        assertThat(inventory.schemas.flatMap { it.tables }.flatMap { it.columns }).isEmpty()
+
+        optimizedQueries.clear()
+        val schemas = optimized.fetchSchema("trino", "reader", false, selection = SchemaBrowserSelection(schemasOnly = true))
+        assertThat(schemas.schemas.map { it.schema }).contains("tiny")
+        assertThat(schemas.schemas.flatMap { it.tables }).isEmpty()
+        assertThat(optimizedQueries).hasSize(1)
+        optimizedQueries.clear()
+        val tables = optimized.fetchSchema("trino", "reader", false, selection = SchemaBrowserSelection(schema = "tiny"))
+        assertThat(
+            tables.schemas
+                .single()
+                .tables
+                .map { it.table },
+        ).contains("orders")
+        assertThat(
+            tables.schemas
+                .single()
+                .tables
+                .flatMap { it.columns },
+        ).isEmpty()
+        assertThat(optimizedQueries).hasSize(1)
+
+        val matches = optimized.fetchSchema("trino", "reader", false, selection = SchemaBrowserSelection(search = "orderkey"))
+        val orderColumns =
+            matches.schemas
+                .single { it.schema == "tiny" }
+                .tables
+                .single { it.table == "orders" }
+                .columns
+        assertThat(orderColumns.map { it.name }).containsExactly("orderkey")
+        assertThat(matches.schemas.flatMap { it.tables }.flatMap { it.columns }).allMatch { it.name.contains("orderkey") }
+
+        val selection = SchemaBrowserSelection(table = SchemaBrowserTable("tiny", "orders"))
+        optimizedQueries.clear()
+        val table =
+            optimized
+                .fetchSchema("trino", "reader", false, selection = selection)
+                .schemas
+                .single()
+                .tables
+                .single()
+        assertThat(table.columns.map { it.name }).contains("orderkey")
+        assertThat(optimizedQueries).hasSize(1)
         println("TRINO_METADATA medianLegacyMs=${legacyTimes.sorted()[1]} medianOptimizedMs=${optimizedTimes.sorted()[1]}")
     }
 

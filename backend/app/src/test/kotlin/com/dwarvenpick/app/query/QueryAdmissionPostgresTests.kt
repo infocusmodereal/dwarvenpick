@@ -1,5 +1,6 @@
 package com.dwarvenpick.app.query
 
+import com.dwarvenpick.app.auth.AuthAuditEvent
 import com.dwarvenpick.app.auth.AuthAuditEventStore
 import com.dwarvenpick.app.auth.AuthAuditLogger
 import com.dwarvenpick.app.datasource.CreateDatasourceRequest
@@ -119,6 +120,39 @@ class QueryAdmissionPostgresTests {
     @AfterEach
     fun cleanupPools() {
         datasourcePoolManager.evictAllPools()
+    }
+
+    @Test
+    fun `lost write is reported across replicas and its receipt survives runtime cleanup`() {
+        val actor = "write-receipt-test"
+        val record = runtimeRecord(UUID.randomUUID().toString(), actor)
+        assertThat(queryAdmissionService.reserve(record, actorLimit = 1, allowReplay = true)).isNull()
+        assertThat(queryAdmissionService.reserve(record, actorLimit = 1, allowReplay = true)?.executionId)
+            .isEqualTo(record.executionId)
+
+        jdbcTemplate.update(
+            "UPDATE query_runtime_executions SET status = 'RUNNING' WHERE execution_id = ?",
+            record.executionId,
+        )
+        assertThat(queryRuntimeRepository.markWriteStarted(record.executionId, "another-replica")).isFalse()
+        assertThat(queryRuntimeRepository.markWriteStarted(record.executionId, record.ownerInstanceId)).isTrue()
+        val cutoff = Instant.now().plusSeconds(2)
+        queryRuntimeRepository.markStaleActiveExecutions(cutoff, LOST_QUERY_OUTCOME_MESSAGE)
+        val status = queryExecutionManager.getExecutionStatus(actor, false, record.executionId)
+        assertThat(status.status).isEqualTo("CANCELED")
+        assertThat(status.writeOutcomeUncertain).isTrue()
+        assertThat(status.message).contains("Verify whether any writes committed")
+
+        queryRuntimeRepository.pruneOlderThan(cutoff)
+        assertThat(queryRuntimeRepository.findMetadata(record.executionId)).isNull()
+        assertThatThrownBy { queryAdmissionService.reserve(record, actorLimit = 1, allowReplay = true) }
+            .isInstanceOf(QueryIdempotencyConflictException::class.java)
+            .hasMessageContaining(record.executionId)
+        assertThatThrownBy {
+            queryAdmissionService.reserve(record.copy(queryHash = "different"), actorLimit = 1, allowReplay = true)
+        }.isInstanceOf(QueryIdempotencyConflictException::class.java)
+            .hasMessageContaining("different query request")
+        assertThat(activeExecutions(actor)).isEmpty()
     }
 
     @Test
@@ -452,6 +486,64 @@ class QueryAdmissionPostgresTests {
         assertThat((transactionManager as DataSourceTransactionManager).dataSource).isSameAs(dataSource)
     }
 
+    @Test
+    fun `a failed queued audit releases the reservation and a retry can run`() {
+        val actor = "audit-outage"
+        val auditUnavailable =
+            object : AuthAuditLogger {
+                override fun log(event: AuthAuditEvent) {
+                    error("Audit unavailable")
+                }
+            }
+        val admission = newManager("audit-outage-worker", auditUnavailable)
+        val request = QueryExecutionRequest(datasourceId = "unused-during-queue", sql = "select 1")
+        try {
+            // Admission succeeds but auditing blocks submission before any JDBC operation.
+            assertThatThrownBy { admission.submitQuery(actor, null, request, defaultPolicy()) }
+                .hasMessage("Audit unavailable")
+            assertThat(activeExecutions(actor)).isEmpty()
+            assertThat(queryAdmissionService.reserve(runtimeRecord("after-audit-outage", actor), actorLimit = 1)).isNull()
+        } finally {
+            admission.shutdownGracefully()
+        }
+    }
+
+    @Test
+    fun `postgres read with generate series returns real rows and expression values`() {
+        val actor = "postgres-cursor-user"
+        val manager =
+            newManager(
+                "postgres-cursor-worker",
+                properties = queryExecutionProperties.copy(simulateFixtureQueries = false),
+            )
+        try {
+            val submitted =
+                manager.submitQuery(
+                    actor,
+                    null,
+                    QueryExecutionRequest(
+                        datasourceId = registerPostgresDatasource(),
+                        sql = "select n, current_setting('transaction_read_only') from generate_series(1,1001) n",
+                    ),
+                    defaultPolicy().copy(maxRowsPerQuery = 1100),
+                )
+            waitForTerminalStatus(manager, actor, submitted.executionId)
+            val firstPage = manager.getQueryResults(actor, false, submitted.executionId, QueryResultsRequest(pageSize = 1000))
+            val lastPage =
+                manager.getQueryResults(
+                    actor,
+                    false,
+                    submitted.executionId,
+                    QueryResultsRequest(pageToken = firstPage.nextPageToken),
+                )
+            assertThat(firstPage.rows).hasSize(1000)
+            assertThat(firstPage.rows.first()).containsExactly("1", "on")
+            assertThat(lastPage.rows).containsExactly(listOf("1001", "on"))
+        } finally {
+            manager.shutdownGracefully()
+        }
+    }
+
     private fun heldActorLock(actor: String): Connection {
         val connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
         connection.autoCommit = false
@@ -504,13 +596,17 @@ class QueryAdmissionPostgresTests {
             sortOrder = QueryHistorySortOrder.NEWEST,
         )
 
-    private fun newManager(instanceValue: String): QueryExecutionManager {
+    private fun newManager(
+        instanceValue: String,
+        auditLogger: AuthAuditLogger = authAuditLogger,
+        properties: QueryExecutionProperties = queryExecutionProperties,
+    ): QueryExecutionManager {
         val requesterInstanceId = mock(ApplicationInstanceId::class.java)
         `when`(requesterInstanceId.value).thenReturn(instanceValue)
         return QueryExecutionManager(
             datasourcePoolManager = datasourcePoolManager,
-            authAuditLogger = authAuditLogger,
-            queryExecutionProperties = queryExecutionProperties,
+            authAuditLogger = auditLogger,
+            queryExecutionProperties = properties,
             queryJustificationPolicy = queryJustificationPolicy,
             queryExecutionLimitPolicy = queryExecutionLimitPolicy,
             queryHistoryRepository = queryHistoryRepository,

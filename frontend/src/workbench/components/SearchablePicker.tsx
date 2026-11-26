@@ -1,23 +1,34 @@
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+    type ReactNode,
+    useEffect,
+    useId,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type KeyboardEvent
+} from 'react';
+import { IconGlyph } from './WorkbenchIcons';
 
 type PickerItem = { value: string; label: string; iconLabel?: string; icon?: string };
 type Props = {
-    noun: 'connection' | 'schema' | 'profile';
+    noun: 'connection' | 'schema' | 'profile' | 'status' | 'page size' | 'engine';
+    searchable?: boolean;
     placement?: 'bottom' | 'top';
     triggerLabel: string;
     value: string;
     items: PickerItem[];
-    disabled: boolean;
-    children: ReactNode;
+    disabled?: boolean;
+    children?: ReactNode;
     onChange: (value: string) => void;
 };
 export default function SearchablePicker({
     noun,
     placement = 'bottom',
+    searchable = true,
     triggerLabel,
     value,
     items,
-    disabled,
+    disabled = false,
     children,
     onChange
 }: Props) {
@@ -28,20 +39,42 @@ export default function SearchablePicker({
     const list = useRef<HTMLUListElement>(null);
     const listId = useId();
     const popover = useRef<HTMLDivElement>(null);
-    const plural = { connection: 'connections', schema: 'schemas', profile: 'profiles' }[noun];
+    const plural = {
+        connection: 'connections',
+        schema: 'schemas',
+        profile: 'profiles',
+        status: 'statuses',
+        engine: 'engines',
+        'page size': 'page sizes'
+    }[noun];
+    const selected = items.find((item) => item.value === value);
     useLayoutEffect(() => {
-        if (!open || disabled || placement !== 'top' || !popover.current || !trigger.current)
-            return;
-        const bounds = trigger.current.getBoundingClientRect();
-        Object.assign(popover.current.style, {
-            left: `${bounds.left}px`,
-            bottom: `${window.innerHeight - bounds.top + 4}px`,
-            width: `${bounds.width}px`,
-            maxHeight: `${Math.max(0, bounds.top - 8)}px`
-        });
-        popover.current.showPopover();
-        popover.current.querySelector('input')?.focus();
-    }, [open, disabled, placement]);
+        if (!open || disabled || !popover.current || !trigger.current) return;
+        const popup = popover.current;
+        if (placement === 'top') {
+            const bounds = trigger.current.getBoundingClientRect();
+            Object.assign(popup.style, {
+                left: `${bounds.left}px`,
+                bottom: `${window.innerHeight - bounds.top + 4}px`,
+                width: `${bounds.width}px`,
+                maxHeight: `${Math.max(0, bounds.top - 8)}px`
+            });
+            popup.showPopover?.();
+        }
+        if (searchable) popup.querySelector('input')?.focus();
+        else list.current?.focus();
+
+        if (placement === 'top') return;
+        const fitViewport = () => {
+            popup.style.translate = '';
+            const edge = document.documentElement.clientWidth - 8;
+            const overflow = popup.getBoundingClientRect().right - edge;
+            if (overflow > 0 && edge > 0) popup.style.translate = `-${overflow}px`;
+        };
+        fitViewport();
+        window.addEventListener('resize', fitViewport);
+        return () => window.removeEventListener('resize', fitViewport);
+    }, [open, disabled, placement, searchable]);
     useEffect(() => {
         if (!open || placement !== 'top') return;
         const dismiss = () => setOpen(false);
@@ -73,9 +106,32 @@ export default function SearchablePicker({
         setCursor(index);
         list.current?.children[index]?.scrollIntoView?.({ block: 'nearest' });
     }
+    const activeOption = options[cursor] ? listId + '-' + cursor : undefined;
+    function navigate(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            close();
+            return;
+        }
+        if (!options.length) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const offset = event.key === 'ArrowDown' ? 1 : -1;
+            move((cursor + offset + options.length) % options.length);
+        }
+        if (!searchable && (event.key === 'Home' || event.key === 'End')) {
+            event.preventDefault();
+            move(event.key === 'Home' ? 0 : options.length - 1);
+        }
+        if ((event.key === 'Enter' || (!searchable && event.key === ' ')) && options[cursor]) {
+            event.preventDefault();
+            choose(options[cursor].value);
+        }
+    }
+
     return (
         <div
-            className="connection-switch"
+            className={children == null ? 'connection-switch compact-picker' : 'connection-switch'}
             onBlur={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
             }}
@@ -85,7 +141,9 @@ export default function SearchablePicker({
                 className="connection-trigger"
                 ref={trigger}
                 aria-label={triggerLabel}
-                aria-description={items.find((item) => item.value === value)?.iconLabel}
+                aria-description={
+                    selected?.iconLabel ?? (children == null ? selected?.label : undefined)
+                }
                 aria-haspopup="dialog"
                 aria-expanded={open && !disabled}
                 disabled={disabled}
@@ -100,8 +158,14 @@ export default function SearchablePicker({
                     setOpen(!open);
                 }}
             >
-                {children}
-                <span aria-hidden>▾</span>
+                {children ?? (
+                    <span className="picker-current-label">
+                        {selected?.label ?? items[0]?.label ?? value}
+                    </span>
+                )}
+                <span aria-hidden>
+                    {children == null ? <IconGlyph icon="chevron-down" /> : '▾'}
+                </span>
             </button>
             {open && !disabled && (
                 <div
@@ -114,43 +178,32 @@ export default function SearchablePicker({
                     }
                     ref={popover}
                     popover={placement === 'top' ? 'manual' : undefined}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                            e.preventDefault();
-                            close();
-                        }
-                    }}
+                    onKeyDown={navigate}
                 >
-                    <input
-                        autoFocus
-                        role="combobox"
-                        aria-label={`Find ${noun}`}
-                        placeholder={`Find ${noun}…`}
-                        aria-expanded="true"
-                        aria-autocomplete="list"
-                        aria-controls={listId}
-                        aria-activedescendant={options[cursor] ? listId + '-' + cursor : undefined}
-                        value={filter}
-                        onChange={(e) => {
-                            setFilter(e.target.value);
-                            setCursor(0);
-                        }}
-                        onKeyDown={(e) => {
-                            if (!options.length) return;
-                            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                                e.preventDefault();
-                                move(
-                                    (cursor + (e.key === 'ArrowDown' ? 1 : -1) + options.length) %
-                                        options.length
-                                );
-                            }
-                            if (e.key === 'Enter' && options[cursor]) {
-                                e.preventDefault();
-                                choose(options[cursor].value);
-                            }
-                        }}
-                    />
-                    <ul role="listbox" aria-label={plural} id={listId} ref={list}>
+                    {searchable && (
+                        <input
+                            role="combobox"
+                            aria-label={`Find ${noun}`}
+                            placeholder={`Find ${noun}…`}
+                            aria-expanded="true"
+                            aria-autocomplete="list"
+                            aria-controls={listId}
+                            aria-activedescendant={activeOption}
+                            value={filter}
+                            onChange={(e) => {
+                                setFilter(e.target.value);
+                                setCursor(0);
+                            }}
+                        />
+                    )}
+                    <ul
+                        role="listbox"
+                        aria-label={plural}
+                        id={listId}
+                        ref={list}
+                        tabIndex={searchable ? undefined : -1}
+                        aria-activedescendant={searchable ? undefined : activeOption}
+                    >
                         {options.map((item, i) => (
                             <li
                                 key={item.value}

@@ -25,9 +25,29 @@ loads. A timeout, saturation, or load failure is returned as an `error` JSON
 object because streaming has already committed the HTTP status. The workspace
 displays that error. Authorization is checked before streaming begins.
 
+Workbench uses `schemasOnly=true` for the initial schema list, `schema` to
+load one tree branch, and `schema` plus `table` when opening a table's columns.
+Search uses its own request and returns matching objects. The defaults of
+`DWARVENPICK_SCHEMA_MAX_SEARCH_TABLES=250` and
+`DWARVENPICK_SCHEMA_MAX_SEARCH_MATCHES=250` cap column probes and returned
+objects. The Explorer flags a partial search when it reaches either budget.
+Clients that omit the scopes receive the existing catalog response.
+
 The existing non-streaming JSON endpoint remains available for older clients;
 it does not have disconnect-driven cancellation. This behavior applies to
 Explorer loads, not independently submitted SQL executions.
+
+## Query submission receipts
+
+V8 adds `query_execution_receipts` and a write marker on runtime executions.
+Receipts for accepted keyed submissions retain the original ID and a request
+fingerprint independently of query results and history. The receipt table is
+append-only. Include it in metadata backups to preserve replay protection.
+Keys whose executions expired before V8 cannot be recovered.
+
+The database marker records that a write may have reached JDBC. A failure
+or lost worker after that point leaves the outcome uncertain until an operator
+verifies it on the target database.
 
 ## Identity and revision integrity upgrade
 

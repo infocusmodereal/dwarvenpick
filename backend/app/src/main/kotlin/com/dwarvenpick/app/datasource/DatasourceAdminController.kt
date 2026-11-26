@@ -31,6 +31,7 @@ class DatasourceAdminController(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val driverRegistryService: DriverRegistryService,
     private val authAuditLogger: AuthAuditLogger,
+    private val schemaBrowserService: SchemaBrowserService,
 ) {
     @GetMapping("/drivers")
     fun listDrivers(
@@ -225,6 +226,7 @@ class DatasourceAdminController(
         runCatching {
             val updated = datasourceRegistryService.updateDatasource(datasourceId, request)
             datasourcePoolManager.evictPoolsForDatasource(datasourceId)
+            schemaBrowserService.invalidate(datasourceId)
             audit(
                 type = "datasource.update",
                 actor = authentication.name,
@@ -256,6 +258,7 @@ class DatasourceAdminController(
     ): ResponseEntity<Map<String, Any>> {
         val deleted = datasourceRegistryService.deleteDatasource(datasourceId)
         datasourcePoolManager.evictPoolsForDatasource(datasourceId)
+        schemaBrowserService.invalidate(datasourceId)
         audit(
             type = "datasource.delete",
             actor = authentication.name,
@@ -285,6 +288,7 @@ class DatasourceAdminController(
         runCatching {
             val response = datasourceRegistryService.upsertCredentialProfile(datasourceId, profileId, request)
             datasourcePoolManager.evictPoolsForDatasource(datasourceId)
+            schemaBrowserService.invalidate(datasourceId)
             audit(
                 type = "datasource.credential_profile.upsert",
                 actor = authentication.name,
@@ -306,6 +310,7 @@ class DatasourceAdminController(
     ): ResponseEntity<ReencryptCredentialsResponse> {
         val response = datasourceRegistryService.reencryptAllCredentialProfiles()
         datasourcePoolManager.evictAllPools()
+        schemaBrowserService.invalidate()
         audit(
             type = "datasource.credentials.reencrypt",
             actor = authentication.name,

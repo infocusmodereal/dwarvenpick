@@ -65,3 +65,8 @@ kotlin {
         freeCompilerArgs.addAll("-Xjsr305=strict")
     }
 }
+
+tasks.withType<Test>().configureEach {
+    // The Docker client bundled with Testcontainers 1.x defaults below the API floor of newer daemons.
+    systemProperty("api.version", providers.systemProperty("api.version").orElse("1.44").get())
+}

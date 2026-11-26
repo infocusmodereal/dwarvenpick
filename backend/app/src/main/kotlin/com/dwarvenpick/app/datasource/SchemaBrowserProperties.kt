@@ -6,7 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class SchemaBrowserProperties(
     val maxLoadSeconds: Long = 120,
     val cacheTtlSeconds: Long = 300,
+    val maxCacheEntries: Int = 64,
     val maxSchemas: Int = 100,
     val maxTablesPerSchema: Int = 100,
     val maxColumnsPerTable: Int = 200,
+    val maxSearchTables: Int = 250,
+    val maxSearchMatches: Int = 250,
 )

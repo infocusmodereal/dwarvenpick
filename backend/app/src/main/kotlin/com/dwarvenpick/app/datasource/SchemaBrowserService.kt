@@ -7,17 +7,21 @@ import com.dwarvenpick.app.datasource.aerospike.parseAerospikeJdbcTarget
 import com.dwarvenpick.app.starrocks.STARROCKS_DEFAULT_CATALOG
 import com.dwarvenpick.app.starrocks.StarRocksSchemaRef
 import com.dwarvenpick.app.starrocks.isStarRocksDefaultCatalog
+import com.dwarvenpick.app.starrocks.parseStarRocksExplorerSchema
 import com.dwarvenpick.app.starrocks.qualifiedObjectName
 import com.dwarvenpick.app.starrocks.qualifiedSchemaName
 import com.dwarvenpick.app.starrocks.quoteStarRocksIdentifier
 import org.springframework.stereotype.Service
 import java.sql.Connection
+import java.sql.DatabaseMetaData
 import java.sql.ResultSet
 import java.sql.SQLException
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CancellationException
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 
 private data class SchemaCacheSnapshot(
     val response: DatasourceSchemaBrowserResponse,
@@ -29,35 +33,93 @@ class SchemaBrowserService(
     private val datasourcePoolManager: DatasourcePoolManager,
     private val schemaBrowserProperties: SchemaBrowserProperties,
 ) {
-    private val cache = ConcurrentHashMap<String, SchemaCacheSnapshot>()
+    private data class Key(
+        val datasourceId: String,
+        val credentialProfile: String,
+        val selection: SchemaBrowserSelection,
+    )
+
+    private val cacheLock = Any()
+    private val snapshots = LinkedHashMap<Key, SchemaCacheSnapshot>(16, 0.75f, true)
+    private val inFlight = mutableMapOf<Key, CompletableFuture<DatasourceSchemaBrowserResponse>>()
+
+    fun invalidate(datasourceId: String? = null) {
+        synchronized(cacheLock) {
+            snapshots.keys.removeIf { datasourceId == null || it.datasourceId == datasourceId }
+            inFlight.keys.removeIf { datasourceId == null || it.datasourceId == datasourceId }
+        }
+    }
 
     fun fetchSchema(
         datasourceId: String,
         credentialProfile: String,
         refresh: Boolean,
         load: SchemaBrowserLoad = SchemaBrowserLoad(),
+        selection: SchemaBrowserSelection = SchemaBrowserSelection(),
     ): DatasourceSchemaBrowserResponse {
-        load.checkActive()
-        val cacheKey = "$datasourceId::$credentialProfile"
-        val now = Instant.now()
-        val cachedSnapshot = cache[cacheKey]
-        val cacheTtl = schemaBrowserProperties.cacheTtlSeconds.coerceAtLeast(1)
-
-        if (!refresh && cachedSnapshot != null) {
-            val ageSeconds = Duration.between(cachedSnapshot.fetchedAt, now).seconds
-            if (ageSeconds <= cacheTtl) {
-                return cachedSnapshot.response.copy(cached = true)
+        val key = Key(datasourceId, credentialProfile, selection)
+        if (refresh && selection.table == null && selection.schema == null && selection.search == null) {
+            // A manual inventory refresh also invalidates previously queried column metadata.
+            synchronized(cacheLock) {
+                val related: (Key) -> Boolean = {
+                    it.datasourceId == datasourceId && it.credentialProfile == credentialProfile && it.selection != selection
+                }
+                snapshots.keys.removeIf(related)
+                inFlight.keys.removeIf(related)
             }
         }
+        var forceRefresh = refresh
+        while (true) {
+            load.checkActive()
+            val candidate = CompletableFuture<DatasourceSchemaBrowserResponse>()
+            val pending =
+                synchronized(cacheLock) {
+                    val snapshot = snapshots[key]
+                    val cacheTtl = schemaBrowserProperties.cacheTtlSeconds.coerceAtLeast(1)
+                    if (!forceRefresh && snapshot != null && Duration.between(snapshot.fetchedAt, Instant.now()).seconds < cacheTtl) {
+                        return snapshot.response.copy(cached = true)
+                    }
+                    inFlight.getOrPut(key) { candidate }
+                }
 
-        val freshResponse = loadSchema(datasourceId, credentialProfile, now, load)
-        load.checkActive()
-        cache[cacheKey] =
-            SchemaCacheSnapshot(
-                response = freshResponse,
-                fetchedAt = now,
-            )
-        return freshResponse
+            if (pending === candidate) {
+                try {
+                    val response = loadSchema(datasourceId, credentialProfile, Instant.now(), load, selection)
+                    load.checkActive()
+                    synchronized(cacheLock) {
+                        if (inFlight[key] !== candidate) {
+                            throw CancellationException("Connection configuration changed during schema load.")
+                        }
+                        snapshots[key] = SchemaCacheSnapshot(response, Instant.now())
+                        if (snapshots.size > schemaBrowserProperties.maxCacheEntries.coerceAtLeast(1)) {
+                            snapshots.remove(snapshots.keys.first())
+                        }
+                        inFlight.remove(key)
+                    }
+                    candidate.complete(response)
+                    return response
+                } catch (exception: Throwable) {
+                    synchronized(cacheLock) { inFlight.remove(key, candidate) }
+                    if (exception is CancellationException || Thread.currentThread().isInterrupted) {
+                        candidate.cancel(false)
+                    } else {
+                        candidate.completeExceptionally(exception)
+                    }
+                    throw exception
+                }
+            }
+
+            try {
+                val response = pending.get()
+                load.checkActive()
+                return response
+            } catch (exception: ExecutionException) {
+                throw exception.cause ?: exception
+            } catch (_: CancellationException) {
+                // A different browser disconnected. This caller can still load the schema.
+                forceRefresh = false
+            }
+        }
     }
 
     private fun loadSchema(
@@ -65,6 +127,7 @@ class SchemaBrowserService(
         credentialProfile: String,
         fetchedAt: Instant,
         load: SchemaBrowserLoad,
+        selection: SchemaBrowserSelection,
     ): DatasourceSchemaBrowserResponse {
         val maxSchemas = schemaBrowserProperties.maxSchemas.coerceAtLeast(1)
         val maxTablesPerSchema = schemaBrowserProperties.maxTablesPerSchema.coerceAtLeast(1)
@@ -85,12 +148,16 @@ class SchemaBrowserService(
         if (handle.spec.engine == DatasourceEngine.AEROSPIKE) {
             handle.connection.close()
             load.checkActive()
+            selection.table?.let { target ->
+                return tableColumnsResponse(datasourceId, fetchedAt, target, emptyList())
+            }
             return loadAerospikeSchema(
                 spec = handle.spec,
                 datasourceId = datasourceId,
                 fetchedAt = fetchedAt,
                 maxSchemas = maxSchemas,
                 maxTablesPerSchema = maxTablesPerSchema,
+                selection = selection,
             )
         }
 
@@ -100,13 +167,23 @@ class SchemaBrowserService(
             if (handle.spec.engine == DatasourceEngine.STARROCKS) {
                 return@withConnection run {
                     val connection = handle.connection
+                    selection.table?.let { target ->
+                        return@withConnection tableColumnsResponse(
+                            datasourceId,
+                            fetchedAt,
+                            target,
+                            loadStarRocksColumns(connection, parseStarRocksExplorerSchema(target.schema), target.table, maxColumnsPerTable),
+                        )
+                    }
                     loadStarRocksSchema(
                         connection = connection,
                         datasourceId = datasourceId,
                         fetchedAt = fetchedAt,
                         maxSchemas = maxSchemas,
                         maxTablesPerSchema = maxTablesPerSchema,
-                        maxColumnsPerTable = maxColumnsPerTable,
+                        maxColumnsPerTable = if (selection.includeColumns) maxColumnsPerTable else 0,
+                        selection = selection,
+                        load = load,
                     )
                 }
             }
@@ -120,6 +197,7 @@ class SchemaBrowserService(
                         datasourceId,
                         fetchedAt,
                         load,
+                        selection,
                     )
                 }
             }
@@ -137,7 +215,20 @@ class SchemaBrowserService(
                             productName.contains("mariadb") ||
                             productName.contains("aerospike")
 
-                    if (useCatalogsAsSchemas) {
+                    selection.table?.let { target ->
+                        val resolvedCatalog = if (useCatalogsAsSchemas) target.schema else catalog
+                        val schemaPattern = if (useCatalogsAsSchemas) null else metadata.literalSearchPattern(target.schema)
+                        val columns = loadJdbcColumns(metadata, resolvedCatalog, schemaPattern, target.table, maxColumnsPerTable, load)
+                        return@withConnection tableColumnsResponse(datasourceId, fetchedAt, target, columns)
+                    }
+
+                    if (selection.schema != null) {
+                        schemaNames.add(selection.schema)
+                        // Drivers with no JDBC schema support use the connection catalog as the explorer schema.
+                        schemaUsesCatalogFallback =
+                            useCatalogsAsSchemas ||
+                            (catalog == selection.schema && !metadata.supportsSchemasInDataManipulation())
+                    } else if (useCatalogsAsSchemas) {
                         metadata.catalogs.use { catalogs ->
                             while (catalogs.next() && schemaNames.size < maxSchemas) {
                                 val schemaName =
@@ -173,14 +264,24 @@ class SchemaBrowserService(
                         }
                     }
 
+                    val search = selection.search?.let { SchemaBrowserSearch(it, schemaBrowserProperties) }
                     val schemaResponses =
                         schemaNames
-                            .distinctBy { schema -> schema.lowercase(Locale.getDefault()) }
+                            .distinct()
                             .sortedBy { schema -> schema.lowercase(Locale.getDefault()) }
-                            .map { schemaName ->
+                            .mapNotNull { schemaName ->
                                 load.checkActive()
+                                if (search?.hasCapacity() == false) return@mapNotNull null
+                                if (selection.schemasOnly) return@mapNotNull DatasourceSchemaEntryResponse(schemaName, emptyList())
                                 val resolvedCatalog = if (schemaUsesCatalogFallback) schemaName else catalog
-                                val resolvedSchemaPattern = if (schemaUsesCatalogFallback) null else schemaName
+                                val resolvedSchemaPattern =
+                                    if (schemaUsesCatalogFallback) {
+                                        null
+                                    } else {
+                                        metadata.literalSearchPattern(
+                                            schemaName,
+                                        )
+                                    }
                                 val tables = mutableListOf<DatasourceTableEntryResponse>()
                                 metadata
                                     .getTables(
@@ -197,30 +298,18 @@ class SchemaBrowserService(
                                                     ?: continue
                                             val tableType = tableRs.getString("TABLE_TYPE") ?: "TABLE"
 
-                                            val columns = mutableListOf<DatasourceColumnEntryResponse>()
-                                            metadata
-                                                .getColumns(
-                                                    resolvedCatalog,
-                                                    resolvedSchemaPattern,
-                                                    tableName,
-                                                    "%",
-                                                ).use { columnRs ->
-                                                    while (columnRs.next() && columns.size < maxColumnsPerTable) {
-                                                        val columnName =
-                                                            columnRs.getString("COLUMN_NAME")
-                                                                ?: columnRs.getString(4)
-                                                                ?: continue
-                                                        val jdbcType = columnRs.getString("TYPE_NAME") ?: "UNKNOWN"
-                                                        val nullableCode =
-                                                            columnRs.getInt("NULLABLE")
-                                                        columns.add(
-                                                            DatasourceColumnEntryResponse(
-                                                                name = columnName,
-                                                                jdbcType = jdbcType,
-                                                                nullable = nullableCode != 0,
-                                                            ),
-                                                        )
-                                                    }
+                                            val columns =
+                                                if (selection.includeColumns && search == null && selection.schema == null) {
+                                                    loadJdbcColumns(
+                                                        metadata,
+                                                        resolvedCatalog,
+                                                        resolvedSchemaPattern,
+                                                        tableName,
+                                                        maxColumnsPerTable,
+                                                        load,
+                                                    )
+                                                } else {
+                                                    emptyList()
                                                 }
 
                                             tables.add(
@@ -233,10 +322,29 @@ class SchemaBrowserService(
                                         }
                                     }
 
-                                DatasourceSchemaEntryResponse(
-                                    schema = schemaName,
-                                    tables = tables.sortedBy { table -> table.table.lowercase(Locale.getDefault()) },
-                                )
+                                val entry =
+                                    DatasourceSchemaEntryResponse(
+                                        schema = schemaName,
+                                        tables = tables.sortedBy { table -> table.table.lowercase(Locale.getDefault()) },
+                                    )
+                                if (search == null) {
+                                    entry
+                                } else {
+                                    search.filter(entry) { candidates ->
+                                        candidates.associateWith { table ->
+                                            load.checkActive()
+                                            loadJdbcColumns(
+                                                metadata,
+                                                resolvedCatalog,
+                                                resolvedSchemaPattern,
+                                                table,
+                                                maxColumnsPerTable,
+                                                load,
+                                                search,
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
                     DatasourceSchemaBrowserResponse(
@@ -244,6 +352,7 @@ class SchemaBrowserService(
                         cached = false,
                         fetchedAt = fetchedAt.toString(),
                         schemas = schemaResponses,
+                        searchTruncated = search?.truncated == true,
                     )
                 }
             } catch (exception: RuntimeException) {
@@ -255,6 +364,51 @@ class SchemaBrowserService(
         }
     }
 
+    private fun tableColumnsResponse(
+        datasourceId: String,
+        fetchedAt: Instant,
+        target: SchemaBrowserTable,
+        columns: List<DatasourceColumnEntryResponse>,
+    ): DatasourceSchemaBrowserResponse =
+        DatasourceSchemaBrowserResponse(
+            datasourceId = datasourceId,
+            cached = false,
+            fetchedAt = fetchedAt.toString(),
+            schemas =
+                listOf(
+                    DatasourceSchemaEntryResponse(target.schema, listOf(DatasourceTableEntryResponse(target.table, "TABLE", columns))),
+                ),
+        )
+
+    private fun loadJdbcColumns(
+        metadata: DatabaseMetaData,
+        catalog: String?,
+        schemaPattern: String?,
+        table: String,
+        maxColumns: Int,
+        load: SchemaBrowserLoad,
+        search: SchemaBrowserSearch? = null,
+    ): List<DatasourceColumnEntryResponse> =
+        metadata.getColumns(catalog, schemaPattern, metadata.literalSearchPattern(table), "%").use { rows ->
+            buildList {
+                var inspected = 0
+                while (inspected < maxColumns && rows.next()) {
+                    load.checkActive()
+                    if (rows.getString("TABLE_NAME") != table) continue
+                    val columnName = rows.getString("COLUMN_NAME") ?: rows.getString(4) ?: continue
+                    inspected++
+                    if (search != null && !search.matches(columnName)) continue
+                    add(
+                        DatasourceColumnEntryResponse(
+                            name = columnName,
+                            jdbcType = rows.getString("TYPE_NAME") ?: "UNKNOWN",
+                            nullable = rows.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls,
+                        ),
+                    )
+                }
+            }
+        }
+
     private fun loadStarRocksSchema(
         connection: Connection,
         datasourceId: String,
@@ -262,21 +416,39 @@ class SchemaBrowserService(
         maxSchemas: Int,
         maxTablesPerSchema: Int,
         maxColumnsPerTable: Int,
+        selection: SchemaBrowserSelection,
+        load: SchemaBrowserLoad,
     ): DatasourceSchemaBrowserResponse =
         try {
-            val schemaRefs = discoverStarRocksSchemas(connection, maxSchemas)
+            val search = selection.search?.let { SchemaBrowserSearch(it, schemaBrowserProperties) }
+            val schemaRefs =
+                selection.schema?.let { listOf(parseStarRocksExplorerSchema(it)) }
+                    ?: discoverStarRocksSchemas(connection, maxSchemas)
             val schemaResponses =
-                schemaRefs.map { schemaRef ->
-                    DatasourceSchemaEntryResponse(
-                        schema = schemaRef.displayName,
-                        tables =
-                            loadStarRocksTables(
-                                connection = connection,
-                                schemaRef = schemaRef,
-                                maxTablesPerSchema = maxTablesPerSchema,
-                                maxColumnsPerTable = maxColumnsPerTable,
-                            ),
-                    )
+                schemaRefs.mapNotNull { schemaRef ->
+                    load.checkActive()
+                    if (search?.hasCapacity() == false) return@mapNotNull null
+                    if (selection.schemasOnly) {
+                        return@mapNotNull DatasourceSchemaEntryResponse(schemaRef.displayName, emptyList())
+                    }
+                    val tables =
+                        loadStarRocksTables(
+                            connection = connection,
+                            schemaRef = schemaRef,
+                            maxTablesPerSchema = maxTablesPerSchema,
+                            maxColumnsPerTable = if (search == null && selection.schema == null) maxColumnsPerTable else 0,
+                        )
+                    val entry = DatasourceSchemaEntryResponse(schemaRef.displayName, tables)
+                    if (search == null) {
+                        entry
+                    } else {
+                        search.filter(entry) { candidates ->
+                            candidates.associateWith { table ->
+                                load.checkActive()
+                                loadStarRocksColumns(connection, schemaRef, table, maxColumnsPerTable, search)
+                            }
+                        }
+                    }
                 }
 
             DatasourceSchemaBrowserResponse(
@@ -284,7 +456,10 @@ class SchemaBrowserService(
                 cached = false,
                 fetchedAt = fetchedAt.toString(),
                 schemas = schemaResponses,
+                searchTruncated = search?.truncated == true,
             )
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             throw SchemaBrowserUnavailableException(
                 message = "Unable to load StarRocks metadata from datasource.",
@@ -389,12 +564,11 @@ class SchemaBrowserService(
                     table = summary.name,
                     type = summary.type,
                     columns =
-                        loadStarRocksColumns(
-                            connection = connection,
-                            schemaRef = schemaRef,
-                            tableName = summary.name,
-                            maxColumnsPerTable = maxColumnsPerTable,
-                        ),
+                        if (maxColumnsPerTable > 0) {
+                            loadStarRocksColumns(connection, schemaRef, summary.name, maxColumnsPerTable)
+                        } else {
+                            emptyList()
+                        },
                 )
             }
     }
@@ -404,6 +578,7 @@ class SchemaBrowserService(
         schemaRef: StarRocksSchemaRef,
         tableName: String,
         maxColumnsPerTable: Int,
+        search: SchemaBrowserSearch? = null,
     ): List<DatasourceColumnEntryResponse> =
         try {
             connection.createStatement().use { statement ->
@@ -412,11 +587,14 @@ class SchemaBrowserService(
                     .executeQuery("DESCRIBE ${schemaRef.qualifiedObjectName(tableName)}")
                     .use { resultSet ->
                         val columns = mutableListOf<DatasourceColumnEntryResponse>()
-                        while (resultSet.next() && columns.size < maxColumnsPerTable) {
+                        var inspected = 0
+                        while (inspected < maxColumnsPerTable && resultSet.next()) {
                             val columnName = resultSet.getStringSafely(1)?.trim().orEmpty()
                             if (columnName.isBlank() || columnName.startsWith("#")) {
                                 continue
                             }
+                            inspected++
+                            if (search != null && !search.matches(columnName)) continue
                             val jdbcType = resultSet.getStringSafely(2)?.ifBlank { "UNKNOWN" } ?: "UNKNOWN"
                             val nullableText = resultSet.getStringSafely(3)?.trim().orEmpty()
                             columns.add(
@@ -484,6 +662,7 @@ class SchemaBrowserService(
         fetchedAt: Instant,
         maxSchemas: Int,
         maxTablesPerSchema: Int,
+        selection: SchemaBrowserSelection,
     ): DatasourceSchemaBrowserResponse {
         val target = parseAerospikeJdbcTarget(spec.jdbcUrl)
         val policy =
@@ -513,14 +692,20 @@ class SchemaBrowserService(
                         .take(maxSchemas)
 
                 val setsByNamespace =
-                    runCatching { Info.request(node, "sets") }
-                        .map { info -> parseAerospikeSets(info) }
-                        .getOrDefault(emptyMap())
+                    if (selection.schemasOnly) {
+                        emptyMap()
+                    } else {
+                        runCatching { Info.request(node, "sets") }
+                            .map { info -> parseAerospikeSets(info) }
+                            .getOrDefault(emptyMap())
+                    }
+                val search = selection.search?.let { SchemaBrowserSearch(it, schemaBrowserProperties) }
 
                 val schemaResponses =
                     namespaces
+                        .filter { selection.schema == null || it == selection.schema }
                         .sortedBy { namespace -> namespace.lowercase(Locale.getDefault()) }
-                        .map { namespace ->
+                        .mapNotNull { namespace ->
                             val tables =
                                 setsByNamespace[namespace]
                                     .orEmpty()
@@ -534,10 +719,8 @@ class SchemaBrowserService(
                                         )
                                     }
 
-                            DatasourceSchemaEntryResponse(
-                                schema = namespace,
-                                tables = tables,
-                            )
+                            val entry = DatasourceSchemaEntryResponse(namespace, tables)
+                            if (search == null) entry else search.filter(entry)
                         }
 
                 DatasourceSchemaBrowserResponse(
@@ -545,6 +728,7 @@ class SchemaBrowserService(
                     cached = false,
                     fetchedAt = fetchedAt.toString(),
                     schemas = schemaResponses,
+                    searchTruncated = search?.truncated == true,
                 )
             }
         } catch (exception: SchemaBrowserUnavailableException) {

@@ -36,6 +36,7 @@ class SchemaBrowserStreamService(
         datasourceId: String,
         credentialProfile: String,
         refresh: Boolean,
+        selection: SchemaBrowserSelection = SchemaBrowserSelection(),
     ): StreamingResponseBody =
         StreamingResponseBody { output ->
             val load = SchemaBrowserLoad()
@@ -49,7 +50,7 @@ class SchemaBrowserStreamService(
                 output.flush()
                 future =
                     workers.submit<DatasourceSchemaBrowserResponse> {
-                        schemaBrowserService.fetchSchema(datasourceId, credentialProfile, refresh, load)
+                        schemaBrowserService.fetchSchema(datasourceId, credentialProfile, refresh, load, selection)
                     }
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(properties.maxLoadSeconds.coerceAtLeast(1))
                 while (true) {
